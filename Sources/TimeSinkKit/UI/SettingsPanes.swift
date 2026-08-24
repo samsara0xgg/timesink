@@ -176,9 +176,28 @@ struct CategoriesSettingsPane: View {
     }
 }
 
+/// A row's `updateCategory` write is cheap (single-row SQLite UPDATE) and
+/// happens on every field mutation, per-keystroke included. But
+/// `resolver.refresh()` re-reads the full domain/app/rule tables (8k+ rows)
+/// on the main actor, and `model.dataChanged()` fans `dataVersion` out to
+/// every open view (including this pane's own siblings — `RulesSettingsPane`
+/// reloads and `UncategorizedSettingsPane` re-runs its 30-day query, and
+/// `TabView` keeps visited tabs alive so both are live even when not the
+/// selected tab). Doing that on every keystroke/drag event is wasteful, so
+/// the two are decoupled: the write is immediate and unconditional, while
+/// the refresh+dataChanged only fires once the edit "settles" —
+/// `onSubmit`/focus-loss for the name field, a short debounce for the
+/// continuous ColorPicker drag stream, and immediately for the productivity
+/// `Picker` (a single discrete selection per event, not a continuous stream,
+/// so no debounce is needed there).
 private struct CategoryEditRow: View {
     let model: AppModel
     @Binding var category: Category
+
+    @FocusState private var isNameFocused: Bool
+    @State private var pendingColorRefresh: Task<Void, Never>?
+
+    private static let colorRefreshDebounce: Duration = .milliseconds(400)
 
     var body: some View {
         HStack(spacing: 12) {
@@ -188,6 +207,8 @@ private struct CategoryEditRow: View {
             TextField("名称", text: $category.name)
                 .textFieldStyle(.roundedBorder)
                 .frame(minWidth: 120)
+                .focused($isNameFocused)
+                .onSubmit { commitRefresh() }
             Spacer()
             Picker("生产力", selection: $category.productivity) {
                 ForEach(-2...2, id: \.self) { level in
@@ -198,25 +219,58 @@ private struct CategoryEditRow: View {
             .frame(width: 110)
         }
         .padding(.vertical, 2)
-        .onChange(of: category) { _, newValue in
-            persist(newValue)
+        .onChange(of: category.name) { _, _ in persistOnly() }
+        .onChange(of: isNameFocused) { _, focused in
+            if !focused { commitRefresh() }
         }
+        .onChange(of: category.productivity) { _, _ in
+            persistOnly()
+            commitRefresh()
+        }
+        .onDisappear { pendingColorRefresh?.cancel() }
     }
 
     private var colorBinding: Binding<Color> {
         Binding(
             get: { Color(hex: category.colorHex) },
-            set: { category.colorHex = $0.toHex() }
+            set: { newColor in
+                category.colorHex = newColor.toHex()
+                persistOnly()
+                scheduleDebouncedRefresh()
+            }
         )
     }
 
-    private func persist(_ updated: Category) {
+    /// Writes the current `category` value to the store. Cheap and safe to
+    /// call on every field mutation.
+    private func persistOnly() {
         do {
-            try model.categoryStore.updateCategory(updated)
+            try model.categoryStore.updateCategory(category)
+        } catch {
+            settingsLogger.error("updateCategory failed for \(category.id, privacy: .public): \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    /// Cancels any pending debounced refresh and runs the resolver
+    /// refresh + `dataChanged()` fan-out immediately — the "settled" path.
+    private func commitRefresh() {
+        pendingColorRefresh?.cancel()
+        pendingColorRefresh = nil
+        model.resolver.refresh()
+        model.dataChanged()
+    }
+
+    /// Debounces the refresh+dataChanged fan-out behind a short delay,
+    /// restarting the timer on every call — used for the ColorPicker's
+    /// continuous drag stream so the expensive work only runs once after
+    /// the user stops moving the color wheel.
+    private func scheduleDebouncedRefresh() {
+        pendingColorRefresh?.cancel()
+        pendingColorRefresh = Task { @MainActor in
+            try? await Task.sleep(for: Self.colorRefreshDebounce)
+            guard !Task.isCancelled else { return }
             model.resolver.refresh()
             model.dataChanged()
-        } catch {
-            settingsLogger.error("updateCategory failed for \(updated.id, privacy: .public): \(String(describing: error), privacy: .public)")
         }
     }
 
