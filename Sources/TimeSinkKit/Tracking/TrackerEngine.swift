@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import os
 
@@ -13,6 +14,76 @@ public struct ChromeThrottle {
     }
     public mutating func noteFetched(title: String?, at date: Date) {
         lastTitle = title; lastFetch = date
+    }
+}
+
+/// Splits suspension into two independent causes so a lock/sleep suspension
+/// can't be silently cleared by the next tick's idle check. `idleSuspended`
+/// is set/cleared purely by comparing `idleSeconds` against `threshold`
+/// every tick; `systemSuspended` is set only by an explicit lock/sleep
+/// signal and cleared only by an explicit unlock (or confirmed-unlocked
+/// wake) signal -- ticking never touches it.
+public struct SuspensionState: Equatable {
+    public private(set) var idleSuspended = false
+    public private(set) var systemSuspended = false
+
+    public var isSuspended: Bool { idleSuspended || systemSuspended }
+
+    public init() {}
+
+    public enum TickOutcome: Equatable {
+        /// `systemSuspended` is set: caller must return early -- no
+        /// sampling, and `idleSuspended` is left untouched.
+        case systemSuspended
+        /// `idleSeconds` just crossed `threshold` this tick: caller should
+        /// close+persist the current span, backdated to the last input.
+        case becameIdle
+        /// Already idle-suspended: no-op, no sampling.
+        case stillIdle
+        /// Not suspended: caller should sample as normal.
+        case active
+    }
+
+    /// Evaluates one tick. While `systemSuspended`, always returns
+    /// `.systemSuspended` without reading `idleSeconds` at all -- this is
+    /// the fix for the bug where idle reading ~0-1s right after a lock/wake
+    /// used to clear suspension on a single shared flag.
+    public mutating func tick(idleSeconds: TimeInterval, threshold: TimeInterval) -> TickOutcome {
+        guard !systemSuspended else { return .systemSuspended }
+        if idleSeconds >= threshold {
+            if idleSuspended { return .stillIdle }
+            idleSuspended = true
+            return .becameIdle
+        }
+        if idleSuspended { idleSuspended = false }
+        return .active
+    }
+
+    /// Lock or sleep begins. Returns `true` if this call performed the
+    /// false->true transition (caller should close the current span);
+    /// `false` if already system-suspended (idempotent).
+    @discardableResult
+    public mutating func suspendSystem() -> Bool {
+        guard !systemSuspended else { return false }
+        systemSuspended = true
+        return true
+    }
+
+    /// `com.apple.screenIsUnlocked` -- authoritative, always clears system
+    /// suspension.
+    public mutating func unlock() {
+        systemSuspended = false
+    }
+
+    /// `NSWorkspace.didWakeNotification` -- not authoritative on its own
+    /// (macOS can wake while the screen is still locked); caller supplies
+    /// the `CGSessionCopyCurrentDictionary`-derived answer. Only clears
+    /// system suspension if the screen is confirmed unlocked; otherwise the
+    /// later `unlock()` call (from `screenIsUnlocked`) is what clears it.
+    public mutating func wake(screenStillLocked: Bool) {
+        if !screenStillLocked {
+            systemSuspended = false
+        }
     }
 }
 
@@ -55,7 +126,8 @@ public final class TrackerEngine {
 
     public var onChange: (() -> Void)?
     public var llmCoordinator: LLMCoordinator?
-    public private(set) var isSuspended = false
+    private var suspensionState = SuspensionState()
+    public var isSuspended: Bool { suspensionState.isSuspended }
     public private(set) var latestSample: Sample?
 
     private let logger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "tracker")
@@ -67,7 +139,7 @@ public final class TrackerEngine {
 
     public func start() {
         systemMonitor.onSuspend = { [weak self] date in self?.suspend(at: date) }
-        systemMonitor.onResume = { [weak self] _ in self?.resume() }
+        systemMonitor.onResume = { [weak self] _, source in self?.resume(source: source) }
         systemMonitor.start()
 
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
@@ -90,16 +162,16 @@ public final class TrackerEngine {
         let now = Date()
         let idleSeconds = idleMonitor.idleSeconds()
 
-        if idleSeconds >= settings.idleThreshold {
-            if !isSuspended {
-                if let closed = builder.close(at: now.addingTimeInterval(-idleSeconds)) {
-                    persist(closed)
-                }
-                isSuspended = true
+        switch suspensionState.tick(idleSeconds: idleSeconds, threshold: settings.idleThreshold) {
+        case .systemSuspended, .stillIdle:
+            return
+        case .becameIdle:
+            if let closed = builder.close(at: now.addingTimeInterval(-idleSeconds)) {
+                persist(closed)
             }
             return
-        } else if isSuspended {
-            isSuspended = false
+        case .active:
+            break
         }
 
         guard var sample = windowSampler.sample(at: now) else { return }
@@ -125,15 +197,36 @@ public final class TrackerEngine {
     }
 
     private func suspend(at date: Date) {
-        guard !isSuspended else { return }
+        guard suspensionState.suspendSystem() else { return }
         if let closed = builder.close(at: date) {
             persist(closed)
         }
-        isSuspended = true
     }
 
-    private func resume() {
-        isSuspended = false
+    /// `.unlock` (from `com.apple.screenIsUnlocked`) always resumes.
+    /// `.wake` (from `didWakeNotification`) re-checks the actual screen-lock
+    /// state via `CGSessionCopyCurrentDictionary` before resuming, per spec:
+    /// a lone wake notification isn't trusted, since macOS can wake the
+    /// display while the screen is still locked -- the later
+    /// `screenIsUnlocked` notification is what clears suspension in that
+    /// case.
+    private func resume(source: SystemMonitor.ResumeSource) {
+        switch source {
+        case .unlock:
+            suspensionState.unlock()
+        case .wake:
+            suspensionState.wake(screenStillLocked: isScreenLocked())
+        }
+    }
+
+    /// Reads `CGSSessionScreenIsLocked` from the current window-server
+    /// session dictionary. That key isn't in the public `CGSession.h`
+    /// header, but reading it via `CGSessionCopyCurrentDictionary` is the
+    /// long-standing, widely-used way to answer "is the screen locked right
+    /// now" without extra permissions.
+    private func isScreenLocked() -> Bool {
+        guard let info = CGSessionCopyCurrentDictionary() as? [String: Any] else { return false }
+        return (info["CGSSessionScreenIsLocked"] as? Bool) ?? false
     }
 
     /// Upserts the still-open current span, but only at 30s cadence: before

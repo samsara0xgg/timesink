@@ -2,8 +2,19 @@ import AppKit
 
 @MainActor
 public final class SystemMonitor {
+    /// Distinguishes a resume signal's origin. `wake` comes from
+    /// `NSWorkspace.didWakeNotification`, which is NOT trustworthy evidence
+    /// the screen is actually unlocked -- macOS can fire it while the
+    /// screen is still locked after a deep sleep. `unlock` comes from the
+    /// `com.apple.screenIsUnlocked` distributed notification, which is
+    /// authoritative.
+    public enum ResumeSource {
+        case wake
+        case unlock
+    }
+
     public var onSuspend: ((Date) -> Void)?
-    public var onResume: ((Date) -> Void)?
+    public var onResume: ((Date, ResumeSource) -> Void)?
     private var lastLockEvent = Date.distantPast
     public init() {}
 
@@ -13,7 +24,7 @@ public final class SystemMonitor {
             MainActor.assumeIsolated { self?.onSuspend?(Date()) }
         }
         wc.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.onResume?(Date()) }
+            MainActor.assumeIsolated { self?.onResume?(Date(), .wake) }
         }
         let dnc = DistributedNotificationCenter.default()
         dnc.addObserver(forName: .init("com.apple.screenIsLocked"), object: nil, queue: .main) { [weak self] _ in
@@ -28,6 +39,6 @@ public final class SystemMonitor {
         let now = Date()
         guard now.timeIntervalSince(lastLockEvent) > 1 else { return }
         lastLockEvent = now
-        if suspend { onSuspend?(now) } else { onResume?(now) }
+        if suspend { onSuspend?(now) } else { onResume?(now, .unlock) }
     }
 }
