@@ -150,6 +150,11 @@ final class TrackerEngineChromeCacheTests: XCTestCase {
     func testFetchFailureFallsBackToAXTitleInsteadOfStaleURL() throws {
         let (engine, _) = try makeEngine()
         engine.windowSampleProvider = { [self] in chromeSample(at: Date()) }
+        // Automation is authorized in this scenario -- the AX-title fallback
+        // is only safe to observe when we can confirm the window isn't
+        // incognito, and being authorized is what lets a successful fetch
+        // confirm that.
+        engine.chromeAutomationAuthorizedProvider = { true }
 
         // 先成功一次：缓存 github.com
         engine.chromeTabProvider = {
@@ -172,6 +177,43 @@ final class TrackerEngineChromeCacheTests: XCTestCase {
         engine.chromeTabProvider = {
             ChromeSampler.TabInfo(url: nil, title: nil, isIncognito: true)
         }
+        engine.tick(now: ts(0))
+        XCTAssertNil(engine.latestSample?.url)
+        XCTAssertNil(engine.latestSample?.windowTitle)
+    }
+
+    /// Regression: a fetch failure right after a confirmed-incognito window
+    /// must not un-suppress it by falling back to the AX title -- the AX
+    /// title of an incognito Chrome window IS the private page title.
+    func testFetchFailureAfterIncognitoPreservesSuppression() throws {
+        let (engine, _) = try makeEngine()
+        engine.windowSampleProvider = { [self] in chromeSample(at: Date()) }
+        engine.chromeAutomationAuthorizedProvider = { true }
+
+        engine.chromeTabProvider = {
+            ChromeSampler.TabInfo(url: nil, title: nil, isIncognito: true)
+        }
+        engine.tick(now: ts(0))
+        XCTAssertNil(engine.latestSample?.url)
+        XCTAssertNil(engine.latestSample?.windowTitle)
+
+        engine.chromeTabProvider = { nil }
+        engine.tick(now: ts(6))
+        XCTAssertNil(engine.latestSample?.url)
+        XCTAssertNil(engine.latestSample?.windowTitle)
+    }
+
+    /// Regression: with Chrome Automation not authorized, a fetch failure
+    /// must suppress both title and url even though an AX title exists --
+    /// without automation we can't confirm the window isn't incognito, so
+    /// leaking the raw AX title would be a privacy regression versus the
+    /// pre-change build (which never wrote a Chrome title without a
+    /// successful fetch).
+    func testFetchFailureWithoutAutomationSuppressesAXTitle() throws {
+        let (engine, _) = try makeEngine()
+        engine.windowSampleProvider = { [self] in chromeSample(at: Date()) }
+        engine.chromeAutomationAuthorizedProvider = { false }
+        engine.chromeTabProvider = { nil }
         engine.tick(now: ts(0))
         XCTAssertNil(engine.latestSample?.url)
         XCTAssertNil(engine.latestSample?.windowTitle)

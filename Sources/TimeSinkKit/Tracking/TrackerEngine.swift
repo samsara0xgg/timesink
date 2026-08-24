@@ -150,10 +150,15 @@ public final class TrackerEngine {
     private var currentRowID: Int64?
     private var lastHeartbeat = Date.distantPast
 
-    /// Chrome tab capture state. `.none` (fetch failed / never fetched) must
-    /// leave the AX window title intact and carry no URL -- the pre-fix code
-    /// kept applying the last successful URL forever, misattributing days of
-    /// browsing to one stale domain once fetches started failing.
+    /// Chrome tab capture state. `.none` (fetch failed / never fetched) never
+    /// carries a URL -- the pre-fix code kept applying the last successful
+    /// URL forever, misattributing days of browsing to one stale domain once
+    /// fetches started failing. It keeps the AX window title only while
+    /// Chrome Automation is authorized (see `chromeAutomationAuthorized`);
+    /// unauthorized, we can't confirm the window isn't incognito, so both
+    /// are suppressed. A failure never overwrites a prior `.incognito` --
+    /// that suppression is sticky until the next successful, non-incognito
+    /// fetch.
     private enum ChromeTabState {
         case none
         case tab(url: String?, title: String?)
@@ -165,6 +170,7 @@ public final class TrackerEngine {
     /// Test seams: when set, replace the real AX / ScriptingBridge samplers.
     var windowSampleProvider: (() -> Sample?)?
     var chromeTabProvider: (() -> ChromeSampler.TabInfo?)?
+    var chromeAutomationAuthorizedProvider: (() -> Bool)?
 
     /// True after 5 consecutive Chrome tab fetch failures while Chrome is
     /// frontmost; cleared by the next success. Read by the menu bar dashboard.
@@ -235,9 +241,12 @@ public final class TrackerEngine {
                         : .tab(url: tab.url, title: tab.title)
                 } else {
                     chromeBackoff.noteFailure(at: now)
-                    chromeTabState = .none
-                    if chromeBackoff.isDegraded,
-                       Permissions.chromeAutomationStatus(ask: false) != 0 {
+                    // A failed re-fetch must not un-suppress a window we
+                    // already confirmed is incognito -- only .tab/.none
+                    // collapse to .none; .incognito is sticky until the next
+                    // successful (non-incognito) fetch.
+                    if case .incognito = chromeTabState {} else { chromeTabState = .none }
+                    if chromeBackoff.isDegraded, !chromeAutomationAuthorized() {
                         logger.error("Chrome capture degraded: automation likely revoked")
                     }
                 }
@@ -251,7 +260,16 @@ public final class TrackerEngine {
                 sample.url = nil
                 sample.windowTitle = nil
             case .none:
-                break // keep the AX window title; classification degrades to app-level
+                // No confirmed tab state. Automation still authorized: keep
+                // the AX window title (classification degrades to app-level,
+                // but nothing private leaks -- Chrome's AX title for a
+                // non-incognito window is just the page title). Automation
+                // NOT authorized: we cannot tell whether this window is
+                // incognito, so suppress both, matching pre-change behavior.
+                if !chromeAutomationAuthorized() {
+                    sample.url = nil
+                    sample.windowTitle = nil
+                }
             }
         }
 
@@ -261,6 +279,13 @@ public final class TrackerEngine {
             persist(closed)
         }
         heartbeat(now: now)
+    }
+
+    /// True when Chrome Automation is currently authorized. Backed by the
+    /// real `Permissions` check (no prompt: `ask: false`); when a test seam
+    /// is present it answers instead and the real check is never invoked.
+    private func chromeAutomationAuthorized() -> Bool {
+        chromeAutomationAuthorizedProvider?() ?? (Permissions.chromeAutomationStatus(ask: false) == 0)
     }
 
     private func suspend(at date: Date) {
