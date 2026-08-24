@@ -57,4 +57,12 @@ final class DatabaseTests: XCTestCase {
         s.setIdleThreshold(300)
         XCTAssertEqual(s.idleThreshold, 300)
     }
+    func testV2SocialAndCommRulesSeeded() throws {
+        let db = try makeDB()
+        let store = CategoryStore(db)
+        let rules = try store.urlRules()
+        XCTAssertTrue(rules.contains { $0.pattern == "facebook.com" && $0.categoryID == "socialMedia" })
+        XCTAssertTrue(rules.contains { $0.pattern == "outlook." && $0.categoryID == "communication" })
+        XCTAssertTrue(rules.contains { $0.pattern == #"re:https?://(www\.)?x\.com"# && $0.categoryID == "socialMedia" })
+    }
 }

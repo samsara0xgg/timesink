@@ -80,4 +80,32 @@ public enum Taxonomy {
         ("netflix.com", "entertainment", 100),
         ("twitch.tv", "entertainment", 100),
     ]
+
+    /// Additional builtin urlRule rows, seeded by migration v2: social media
+    /// and communication hosts not covered by `builtinURLRules`. Without
+    /// these, seed-tier domain mappings (which classify e.g. facebook.com as
+    /// entertainment, whatsapp.com as entertainment, discord.com as
+    /// business) go uncorrected, since seed rows permanently outrank the
+    /// future LLM tier. Host-level rules use priority 100, same as the v1
+    /// host-level rows.
+    public static let v2URLRules: [(pattern: String, categoryID: String, priority: Int)] = [
+        ("facebook.com", "socialMedia", 100),
+        ("instagram.com", "socialMedia", 100),
+        ("tiktok.com", "socialMedia", 100),
+        ("twitter.com", "socialMedia", 100),
+        (#"re:https?://(www\.)?x\.com"#, "socialMedia", 100),
+        ("reddit.com", "socialMedia", 100),
+        ("snapchat.com", "socialMedia", 100),
+        ("weibo.com", "socialMedia", 100),
+        ("pinterest.com", "socialMedia", 100),
+        ("linkedin.com", "socialMedia", 100),
+        ("whatsapp.com", "communication", 100),
+        ("discord.com", "communication", 100),
+        ("telegram.org", "communication", 100),
+        ("messenger.com", "communication", 100),
+        ("slack.com", "communication", 100),
+        ("teams.microsoft.com", "communication", 100),
+        ("zoom.us", "communication", 100),
+        ("outlook.", "communication", 100),
+    ]
 }

@@ -102,6 +102,17 @@ public enum AppDatabase {
             }
         }
 
+        migrator.registerMigration("v2") { db in
+            // Social media and communication hosts not covered by v1's
+            // builtinURLRules; see Taxonomy.v2URLRules for why these are needed.
+            for rule in Taxonomy.v2URLRules {
+                try db.execute(
+                    sql: "INSERT INTO urlRule (pattern, categoryID, priority, source) VALUES (?, ?, ?, 'builtin')",
+                    arguments: [rule.pattern, rule.categoryID, rule.priority]
+                )
+            }
+        }
+
         return migrator
     }
 }
