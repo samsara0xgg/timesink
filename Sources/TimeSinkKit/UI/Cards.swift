@@ -48,16 +48,20 @@ struct TotalTimeCard: View {
     }
 }
 
+/// Pulse -> color mapping shared by the stats dashboard's score card and the
+/// menu-bar mini dashboard's gauge, so the two stay visually consistent.
+func scoreColor(_ pulse: Int?) -> Color {
+    guard let pulse else { return .secondary }
+    if pulse >= 70 { return .green }
+    if pulse >= 40 { return .orange }
+    return .red
+}
+
 /// 生产力分: number colored by value, with a two-state subtitle.
 struct ProductivityScoreCard: View {
     let pulse: Int?
 
-    private var color: Color {
-        guard let pulse else { return .secondary }
-        if pulse >= 70 { return .green }
-        if pulse >= 40 { return .orange }
-        return .red
-    }
+    private var color: Color { scoreColor(pulse) }
 
     private var subtitle: String {
         guard let pulse else { return "暂无数据" }

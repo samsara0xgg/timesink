@@ -1,0 +1,254 @@
+import SwiftUI
+import Charts
+import Observation
+
+/// Data for the menu-bar popover dashboard: today's numbers, deltas vs
+/// yesterday, the >=70 streak, top categories, and the hourly profile.
+/// Mirrors the StatsModel pattern: one `recompute` from cached
+/// `AppModel.rangedSpans(for:)` fetches, no DB access of its own.
+@MainActor
+@Observable
+final class TodayDashboardModel {
+    static let streakThreshold = 70
+    private static let streakLookbackDays = 30
+
+    var pulse: Int?
+    var pulseDelta: Int?
+    var focus: TimeInterval = 0
+    var focusDelta: TimeInterval?
+    var total: TimeInterval = 0
+    var streakDays = 0
+    var topCategories: [(id: String, name: String, colorHex: String, seconds: TimeInterval)] = []
+    var maxCategorySeconds: TimeInterval = 0
+    /// 24 entries, hours of tracked time per hour-of-day.
+    var hourProfile: [Double] = Array(repeating: 0, count: 24)
+
+    func recompute(model: AppModel) {
+        let calendar = Calendar.current
+        let categories = model.resolver.categoriesByID
+
+        let today = model.rangedSpans(for: .today())
+        let byCategory = Aggregator.durationByCategory(today)
+        pulse = Aggregator.pulse(durationByCategory: byCategory, categories: categories)
+        focus = Aggregator.focusTime(durationByCategory: byCategory, categories: categories)
+        total = Aggregator.totalDuration(today.map(\.span))
+
+        let yesterdayAnchor = calendar.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+        let yesterday = model.rangedSpans(for: DateRangeSelection(kind: .day, anchor: yesterdayAnchor))
+        let yByCategory = Aggregator.durationByCategory(yesterday)
+        let yPulse = Aggregator.pulse(durationByCategory: yByCategory, categories: categories)
+        let yFocus = Aggregator.focusTime(durationByCategory: yByCategory, categories: categories)
+        pulseDelta = zip2(pulse, yPulse).map { $0 - $1 }
+        focusDelta = yesterday.isEmpty ? nil : focus - yFocus
+
+        topCategories = byCategory
+            .compactMap { id, seconds -> (String, String, String, TimeInterval)? in
+                guard let c = categories[id] else { return nil }
+                return (id, c.name, c.colorHex, seconds)
+            }
+            .sorted { $0.3 > $1.3 }
+            .prefix(3)
+            .map { $0 }
+        maxCategorySeconds = topCategories.first?.seconds ?? 0
+
+        var profile = Array(repeating: 0.0, count: 24)
+        for (hour, seconds) in Aggregator.profileByHourOfDay(today, calendar: calendar) {
+            profile[hour] = seconds / 3600.0
+        }
+        hourProfile = profile
+
+        let lookback = model.rangedSpans(for: DateRangeSelection(kind: .last30, anchor: Date()))
+        streakDays = Self.streak(
+            dailyPulses: Self.dailyPulses(items: lookback, categories: categories,
+                                          days: Self.streakLookbackDays,
+                                          endingAt: Date(), calendar: calendar),
+            threshold: Self.streakThreshold)
+    }
+
+    /// Per-day pulse over the trailing `days` days (last element = the day
+    /// containing `endingAt`); nil for days with no tracked time. Pure (no
+    /// actor-isolated state touched) so it's `nonisolated`, matching
+    /// `ActivitiesModel`'s convention -- lets `TodayDashboardModelTests` call
+    /// it synchronously without a `@MainActor` hop.
+    nonisolated static func dailyPulses(items: [CategorizedSpan], categories: [String: Category],
+                            days: Int, endingAt: Date, calendar: Calendar) -> [Int?] {
+        var perDay: [Date: [String: TimeInterval]] = [:]
+        for item in items {
+            for part in Aggregator.split(item.span, by: .day, calendar: calendar) {
+                perDay[part.bucketStart, default: [:]][item.categoryID, default: 0] += part.seconds
+            }
+        }
+        let todayStart = calendar.startOfDay(for: endingAt)
+        return (0..<days).reversed().map { offset in
+            guard let day = calendar.date(byAdding: .day, value: -offset, to: todayStart),
+                  let byCategory = perDay[day] else { return nil }
+            return Aggregator.pulse(durationByCategory: byCategory, categories: categories)
+        }
+    }
+
+    /// Trailing run of days (ending at the array's last element) whose pulse
+    /// is >= threshold. A nil (untracked) day breaks the run. Pure, so
+    /// `nonisolated` -- see `dailyPulses` above.
+    nonisolated static func streak(dailyPulses: [Int?], threshold: Int) -> Int {
+        var count = 0
+        for pulse in dailyPulses.reversed() {
+            guard let pulse, pulse >= threshold else { break }
+            count += 1
+        }
+        return count
+    }
+}
+
+private func zip2<A, B>(_ a: A?, _ b: B?) -> (A, B)? {
+    guard let a, let b else { return nil }
+    return (a, b)
+}
+
+/// The menu-bar popover dashboard (preview C1). Replaces the old
+/// three-line text dropdown.
+struct MenuBarDashboardView: View {
+    let model: AppModel
+    @State private var dashboard = TodayDashboardModel()
+    @State private var gaugeProgress: Double = 0
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 14) {
+                scoreGauge
+                VStack(alignment: .leading, spacing: 4) {
+                    kpiLine(value: Format.duration(dashboard.focus), label: "专注",
+                            delta: dashboard.focusDelta.map(Self.durationDelta))
+                    kpiLine(value: Format.duration(dashboard.total), label: "总计",
+                            delta: dashboard.pulseDelta.map { Self.signed($0) + " 分" })
+                    if dashboard.streakDays >= 2 {
+                        Text("连续 \(dashboard.streakDays) 天保持 \(TodayDashboardModel.streakThreshold) 分以上")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.tint)
+                    }
+                }
+            }
+
+            if !dashboard.topCategories.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(dashboard.topCategories, id: \.id) { entry in
+                        categoryRow(entry)
+                    }
+                }
+            }
+
+            if dashboard.total > 0 {
+                sparkline
+            }
+
+            if model.engine.chromeCaptureDegraded {
+                Label("Chrome 网页读取已降级，请检查自动化权限", systemImage: "exclamationmark.triangle")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+            }
+
+            Divider()
+            HStack {
+                Button("打开 TimeSink") { openWindow(id: "main") }
+                    .buttonStyle(.plain).foregroundStyle(.secondary)
+                Spacer()
+                SettingsLink { Text("设置") }
+                    .buttonStyle(.plain).foregroundStyle(.secondary)
+                Spacer()
+                Button("退出") {
+                    model.engine.stop()
+                    NSApp.terminate(nil)
+                }
+                .buttonStyle(.plain).foregroundStyle(.secondary)
+            }
+            .font(.callout)
+        }
+        .padding(16)
+        .frame(width: 300)
+        .onAppear { refresh() }
+        .onChange(of: model.dataVersion) { refresh() }
+    }
+
+    private func refresh() {
+        dashboard.recompute(model: model)
+        let target = Double(dashboard.pulse ?? 0) / 100.0
+        if reduceMotion {
+            gaugeProgress = target
+        } else {
+            gaugeProgress = 0
+            withAnimation(.spring(duration: 0.6)) { gaugeProgress = target }
+        }
+    }
+
+    private var scoreGauge: some View {
+        ZStack {
+            Circle().stroke(Color.secondary.opacity(0.2), lineWidth: 7)
+            Circle()
+                .trim(from: 0, to: gaugeProgress)
+                .stroke(scoreColor(dashboard.pulse),
+                        style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            VStack(spacing: 1) {
+                Text(dashboard.pulse.map(String.init) ?? "--")
+                    .font(.title2.weight(.bold)).monospacedDigit()
+                Text("生产力分").font(.system(size: 9)).foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 78, height: 78)
+    }
+
+    private func kpiLine(value: String, label: String, delta: String?) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(value).font(.headline).monospacedDigit()
+            Text(label).font(.caption).foregroundStyle(.secondary)
+            if let delta {
+                Text(delta)
+                    .font(.caption2.weight(.bold)).monospacedDigit()
+                    .foregroundStyle(delta.hasPrefix("-") ? Color.red : Color.green)
+            }
+        }
+    }
+
+    private func categoryRow(_ entry: (id: String, name: String, colorHex: String, seconds: TimeInterval)) -> some View {
+        HStack(spacing: 8) {
+            Circle().fill(Color(hex: entry.colorHex)).frame(width: 8, height: 8)
+            Text(entry.name).font(.caption).frame(width: 60, alignment: .leading)
+            GeometryReader { geo in
+                let ratio = dashboard.maxCategorySeconds > 0
+                    ? entry.seconds / dashboard.maxCategorySeconds : 0
+                Capsule().fill(Color(hex: entry.colorHex))
+                    .frame(width: max(4, geo.size.width * ratio))
+                    .frame(maxHeight: .infinity, alignment: .center)
+            }
+            .frame(height: 6)
+            Text(Format.duration(entry.seconds))
+                .font(.caption2).monospacedDigit().foregroundStyle(.secondary)
+                .frame(width: 44, alignment: .trailing)
+        }
+    }
+
+    private var sparkline: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text("今日分布").font(.system(size: 9)).foregroundStyle(.secondary)
+                Spacer()
+                Text("0 – 24 时").font(.system(size: 9)).foregroundStyle(.secondary)
+            }
+            Chart(Array(dashboard.hourProfile.enumerated()), id: \.offset) { hour, hours in
+                AreaMark(x: .value("时", hour), y: .value("时长", hours))
+                    .opacity(0.16)
+                LineMark(x: .value("时", hour), y: .value("时长", hours))
+                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+            }
+            .chartXAxis(.hidden)
+            .chartYAxis(.hidden)
+            .frame(height: 40)
+        }
+    }
+
+    private static func signed(_ v: Int) -> String { v >= 0 ? "+\(v)" : "\(v)" }
+    private static func durationDelta(_ t: TimeInterval) -> String {
+        (t >= 0 ? "+" : "-") + Format.duration(abs(t))
+    }
+}
