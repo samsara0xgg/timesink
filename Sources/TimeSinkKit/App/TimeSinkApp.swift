@@ -1,6 +1,7 @@
 import SwiftUI
 import GRDB
 import os
+import AppKit
 
 public struct TimeSinkApp: App {
     let model: AppModel
@@ -11,8 +12,22 @@ public struct TimeSinkApp: App {
 
     @Environment(\.openWindow) private var openWindow
     @State private var showOnboarding: Bool
+    @NSApplicationDelegateAdaptor(TimeSinkAppDelegate.self) private var appDelegate
 
     public init() {
+        // A second launch (e.g. installed app + `swift run` dev build with the
+        // same bundle id, or a double-open) would run a second 1s sampler into
+        // the same database and double-count every span -- hand off to the
+        // existing instance instead.
+        if let bundleID = Bundle.main.bundleIdentifier {
+            let others = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+                .filter { $0 != .current }
+            if let existing = others.first {
+                existing.activate()
+                exit(0)
+            }
+        }
+
         NSApplication.shared.setActivationPolicy(.accessory)
 
         let db: any DatabaseWriter
@@ -62,6 +77,7 @@ public struct TimeSinkApp: App {
                     // (before any window is shown), so this is a reliable
                     // launch hook for force-opening the main window when
                     // onboarding is needed.
+                    appDelegate.engine = model.engine
                     if needsOnboarding {
                         openWindow(id: "main")
                     }
@@ -114,5 +130,18 @@ private struct MenuBarContent: View {
             }
         }
         .padding()
+    }
+}
+
+/// The menu-bar 退出 button is the only in-app quit path that stops the
+/// engine; logout, shutdown, and Cmd-Q would otherwise skip `stop()` and
+/// drop up to 30s of the in-progress span (spans younger than 30s vanish
+/// entirely -- they are first written at their first heartbeat). Routing
+/// every termination through the delegate closes that daily loss path.
+final class TimeSinkAppDelegate: NSObject, NSApplicationDelegate {
+    var engine: TrackerEngine?
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        MainActor.assumeIsolated { engine?.stop() }
+        return .terminateNow
     }
 }

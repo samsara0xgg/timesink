@@ -16,8 +16,17 @@ public enum AppDatabase {
         return queue
     }
 
+    /// "timesink.sqlite" only when running as the installed bundle;
+    /// bare-executable runs (`swift run`, no bundle identifier) get
+    /// "timesink-dev.sqlite" so dev sessions can never pollute real data
+    /// even if the single-instance guard is bypassed.
+    public static func databaseFileName(bundleIdentifier: String?) -> String {
+        bundleIdentifier == "com.alllllenshi.TimeSink" ? "timesink.sqlite" : "timesink-dev.sqlite"
+    }
+
     /// Creates `~/Library/Application Support/TimeSink/` if needed and returns the
-    /// path to `timesink.sqlite` inside it.
+    /// path to `timesink.sqlite` (or `timesink-dev.sqlite`, see `databaseFileName`)
+    /// inside it.
     public static func defaultURL() throws -> URL {
         let fileManager = FileManager.default
         let appSupport = try fileManager.url(
@@ -28,7 +37,7 @@ public enum AppDatabase {
         )
         let dir = appSupport.appendingPathComponent("TimeSink", isDirectory: true)
         try fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("timesink.sqlite")
+        return dir.appendingPathComponent(databaseFileName(bundleIdentifier: Bundle.main.bundleIdentifier))
     }
 
     public static var migrator: DatabaseMigrator {

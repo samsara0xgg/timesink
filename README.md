@@ -53,6 +53,8 @@ swift run tsprobe     # 命令行探针：逐秒打印前台窗口/Chrome 标签
 
 开发模式下（`swift run`）弹出的权限授权对话框会把 Accessibility/自动化权限授予当前使用的终端应用（如 Terminal.app / iTerm2 / Ghostty），而不是 TimeSink 本身；这与安装到 `/Applications` 后独立签名的 `TimeSink.app` 权限是分开的两套授权。
 
+开发模式（`swift run`）使用独立的数据库文件 `timesink-dev.sqlite`，与安装版的 `timesink.sqlite` 完全隔离，因此可以和安装版同时运行而不会重复计时。
+
 ## 致谢
 
 - Stats 面板布局参考了 [Timing](https://timingapp.com) 的总览界面设计

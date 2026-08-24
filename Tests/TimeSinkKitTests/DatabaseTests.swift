@@ -65,4 +65,12 @@ final class DatabaseTests: XCTestCase {
         XCTAssertTrue(rules.contains { $0.pattern == "outlook." && $0.categoryID == "communication" })
         XCTAssertTrue(rules.contains { $0.pattern == #"re:https?://(www\.)?x\.com"# && $0.categoryID == "socialMedia" })
     }
+    func testDatabaseFileNameSplitsDevAndProd() {
+        XCTAssertEqual(AppDatabase.databaseFileName(bundleIdentifier: "com.alllllenshi.TimeSink"),
+                       "timesink.sqlite")
+        XCTAssertEqual(AppDatabase.databaseFileName(bundleIdentifier: nil),
+                       "timesink-dev.sqlite")
+        XCTAssertEqual(AppDatabase.databaseFileName(bundleIdentifier: "com.example.other"),
+                       "timesink-dev.sqlite")
+    }
 }
