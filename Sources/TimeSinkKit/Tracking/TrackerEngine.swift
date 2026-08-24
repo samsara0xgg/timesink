@@ -17,6 +17,36 @@ public struct ChromeThrottle {
     }
 }
 
+/// Exponential backoff for Chrome tab fetches. The first two consecutive
+/// failures retry freely (transient hiccups); from the third on, attempts
+/// are spaced 2^(n-2) seconds apart (capped at 60s) so a persistently
+/// failing target -- e.g. Automation permission revoked mid-run -- is not
+/// hammered with a denied Apple Event every second forever. Five
+/// consecutive failures flip `isDegraded` for UI surfacing.
+struct ChromeFetchBackoff {
+    private(set) var consecutiveFailures = 0
+    private var lastFailure = Date.distantPast
+
+    var isDegraded: Bool { consecutiveFailures >= 5 }
+
+    func shouldAttempt(at date: Date) -> Bool {
+        guard consecutiveFailures >= 3 else { return true }
+        let delay = min(60, pow(2, Double(consecutiveFailures - 2)))
+        // Strict `>`: at exactly `delay` elapsed, still within the backoff
+        // window -- the next attempt is permitted only once it's exceeded.
+        return date.timeIntervalSince(lastFailure) > delay
+    }
+
+    mutating func noteSuccess() {
+        consecutiveFailures = 0
+    }
+
+    mutating func noteFailure(at date: Date) {
+        consecutiveFailures += 1
+        lastFailure = date
+    }
+}
+
 /// Splits suspension into two independent causes so a lock/sleep suspension
 /// can't be silently cleared by the next tick's idle check. `idleSuspended`
 /// is set/cleared purely by comparing `idleSeconds` against `threshold`
@@ -119,8 +149,26 @@ public final class TrackerEngine {
 
     private var currentRowID: Int64?
     private var lastHeartbeat = Date.distantPast
-    private var cachedURL: String?
-    private var cachedTabTitle: String?
+
+    /// Chrome tab capture state. `.none` (fetch failed / never fetched) must
+    /// leave the AX window title intact and carry no URL -- the pre-fix code
+    /// kept applying the last successful URL forever, misattributing days of
+    /// browsing to one stale domain once fetches started failing.
+    private enum ChromeTabState {
+        case none
+        case tab(url: String?, title: String?)
+        case incognito
+    }
+    private var chromeTabState: ChromeTabState = .none
+    private var chromeBackoff = ChromeFetchBackoff()
+
+    /// Test seams: when set, replace the real AX / ScriptingBridge samplers.
+    var windowSampleProvider: (() -> Sample?)?
+    var chromeTabProvider: (() -> ChromeSampler.TabInfo?)?
+
+    /// True after 5 consecutive Chrome tab fetch failures while Chrome is
+    /// frontmost; cleared by the next success. Read by the menu bar dashboard.
+    public private(set) var chromeCaptureDegraded = false
 
     private var timer: Timer?
 
@@ -158,8 +206,7 @@ public final class TrackerEngine {
         }
     }
 
-    private func tick() {
-        let now = Date()
+    func tick(now: Date = Date()) {
         let idleSeconds = idleMonitor.idleSeconds()
 
         switch suspensionState.tick(idleSeconds: idleSeconds, threshold: settings.idleThreshold) {
@@ -174,18 +221,38 @@ public final class TrackerEngine {
             break
         }
 
-        guard var sample = windowSampler.sample(at: now) else { return }
+        guard var sample = (windowSampleProvider.map { $0() } ?? windowSampler.sample(at: now)) else { return }
 
         if sample.appBundleID == Self.chromeBundleID {
-            if throttle.shouldFetch(title: sample.windowTitle, at: now) {
-                if let tab = chromeSampler.activeTab() {
+            if throttle.shouldFetch(title: sample.windowTitle, at: now),
+               chromeBackoff.shouldAttempt(at: now) {
+                let fetched = chromeTabProvider.map { $0() } ?? chromeSampler.activeTab()
+                if let tab = fetched {
                     throttle.noteFetched(title: sample.windowTitle, at: now)
-                    cachedURL = tab.isIncognito ? nil : tab.url
-                    cachedTabTitle = tab.isIncognito ? nil : tab.title
+                    chromeBackoff.noteSuccess()
+                    chromeTabState = tab.isIncognito
+                        ? .incognito
+                        : .tab(url: tab.url, title: tab.title)
+                } else {
+                    chromeBackoff.noteFailure(at: now)
+                    chromeTabState = .none
+                    if chromeBackoff.isDegraded,
+                       Permissions.chromeAutomationStatus(ask: false) != 0 {
+                        logger.error("Chrome capture degraded: automation likely revoked")
+                    }
                 }
+                chromeCaptureDegraded = chromeBackoff.isDegraded
             }
-            sample.url = cachedURL
-            sample.windowTitle = cachedTabTitle
+            switch chromeTabState {
+            case .tab(let url, let title):
+                sample.url = url
+                sample.windowTitle = title
+            case .incognito:
+                sample.url = nil
+                sample.windowTitle = nil
+            case .none:
+                break // keep the AX window title; classification degrades to app-level
+            }
         }
 
         latestSample = sample

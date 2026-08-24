@@ -89,3 +89,91 @@ final class SuspensionStateTests: XCTestCase {
         XCTAssertFalse(s.isSuspended)
     }
 }
+
+final class ChromeFetchBackoffTests: XCTestCase {
+    func testFirstTwoFailuresDoNotDelay() {
+        var b = ChromeFetchBackoff()
+        XCTAssertTrue(b.shouldAttempt(at: ts(0)))
+        b.noteFailure(at: ts(0))
+        XCTAssertTrue(b.shouldAttempt(at: ts(1)))
+        b.noteFailure(at: ts(1))
+        XCTAssertTrue(b.shouldAttempt(at: ts(2)))
+    }
+
+    func testThirdFailureStartsExponentialDelay() {
+        var b = ChromeFetchBackoff()
+        b.noteFailure(at: ts(0)); b.noteFailure(at: ts(1)); b.noteFailure(at: ts(2))
+        // 3 次失败后延迟 2s：3s 时仍在退避窗口内，4s 后放行
+        XCTAssertFalse(b.shouldAttempt(at: ts(3)))
+        XCTAssertTrue(b.shouldAttempt(at: ts(4.1)))
+    }
+
+    func testDelayCapsAt60Seconds() {
+        var b = ChromeFetchBackoff()
+        for i in 0..<20 { b.noteFailure(at: ts(Double(i))) }
+        XCTAssertFalse(b.shouldAttempt(at: ts(20 + 59)))
+        XCTAssertTrue(b.shouldAttempt(at: ts(19 + 61)))
+    }
+
+    func testSuccessResets() {
+        var b = ChromeFetchBackoff()
+        for i in 0..<6 { b.noteFailure(at: ts(Double(i))) }
+        XCTAssertTrue(b.isDegraded)
+        b.noteSuccess()
+        XCTAssertFalse(b.isDegraded)
+        XCTAssertTrue(b.shouldAttempt(at: ts(6)))
+    }
+
+    func testDegradedAfterFiveConsecutiveFailures() {
+        var b = ChromeFetchBackoff()
+        for i in 0..<4 { b.noteFailure(at: ts(Double(i))) }
+        XCTAssertFalse(b.isDegraded)
+        b.noteFailure(at: ts(4))
+        XCTAssertTrue(b.isDegraded)
+    }
+}
+
+@MainActor
+final class TrackerEngineChromeCacheTests: XCTestCase {
+    private func makeEngine() throws -> (TrackerEngine, SpanStore) {
+        let db = try AppDatabase.openInMemory()
+        let store = SpanStore(db)
+        let engine = TrackerEngine(spanStore: store, settings: SettingsStore(db))
+        return (engine, store)
+    }
+
+    private func chromeSample(at date: Date) -> Sample {
+        Sample(timestamp: date, appBundleID: "com.google.Chrome",
+               appName: "Google Chrome", windowTitle: "AX Title", url: nil)
+    }
+
+    func testFetchFailureFallsBackToAXTitleInsteadOfStaleURL() throws {
+        let (engine, _) = try makeEngine()
+        engine.windowSampleProvider = { [self] in chromeSample(at: Date()) }
+
+        // 先成功一次：缓存 github.com
+        engine.chromeTabProvider = {
+            ChromeSampler.TabInfo(url: "https://github.com/a/b", title: "PR #1", isIncognito: false)
+        }
+        engine.tick(now: ts(0))
+        XCTAssertEqual(engine.latestSample?.url, "https://github.com/a/b")
+        XCTAssertEqual(engine.latestSample?.windowTitle, "PR #1")
+
+        // 再失败：不得沿用旧 URL，标题回退到 AX 标题
+        engine.chromeTabProvider = { nil }
+        engine.tick(now: ts(6))
+        XCTAssertNil(engine.latestSample?.url)
+        XCTAssertEqual(engine.latestSample?.windowTitle, "AX Title")
+    }
+
+    func testIncognitoStillSuppressesTitle() throws {
+        let (engine, _) = try makeEngine()
+        engine.windowSampleProvider = { [self] in chromeSample(at: Date()) }
+        engine.chromeTabProvider = {
+            ChromeSampler.TabInfo(url: nil, title: nil, isIncognito: true)
+        }
+        engine.tick(now: ts(0))
+        XCTAssertNil(engine.latestSample?.url)
+        XCTAssertNil(engine.latestSample?.windowTitle)
+    }
+}

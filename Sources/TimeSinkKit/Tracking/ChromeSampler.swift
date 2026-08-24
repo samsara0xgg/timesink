@@ -22,6 +22,9 @@ public final class ChromeSampler {
         guard let chrome: ChromeApplication = SBApplication(bundleIdentifier: "com.google.Chrome"),
               (chrome as? SBApplication)?.isRunning == true,
               let windows = chrome.windows?(), let front = windows.first else { return nil }
+        // SBApplication.timeout is in ticks (1/60s). Default Apple Event reply
+        // timeout is about a minute; a hung Chrome would freeze the app that long.
+        (chrome as? SBApplication)?.timeout = 60
         if front.mode == "incognito" {
             return TabInfo(url: nil, title: nil, isIncognito: true)
         }
