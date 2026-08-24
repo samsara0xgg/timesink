@@ -171,6 +171,7 @@ public final class TrackerEngine {
     var windowSampleProvider: (() -> Sample?)?
     var chromeTabProvider: (() -> ChromeSampler.TabInfo?)?
     var chromeAutomationAuthorizedProvider: (() -> Bool)?
+    var idleSecondsProvider: (() -> TimeInterval)?
 
     /// True after 5 consecutive Chrome tab fetch failures while Chrome is
     /// frontmost; cleared by the next success. Read by the menu bar dashboard.
@@ -213,7 +214,7 @@ public final class TrackerEngine {
     }
 
     func tick(now: Date = Date()) {
-        let idleSeconds = idleMonitor.idleSeconds()
+        let idleSeconds = idleSecondsProvider?() ?? idleMonitor.idleSeconds()
 
         switch suspensionState.tick(idleSeconds: idleSeconds, threshold: settings.idleThreshold) {
         case .systemSuspended, .stillIdle:

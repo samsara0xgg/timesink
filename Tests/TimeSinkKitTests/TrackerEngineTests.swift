@@ -139,6 +139,11 @@ final class TrackerEngineChromeCacheTests: XCTestCase {
         let db = try AppDatabase.openInMemory()
         let store = SpanStore(db)
         let engine = TrackerEngine(spanStore: store, settings: SettingsStore(db))
+        // Hermetic: without this, tick(now:) reads the host's real idle time
+        // and, whenever the machine has actually been idle past the default
+        // threshold, returns before sampling -- making these tests pass or
+        // fail depending on whether the person running them stepped away.
+        engine.idleSecondsProvider = { 0 }
         return (engine, store)
     }
 
