@@ -11,6 +11,7 @@ let package = Package(
         .target(
             name: "TimeSinkKit",
             dependencies: [.product(name: "GRDB", package: "GRDB.swift")],
+            resources: [.process("Resources")],
             linkerSettings: [
                 .linkedFramework("ScriptingBridge"),
                 .linkedFramework("ApplicationServices"),

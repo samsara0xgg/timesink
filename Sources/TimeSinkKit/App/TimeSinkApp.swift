@@ -19,6 +19,9 @@ public struct TimeSinkApp: App {
 
         let spanStore = SpanStore(db)
         let settingsStore = SettingsStore(db)
+        let categoryStore = CategoryStore(db)
+        SeedImporter.importIfNeeded(categoryStore: categoryStore, settings: settingsStore)
+
         let engine = TrackerEngine(spanStore: spanStore, settings: settingsStore)
         engine.start()
         self.engine = engine
