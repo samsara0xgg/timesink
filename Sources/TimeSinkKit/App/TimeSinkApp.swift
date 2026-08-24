@@ -24,6 +24,9 @@ public struct TimeSinkApp: App {
 
         let resolver = CategoryResolver(categoryStore: categoryStore)
         let engine = TrackerEngine(spanStore: spanStore, settings: settingsStore)
+        engine.llmCoordinator = LLMCoordinator(
+            categoryStore: categoryStore, settings: settingsStore, resolver: resolver, service: nil
+        )
 
         let model = AppModel(
             categoryStore: categoryStore,

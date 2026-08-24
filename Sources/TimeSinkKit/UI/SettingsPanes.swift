@@ -503,3 +503,112 @@ struct UncategorizedSettingsPane: View {
         }
     }
 }
+
+// MARK: - 智能分类
+
+/// Optional OpenAI-compatible LLM classification fallback, default off. The
+/// API key never touches the database -- it is read/written directly via
+/// `Keychain`, keyed by `LLMCoordinator.apiKeyAccount`. Endpoint/model are
+/// ordinary settings (`SettingsStore`), persisted on submit like the other
+/// text fields in this file.
+struct LLMSettingsPane: View {
+    let model: AppModel
+
+    @State private var enabled = false
+    @State private var endpoint = ""
+    @State private var modelName = ""
+    @State private var apiKeyInput = ""
+    @State private var apiKeyStatus: String?
+    @State private var testStatus: String?
+    @State private var isTesting = false
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("启用 LLM 分类兜底", isOn: $enabled)
+                    .onChange(of: enabled) { _, newValue in
+                        model.settings.setLLMEnabled(newValue)
+                    }
+                Text("本地规则无法归类的活动，才会调用一次 LLM 做兜底分类。默认关闭，不影响其余功能。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("OpenAI 兼容服务") {
+                TextField("Endpoint", text: $endpoint)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit { model.settings.setLLMEndpoint(endpoint) }
+                TextField("模型", text: $modelName)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit { model.settings.setLLMModel(modelName) }
+                SecureField("API Key", text: $apiKeyInput)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit { saveKey() }
+                if let apiKeyStatus {
+                    Text(apiKeyStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section {
+                HStack {
+                    Button("测试") { runTest() }
+                        .disabled(isTesting)
+                    if isTesting {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
+                if let testStatus {
+                    Text(testStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .onAppear {
+            enabled = model.settings.llmEnabled
+            endpoint = model.settings.llmEndpoint
+            modelName = model.settings.llmModel
+        }
+    }
+
+    private func saveKey() {
+        do {
+            try Keychain.set(apiKeyInput, account: LLMCoordinator.apiKeyAccount)
+            apiKeyStatus = "已保存"
+        } catch {
+            apiKeyStatus = "保存失败：\(String(describing: error))"
+        }
+    }
+
+    /// Runs one classification against `example-blog.net` with the
+    /// currently-entered fields (falling back to the stored Keychain key if
+    /// the field is empty, so a previously-saved key can be re-tested
+    /// without retyping it), and shows the resulting category id or error.
+    private func runTest() {
+        guard let url = URL(string: endpoint) else {
+            testStatus = "Endpoint 无效"
+            return
+        }
+        let key = apiKeyInput.isEmpty ? (Keychain.get(account: LLMCoordinator.apiKeyAccount) ?? "") : apiKeyInput
+        guard !key.isEmpty else {
+            testStatus = "请先填写 API Key"
+            return
+        }
+        isTesting = true
+        testStatus = nil
+        let classifier = OpenAIDomainClassifier(endpoint: url, apiKey: key, model: modelName)
+        Task { @MainActor in
+            do {
+                let categoryID = try await classifier.classify(domain: "example-blog.net", title: nil)
+                testStatus = "分类结果：\(categoryID)"
+            } catch {
+                testStatus = "测试失败：\(String(describing: error))"
+            }
+            isTesting = false
+        }
+    }
+}
