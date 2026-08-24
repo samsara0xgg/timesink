@@ -19,7 +19,7 @@ struct MainWindowView: View {
         case .stats:
             StatsView(model: model)
         case .activities:
-            Text("活动")
+            ActivitiesView(model: model)
         }
     }
 
