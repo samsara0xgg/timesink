@@ -13,7 +13,7 @@ public struct Sample: Equatable, Sendable {
     }
 }
 
-public struct Span: Equatable, Sendable {
+public struct Span: Equatable, Sendable, Codable {
     public var id: Int64?
     public var start: Date
     public var end: Date
