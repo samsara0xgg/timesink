@@ -20,13 +20,16 @@ public struct ChromeThrottle {
 /// tab lookups, tracks idle/lock/sleep suspension, and persists spans to
 /// `SpanStore`.
 ///
-/// Write policy for the current in-progress span: nothing is inserted until
-/// it has lasted >= 1s (first qualifying heartbeat or close) to avoid DB
-/// churn for sub-second activity flicker. Once a row exists (rowID known),
+/// Write policy for the current in-progress span: nothing is inserted on the
+/// opening tick. The first write happens at whichever comes first: the span's
+/// first 30s heartbeat after it opened (only if it has lasted >= 1s by then),
+/// or the span closing early with >= 1s duration. This avoids DB churn for
+/// sub-second/sub-30s activity flicker. Once a row exists (rowID known),
 /// every subsequent write -- 30s heartbeat or final close -- always
 /// reconciles that row via `updateEnd`, even if a later idle-backdated close
-/// makes the final duration look short; there is no delete path, so a
-/// written row must always be corrected rather than abandoned.
+/// makes the final duration look short (or zero); there is no delete path
+/// and no minimum-duration clamp on an already-written row, so a written row
+/// must always be corrected rather than abandoned.
 @MainActor
 public final class TrackerEngine {
     private static let chromeBundleID = "com.google.Chrome"
@@ -130,14 +133,15 @@ public final class TrackerEngine {
         isSuspended = false
     }
 
-    /// Upserts the still-open current span: writes it once it has lasted
-    /// >= 1s (remembering its rowID via `write`), then re-writes it every
-    /// 30s thereafter.
+    /// Upserts the still-open current span, but only at 30s cadence: before
+    /// any row exists, the gate is measured from the span's own `start`
+    /// (so the first insert lands at the first 30s heartbeat after it
+    /// opened, not on the opening tick itself); once inserted, the gate is
+    /// measured from the last successful write.
     private func heartbeat(now: Date) {
         guard let current = builder.current else { return }
-        if currentRowID != nil {
-            guard now.timeIntervalSince(lastHeartbeat) >= Self.heartbeatInterval else { return }
-        }
+        let reference = currentRowID == nil ? current.start : lastHeartbeat
+        guard now.timeIntervalSince(reference) >= Self.heartbeatInterval else { return }
         write(current, at: now, final: false)
     }
 
