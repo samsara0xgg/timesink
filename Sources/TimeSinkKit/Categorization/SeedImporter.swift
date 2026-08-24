@@ -59,5 +59,26 @@ public enum SeedImporter {
         } catch {
             // Leave seedVersion unset so the import is retried next launch.
         }
+
+        importOverlayIfNeeded(categoryStore: categoryStore, settings: settings)
+    }
+
+    private static let overlayVersionSettingKey = "curatedSeedVersion"
+
+    /// Same version-gated import as the main seed, for `seed_overlay.csv`
+    /// (curated dev/writing/productivity domains the WhoTracks.me data lacks).
+    @MainActor
+    private static func importOverlayIfNeeded(categoryStore: CategoryStore, settings: SettingsStore) {
+        guard let url = Bundle.module.url(forResource: "seed_overlay", withExtension: "csv"),
+              let text = try? String(contentsOf: url, encoding: .utf8),
+              let bundledVersion = parseVersion(text) else { return }
+        let currentVersion = settings.get(overlayVersionSettingKey).flatMap(Int.init) ?? 0
+        guard bundledVersion > currentVersion else { return }
+        do {
+            try categoryStore.importCuratedDomains(parseCSV(text))
+            settings.set(overlayVersionSettingKey, String(bundledVersion))
+        } catch {
+            // Leave the version unset so the import retries next launch.
+        }
     }
 }

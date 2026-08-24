@@ -47,4 +47,46 @@ final class ClassifierTests: XCTestCase {
         XCTAssertEqual(Classifier.categoryID(appBundleID: "b", url: "https://youtube.com/shorts/abc",
             domain: "youtube.com", context: c), "entertainment")
     }
+
+    func testUserOverrideCoversSubdomains() {
+        // 修正 youtube.com 后，m.youtube.com 也要命中用户层，
+        // 且优先于任何 URL 规则和种子
+        let c = ctx(
+            domains: ["youtube.com": DomainEntry(categoryID: "learning", source: "user"),
+                      "m.youtube.com": DomainEntry(categoryID: "entertainment", source: "seed")],
+            rules: [rule("youtube.com", "entertainment", priority: 200)]
+        )
+        XCTAssertEqual(
+            Classifier.categoryID(appBundleID: "com.google.Chrome",
+                                  url: "https://m.youtube.com/watch?v=x",
+                                  domain: "m.youtube.com", context: c),
+            "learning")
+    }
+
+    func testCuratedBeatsSeedButNotURLRules() {
+        let c = ctx(
+            domains: ["vercel.com": DomainEntry(categoryID: "softwareDev", source: "curated"),
+                      "example.com": DomainEntry(categoryID: "entertainment", source: "seed")],
+            rules: [rule("vercel.com/pricing", "business", priority: 100)]
+        )
+        // curated 后缀命中
+        XCTAssertEqual(
+            Classifier.categoryID(appBundleID: "b", url: "https://app.vercel.com/x",
+                                  domain: "app.vercel.com", context: c),
+            "softwareDev")
+        // URL 规则仍优先于 curated
+        XCTAssertEqual(
+            Classifier.categoryID(appBundleID: "b", url: "https://vercel.com/pricing",
+                                  domain: "vercel.com", context: c),
+            "business")
+    }
+
+    func testSingleLabelDomainMatchesExactly() {
+        // localhost 只有一个 label，旧的 >=2 后缀循环永远走不进去
+        let c = ctx(domains: ["localhost": DomainEntry(categoryID: "softwareDev", source: "curated")])
+        XCTAssertEqual(
+            Classifier.categoryID(appBundleID: "b", url: "http://localhost:3000/",
+                                  domain: "localhost", context: c),
+            "softwareDev")
+    }
 }

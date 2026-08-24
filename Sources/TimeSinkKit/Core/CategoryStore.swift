@@ -122,4 +122,27 @@ public final class CategoryStore: Sendable {
             }
         }
     }
+
+    /// Imports the curated overlay. Overwrites seed-sourced rows (the overlay
+    /// exists to correct them) and its own previous rows, but never a user or
+    /// llm row.
+    public func importCuratedDomains(_ pairs: [(domain: String, categoryID: String)]) throws {
+        try writer.write { db in
+            let now = Date()
+            for pair in pairs {
+                try db.execute(
+                    sql: """
+                    INSERT INTO domainCategory (domain, categoryID, source, updatedAt)
+                    VALUES (?, ?, 'curated', ?)
+                    ON CONFLICT(domain) DO UPDATE SET
+                        categoryID = excluded.categoryID,
+                        source = 'curated',
+                        updatedAt = excluded.updatedAt
+                    WHERE domainCategory.source IN ('seed', 'curated')
+                    """,
+                    arguments: [pair.domain, pair.categoryID, now]
+                )
+            }
+        }
+    }
 }
