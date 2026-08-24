@@ -24,7 +24,7 @@ final class TodayDashboardModel {
     /// 24 entries, hours of tracked time per hour-of-day.
     var hourProfile: [Double] = Array(repeating: 0, count: 24)
 
-    /// Calendar day (startOfDay) the >=30-day streak lookback last ran for.
+    /// Calendar day (startOfDay) the 30-day streak lookback last ran for.
     /// That lookback is a full-month fetch+classify+day-split -- expensive
     /// enough that re-running it on every `recompute` (every dataVersion
     /// bump, i.e. every ~1.5s debounce window while live tracking is
@@ -35,11 +35,18 @@ final class TodayDashboardModel {
     @ObservationIgnored
     private var lastStreakDay: Date?
 
-    /// Per-bump refresh: today, yesterday, and their deltas. Cheap --
-    /// `AppModel.rangedSpans(for:)` memoizes both ranges between
-    /// `dataChanged()` calls. The >=30-day streak lookback is intentionally
-    /// NOT here; see `refreshStreakIfDayChanged`.
-    func recompute(model: AppModel) {
+    /// Per-bump refresh: today, yesterday, and their deltas (unconditional,
+    /// cheap -- `AppModel.rangedSpans(for:)` memoizes both ranges between
+    /// `dataChanged()` calls). The 30-day streak lookback is gated
+    /// separately: `forceStreak` recomputes it unconditionally (the
+    /// popover's `.onAppear` -- `.menuBarExtraStyle(.window)` keeps this
+    /// view's `@State dashboard` alive across dismissals, so without a
+    /// force the day-changed guard below would only ever fire once per day,
+    /// on the FIRST open, and every reopen that day would silently serve a
+    /// stale number even if category edits or a threshold crossing changed
+    /// it); the dataVersion-driven path passes `false` and relies on the
+    /// guard. See `refreshStreakIfDayChanged`.
+    func recompute(model: AppModel, forceStreak: Bool) {
         let calendar = Calendar.current
         let categories = model.resolver.categoriesByID
 
@@ -75,18 +82,20 @@ final class TodayDashboardModel {
         }
         hourProfile = profile
 
-        refreshStreakIfDayChanged(model: model, calendar: calendar, categories: categories)
+        refreshStreakIfDayChanged(model: model, calendar: calendar, categories: categories, force: forceStreak)
     }
 
-    /// Runs the >=30-day streak lookback only the first time (popover's
-    /// `.onAppear`, `lastStreakDay == nil`) and again once the calendar day
-    /// has rolled over since the last run -- skipped on every other
-    /// `recompute` (i.e. every dataVersion-driven refresh within the same
-    /// day). Accepted tradeoff: a streak-threshold crossing while the
-    /// popover sits open surfaces only on the next open, not live.
-    private func refreshStreakIfDayChanged(model: AppModel, calendar: Calendar, categories: [String: Category]) {
+    /// Runs the 30-day streak lookback when `force` is true (every popover
+    /// open) or when the calendar day has rolled over since the last run --
+    /// skipped otherwise (every dataVersion-driven refresh within the same
+    /// day the popover has already opened for). Accepted tradeoff: a
+    /// streak-threshold crossing while the popover sits open without being
+    /// reopened surfaces only on the next open, not live.
+    private func refreshStreakIfDayChanged(
+        model: AppModel, calendar: Calendar, categories: [String: Category], force: Bool
+    ) {
         let todayStart = calendar.startOfDay(for: Date())
-        guard lastStreakDay != todayStart else { return }
+        guard force || lastStreakDay != todayStart else { return }
         lastStreakDay = todayStart
 
         let lookback = model.rangedSpans(for: DateRangeSelection(kind: .last30, anchor: Date()))
@@ -198,12 +207,18 @@ struct MenuBarDashboardView: View {
         }
         .padding(16)
         .frame(width: 300)
-        .onAppear { refresh() }
-        .onChange(of: model.dataVersion) { refresh() }
+        // `.menuBarExtraStyle(.window)` keeps this view (and its @State
+        // dashboard) alive across popover dismissals, so `.onAppear` fires
+        // on every open, not just app launch -- force the streak lookback
+        // there so a reopen always reflects same-day changes (a threshold
+        // crossing, a category edit). The dataVersion path stays unforced;
+        // see `TodayDashboardModel.recompute`.
+        .onAppear { refresh(forceStreak: true) }
+        .onChange(of: model.dataVersion) { refresh(forceStreak: false) }
     }
 
-    private func refresh() {
-        dashboard.recompute(model: model)
+    private func refresh(forceStreak: Bool) {
+        dashboard.recompute(model: model, forceStreak: forceStreak)
         let target = Double(dashboard.pulse ?? 0) / 100.0
         if reduceMotion {
             gaugeProgress = target
