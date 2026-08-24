@@ -133,11 +133,23 @@ final class ActivitiesModel {
         var repSpan: Span
     }
 
-    /// Collapses consecutive same-category entries into single blocks.
-    private static func mergeAdjacentSameCategory(_ input: [MergedBlock]) -> [MergedBlock] {
+    /// Max gap between a block's end and the next same-category block's start
+    /// for the two to still count as "adjacent". Without this guard, a
+    /// same-category span hours later (across an idle stretch, sleep,
+    /// overnight) would merge across the gap and paint it as active time.
+    private nonisolated static let mergeGapTolerance: TimeInterval = 30
+
+    /// Collapses consecutive same-category entries into single blocks, but
+    /// only when they're contiguous (gap <= `mergeGapTolerance`). Pure
+    /// (no actor-isolated state touched), so it's `nonisolated` — lets
+    /// `ActivitiesModelTests` call it synchronously without hopping to
+    /// `@MainActor`.
+    private nonisolated static func mergeAdjacentSameCategory(_ input: [MergedBlock]) -> [MergedBlock] {
         var result: [MergedBlock] = []
         for block in input {
-            if var last = result.last, last.categoryID == block.categoryID {
+            if var last = result.last,
+               last.categoryID == block.categoryID,
+               block.start.timeIntervalSince(last.end) <= mergeGapTolerance {
                 last.end = max(last.end, block.end)
                 result[result.count - 1] = last
             } else {
@@ -147,20 +159,27 @@ final class ActivitiesModel {
         return result
     }
 
-    private static func timelineBlocks(_ items: [CategorizedSpan], categories: [String: Category]) -> [TimelineBlock] {
+    /// Not `private`, and `nonisolated`: pure function, exercised directly by
+    /// `ActivitiesModelTests` via `@testable import` (which sees `internal`,
+    /// not `private`, members) without needing a `@MainActor` hop.
+    nonisolated static func timelineBlocks(_ items: [CategorizedSpan], categories: [String: Category]) -> [TimelineBlock] {
         let sorted = items.sorted { $0.span.start < $1.span.start }
         let initial = sorted.map {
             MergedBlock(start: $0.span.start, end: $0.span.end, categoryID: $0.categoryID, repSpan: $0.span)
         }
         let merged = mergeAdjacentSameCategory(initial)
 
-        // Absorb sub-30s blocks into the previous block (dropped if there's
-        // no previous one to absorb into), then re-coalesce: absorbing a
-        // sliver can newly juxtapose two same-category blocks.
+        // Absorb sub-30s blocks into the previous block only when contiguous
+        // with it (gap <= mergeGapTolerance) — a short block glued to a real
+        // activity is invisible noise, but the same short block hours later
+        // (after an idle gap) is dropped rather than teleporting the
+        // previous block's end forward to swallow it. Then re-coalesce:
+        // absorbing (or dropping) a sliver can newly juxtapose two
+        // same-category blocks that weren't touching before.
         var absorbed: [MergedBlock] = []
         for block in merged {
             if block.end.timeIntervalSince(block.start) < 30 {
-                if var prev = absorbed.last {
+                if var prev = absorbed.last, block.start.timeIntervalSince(prev.end) <= mergeGapTolerance {
                     prev.end = max(prev.end, block.end)
                     absorbed[absorbed.count - 1] = prev
                 }
@@ -182,14 +201,16 @@ final class ActivitiesModel {
         }
     }
 
-    private static let tooltipTimeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "HH:mm"
-        return formatter
-    }()
+    /// Zero-padded 24-hour "HH:mm", built from raw calendar components
+    /// rather than `DateFormatter` — `DateFormatter` isn't `Sendable`, and a
+    /// stored instance of it can't be `nonisolated` under strict
+    /// concurrency; components sidestep that while staying locale-independent.
+    private nonisolated static func hhmm(_ date: Date) -> String {
+        let comps = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return String(format: "%02d:%02d", comps.hour ?? 0, comps.minute ?? 0)
+    }
 
-    private static func tooltip(repSpan: Span, start: Date, end: Date) -> String {
+    private nonisolated static func tooltip(repSpan: Span, start: Date, end: Date) -> String {
         var lines: [String] = []
         if let title = repSpan.title, !title.isEmpty {
             lines.append("\(repSpan.appName) — \(title)")
@@ -199,9 +220,7 @@ final class ActivitiesModel {
         if let url = repSpan.url, !url.isEmpty {
             lines.append(url)
         }
-        let startStr = tooltipTimeFormatter.string(from: start)
-        let endStr = tooltipTimeFormatter.string(from: end)
-        lines.append("\(startStr)–\(endStr) (\(Format.duration(end.timeIntervalSince(start))))")
+        lines.append("\(hhmm(start))–\(hhmm(end)) (\(Format.duration(end.timeIntervalSince(start))))")
         return lines.joined(separator: "\n")
     }
 }
