@@ -1,4 +1,4 @@
-CERT ?= -
+CERT ?= TimeSink Dev
 APP = TimeSink
 DIST = dist/$(APP).app
 

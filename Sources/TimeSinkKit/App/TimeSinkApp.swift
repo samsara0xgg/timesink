@@ -4,6 +4,13 @@ import os
 
 public struct TimeSinkApp: App {
     let model: AppModel
+    /// True only when running as the installed bundle (`swift run` bare
+    /// execution has no bundle identifier) and Accessibility isn't yet
+    /// granted — gates whether the onboarding sheet opens at launch.
+    let needsOnboarding: Bool
+
+    @Environment(\.openWindow) private var openWindow
+    @State private var showOnboarding: Bool
 
     public init() {
         NSApplication.shared.setActivationPolicy(.accessory)
@@ -37,6 +44,11 @@ public struct TimeSinkApp: App {
         )
         self.model = model
 
+        let needsOnboarding = Bundle.main.bundleIdentifier == "com.alllllenshi.TimeSink"
+            && !Permissions.accessibilityGranted(prompt: false)
+        self.needsOnboarding = needsOnboarding
+        _showOnboarding = State(initialValue: needsOnboarding)
+
         engine.start()
     }
 
@@ -45,6 +57,15 @@ public struct TimeSinkApp: App {
             MenuBarContent(model: model)
         } label: {
             Label(model.menuTitle, systemImage: "hourglass")
+                .onAppear {
+                    // The menu bar label renders as soon as the app launches
+                    // (before any window is shown), so this is a reliable
+                    // launch hook for force-opening the main window when
+                    // onboarding is needed.
+                    if needsOnboarding {
+                        openWindow(id: "main")
+                    }
+                }
         }
         .menuBarExtraStyle(.window)
 
@@ -56,6 +77,9 @@ public struct TimeSinkApp: App {
                 }
                 .onDisappear {
                     NSApp.setActivationPolicy(.accessory)
+                }
+                .sheet(isPresented: $showOnboarding) {
+                    OnboardingView()
                 }
         }
 
