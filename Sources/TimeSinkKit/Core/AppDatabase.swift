@@ -128,6 +128,10 @@ public enum AppDatabase {
             // so the query is O(total history). `end > ?` is the selective
             // predicate for recent windows. appBundleID/domain were indexed in v1
             // but no query ever filters on them (all grouping happens in memory).
+            // SQLite only picks this index once SpanStore.spans(overlapping:) drops
+            // its ORDER BY start ASC -- with that clause present the planner keeps
+            // using span_on_start for the free ordering, ignoring span_on_end
+            // entirely (verified via EXPLAIN QUERY PLAN; see DatabaseTests).
             try db.execute(sql: "CREATE INDEX span_on_end ON span(\"end\")")
             try db.execute(sql: "DROP INDEX IF EXISTS span_on_appBundleID")
             try db.execute(sql: "DROP INDEX IF EXISTS span_on_domain")

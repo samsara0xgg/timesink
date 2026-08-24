@@ -15,19 +15,25 @@ final class AppModelCacheTests: XCTestCase {
         return (model, spanStore)
     }
 
-    private func span(start: TimeInterval, end: TimeInterval) -> Span {
-        Span(start: Date(timeIntervalSinceNow: start), end: Date(timeIntervalSinceNow: end),
+    // Anchored to midday of "today" rather than an offset from `Date()`: a
+    // `Date(timeIntervalSinceNow: -600)` fixture falls in *yesterday* for the
+    // ~10 minutes after local midnight, since `.today()`'s window is
+    // calendar-day-quantized, not a trailing time window. Midday offsets stay
+    // inside today's window regardless of what time the test actually runs.
+    private func span(hourOffset: Double) -> Span {
+        let start = Calendar.current.startOfDay(for: Date()).addingTimeInterval(hourOffset * 3600)
+        return Span(start: start, end: start.addingTimeInterval(300),
              appBundleID: "com.test", appName: "Test", title: nil, url: nil, domain: nil)
     }
 
     func testRangedSpansIsCachedUntilDataChanged() throws {
         let (model, store) = try makeModel()
-        try store.insert(span(start: -600, end: -300))
+        try store.insert(span(hourOffset: 12))
 
         XCTAssertEqual(model.rangedSpans().count, 1)
 
         // 缓存生效：绕过 dataChanged 直接插入，读到的仍是旧结果
-        try store.insert(span(start: -200, end: -100))
+        try store.insert(span(hourOffset: 13))
         XCTAssertEqual(model.rangedSpans().count, 1)
 
         // dataChanged 失效缓存后读到新数据

@@ -43,6 +43,11 @@ public final class AppModel {
     /// consumers (StatsModel, ActivitiesModel, refreshMenu) re-query on every
     /// dataVersion change with overlapping ranges; without this each bump
     /// costs up to 4 identical full fetch+classify passes on the main actor.
+    /// `@ObservationIgnored`: a cache must never be observable -- without it,
+    /// every read-then-write in `rangedSpans(for:)` would register through
+    /// `@Observable`'s registrar and self-invalidate any SwiftUI body that
+    /// reads it, costing an extra render on every cold-cache fetch.
+    @ObservationIgnored
     private var rangeCache: [String: [CategorizedSpan]] = [:]
 
     /// Trailing debounce for `scheduleEngineDataChanged()` -- see its doc

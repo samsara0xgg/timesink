@@ -24,12 +24,19 @@ public final class SpanStore: Sendable {
     }
 
     public func spans(overlapping interval: DateInterval) throws -> [Span] {
-        try writer.read { db in
+        // No ORDER BY here on purpose: with one present, SQLite prefers
+        // span_on_start (it both filters `start < ?` and supplies the
+        // ordering for free) over the more selective span_on_end for recent
+        // windows, making the `end > ?` index dead weight. Sorting the
+        // (small, window-bounded) result in Swift keeps callers' ascending
+        // contract while letting the planner pick span_on_end.
+        let spans = try writer.read { db in
             try Span.fetchAll(
                 db,
-                sql: "SELECT * FROM span WHERE start < ? AND end > ? ORDER BY start ASC",
+                sql: "SELECT * FROM span WHERE start < ? AND end > ?",
                 arguments: [interval.end, interval.start]
             )
         }
+        return spans.sorted { $0.start < $1.start }
     }
 }
