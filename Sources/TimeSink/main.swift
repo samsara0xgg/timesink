@@ -1,0 +1,2 @@
+import TimeSinkKit
+TimeSinkApp.main()
