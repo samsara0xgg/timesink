@@ -33,4 +33,27 @@ final class TodayDashboardModelTests: XCTestCase {
         XCTAssertEqual(pulses[0], 100) // 昨天
         XCTAssertEqual(pulses[1], 0)   // 今天
     }
+
+    /// CONTROLLER RULING 14: yesterday's spans must be clipped to the same
+    /// elapsed time-of-day as today before comparing, not compared as a full
+    /// day. A span straddling the clip boundary contributes only its inside
+    /// portion; a span entirely after the boundary contributes nothing.
+    func testClippedToElapsedKeepsOnlyThePortionInsideTheWindow() {
+        let windowStart = ts(0)
+        let straddling = CategorizedSpan(
+            span: Span(start: ts(3000), end: ts(4200), appBundleID: "a", appName: "a",
+                       title: nil, url: nil, domain: nil),
+            categoryID: "softwareDev")
+        let after = CategorizedSpan(
+            span: Span(start: ts(4000), end: ts(4800), appBundleID: "b", appName: "b",
+                       title: nil, url: nil, domain: nil),
+            categoryID: "softwareDev")
+
+        let result = TodayDashboardModel.clippedToElapsed(
+            [straddling, after], windowStart: windowStart, elapsed: 3600)
+
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result[0].span.start, ts(3000))
+        XCTAssertEqual(result[0].span.end, ts(3600)) // clipped at windowStart + elapsed
+    }
 }

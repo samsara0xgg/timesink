@@ -13,10 +13,22 @@ final class TodayDashboardModel {
     private static let streakLookbackDays = 30
 
     var pulse: Int?
+    /// Whole-day ratio comparison (today's pulse so far vs. yesterday's
+    /// final pulse) -- unlike `focusDelta`/`totalDelta` below, this is
+    /// intentionally NOT clipped to the same elapsed time-of-day: a ratio
+    /// isn't biased by comparing a partial day to a full one the way a raw
+    /// duration difference is.
     var pulseDelta: Int?
     var focus: TimeInterval = 0
+    /// Today's focus time so far minus yesterday's focus time over the SAME
+    /// elapsed time-of-day (yesterday's spans clipped to
+    /// `[yesterdayStart, yesterdayStart + elapsed]` via `clippedToElapsed`)
+    /// -- CONTROLLER RULING 14. Comparing today's partial day against
+    /// yesterday's full day made this negative by construction until
+    /// evening, every day.
     var focusDelta: TimeInterval?
     var total: TimeInterval = 0
+    /// Same "same time-of-day" semantics as `focusDelta`; see its doc comment.
     var totalDelta: TimeInterval?
     var streakDays = 0
     var topCategories: [(id: String, name: String, colorHex: String, seconds: TimeInterval)] = []
@@ -56,15 +68,25 @@ final class TodayDashboardModel {
         focus = Aggregator.focusTime(durationByCategory: byCategory, categories: categories)
         total = Aggregator.totalDuration(today.map(\.span))
 
-        let yesterdayAnchor = calendar.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+        let now = Date()
+        let yesterdayAnchor = calendar.date(byAdding: .day, value: -1, to: now) ?? now
         let yesterday = model.rangedSpans(for: DateRangeSelection(kind: .day, anchor: yesterdayAnchor))
         let yByCategory = Aggregator.durationByCategory(yesterday)
         let yPulse = Aggregator.pulse(durationByCategory: yByCategory, categories: categories)
-        let yFocus = Aggregator.focusTime(durationByCategory: yByCategory, categories: categories)
-        let yTotal = Aggregator.totalDuration(yesterday.map(\.span))
         pulseDelta = zip2(pulse, yPulse).map { $0 - $1 }
-        focusDelta = yesterday.isEmpty ? nil : focus - yFocus
-        totalDelta = yesterday.isEmpty ? nil : total - yTotal
+
+        // focus/total deltas compare the SAME elapsed time-of-day, not
+        // today's partial day against yesterday's full day (see doc comments
+        // on `focusDelta`/`totalDelta`); pulseDelta above stays a whole-day
+        // ratio comparison and must not be clipped.
+        let elapsed = now.timeIntervalSince(calendar.startOfDay(for: now))
+        let yesterdayStart = calendar.startOfDay(for: yesterdayAnchor)
+        let clippedYesterday = Self.clippedToElapsed(yesterday, windowStart: yesterdayStart, elapsed: elapsed)
+        let clippedYByCategory = Aggregator.durationByCategory(clippedYesterday)
+        let clippedYFocus = Aggregator.focusTime(durationByCategory: clippedYByCategory, categories: categories)
+        let clippedYTotal = Aggregator.totalDuration(clippedYesterday.map(\.span))
+        focusDelta = yesterday.isEmpty ? nil : focus - clippedYFocus
+        totalDelta = yesterday.isEmpty ? nil : total - clippedYTotal
 
         topCategories = byCategory
             .compactMap { id, seconds -> (String, String, String, TimeInterval)? in
@@ -124,6 +146,28 @@ final class TodayDashboardModel {
             guard let day = calendar.date(byAdding: .day, value: -offset, to: todayStart),
                   let byCategory = perDay[day] else { return nil }
             return Aggregator.pulse(durationByCategory: byCategory, categories: categories)
+        }
+    }
+
+    /// Clips `items` to `[windowStart, windowStart + elapsed]`: each span's
+    /// start/end is clamped to the window and spans with no overlap left are
+    /// dropped -- same clipping idiom `AppModel.rangedSpans(for:)` uses when
+    /// clipping a fetch to its query interval. Used to compare yesterday's
+    /// spans up to the same time-of-day as "now", instead of yesterday's
+    /// full day (CONTROLLER RULING 14). Pure, so `nonisolated` -- see
+    /// `dailyPulses` above.
+    nonisolated static func clippedToElapsed(
+        _ items: [CategorizedSpan], windowStart: Date, elapsed: TimeInterval
+    ) -> [CategorizedSpan] {
+        let windowEnd = windowStart.addingTimeInterval(elapsed)
+        return items.compactMap { item in
+            let start = max(item.span.start, windowStart)
+            let end = min(item.span.end, windowEnd)
+            guard start < end else { return nil }
+            var span = item.span
+            span.start = start
+            span.end = end
+            return CategorizedSpan(span: span, categoryID: item.categoryID)
         }
     }
 

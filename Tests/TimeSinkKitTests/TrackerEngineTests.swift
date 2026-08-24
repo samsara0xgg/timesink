@@ -179,6 +179,10 @@ final class TrackerEngineChromeCacheTests: XCTestCase {
     func testIncognitoStillSuppressesTitle() throws {
         let (engine, _) = try makeEngine()
         engine.windowSampleProvider = { [self] in chromeSample(at: Date()) }
+        // Seam set even though this test doesn't assert on it: the fetch
+        // attempt now unconditionally refreshes the cached authorization
+        // answer, so without a seam this would hit the real TCC check.
+        engine.chromeAutomationAuthorizedProvider = { true }
         engine.chromeTabProvider = {
             ChromeSampler.TabInfo(url: nil, title: nil, isIncognito: true)
         }
@@ -222,5 +226,53 @@ final class TrackerEngineChromeCacheTests: XCTestCase {
         engine.tick(now: ts(0))
         XCTAssertNil(engine.latestSample?.url)
         XCTAssertNil(engine.latestSample?.windowTitle)
+    }
+
+    /// Regression for the false-alarm: 5+ consecutive fetch failures alone
+    /// (e.g. Chrome frontmost with zero windows) must NOT flip
+    /// `chromeCaptureDegraded` when Automation is actually authorized --
+    /// that combination used to mislabel a window-less Chrome as a
+    /// permissions problem.
+    func testChromeCaptureDegradedStaysFalseWhenAuthorizedDespiteRepeatedFailures() throws {
+        let (engine, _) = try makeEngine()
+        engine.windowSampleProvider = { [self] in chromeSample(at: Date()) }
+        engine.chromeAutomationAuthorizedProvider = { true }
+        engine.chromeTabProvider = { nil }
+        for t in [0.0, 6, 12, 18, 24, 30] {
+            engine.tick(now: ts(t))
+        }
+        XCTAssertFalse(engine.chromeCaptureDegraded)
+    }
+
+    /// Same repeated-failure sequence, but Automation is NOT authorized --
+    /// this is the real permissions-revoked case, and the flag must flip.
+    func testChromeCaptureDegradedBecomesTrueWhenNotAuthorized() throws {
+        let (engine, _) = try makeEngine()
+        engine.windowSampleProvider = { [self] in chromeSample(at: Date()) }
+        engine.chromeAutomationAuthorizedProvider = { false }
+        engine.chromeTabProvider = { nil }
+        for t in [0.0, 6, 12, 18, 24, 30] {
+            engine.tick(now: ts(t))
+        }
+        XCTAssertTrue(engine.chromeCaptureDegraded)
+    }
+
+    /// A subsequent successful fetch clears the degraded flag, same as it
+    /// clears the underlying backoff.
+    func testChromeCaptureDegradedClearsOnSubsequentSuccess() throws {
+        let (engine, _) = try makeEngine()
+        engine.windowSampleProvider = { [self] in chromeSample(at: Date()) }
+        engine.chromeAutomationAuthorizedProvider = { false }
+        engine.chromeTabProvider = { nil }
+        for t in [0.0, 6, 12, 18, 24, 30] {
+            engine.tick(now: ts(t))
+        }
+        XCTAssertTrue(engine.chromeCaptureDegraded)
+
+        engine.chromeTabProvider = {
+            ChromeSampler.TabInfo(url: "https://example.com", title: "Example", isIncognito: false)
+        }
+        engine.tick(now: ts(40))
+        XCTAssertFalse(engine.chromeCaptureDegraded)
     }
 }

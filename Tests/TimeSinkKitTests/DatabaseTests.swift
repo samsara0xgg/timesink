@@ -86,13 +86,15 @@ final class DatabaseTests: XCTestCase {
     /// With `ORDER BY start ASC` present, SQLite prefers span_on_start (it
     /// both filters and supplies the ordering) over the more selective
     /// span_on_end -- so this must run the exact ORDER-BY-less SQL
-    /// SpanStore.spans(overlapping:) actually issues, not a paraphrase.
+    /// SpanStore.spans(overlapping:) actually issues (via the shared
+    /// `SpanStore.overlapSQL` constant, not a hand-copied paraphrase that
+    /// could silently drift from the real query and stop guarding anything).
     func testOverlapQueryPlanUsesEndIndex() throws {
         let db = try AppDatabase.openInMemory()
         let rows = try db.read { db in
             try Row.fetchAll(
                 db,
-                sql: "EXPLAIN QUERY PLAN SELECT * FROM span WHERE start < ? AND end > ?",
+                sql: "EXPLAIN QUERY PLAN " + SpanStore.overlapSQL,
                 arguments: [Date(), Date()]
             )
         }

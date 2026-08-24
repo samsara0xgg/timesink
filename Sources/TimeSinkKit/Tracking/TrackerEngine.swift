@@ -167,14 +167,30 @@ public final class TrackerEngine {
     private var chromeTabState: ChromeTabState = .none
     private var chromeBackoff = ChromeFetchBackoff()
 
+    /// Chrome Automation authorization, refreshed at most once per fetch
+    /// attempt -- inside the same `chromeBackoff.shouldAttempt` gate that
+    /// spaces out attempts -- rather than on every tick.
+    /// `AEDeterminePermissionToAutomateTarget` is a slow IPC round-trip to
+    /// tccd; the `.none` tab-state arm and `chromeCaptureDegraded` used to
+    /// call it fresh every second, forever, for anyone who declined the
+    /// permission (`.none` is the permanent steady state in that case). Both
+    /// now only ever read this cached value.
+    private var cachedChromeAutomationAuthorized = false
+
     /// Test seams: when set, replace the real AX / ScriptingBridge samplers.
     var windowSampleProvider: (() -> Sample?)?
     var chromeTabProvider: (() -> ChromeSampler.TabInfo?)?
     var chromeAutomationAuthorizedProvider: (() -> Bool)?
     var idleSecondsProvider: (() -> TimeInterval)?
 
-    /// True after 5 consecutive Chrome tab fetch failures while Chrome is
-    /// frontmost; cleared by the next success. Read by the menu bar dashboard.
+    /// True when 5+ consecutive Chrome tab fetch failures coincide with
+    /// Chrome Automation not being authorized; cleared by the next success.
+    /// Read by the menu bar dashboard to drive a permission-specific
+    /// warning. Deliberately NOT just "5 consecutive failures": Chrome can
+    /// also fail every fetch while frontmost with zero windows (e.g. all
+    /// windows closed, or a picture-in-picture-only state) -- that is not a
+    /// permissions problem and must not trigger a warning that tells the
+    /// user to check a permission that's actually fine.
     public private(set) var chromeCaptureDegraded = false
 
     private var timer: Timer?
@@ -233,6 +249,10 @@ public final class TrackerEngine {
         if sample.appBundleID == Self.chromeBundleID {
             if throttle.shouldFetch(title: sample.windowTitle, at: now),
                chromeBackoff.shouldAttempt(at: now) {
+                // Refresh the cached authorization answer once per attempt,
+                // regardless of whether the fetch itself succeeds -- this is
+                // the only place that ever calls the real TCC check.
+                cachedChromeAutomationAuthorized = chromeAutomationAuthorized()
                 let fetched = chromeTabProvider.map { $0() } ?? chromeSampler.activeTab()
                 if let tab = fetched {
                     throttle.noteFetched(title: sample.windowTitle, at: now)
@@ -247,11 +267,14 @@ public final class TrackerEngine {
                     // collapse to .none; .incognito is sticky until the next
                     // successful (non-incognito) fetch.
                     if case .incognito = chromeTabState {} else { chromeTabState = .none }
-                    if chromeBackoff.isDegraded, !chromeAutomationAuthorized() {
+                    if chromeBackoff.isDegraded, !cachedChromeAutomationAuthorized {
                         logger.error("Chrome capture degraded: automation likely revoked")
                     }
                 }
-                chromeCaptureDegraded = chromeBackoff.isDegraded
+                // 5+ failures while window-less (Chrome frontmost, zero
+                // windows) is not a permissions problem -- only surface the
+                // warning when authorization is actually the cause.
+                chromeCaptureDegraded = chromeBackoff.isDegraded && !cachedChromeAutomationAuthorized
             }
             switch chromeTabState {
             case .tab(let url, let title):
@@ -267,7 +290,7 @@ public final class TrackerEngine {
                 // non-incognito window is just the page title). Automation
                 // NOT authorized: we cannot tell whether this window is
                 // incognito, so suppress both, matching pre-change behavior.
-                if !chromeAutomationAuthorized() {
+                if !cachedChromeAutomationAuthorized {
                     sample.url = nil
                     sample.windowTitle = nil
                 }
@@ -285,6 +308,8 @@ public final class TrackerEngine {
     /// True when Chrome Automation is currently authorized. Backed by the
     /// real `Permissions` check (no prompt: `ask: false`); when a test seam
     /// is present it answers instead and the real check is never invoked.
+    /// Only called from the cached-refresh site in `tick(now:)` -- never
+    /// call this directly elsewhere, or the whole point of caching is lost.
     private func chromeAutomationAuthorized() -> Bool {
         chromeAutomationAuthorizedProvider?() ?? (Permissions.chromeAutomationStatus(ask: false) == 0)
     }
