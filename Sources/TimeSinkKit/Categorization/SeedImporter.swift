@@ -1,11 +1,13 @@
 import Foundation
 
-/// Parses the bundled `seed_domains.csv` resource and imports it into
-/// `CategoryStore` on first run (or after a version bump).
+/// Parses the bundled `seed_domains.csv` and `seed_overlay.csv` resources and
+/// imports each into `CategoryStore` on first run (or after its own version
+/// bump). The two imports are independently version-gated and both run on
+/// every call to `importIfNeeded` -- see that function's doc comment for why.
 ///
-/// The CSV's first line is a `# version: N` comment; `importIfNeeded` compares
-/// `N` against the `seedVersion` setting and only imports (then bumps the
-/// setting) when the bundled version is newer.
+/// Each CSV's first line is a `# version: N` comment; the corresponding
+/// `import*IfNeeded` compares `N` against its own settings key and only
+/// imports (then bumps the setting) when the bundled version is newer.
 public enum SeedImporter {
     private static let versionSettingKey = "seedVersion"
 
@@ -39,11 +41,23 @@ public enum SeedImporter {
         return Int(numberPart)
     }
 
+    /// Runs the main-seed and curated-overlay imports. Each is independently
+    /// version-gated (`seedVersion` vs. `curatedSeedVersion`), so this must
+    /// call both unconditionally rather than nesting the overlay inside the
+    /// main seed's early returns -- on any install where the main seed is
+    /// already at its bundled version (i.e. every launch after the first),
+    /// a nested call would never run and the overlay would never ship.
+    @MainActor
+    public static func importIfNeeded(categoryStore: CategoryStore, settings: SettingsStore) {
+        importMainSeedIfNeeded(categoryStore: categoryStore, settings: settings)
+        importOverlayIfNeeded(categoryStore: categoryStore, settings: settings)
+    }
+
     /// Imports the bundled seed CSV into `categoryStore` if its `# version:`
     /// header is newer than the stored `seedVersion` setting, then updates
     /// the setting so subsequent launches skip the import.
     @MainActor
-    public static func importIfNeeded(categoryStore: CategoryStore, settings: SettingsStore) {
+    private static func importMainSeedIfNeeded(categoryStore: CategoryStore, settings: SettingsStore) {
         guard let url = Bundle.module.url(forResource: "seed_domains", withExtension: "csv"),
               let text = try? String(contentsOf: url, encoding: .utf8) else {
             return
@@ -59,8 +73,6 @@ public enum SeedImporter {
         } catch {
             // Leave seedVersion unset so the import is retried next launch.
         }
-
-        importOverlayIfNeeded(categoryStore: categoryStore, settings: settings)
     }
 
     private static let overlayVersionSettingKey = "curatedSeedVersion"

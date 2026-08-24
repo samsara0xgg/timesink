@@ -1,6 +1,7 @@
 import XCTest
 @testable import TimeSinkKit
 
+@MainActor
 final class SeedImporterTests: XCTestCase {
     func testParseSkipsCommentsAndBadRows() {
         let csv = "# version: 1\ngithub.com,softwareDev\nbad-line\nx.com,socialMedia\n"
@@ -25,5 +26,22 @@ final class SeedImporterTests: XCTestCase {
         XCTAssertEqual(map["a.com"], DomainEntry(categoryID: "softwareDev", source: "curated"))
         XCTAssertEqual(map["b.com"], DomainEntry(categoryID: "learning", source: "user"))
         XCTAssertEqual(map["c.com"], DomainEntry(categoryID: "softwareDev", source: "curated"))
+    }
+
+    func testOverlayImportsIndependentlyOfMainSeedVersion() throws {
+        // Regression: the overlay import must not be nested inside the main
+        // seed's early return -- an install that's already at the bundled
+        // seedVersion (the common case after the first launch) must still
+        // pick up a curated-overlay version bump.
+        let db = try AppDatabase.openInMemory()
+        let store = CategoryStore(db)
+        let settings = SettingsStore(db)
+        settings.set("seedVersion", "999")
+
+        SeedImporter.importIfNeeded(categoryStore: store, settings: settings)
+
+        let map = try store.domainMap()
+        XCTAssertEqual(map["localhost"], DomainEntry(categoryID: "softwareDev", source: "curated"))
+        XCTAssertEqual(settings.get("curatedSeedVersion"), "1")
     }
 }
