@@ -55,6 +55,10 @@ public struct TimeSinkApp: App {
                     NSApp.setActivationPolicy(.accessory)
                 }
         }
+
+        Settings {
+            SettingsView(model: model)
+        }
     }
 }
 
@@ -73,6 +77,9 @@ private struct MenuBarContent: View {
             Divider()
             Button("打开 TimeSink") {
                 openWindow(id: "main")
+            }
+            SettingsLink {
+                Text("设置…")
             }
             Button("退出") {
                 model.engine.stop()

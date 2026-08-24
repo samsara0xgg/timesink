@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 extension Color {
     /// Builds a `Color` from a hex string, with or without a leading `#`:
@@ -25,5 +26,17 @@ extension Color {
             a = 1
         }
         self.init(.sRGB, red: r, green: g, blue: b, opacity: a)
+    }
+
+    /// Converts to an uppercase "RRGGBB" hex string via the sRGB color space
+    /// (the inverse of `init(hex:)`, minus alpha — category colors are always
+    /// opaque). Falls back to `"000000"` if the color has no direct sRGB
+    /// representation (e.g. a pattern or unresolved system color).
+    public func toHex() -> String {
+        guard let rgb = NSColor(self).usingColorSpace(.sRGB) else { return "000000" }
+        let r = Int((rgb.redComponent * 255).rounded())
+        let g = Int((rgb.greenComponent * 255).rounded())
+        let b = Int((rgb.blueComponent * 255).rounded())
+        return String(format: "%02X%02X%02X", r, g, b)
     }
 }
