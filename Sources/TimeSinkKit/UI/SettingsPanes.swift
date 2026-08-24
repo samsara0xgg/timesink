@@ -537,10 +537,16 @@ struct LLMSettingsPane: View {
             Section("OpenAI 兼容服务") {
                 TextField("Endpoint", text: $endpoint)
                     .textFieldStyle(.roundedBorder)
-                    .onSubmit { model.settings.setLLMEndpoint(endpoint) }
+                    .onSubmit {
+                        model.settings.setLLMEndpoint(endpoint)
+                        model.engine.llmCoordinator?.invalidateService()
+                    }
                 TextField("模型", text: $modelName)
                     .textFieldStyle(.roundedBorder)
-                    .onSubmit { model.settings.setLLMModel(modelName) }
+                    .onSubmit {
+                        model.settings.setLLMModel(modelName)
+                        model.engine.llmCoordinator?.invalidateService()
+                    }
                 SecureField("API Key", text: $apiKeyInput)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit { saveKey() }
@@ -578,6 +584,7 @@ struct LLMSettingsPane: View {
     private func saveKey() {
         do {
             try Keychain.set(apiKeyInput, account: LLMCoordinator.apiKeyAccount)
+            model.engine.llmCoordinator?.invalidateService()
             apiKeyStatus = "已保存"
         } catch {
             apiKeyStatus = "保存失败：\(String(describing: error))"

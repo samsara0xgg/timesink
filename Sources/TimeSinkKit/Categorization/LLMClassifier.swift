@@ -131,6 +131,17 @@ public final class LLMCoordinator {
         }
     }
 
+    /// Drops the memoized service so the next `noteSpanClosed` rebuilds it
+    /// from current settings + Keychain. Call this whenever the API key,
+    /// endpoint, or model changes -- otherwise the stale classifier (old
+    /// key/endpoint/model) keeps being reused for the rest of the session
+    /// even after the Settings pane's own "测试" button (which builds its
+    /// own throwaway classifier from the current field values) reports
+    /// success.
+    public func invalidateService() {
+        service = nil
+    }
+
     /// Returns the injected service if one exists; otherwise lazily builds
     /// one from current settings + the Keychain-stored API key. Returns nil
     /// (and touches nothing else) if no key is present yet.
