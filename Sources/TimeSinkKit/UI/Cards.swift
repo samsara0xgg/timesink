@@ -140,7 +140,7 @@ struct StackedCategoryCard: View {
             }
             Chart(points) { point in
                 BarMark(
-                    x: .value("日期", point.bucketStart, unit: .day),
+                    x: .value("日期", point.bucketStart, unit: granularity == .day ? .day : .weekOfYear),
                     y: .value("时长", point.hours)
                 )
                 .foregroundStyle(by: .value("分类", point.categoryName))
