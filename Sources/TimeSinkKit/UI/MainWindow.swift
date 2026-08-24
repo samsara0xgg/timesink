@@ -17,7 +17,7 @@ struct MainWindowView: View {
     private var detailContent: some View {
         switch model.sidebarSelection {
         case .stats:
-            Text("统计")
+            StatsView(model: model)
         case .activities:
             Text("活动")
         }
