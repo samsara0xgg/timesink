@@ -69,9 +69,11 @@ public final class TrackerEngine {
         systemMonitor.onResume = { [weak self] _ in self?.resume() }
         systemMonitor.start()
 
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
     }
 
     /// Closes the current span (if any) and writes it, then stops ticking.
