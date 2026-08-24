@@ -39,6 +39,12 @@ public final class AppModel {
 
     private let logger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "appModel")
 
+    /// Memoizes categorized fetches between `dataChanged()` bumps. Three
+    /// consumers (StatsModel, ActivitiesModel, refreshMenu) re-query on every
+    /// dataVersion change with overlapping ranges; without this each bump
+    /// costs up to 4 identical full fetch+classify passes on the main actor.
+    private var rangeCache: [String: [CategorizedSpan]] = [:]
+
     /// Trailing debounce for `scheduleEngineDataChanged()` -- see its doc
     /// comment.
     private static let engineChangeDebounce: Duration = .seconds(1.5)
@@ -57,6 +63,11 @@ public final class AppModel {
         self.resolver = resolver
         self.engine = engine
         refreshMenu()
+        // refreshMenu() just seeded rangeCache with a "today" snapshot taken
+        // before any caller-visible dataChanged() boundary; drop it so the
+        // first real query after construction always re-reads the store
+        // rather than serving that bootstrap-time snapshot indefinitely.
+        rangeCache.removeAll()
         engine.onChange = { [weak self] in self?.scheduleEngineDataChanged() }
     }
 
@@ -86,6 +97,7 @@ public final class AppModel {
     }
 
     public func dataChanged() {
+        rangeCache.removeAll()
         refreshMenu()
         dataVersion += 1
     }
@@ -109,9 +121,13 @@ public final class AppModel {
     }
 
     /// `spanStore.spans(overlapping:)`, each span clipped to the interval's
-    /// intersection, then categorized. DB errors are logged and yield [].
-    private func rangedSpans(for range: DateRangeSelection) -> [CategorizedSpan] {
+    /// intersection, then categorized. Result is memoized per interval in
+    /// `rangeCache` until the next `dataChanged()`. DB errors are logged and
+    /// yield [] (not cached, so a transient failure doesn't stick).
+    public func rangedSpans(for range: DateRangeSelection) -> [CategorizedSpan] {
         let interval = range.interval
+        let key = "\(interval.start.timeIntervalSinceReferenceDate)-\(interval.end.timeIntervalSinceReferenceDate)"
+        if let cached = rangeCache[key] { return cached }
         do {
             let spans = try spanStore.spans(overlapping: interval)
             let clipped = spans.map { span -> Span in
@@ -120,7 +136,9 @@ public final class AppModel {
                 s.end = min(s.end, interval.end)
                 return s
             }
-            return resolver.categorized(clipped)
+            let result = resolver.categorized(clipped)
+            rangeCache[key] = result
+            return result
         } catch {
             logger.error("rangedSpans failed: \(String(describing: error))")
             return []

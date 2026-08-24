@@ -122,6 +122,17 @@ public enum AppDatabase {
             }
         }
 
+        migrator.registerMigration("v3") { db in
+            // Every stats refresh runs `start < ? AND end > ?`; with only the
+            // `start` index a window ending at "now" matches every historical row,
+            // so the query is O(total history). `end > ?` is the selective
+            // predicate for recent windows. appBundleID/domain were indexed in v1
+            // but no query ever filters on them (all grouping happens in memory).
+            try db.execute(sql: "CREATE INDEX span_on_end ON span(\"end\")")
+            try db.execute(sql: "DROP INDEX IF EXISTS span_on_appBundleID")
+            try db.execute(sql: "DROP INDEX IF EXISTS span_on_domain")
+        }
+
         return migrator
     }
 }

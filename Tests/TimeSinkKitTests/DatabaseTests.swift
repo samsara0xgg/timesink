@@ -73,4 +73,14 @@ final class DatabaseTests: XCTestCase {
         XCTAssertEqual(AppDatabase.databaseFileName(bundleIdentifier: "com.example.other"),
                        "timesink-dev.sqlite")
     }
+    func testV3IndexesEndAndDropsUnusedIndexes() throws {
+        let db = try AppDatabase.openInMemory()
+        let names = try db.read { db in
+            try String.fetchAll(db, sql: "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'span'")
+        }
+        XCTAssertTrue(names.contains("span_on_end"))
+        XCTAssertTrue(names.contains("span_on_start"))
+        XCTAssertFalse(names.contains("span_on_appBundleID"))
+        XCTAssertFalse(names.contains("span_on_domain"))
+    }
 }
