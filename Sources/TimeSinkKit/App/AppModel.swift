@@ -39,6 +39,11 @@ public final class AppModel {
 
     private let logger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "appModel")
 
+    /// Trailing debounce for `scheduleEngineDataChanged()` -- see its doc
+    /// comment.
+    private static let engineChangeDebounce: Duration = .seconds(1.5)
+    private var pendingEngineRefresh: Task<Void, Never>?
+
     public init(
         categoryStore: CategoryStore,
         spanStore: SpanStore,
@@ -52,7 +57,7 @@ public final class AppModel {
         self.resolver = resolver
         self.engine = engine
         refreshMenu()
-        engine.onChange = { [weak self] in self?.dataChanged() }
+        engine.onChange = { [weak self] in self?.scheduleEngineDataChanged() }
     }
 
     /// Spans in the current `range`, clipped to it, and categorized.
@@ -83,6 +88,24 @@ public final class AppModel {
     public func dataChanged() {
         refreshMenu()
         dataVersion += 1
+    }
+
+    /// Debounced entry point wired ONLY to `engine.onChange` -- every span
+    /// insert/update while live tracking is running. Every live view
+    /// responds to `dataVersion` with a full `rangedSpans()` + aggregation
+    /// recompute on the main actor, so with months of data at a wide range,
+    /// rapid app switching (many writes in quick succession) would visibly
+    /// hitch the UI if each one ran `dataChanged()` immediately. This
+    /// coalesces bursts behind a short trailing delay. Explicit user
+    /// actions (reassignment, settings edits) call `dataChanged()` directly
+    /// elsewhere and must stay immediate -- do not route them through here.
+    private func scheduleEngineDataChanged() {
+        pendingEngineRefresh?.cancel()
+        pendingEngineRefresh = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.engineChangeDebounce)
+            guard !Task.isCancelled else { return }
+            self?.dataChanged()
+        }
     }
 
     /// `spanStore.spans(overlapping:)`, each span clipped to the interval's
