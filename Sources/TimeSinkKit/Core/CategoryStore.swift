@@ -123,9 +123,14 @@ public final class CategoryStore: Sendable {
         }
     }
 
-    /// Imports the curated overlay. Overwrites seed-sourced rows (the overlay
-    /// exists to correct them) and its own previous rows, but never a user or
-    /// llm row.
+    /// Imports the curated overlay. Overwrites seed-, curated-, and
+    /// llm-sourced rows, but never a user row: an explicit human correction
+    /// must never be clobbered by shipped data, whereas an llm row is just an
+    /// opportunistic machine guess that the declared classification priority
+    /// already ranks below curated -- leaving it in place would make the
+    /// curated tier unreachable for exactly the domains it targets (llm rows
+    /// only exist for domains the deterministic chain, including curated,
+    /// left uncategorized).
     public func importCuratedDomains(_ pairs: [(domain: String, categoryID: String)]) throws {
         try writer.write { db in
             let now = Date()
@@ -138,7 +143,7 @@ public final class CategoryStore: Sendable {
                         categoryID = excluded.categoryID,
                         source = 'curated',
                         updatedAt = excluded.updatedAt
-                    WHERE domainCategory.source IN ('seed', 'curated')
+                    WHERE domainCategory.source IN ('seed', 'curated', 'llm')
                     """,
                     arguments: [pair.domain, pair.categoryID, now]
                 )

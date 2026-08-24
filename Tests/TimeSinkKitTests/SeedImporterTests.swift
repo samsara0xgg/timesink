@@ -14,18 +14,25 @@ final class SeedImporterTests: XCTestCase {
         XCTAssertNotNil(url)
     }
 
-    func testCuratedImportOverwritesSeedButNotUser() throws {
+    func testCuratedImportOverwritesSeedAndLLMButNotUser() throws {
         let db = try AppDatabase.openInMemory()
         let store = CategoryStore(db)
         try store.importSeedDomains([("a.com", "entertainment"), ("b.com", "entertainment")])
         try store.setUserDomain("b.com", categoryID: "learning")
+        // An llm row is an opportunistic machine guess for a domain the
+        // deterministic chain (including curated) left uncategorized; the
+        // curated overlay must still be able to claim it once it ships
+        // coverage for that domain, or the curated tier would be permanently
+        // unreachable for exactly the domains it targets.
+        try store.insertLLMDomain("d.com", categoryID: "entertainment")
 
         try store.importCuratedDomains([("a.com", "softwareDev"), ("b.com", "softwareDev"),
-                                        ("c.com", "softwareDev")])
+                                        ("c.com", "softwareDev"), ("d.com", "softwareDev")])
         let map = try store.domainMap()
         XCTAssertEqual(map["a.com"], DomainEntry(categoryID: "softwareDev", source: "curated"))
         XCTAssertEqual(map["b.com"], DomainEntry(categoryID: "learning", source: "user"))
         XCTAssertEqual(map["c.com"], DomainEntry(categoryID: "softwareDev", source: "curated"))
+        XCTAssertEqual(map["d.com"], DomainEntry(categoryID: "softwareDev", source: "curated"))
     }
 
     func testOverlayImportsIndependentlyOfMainSeedVersion() throws {
