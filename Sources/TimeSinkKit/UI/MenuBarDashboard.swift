@@ -17,12 +17,28 @@ final class TodayDashboardModel {
     var focus: TimeInterval = 0
     var focusDelta: TimeInterval?
     var total: TimeInterval = 0
+    var totalDelta: TimeInterval?
     var streakDays = 0
     var topCategories: [(id: String, name: String, colorHex: String, seconds: TimeInterval)] = []
     var maxCategorySeconds: TimeInterval = 0
     /// 24 entries, hours of tracked time per hour-of-day.
     var hourProfile: [Double] = Array(repeating: 0, count: 24)
 
+    /// Calendar day (startOfDay) the >=30-day streak lookback last ran for.
+    /// That lookback is a full-month fetch+classify+day-split -- expensive
+    /// enough that re-running it on every `recompute` (every dataVersion
+    /// bump, i.e. every ~1.5s debounce window while live tracking is
+    /// running and the popover is open) would cost this actor for a number
+    /// that changes at most once a day. `@ObservationIgnored`: never read by
+    /// the view, so it must not register through `@Observable` -- same
+    /// reasoning as `AppModel.rangeCache`.
+    @ObservationIgnored
+    private var lastStreakDay: Date?
+
+    /// Per-bump refresh: today, yesterday, and their deltas. Cheap --
+    /// `AppModel.rangedSpans(for:)` memoizes both ranges between
+    /// `dataChanged()` calls. The >=30-day streak lookback is intentionally
+    /// NOT here; see `refreshStreakIfDayChanged`.
     func recompute(model: AppModel) {
         let calendar = Calendar.current
         let categories = model.resolver.categoriesByID
@@ -38,8 +54,10 @@ final class TodayDashboardModel {
         let yByCategory = Aggregator.durationByCategory(yesterday)
         let yPulse = Aggregator.pulse(durationByCategory: yByCategory, categories: categories)
         let yFocus = Aggregator.focusTime(durationByCategory: yByCategory, categories: categories)
+        let yTotal = Aggregator.totalDuration(yesterday.map(\.span))
         pulseDelta = zip2(pulse, yPulse).map { $0 - $1 }
         focusDelta = yesterday.isEmpty ? nil : focus - yFocus
+        totalDelta = yesterday.isEmpty ? nil : total - yTotal
 
         topCategories = byCategory
             .compactMap { id, seconds -> (String, String, String, TimeInterval)? in
@@ -56,6 +74,20 @@ final class TodayDashboardModel {
             profile[hour] = seconds / 3600.0
         }
         hourProfile = profile
+
+        refreshStreakIfDayChanged(model: model, calendar: calendar, categories: categories)
+    }
+
+    /// Runs the >=30-day streak lookback only the first time (popover's
+    /// `.onAppear`, `lastStreakDay == nil`) and again once the calendar day
+    /// has rolled over since the last run -- skipped on every other
+    /// `recompute` (i.e. every dataVersion-driven refresh within the same
+    /// day). Accepted tradeoff: a streak-threshold crossing while the
+    /// popover sits open surfaces only on the next open, not live.
+    private func refreshStreakIfDayChanged(model: AppModel, calendar: Calendar, categories: [String: Category]) {
+        let todayStart = calendar.startOfDay(for: Date())
+        guard lastStreakDay != todayStart else { return }
+        lastStreakDay = todayStart
 
         let lookback = model.rangedSpans(for: DateRangeSelection(kind: .last30, anchor: Date()))
         streakDays = Self.streak(
@@ -116,12 +148,12 @@ struct MenuBarDashboardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 14) {
-                scoreGauge
+                scoreColumn
                 VStack(alignment: .leading, spacing: 4) {
                     kpiLine(value: Format.duration(dashboard.focus), label: "专注",
                             delta: dashboard.focusDelta.map(Self.durationDelta))
                     kpiLine(value: Format.duration(dashboard.total), label: "总计",
-                            delta: dashboard.pulseDelta.map { Self.signed($0) + " 分" })
+                            delta: dashboard.totalDelta.map(Self.durationDelta))
                     if dashboard.streakDays >= 2 {
                         Text("连续 \(dashboard.streakDays) 天保持 \(TodayDashboardModel.streakThreshold) 分以上")
                             .font(.caption2.weight(.semibold))
@@ -178,6 +210,20 @@ struct MenuBarDashboardView: View {
         } else {
             gaugeProgress = 0
             withAnimation(.spring(duration: 0.6)) { gaugeProgress = target }
+        }
+    }
+
+    /// The score gauge plus its 环比 (pulse delta) chip, grouped together so
+    /// the delta reads as "vs yesterday" for the ring specifically, not for
+    /// an unrelated KPI row.
+    private var scoreColumn: some View {
+        VStack(spacing: 4) {
+            scoreGauge
+            if let pulseDelta = dashboard.pulseDelta {
+                Text(Self.signed(pulseDelta) + " 分")
+                    .font(.caption2.weight(.bold)).monospacedDigit()
+                    .foregroundStyle(pulseDelta < 0 ? Color.red : Color.green)
+            }
         }
     }
 
