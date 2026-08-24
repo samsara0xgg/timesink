@@ -18,7 +18,9 @@ TimeSink 是一个 macOS 菜单栏时间追踪应用：自动记录你在各个�
 bash scripts/make_cert.sh && make install
 ```
 
-首次运行 `scripts/make_cert.sh` 会在登录钥匙串中创建一个自签名代码签名证书「TimeSink Dev」，用于给应用签名，使 macOS 记住已授予的权限（Accessibility/自动化）在重新编译、重装后依然有效。若脚本提示 `unable to build chain`，需要手动在「钥匙串访问」App 中打开 登录 > 证书 > TimeSink Dev > 信任，将「代码签名」设为「始终信任」，再重新执行 `make install`。
+首次运行 `scripts/make_cert.sh` 会在登录钥匙串中创建一个自签名代码签名证书「TimeSink Dev」，用于给应用签名，使 macOS 记住已授予的权限（Accessibility/自动化）在重新编译、重装后依然有效。**这个证书默认不受信任，首次安装必须手动信任它一次，这一步不可跳过**：打开「钥匙串访问」App，进入 登录 > 证书 > TimeSink Dev，在「信任」里把「代码签名」设为「始终信任」（会要求输入一次登录密码）。
+
+跳过这一步不会立刻报错——`make bundle`/`make install` 会卡在 `codesign` 那一步长时间无响应（这是它在等待一个系统钥匙串授权弹窗，但该弹窗在某些环境下不会正常显示，看起来像卡死）。如果安装命令卡住不动，请先按上面的步骤完成信任设置，再重新执行一次。
 
 `make install` 会构建 Release 版本、签名，并把 `TimeSink.app` 复制到 `/Applications`。首次启动会弹出权限引导窗口，请按提示依次授权。
 
