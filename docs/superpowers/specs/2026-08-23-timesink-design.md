@@ -91,6 +91,7 @@ settings(key PK, value)   -- idle_threshold, llm_enabled, llm_endpoint, llm_mode
 
 参照截图：`overview_30days.png`（明）、`overview_30days_dark.png`（暗）、`activities_unified.png` / `activities_with_timeline.png`。
 
+- **静态与动效目标**（用户定案）：静态布局/配色/图表形态以 press-kit 截图为准逐像素对照迭代；交互动效**不复刻** Timing 原版，由实现者按原生 macOS 手感自行设计——一律使用系统标准动画时长与缓动（SwiftUI 默认 spring/easeInOut 一档），克制、流畅、无自定义花哨过渡；悬停高亮、disclosure 展开、视图切换、图表载入均循 AppKit/SwiftUI 惯例。
 - **窗口结构**：左侧固定侧边栏（~17% 宽）+ 右侧内容区，扁平风格、系统字体、明暗双主题（跟随系统）。
 - **侧边栏**：Stats / Activities 两个导航项（图标+文字，选中为圆角灰底）；下方「分类」小节——每行彩色圆点 + 分类名 + 右对齐时长胶囊，点击过滤内容区。
 - **顶栏**：日期范围导航 `‹ [今天 ▾] ›`（今天/昨天/过去 7 天/过去 30 天 + 前后翻页）。
