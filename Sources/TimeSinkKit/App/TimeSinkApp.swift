@@ -110,8 +110,20 @@ public struct TimeSinkApp: App {
 /// drop up to 30s of the in-progress span (spans younger than 30s vanish
 /// entirely -- they are first written at their first heartbeat). Routing
 /// every termination through the delegate closes that daily loss path.
+///
+/// Also conforms to `UNUserNotificationCenterDelegate` -- that conformance
+/// and its callbacks live in an extension in `Notifier.swift` instead of
+/// here, so `import UserNotifications` stays confined to that one file (the
+/// crash-gate file for `UNUserNotificationCenter` access).
 final class TimeSinkAppDelegate: NSObject, NSApplicationDelegate {
     var engine: TrackerEngine?
+    /// Set by Task 11's wiring; invoked when a delivered notification is
+    /// tapped, decoded from its `userInfo["route"]`. `@Sendable` so the
+    /// nonisolated `UNUserNotificationCenterDelegate` callback (in
+    /// `Notifier.swift`) can hop it to the main actor without capturing
+    /// `self` (a non-`Sendable` `NSObject` subclass) across the boundary.
+    var onRoute: (@Sendable (NotificationRoute) -> Void)?
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         MainActor.assumeIsolated { engine?.stop() }
         return .terminateNow
