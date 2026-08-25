@@ -191,14 +191,27 @@ final class StatsRangeTests: XCTestCase {
     /// `.today()` (the default range) is always `containsNow` by
     /// construction, so this pins the CLIPPED branch: previous-day spans are
     /// clipped to `[yesterdayStart, yesterdayStart + elapsed]` before being
-    /// used for `totalDelta`/`focusDelta`, but NOT for `pulseDelta`. The
-    /// previous day gets an "early" 30-min span (inside the clip unless the
-    /// test runs within ~31 min of local midnight) and a "late" 30-min span
-    /// at 23:00 (outside the clip unless the test runs after 23:00) -- this
-    /// makes the clipped-vs-unclipped split observable regardless of what
-    /// time of day the test happens to run, without needing to control
-    /// `Date()` directly (residual midnight-adjacent flake risk accepted,
-    /// same as `testHeavyRecomputeGatedByDay`'s).
+    /// used for `totalDelta`/`focusDelta`, but NOT for `pulseDelta`. Fix
+    /// round 2, item 1: placements are derived from `elapsed` -- the actual
+    /// elapsed time-of-day measured at test start -- rather than fixed clock
+    /// positions (00:01/00:31/23:00), which only held for `now` in
+    /// `[00:31, 23:00)` and deterministically failed outside it (in
+    /// particular, always between 23:00 and 00:31). The surviving span sits
+    /// entirely within the first half of the measured elapsed window, so it
+    /// survives even against a strictly-later actual `elapsed` (the
+    /// production code re-measures `Date()` at recompute time, which can
+    /// only be >= this test's measurement). The clipped-away span starts at
+    /// the midpoint between the measured elapsed and midnight, with a
+    /// duration of half of whatever room remains after that -- both scale
+    /// down automatically as `elapsed` approaches a full day, so the
+    /// placement (a) always stays strictly inside yesterday's calendar day
+    /// (needed so it still counts toward the FULL previous-day pulse) while
+    /// (b) always starting strictly after the measured elapsed (needed to
+    /// guarantee the clip drops it, even against that same race) --
+    /// analytically true for any `elapsed` in `(0, 86400)`, not just a
+    /// fixed-constant margin that can itself overflow past midnight late in
+    /// the day. Expected deltas are computed from these same placements, not
+    /// hardcoded, so the assertion stays exact.
     @MainActor func testRecomputeDeltasClipPreviousToElapsedTimeOfDayWhenRangeContainsNow() throws {
         let (model, store) = try makeStatsRangeModel()
         let cal = Calendar.current
@@ -211,12 +224,29 @@ final class StatsRangeTests: XCTestCase {
         try store.insert(span("com.apple.dt.Xcode", appName: "Xcode",
                                start: todayStart.addingTimeInterval(60), seconds: 3600))
 
-        // Previous period (yesterday): early softwareDev span (survives the
-        // elapsed clip) + late entertainment span at 23:00 (clipped away).
+        // Previous period (yesterday): a softwareDev span entirely inside
+        // the first half of the elapsed window (survives the elapsed clip)
+        // and an entertainment span starting at the midpoint between the
+        // elapsed watermark and midnight (dropped by the elapsed clip, but
+        // still inside yesterday's calendar day, so it still counts toward
+        // the FULL previous-day pulse) -- see the doc comment above.
+        // Rounded down to a whole second: `SpanStore` round-trips `Date`
+        // through GRDB's millisecond-precision storage, so a span boundary
+        // derived from a sub-millisecond-precision `Date()` reading would
+        // silently drift by a fraction of a millisecond between what this
+        // test computes in-memory and what `stats.recompute` reads back from
+        // the store, breaking the exact-equality assertions below. A whole
+        // second (and the half/quarter-second fractions the arithmetic below
+        // derives from it) is always representable losslessly at that
+        // precision.
+        let elapsed = Date().timeIntervalSince(todayStart).rounded(.down)
+        let survivingSeconds = elapsed / 2
+        let clippedAwayStart = elapsed + (86400 - elapsed) / 2
+        let clippedAwaySeconds = (86400 - clippedAwayStart) / 2
         try store.insert(span("com.apple.dt.Xcode", appName: "Xcode",
-                               start: yesterdayStart.addingTimeInterval(60), seconds: 1800))
+                               start: yesterdayStart, seconds: survivingSeconds))
         try store.insert(span("com.spotify.client", appName: "Spotify",
-                               start: yesterdayStart.addingTimeInterval(23 * 3600), seconds: 1800))
+                               start: yesterdayStart.addingTimeInterval(clippedAwayStart), seconds: clippedAwaySeconds))
 
         let stats = StatsModel()
         stats.recompute(model: model, forceHeavy: true)
@@ -226,12 +256,14 @@ final class StatsRangeTests: XCTestCase {
         XCTAssertEqual(stats.pulse, 100)
 
         // Duration deltas: current (1h) minus the CLIPPED previous (only the
-        // early 30-min softwareDev span survives) == +30min.
-        XCTAssertEqual(stats.totalDelta, 1800)
-        XCTAssertEqual(stats.focusDelta, 1800)
+        // surviving softwareDev span), computed exactly from its placement.
+        XCTAssertEqual(stats.totalDelta, 3600 - survivingSeconds)
+        XCTAssertEqual(stats.focusDelta, 3600 - survivingSeconds)
         // Pulse delta: current (100) minus the UNCLIPPED previous full-day
-        // pulse (30min softwareDev @100 + 30min entertainment @0 -> avg 50).
-        XCTAssertEqual(stats.pulseDelta, 50)
+        // pulse (survivingSeconds softwareDev @100 + clippedAwaySeconds
+        // entertainment @0, duration-weighted).
+        let prevFullPulse = Int(((survivingSeconds * 100) / (survivingSeconds + clippedAwaySeconds)).rounded())
+        XCTAssertEqual(stats.pulseDelta, 100 - prevFullPulse)
     }
 
     /// A historical (never `containsNow`) day range, so this test has no

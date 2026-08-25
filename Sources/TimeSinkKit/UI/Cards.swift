@@ -454,6 +454,7 @@ struct HeatmapCard: View {
                             Text(Self.hourTickLabels[hour] ?? "")
                                 .font(.system(size: 8))
                                 .foregroundStyle(.secondary)
+                                .frame(width: cellSide)
                         }
                     }
                 }
