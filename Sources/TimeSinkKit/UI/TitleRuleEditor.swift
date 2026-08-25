@@ -28,7 +28,7 @@ enum TitleRuleInput {
     /// empty regex as never-matching). Returns the pattern to store
     /// (`|`-joined keywords, or the `re:` string verbatim), or `nil` if
     /// invalid.
-    static func normalizedPattern(_ raw: String) -> String? {
+    nonisolated static func normalizedPattern(_ raw: String) -> String? {
         if raw.hasPrefix("re:") {
             let body = String(raw.dropFirst(3))
             guard !body.isEmpty else { return nil }
@@ -51,7 +51,7 @@ enum TitleRuleInput {
     /// matches `pattern` via `Classifier.titleMatches` -- used for the
     /// editor's live "影响 N 项" preview and the Rules pane's today-hit
     /// column.
-    static func affected(items: [CategorizedSpan], pattern: String, scopeKey: String) -> (count: Int, seconds: TimeInterval) {
+    nonisolated static func affected(items: [CategorizedSpan], pattern: String, scopeKey: String) -> (count: Int, seconds: TimeInterval) {
         var count = 0
         var seconds: TimeInterval = 0
         for item in items {
