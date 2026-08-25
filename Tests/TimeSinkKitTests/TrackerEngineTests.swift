@@ -373,3 +373,31 @@ final class TrackerEngineMeetingExemptionTests: XCTestCase {
         XCTAssertEqual(finalRows[0].end, ts(596))
     }
 }
+
+/// C4 focus session engine seam: `focusInterceptor`, when it returns true,
+/// must short-circuit the tick before the sample ever reaches
+/// `SpanBuilder.ingest` -- this is the "block-page sample never enters
+/// stats" guarantee, exercised here purely at the engine-seam level (the
+/// actual intercept() decision logic is covered by FocusSessionTests).
+@MainActor
+final class TrackerEngineFocusInterceptorTests: XCTestCase {
+    func testFocusInterceptorSkipsRecording() throws {
+        let db = try AppDatabase.openInMemory()
+        let store = SpanStore(db)
+        let engine = TrackerEngine(spanStore: store, settings: SettingsStore(db))
+        engine.idleSecondsProvider = { 0 }
+        // Deliberately NOT a Chrome sample: touching the Chrome branch
+        // without a `chromeTabProvider` seam would construct a real
+        // `SBApplication` (forbidden in tests, see ChromeSampler/ChromeBlocker
+        // docs) -- this test only cares about the interceptor short-circuit,
+        // not Chrome-specific enrichment.
+        engine.windowSampleProvider = {
+            Sample(timestamp: ts(0), appBundleID: "com.hnc.Discord", appName: "Discord",
+                   windowTitle: FocusBlockPage.pageMarkerTitle, url: nil)
+        }
+        engine.focusInterceptor = { _, _ in true }
+        engine.tick(now: ts(0))
+        // SpanBuilder never ingested the sample -- no current span opened.
+        XCTAssertNil(engine.latestSample)
+    }
+}

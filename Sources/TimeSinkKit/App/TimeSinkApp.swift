@@ -9,6 +9,10 @@ public struct TimeSinkApp: App {
     /// execution has no bundle identifier) and Accessibility isn't yet
     /// granted — gates whether the onboarding sheet opens at launch.
     let needsOnboarding: Bool
+    /// C4: stored so `body`'s `.onAppear` (which runs long after `init`
+    /// returns) can still hand it to `appDelegate` for `timesink://`
+    /// handling -- the same instance `focusController.redirectChrome` uses.
+    let chromeBlocker: ChromeBlocker
 
     @Environment(\.openWindow) private var openWindow
     @State private var showOnboarding: Bool
@@ -79,6 +83,65 @@ public struct TimeSinkApp: App {
         let ninetyDaysAgo = Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? Date()
         try? budgetStore.pruneAlerts(before: BudgetEngine.dayStamp(ninetyDaysAgo, calendar: Calendar.current))
 
+        // C4 focus sessions -- same post-init injection convention as
+        // calendar/budgets above.
+        let focusStore = FocusSessionStore(db)
+        let focusController = FocusSessionController(store: focusStore, settings: settingsStore)
+        let chromeBlocker = ChromeBlocker()
+        self.chromeBlocker = chromeBlocker
+        let focusHUD = FocusHUDController()
+
+        focusController.notifier = notifier
+        focusController.categoryForDomain = { [weak model] domain, url in
+            guard let model else { return "uncategorized" }
+            // A throwaway Span just to reuse `CategoryResolver`'s existing
+            // domain/url classification path -- no span is ever persisted
+            // from this.
+            let probe = Span(start: Date(), end: Date(), appBundleID: "com.google.Chrome",
+                              appName: "Chrome", title: nil, url: url, domain: domain)
+            return model.resolver.categoryID(for: probe)
+        }
+        // Production hideApp: doesn't check `hide()`'s return value (it lies
+        // in practice) and doesn't poll/retry -- `FocusBlockPolicy`'s
+        // cooldown already rate-limits repeat attempts.
+        focusController.hideApp = { bundleID in
+            NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first?.hide()
+        }
+        focusController.redirectChrome = { [weak chromeBlocker] urlString in
+            chromeBlocker?.setActiveTabURL(urlString) ?? false
+        }
+        focusController.showHUD = { [weak focusController, focusHUD] appName, hideCount in
+            guard let focusController else { return }
+            focusHUD.show(remaining: focusController.remaining, appName: appName, hideCount: hideCount,
+                           keepFocusAppKey: focusController.lastHiddenAppKey ?? "", controller: focusController)
+        }
+        // `finish(completed:)` invokes `onFinish` BEFORE clearing `running`
+        // (see its doc comment), so `focusController.running`'s
+        // `plannedSeconds` is still readable here.
+        focusController.onFinish = { [weak model, weak focusController, notifier] completed, appBlocks, siteBlocks in
+            guard let model else { return }
+            let running = focusController?.running
+            let plannedMinutes = (running?.plannedSeconds ?? 0) / 60
+            let prefix = completed ? "" : "提前结束，"
+            let body = "\(prefix)\(plannedMinutes) 分钟完成，期间拦下 \(appBlocks + siteBlocks) 次分心（\(siteBlocks) 次网站 · \(appBlocks) 次应用）。"
+            // Keyed by the session's row id, not a fixed string -- a fixed id
+            // would make consecutive sessions silently replace each other's
+            // notification at the OS level (the same de-dup mechanism budget
+            // alerts use deliberately; here every finished session is a
+            // distinct event that deserves its own visible notification).
+            let notificationID = running.map { "focus.finished.\($0.id)" } ?? "focus.finished"
+            notifier.post(id: notificationID, title: "专注会话结束", body: body, route: .activitiesToday)
+            // Explicit user-visible completion -> direct dataChanged() call
+            // (allowed per spec: this is the one non-debounced path) so the
+            // timeline's focus block appears immediately.
+            model.dataChanged()
+        }
+        model.focusStore = focusStore
+        model.focus = focusController
+        engine.focusInterceptor = { [weak focusController] sample, now in
+            focusController?.intercept(sample: sample, at: now) ?? false
+        }
+
         let needsOnboarding = Bundle.main.bundleIdentifier == "com.alllllenshi.TimeSink"
             && !Permissions.accessibilityGranted(prompt: false)
         self.needsOnboarding = needsOnboarding
@@ -104,6 +167,10 @@ public struct TimeSinkApp: App {
                     // Center) is buffered and flushed automatically by
                     // `onRoute`'s `didSet` -- see `TimeSinkAppDelegate`.
                     appDelegate.onRoute = { model.pendingRoute = $0 }
+                    // C4: timesink:// URL handling (block page buttons) --
+                    // see `TimeSinkAppDelegate.application(_:open:)`.
+                    appDelegate.focus = model.focus
+                    appDelegate.blocker = chromeBlocker
                     if needsOnboarding {
                         openWindow(id: "main")
                     }
@@ -150,7 +217,19 @@ struct MenuBarLabel: View {
             Image(systemName: model.chromeDegraded
                   ? "hourglass.badge.exclamationmark" : "hourglass")
                 .accessibilityLabel(model.chromeDegraded ? "Chrome 采集降级" : "TimeSink")
-            if model.menuTextEnabled {
+            // C4: while a focus session is running, the label swaps to a
+            // live mm:ss countdown regardless of `menuTextEnabled` -- an
+            // active session is itself worth surfacing even with the menu
+            // bar text normally hidden. `model.focus?.running`/`.remaining`
+            // are both `@Observable` reads on `FocusSessionController`
+            // (itself `@MainActor @Observable`), so this registers
+            // correctly without the 1s countdown timer ever calling
+            // `dataChanged()`.
+            if let focus = model.focus, focus.running != nil {
+                Text(Format.mmss(focus.remaining))
+                    .monospacedDigit()
+                    .foregroundStyle(.tint)
+            } else if model.menuTextEnabled {
                 Text(model.menuTitle).monospacedDigit()
             }
         }
@@ -213,6 +292,10 @@ struct MenuBarLabel: View {
 /// than by the compiler.
 final class TimeSinkAppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     var engine: TrackerEngine?
+    /// C4: set by `TimeSinkApp.body`'s `.onAppear`, read by
+    /// `application(_:open:)` for `timesink://focus/...` URL handling.
+    var focus: FocusSessionController?
+    var blocker: ChromeBlocker?
 
     /// Set by Task 11's wiring; invoked when a delivered notification is
     /// tapped, decoded from its `userInfo["route"]`. `@MainActor @Sendable`
@@ -256,7 +339,43 @@ final class TimeSinkAppDelegate: NSObject, NSApplicationDelegate, @unchecked Sen
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        MainActor.assumeIsolated { engine?.stop() }
+        MainActor.assumeIsolated {
+            engine?.stop()
+            // Idempotent -- the popover's 退出 button already stops the
+            // engine above; a running focus session still needs its row
+            // closed out as "manually ended" regardless of which quit path
+            // got here first.
+            focus?.finish(completed: false)
+        }
         return .terminateNow
+    }
+
+    /// C4: handles `timesink://focus/back` and `timesink://focus/allow?domain=x`
+    /// links tapped from the local block page. `focus/back` redirects to a
+    /// fresh new-tab page rather than closing the tab -- ScriptingBridge's
+    /// tab-close semantics are unreliable enough (per `ChromeBlocker`'s
+    /// design note) that a redirect is the honest degradation; recorded as a
+    /// known interaction-spec deviation in manual QA. `focus/allow` marks
+    /// the domain allowed for the rest of its 5-minute window, then
+    /// redirects to `https://\(domain)` (ruling: redirect to the real site,
+    /// not back to the block page).
+    func application(_ application: NSApplication, open urls: [URL]) {
+        MainActor.assumeIsolated {
+            for url in urls {
+                guard url.scheme == "timesink", url.host == "focus" else { continue }
+                switch url.path {
+                case "/back":
+                    blocker?.setActiveTabURL("chrome://newtab")
+                case "/allow":
+                    guard let domain = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                        .queryItems?.first(where: { $0.name == "domain" })?.value,
+                        !domain.isEmpty else { continue }
+                    focus?.allowDomain(domain)
+                    blocker?.setActiveTabURL("https://\(domain)")
+                default:
+                    break
+                }
+            }
+        }
     }
 }

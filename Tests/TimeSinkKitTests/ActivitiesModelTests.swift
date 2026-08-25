@@ -240,4 +240,61 @@ final class ActivitiesModelTests: XCTestCase {
         XCTAssertEqual(activities.matchCount, 1)   // scoped down to just softwareDev's hit
         XCTAssertEqual(activities.matchSeconds, 300)
     }
+
+    // MARK: - C4 focus session timeline blocks
+
+    /// Pure mapper: tooltip's distraction count sums app+site blocks, and
+    /// the productivity number is computed from `items` clipped to the
+    /// session's own window (`Aggregator.clippedToElapsed` + `pulse`), not
+    /// the whole day.
+    func testFocusTimelineBlocksTooltipReflectsClippedPulse() {
+        let session = FocusSession(id: 1, start: ts(0), end: ts(1500), plannedSeconds: 1500,
+                                    appBlocks: 2, siteBlocks: 1, completed: true)
+        // Fully productive (work) span spanning the whole session window --
+        // clippedToElapsed should keep all of it, so pulse should be the
+        // "work" category's max score, not diluted by anything outside the
+        // window.
+        let items = [
+            CategorizedSpan(span: Span(start: ts(0), end: ts(1500), appBundleID: "com.apple.dt.Xcode",
+                appName: "Xcode", title: nil, url: nil, domain: nil), categoryID: "work"),
+            // Outside the session window entirely -- must NOT affect pulse.
+            CategorizedSpan(span: Span(start: ts(3000), end: ts(3600), appBundleID: "com.spotify.client",
+                appName: "Spotify", title: nil, url: nil, domain: nil), categoryID: "chat"),
+        ]
+        let blocks = ActivitiesModel.focusTimelineBlocks([session], items: items, categories: categories)
+        XCTAssertEqual(blocks.count, 1)
+        XCTAssertEqual(blocks[0].start, ts(0))
+        XCTAssertEqual(blocks[0].end, ts(1500))
+        XCTAssertTrue(blocks[0].tooltip.contains("拦下 3 次分心"))
+        // "work" productivity 1 -> points(1) = 75.
+        XCTAssertTrue(blocks[0].tooltip.contains("期间分 75"))
+    }
+
+    /// No overlapping items at all -> pulse is nil, tooltip falls back to "--".
+    func testFocusTimelineBlocksTooltipFallsBackWhenNoOverlap() {
+        let session = FocusSession(id: 1, start: ts(0), end: ts(60), plannedSeconds: 60,
+                                    appBlocks: 0, siteBlocks: 0, completed: true)
+        let blocks = ActivitiesModel.focusTimelineBlocks([session], items: [], categories: categories)
+        XCTAssertEqual(blocks.count, 1)
+        XCTAssertTrue(blocks[0].tooltip.contains("拦下 0 次分心"))
+        XCTAssertTrue(blocks[0].tooltip.contains("期间分 --"))
+    }
+
+    /// Integration: `recompute` actually fetches from `model.focusStore` and
+    /// populates `focusBlocks` for a single-day-ish range (the default
+    /// `.today()`), gated off for wider ranges the same way `timelineBlocks` is.
+    @MainActor func testRecomputePopulatesFocusBlocksFromFocusStore() throws {
+        let (model, _) = try makeActivitiesAppModel()
+        let db = try AppDatabase.openInMemory()
+        let focusStore = FocusSessionStore(db)
+        model.focusStore = focusStore
+        let start = Calendar.current.startOfDay(for: Date()).addingTimeInterval(10 * 3600)
+        let session = try focusStore.start(at: start, plannedSeconds: 1500)
+        try focusStore.finish(id: session.id!, end: start.addingTimeInterval(1500), appBlocks: 1, siteBlocks: 0, completed: true)
+
+        let activities = ActivitiesModel()
+        activities.recompute(model: model)
+        XCTAssertEqual(activities.focusBlocks.count, 1)
+        XCTAssertEqual(activities.focusBlocks[0].start, start)
+    }
 }

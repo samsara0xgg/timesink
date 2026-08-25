@@ -17,5 +17,10 @@
 	<string>TimeSink 需要读取 Chrome 当前标签页的网址，以便按网站分类你的时间。</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>TimeSink 读取本机日历以在时间轴上叠加日程并自动标注会议时间，数据不出本机。</string>
+	<key>CFBundleURLTypes</key>
+	<array><dict>
+	    <key>CFBundleURLName</key><string>com.alllllenshi.TimeSink</string>
+	    <key>CFBundleURLSchemes</key><array><string>timesink</string></array>
+	</dict></array>
 </dict>
 </plist>

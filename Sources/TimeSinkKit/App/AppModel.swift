@@ -104,6 +104,15 @@ public final class AppModel {
     public var notifier: (any Notifying)?
     public var budgetMonitor: BudgetMonitor?
 
+    /// C4 focus sessions -- same post-init injection convention as
+    /// `calendarStore`/`budgetStore`: `TimeSinkApp.init` assigns these after
+    /// constructing `AppModel`. `focus` is `nil` throughout `init()`'s
+    /// bootstrap `refreshMenu()` call and until assembly wires it up; every
+    /// view that reads `model.focus?.running` treats `nil` as "no session in
+    /// progress", which is also the correct steady state pre-assembly.
+    public var focusStore: FocusSessionStore?
+    public var focus: FocusSessionController?
+
     private let logger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "appModel")
 
     /// Memoizes categorized fetches between `dataChanged()` bumps. Three

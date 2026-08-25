@@ -44,6 +44,9 @@ struct DayTimelineView: View {
     /// controls rather than in the scrollable hour grid (an all-day event
     /// has no meaningful y-position).
     let allDay: [String]
+    /// C4 focus sessions overlapping the day -- drawn as a dashed outline
+    /// over the activity column (`timelineBody`), not a separate lane.
+    let focusBlocks: [TimelineBlock]
 
     @State private var hourHeight: CGFloat
 
@@ -53,10 +56,11 @@ struct DayTimelineView: View {
     private let labelWidth: CGFloat = 24
 
     init(blocks: [TimelineBlock], events: [TimelineEventBlock] = [], allDay: [String] = [],
-         hourHeight: CGFloat = 48) {
+         focusBlocks: [TimelineBlock] = [], hourHeight: CGFloat = 48) {
         self.blocks = blocks
         self.events = events
         self.allDay = allDay
+        self.focusBlocks = focusBlocks
         self._hourHeight = State(initialValue: hourHeight)
     }
 
@@ -139,6 +143,13 @@ struct DayTimelineView: View {
                 ForEach(blocks) { block in
                     RoundedRectangle(cornerRadius: 3)
                         .fill(block.color.opacity(0.85))
+                        .frame(width: activityWidth, height: max(2, CGFloat(block.duration / 3600) * hourHeight))
+                        .offset(y: minutesFromMidnight(block.start) / 60 * hourHeight)
+                        .help(block.tooltip)
+                }
+                ForEach(focusBlocks) { block in
+                    RoundedRectangle(cornerRadius: 3)
+                        .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
                         .frame(width: activityWidth, height: max(2, CGFloat(block.duration / 3600) * hourHeight))
                         .offset(y: minutesFromMidnight(block.start) / 60 * hourHeight)
                         .help(block.tooltip)

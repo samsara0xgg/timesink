@@ -54,7 +54,8 @@ struct ActivitiesView: View {
                 if ActivitiesModel.showsTimeline(model.range) {
                     DayTimelineView(blocks: activities.timelineBlocks,
                                      events: activities.calendarBlocks,
-                                     allDay: activities.allDayTitles)
+                                     allDay: activities.allDayTitles,
+                                     focusBlocks: activities.focusBlocks)
                         .frame(width: 260)
                 }
             }
@@ -281,6 +282,10 @@ final class ActivitiesModel {
 
     var groups: [CategoryGroup] = []
     var timelineBlocks: [TimelineBlock] = []
+    /// C4 focus sessions overlapping the visible range (single-day-ish
+    /// ranges only, same gate as `timelineBlocks`) -- `DayTimelineView`
+    /// renders these as a dashed outline lane over the activity column.
+    var focusBlocks: [TimelineBlock] = []
 
     /// C3 calendar overlay -- populated only for single-day-ish ranges (see
     /// `showsTimeline`), from the `events` the caller fetched via
@@ -379,6 +384,13 @@ final class ActivitiesModel {
         timelineBlocks = showsTimeline ? Self.timelineBlocks(all, categories: categories) : []
         calendarBlocks = showsTimeline ? Self.eventBlocks(events, dayInterval: model.range.interval) : []
         allDayTitles = showsTimeline ? events.filter { $0.isAllDay && !$0.isDeclined }.map(\.title) : []
+
+        if showsTimeline, let focusStore = model.focusStore {
+            let sessions = (try? focusStore.sessions(overlapping: model.range.interval)) ?? []
+            focusBlocks = Self.focusTimelineBlocks(sessions, items: all, categories: categories)
+        } else {
+            focusBlocks = []
+        }
     }
 
     /// Whether the current range is single-day-ish enough to show the day
@@ -592,6 +604,29 @@ final class ActivitiesModel {
         }
         lines.append("\(hhmm(start))–\(hhmm(end)) (\(Format.duration(end.timeIntervalSince(start))))")
         return lines.joined(separator: "\n")
+    }
+
+    // MARK: - C4 focus session blocks
+
+    /// Not `private`, and `nonisolated`: pure function, exercised directly by
+    /// tests via `@testable import` without needing a `@MainActor` hop --
+    /// same convention as `timelineBlocks` above. `items` is the day's
+    /// UNFILTERED spans (`all`, not search/category-narrowed) -- the
+    /// tooltip's productivity number describes what actually happened during
+    /// the session, not what a search happens to match.
+    nonisolated static func focusTimelineBlocks(
+        _ sessions: [FocusSession], items: [CategorizedSpan], categories: [String: Category]
+    ) -> [TimelineBlock] {
+        sessions.map { session in
+            let elapsed = session.end.timeIntervalSince(session.start)
+            let clipped = Aggregator.clippedToElapsed(items, windowStart: session.start, elapsed: elapsed)
+            let byCategory = Aggregator.durationByCategory(clipped)
+            let pulse = Aggregator.pulse(durationByCategory: byCategory, categories: categories)
+            let distractions = session.appBlocks + session.siteBlocks
+            let tooltip = "专注 \(Format.duration(elapsed)) · 拦下 \(distractions) 次分心 · 期间分 \(pulse.map(String.init) ?? "--")"
+            return TimelineBlock(start: session.start, end: session.end, color: .accentColor,
+                                  label: "专注", tooltip: tooltip)
+        }
     }
 
     // MARK: - Calendar event lane (C3)

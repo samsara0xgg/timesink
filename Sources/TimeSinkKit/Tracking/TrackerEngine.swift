@@ -190,6 +190,20 @@ public final class TrackerEngine {
     /// `SuspensionState.tick`.
     var isInMeetingProvider: (() -> Bool)?
 
+    /// C4 focus session seam: consulted once per tick, after the sample
+    /// guard and Chrome tab-URL enrichment, right before the sample is
+    /// handed to `builder.ingest`. Returning `true` skips this tick's sample
+    /// entirely (the focus block page's own synthetic Chrome tab -- see
+    /// `FocusSessionController.intercept`'s decision 2); every other
+    /// intercept outcome (app hidden, site redirected) returns `false` and
+    /// the sample is recorded normally. Deliberately placed AFTER Chrome
+    /// enrichment rather than immediately after the sample guard: Chrome
+    /// site-category blocking needs `sample.url`, which `WindowSampler`
+    /// always leaves `nil` -- only the Chrome branch above ever populates it
+    /// from `chromeTabState`. Placed here it still never touches the
+    /// calendar idle-exemption logic above the sample guard.
+    var focusInterceptor: ((Sample, Date) -> Bool)?
+
     /// True when 5+ consecutive Chrome tab fetch failures coincide with
     /// Chrome Automation not being authorized; cleared by the next success.
     /// Read by the menu bar dashboard to drive a permission-specific
@@ -326,6 +340,8 @@ public final class TrackerEngine {
                 }
             }
         }
+
+        if focusInterceptor?(sample, now) == true { return }
 
         latestSample = sample
 

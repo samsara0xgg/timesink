@@ -17,4 +17,12 @@ public enum Format {
     public static func durationDelta(_ t: TimeInterval) -> String {
         (t >= 0 ? "+" : "-") + Format.duration(abs(t))
     }
+
+    /// Formats a countdown as zero-padded "mm:ss" (C4 focus sessions --
+    /// label countdown, popover running state, HUD). Negative/zero clamps to
+    /// "00:00".
+    public static func mmss(_ t: TimeInterval) -> String {
+        let clamped = max(0, Int(t.rounded()))
+        return String(format: "%02d:%02d", clamped / 60, clamped % 60)
+    }
 }

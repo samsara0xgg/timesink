@@ -197,46 +197,65 @@ struct MenuBarDashboardView: View {
     let model: AppModel
     @State private var dashboard = TodayDashboardModel()
     @State private var gaugeProgress: Double = 0
+    /// C4: switches the popover between the normal dashboard and the focus
+    /// duration/block-list configuration screen. Superseded entirely by
+    /// `FocusRunningView` whenever a session is actually running, regardless
+    /// of this mode -- see `body`'s top-level `if`.
+    @State private var popoverMode: PopoverMode = .dashboard
     @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    private var focusRunning: Bool { model.focus?.running != nil }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 14) {
-                scoreColumn
-                VStack(alignment: .leading, spacing: 4) {
-                    kpiLine(value: Format.duration(dashboard.focus), label: "专注",
-                            delta: dashboard.focusDelta.map(Format.durationDelta))
-                    kpiLine(value: Format.duration(dashboard.total), label: "总计",
-                            delta: dashboard.totalDelta.map(Format.durationDelta))
-                    if dashboard.streakDays >= 2 {
-                        Text("连续 \(dashboard.streakDays) 天保持 \(TodayDashboardModel.streakThreshold) 分以上")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.tint)
+            if focusRunning {
+                FocusRunningView(model: model)
+            } else if popoverMode == .focusConfig {
+                FocusConfigView(model: model, onCancel: { popoverMode = .dashboard }, onStart: startFocus)
+            } else {
+                HStack(spacing: 14) {
+                    scoreColumn
+                    VStack(alignment: .leading, spacing: 4) {
+                        kpiLine(value: Format.duration(dashboard.focus), label: "专注",
+                                delta: dashboard.focusDelta.map(Format.durationDelta))
+                        kpiLine(value: Format.duration(dashboard.total), label: "总计",
+                                delta: dashboard.totalDelta.map(Format.durationDelta))
+                        if dashboard.streakDays >= 2 {
+                            Text("连续 \(dashboard.streakDays) 天保持 \(TodayDashboardModel.streakThreshold) 分以上")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.tint)
+                        }
                     }
                 }
             }
 
-            if !dashboard.topCategories.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(dashboard.topCategories, id: \.id) { entry in
-                        categoryRow(entry)
+            if !focusRunning && popoverMode == .dashboard {
+                if !dashboard.topCategories.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(dashboard.topCategories, id: \.id) { entry in
+                            categoryRow(entry)
+                        }
                     }
                 }
-            }
 
-            if dashboard.total > 0 {
-                sparkline
-            }
+                if dashboard.total > 0 {
+                    sparkline
+                }
 
-            if !dashboard.budgetRows.isEmpty {
-                budgetSection
-            }
+                if !dashboard.budgetRows.isEmpty {
+                    budgetSection
+                }
 
-            if model.engine.chromeCaptureDegraded {
-                Label("Chrome 网页读取已降级，请检查自动化权限", systemImage: "exclamationmark.triangle")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
+                if model.engine.chromeCaptureDegraded {
+                    Label("Chrome 网页读取已降级，请检查自动化权限", systemImage: "exclamationmark.triangle")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
+
+                Button("开始专注") { popoverMode = .focusConfig }
+                    .buttonStyle(.bordered)
+                    .frame(maxWidth: .infinity)
             }
 
             Divider()
@@ -265,6 +284,23 @@ struct MenuBarDashboardView: View {
         // see `TodayDashboardModel.recompute`.
         .onAppear { refresh(forceStreak: true) }
         .onChange(of: model.dataVersion) { refresh(forceStreak: false) }
+    }
+
+    /// Starts the session and, on success, drops back to the normal
+    /// dashboard mode (superseded immediately by `FocusRunningView` since
+    /// `focusRunning` is now true). A `start(minutes:)` failure (DB write
+    /// error) leaves the config screen up rather than silently discarding
+    /// the user's action.
+    private func startFocus(minutes: Int) {
+        guard let focus = model.focus else { return }
+        do {
+            try focus.start(minutes: minutes)
+            popoverMode = .dashboard
+        } catch {
+            // Logged inside `FocusSessionController`/`FocusSessionStore`
+            // already; nothing actionable to add here beyond staying on the
+            // config screen so the user can retry.
+        }
     }
 
     private func refresh(forceStreak: Bool) {
