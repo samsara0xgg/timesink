@@ -96,7 +96,8 @@ public struct TimeSinkApp: App {
             guard let model else { return "uncategorized" }
             // A throwaway Span just to reuse `CategoryResolver`'s existing
             // domain/url classification path -- no span is ever persisted
-            // from this.
+            // from this. `title: nil` means title-rule tiers never factor
+            // into a block decision -- only domain/URL/app-level rules do.
             let probe = Span(start: Date(), end: Date(), appBundleID: "com.google.Chrome",
                               appName: "Chrome", title: nil, url: url, domain: domain)
             return model.resolver.categoryID(for: probe)
@@ -107,8 +108,14 @@ public struct TimeSinkApp: App {
         focusController.hideApp = { bundleID in
             NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first?.hide()
         }
+        // R-T12g: `ensureWritten()` (the actual file write, with its
+        // content-diff rewrite check) is called ONLY here, right before the
+        // real redirect -- never from `FocusSessionController.blockPageURL`
+        // (which uses the pure `FocusBlockPage.location` instead), so no
+        // pure/test path ever touches disk for this.
         focusController.redirectChrome = { [weak chromeBlocker] urlString in
-            chromeBlocker?.setActiveTabURL(urlString) ?? false
+            FocusBlockPage.ensureWritten()
+            return chromeBlocker?.setActiveTabURL(urlString) ?? false
         }
         focusController.showHUD = { [weak focusController, focusHUD] appName, hideCount in
             guard let focusController else { return }
@@ -217,14 +224,15 @@ struct MenuBarLabel: View {
             Image(systemName: model.chromeDegraded
                   ? "hourglass.badge.exclamationmark" : "hourglass")
                 .accessibilityLabel(model.chromeDegraded ? "Chrome 采集降级" : "TimeSink")
-            // C4: while a focus session is running, the label swaps to a
-            // live mm:ss countdown regardless of `menuTextEnabled` -- an
-            // active session is itself worth surfacing even with the menu
-            // bar text normally hidden. `model.focus?.running`/`.remaining`
-            // are both `@Observable` reads on `FocusSessionController`
-            // (itself `@MainActor @Observable`), so this registers
-            // correctly without the 1s countdown timer ever calling
-            // `dataChanged()`.
+            // C4 (R-T12h, stands as reviewed): while a focus session is
+            // running, the label swaps to a live mm:ss countdown regardless
+            // of `menuTextEnabled` -- an explicit, user-INITIATED session is
+            // a deliberate signal worth surfacing even with the menu bar
+            // text normally hidden, unlike the passive `menuTitle` this
+            // branch supersedes. `model.focus?.running`/`.remaining` are
+            // both `@Observable` reads on `FocusSessionController` (itself
+            // `@MainActor @Observable`), so this registers correctly
+            // without the 1s countdown timer ever calling `dataChanged()`.
             if let focus = model.focus, focus.running != nil {
                 Text(Format.mmss(focus.remaining))
                     .monospacedDigit()

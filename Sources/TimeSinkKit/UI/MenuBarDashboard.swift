@@ -1,6 +1,9 @@
 import SwiftUI
 import Charts
 import Observation
+import os
+
+private let menuBarDashboardLogger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "menuBarDashboard")
 
 /// Data for the menu-bar popover dashboard: today's numbers, deltas vs
 /// yesterday, the >=70 streak, top categories, and the hourly profile.
@@ -247,15 +250,20 @@ struct MenuBarDashboardView: View {
                     budgetSection
                 }
 
-                if model.engine.chromeCaptureDegraded {
-                    Label("Chrome 网页读取已降级，请检查自动化权限", systemImage: "exclamationmark.triangle")
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
-                }
-
                 Button("开始专注") { popoverMode = .focusConfig }
                     .buttonStyle(.bordered)
                     .frame(maxWidth: .infinity)
+            }
+
+            // Fold-in: kept OUTSIDE the dashboard-only block above -- this
+            // warning is actionable (check Chrome Automation permission),
+            // so hiding it for the length of a running focus session (up to
+            // 90 minutes) would bite. Shown regardless of `popoverMode`/
+            // `focusRunning`.
+            if model.engine.chromeCaptureDegraded {
+                Label("Chrome 网页读取已降级，请检查自动化权限", systemImage: "exclamationmark.triangle")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
             }
 
             Divider()
@@ -297,9 +305,7 @@ struct MenuBarDashboardView: View {
             try focus.start(minutes: minutes)
             popoverMode = .dashboard
         } catch {
-            // Logged inside `FocusSessionController`/`FocusSessionStore`
-            // already; nothing actionable to add here beyond staying on the
-            // config screen so the user can retry.
+            menuBarDashboardLogger.error("focus.start failed: \(String(describing: error))")
         }
     }
 

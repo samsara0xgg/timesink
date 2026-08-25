@@ -400,4 +400,124 @@ final class TrackerEngineFocusInterceptorTests: XCTestCase {
         // SpanBuilder never ingested the sample -- no current span opened.
         XCTAssertNil(engine.latestSample)
     }
+
+    // MARK: - Fix round 1, I4/R-T12a: seam placement + AX-title regression
+
+    /// (a) proves the seam sits AFTER Chrome URL enrichment, not before: a
+    /// blocked-domain sample delivered via `chromeTabProvider` must
+    /// actually redirect through the REAL engine tick -- if the interceptor
+    /// were consulted before enrichment (the brief's literal placement),
+    /// `sample.url` would be `nil` and this domain block could never fire.
+    @MainActor func testChromeDomainBlockFiresThroughRealEngineSeam() throws {
+        let db = try AppDatabase.openInMemory()
+        let spanStore = SpanStore(db)
+        let settings = SettingsStore(db)
+        let engine = TrackerEngine(spanStore: spanStore, settings: settings)
+        engine.idleSecondsProvider = { 0 }
+        engine.chromeAutomationAuthorizedProvider = { true }
+        engine.windowSampleProvider = {
+            Sample(timestamp: ts(0), appBundleID: "com.google.Chrome", appName: "Chrome",
+                   windowTitle: "AX Title", url: nil)
+        }
+        engine.chromeTabProvider = {
+            ChromeSampler.TabInfo(url: "https://bilibili.com/video/x", title: "B 站", isIncognito: false)
+        }
+
+        let focusStore = FocusSessionStore(db)
+        settings.setFocusBlockedCategories(["entertainment"])
+        let controller = FocusSessionController(store: focusStore, settings: settings)
+        controller.categoryForDomain = { domain, _ in domain == "bilibili.com" ? "entertainment" : "misc" }
+        var redirected: [String] = []
+        controller.redirectChrome = { redirected.append($0); return true }
+        try controller.start(minutes: 25)
+
+        engine.focusInterceptor = { sample, now in controller.intercept(sample: sample, at: now) }
+        engine.tick(now: ts(0))
+
+        XCTAssertEqual(redirected.count, 1)
+        XCTAssertEqual(controller.siteBlocks, 1)
+    }
+
+    /// (b) an intercepted sample is never ingested NOR persisted -- run
+    /// enough ticks to cross both the 1s min-write-duration and the 30s
+    /// heartbeat threshold, and assert directly against the store (not
+    /// `latestSample`, which only proves the sample wasn't cached, not that
+    /// nothing was written).
+    @MainActor func testInterceptedSamplesNeverPersist() throws {
+        let db = try AppDatabase.openInMemory()
+        let store = SpanStore(db)
+        let engine = TrackerEngine(spanStore: store, settings: SettingsStore(db))
+        engine.idleSecondsProvider = { 0 }
+        engine.windowSampleProvider = {
+            Sample(timestamp: ts(0), appBundleID: "com.hnc.Discord", appName: "Discord",
+                   windowTitle: nil, url: nil)
+        }
+        engine.focusInterceptor = { _, _ in true }
+        for t in stride(from: 0.0, through: 40, by: 1) {
+            engine.tick(now: ts(t))
+        }
+        let rows = try store.spans(overlapping: DateInterval(start: ts(-1), end: ts(100)))
+        XCTAssertEqual(rows.count, 0)
+    }
+
+    /// Pins the R-T12a mechanism directly: the AX title read fresh THIS
+    /// tick already matches the block page's marker title, but the
+    /// (stale-simulated) ScriptingBridge fetch reports a DIFFERENT title --
+    /// without the fix, the SB title would silently overwrite the fresh AX
+    /// marker and decision 2 would lose its title-based signal.
+    @MainActor func testBlockPageAXTitlePreservedOverStaleSBTitle() throws {
+        let db = try AppDatabase.openInMemory()
+        let store = SpanStore(db)
+        let engine = TrackerEngine(spanStore: store, settings: SettingsStore(db))
+        engine.idleSecondsProvider = { 0 }
+        engine.chromeAutomationAuthorizedProvider = { true }
+        engine.windowSampleProvider = {
+            Sample(timestamp: ts(0), appBundleID: "com.google.Chrome", appName: "Chrome",
+                   windowTitle: FocusBlockPage.pageMarkerTitle, url: nil)
+        }
+        engine.chromeTabProvider = {
+            ChromeSampler.TabInfo(url: "file:///tmp/blocked.html", title: "上一个页面标题", isIncognito: false)
+        }
+        var sawSample: Sample?
+        engine.focusInterceptor = { sample, _ in sawSample = sample; return false }
+        engine.tick(now: ts(0))
+        XCTAssertEqual(sawSample?.windowTitle, FocusBlockPage.pageMarkerTitle)
+    }
+
+    // MARK: - Fold-in 4: heartbeat must run even when the interceptor short-circuits
+
+    /// Regression for the reviewer's probe (120 intercepted ticks -> 0
+    /// heartbeat writes): once a real span is open and has been heartbeat-
+    /// written at least once, subsequent INTERCEPTED ticks must still let
+    /// the 30s heartbeat fire for that already-open span -- proven via
+    /// `engine.onChange`, which only ever fires from a successful
+    /// `SpanStore` write.
+    @MainActor func testHeartbeatContinuesDuringInterceptedDwell() throws {
+        let db = try AppDatabase.openInMemory()
+        let store = SpanStore(db)
+        let engine = TrackerEngine(spanStore: store, settings: SettingsStore(db))
+        engine.idleSecondsProvider = { 0 }
+        engine.windowSampleProvider = {
+            Sample(timestamp: ts(0), appBundleID: "com.apple.dt.Xcode", appName: "Xcode",
+                   windowTitle: "main.swift", url: nil)
+        }
+        var onChangeCount = 0
+        engine.onChange = { onChangeCount += 1 }
+
+        // Normal activity: opens a span and crosses the first 30s heartbeat.
+        for t in stride(from: 0.0, through: 35, by: 5) {
+            engine.tick(now: ts(t))
+        }
+        XCTAssertGreaterThan(onChangeCount, 0)
+
+        // Now the user lands on the block page: every subsequent sample is
+        // intercepted (never ingested), but the already-open span must
+        // still get checkpointed every 30s throughout the dwell.
+        engine.focusInterceptor = { _, _ in true }
+        onChangeCount = 0
+        for t in stride(from: 40.0, through: 100, by: 30) {
+            engine.tick(now: ts(t))
+        }
+        XCTAssertGreaterThan(onChangeCount, 0)
+    }
 }

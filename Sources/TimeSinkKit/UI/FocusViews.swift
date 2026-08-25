@@ -25,16 +25,23 @@ public enum FocusBlockPage {
             .appendingPathComponent("Library/Application Support/TimeSink/blocked.html")
     }
 
-    /// Writes `blocked.html` to `Application Support/TimeSink/` the first
-    /// time it's needed (idempotent thereafter -- callers don't need to
-    /// track whether they've already ensured it). Returns the file URL
-    /// either way, even if the write itself fails (falls back to the
-    /// intended URL; `redirectChrome` will subsequently fail loading a
-    /// missing file, which is a visible-enough degradation).
+    /// Writes `blocked.html` to `Application Support/TimeSink/` whenever the
+    /// on-disk content doesn't already match the embedded template --
+    /// R-T12g: a plain `fileExists` guard would write once ever and then
+    /// silently ignore every future template change for the lifetime of the
+    /// install. Called ONLY from the production `redirectChrome` closure
+    /// (`TimeSinkApp` assembly), immediately before the real Chrome
+    /// redirect -- never from `FocusSessionController`, so no test or pure
+    /// decision path ever performs this write (`blockPageURL` uses the pure
+    /// `location` instead). Returns the file URL either way, even if the
+    /// write itself fails (falls back to the intended URL; the redirect
+    /// will subsequently fail loading a missing/stale file, a visible-enough
+    /// degradation).
     @discardableResult
     public static func ensureWritten() -> URL {
         let url = location
-        if !FileManager.default.fileExists(atPath: url.path) {
+        let existing = try? String(contentsOf: url, encoding: .utf8)
+        if existing != html {
             do {
                 try FileManager.default.createDirectory(
                     at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -80,7 +87,7 @@ public enum FocusBlockPage {
         const params = new URLSearchParams(location.search);
         const domain = params.get('domain') || '';
         const remaining = params.get('remaining') || '';
-        document.getElementById('sub').textContent = domain + (remaining ? ('· 剩余 ' + remaining) : '');
+        document.getElementById('sub').textContent = domain + (remaining ? (' · 剩余 ' + remaining) : '');
         document.getElementById('allowLink').href = 'timesink://focus/allow?domain=' + encodeURIComponent(domain);
       </script>
     </body>
@@ -150,7 +157,6 @@ struct FocusConfigView: View {
                 Button("取消", action: onCancel)
                 Spacer()
                 Button("开始 · \(minutes) 分钟") {
-                    model.settings.setFocusDurationMinutes(minutes)
                     onStart(minutes)
                 }
                 .buttonStyle(.borderedProminent)
@@ -163,6 +169,9 @@ struct FocusConfigView: View {
             ForEach(Self.durationOptions, id: \.self) { option in
                 Button {
                     minutes = option
+                    // 选中即写记忆 (brief), not deferred to 开始 -- so the
+                    // duration sticks even if the user cancels this time.
+                    model.settings.setFocusDurationMinutes(option)
                 } label: {
                     Text("\(option)")
                         .font(.caption)
@@ -218,7 +227,12 @@ struct FocusRunningView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 if !running.blockedApps.isEmpty || !running.blockedCategories.isEmpty {
-                    Text((running.blockedApps.union(running.blockedCategories)).sorted().joined(separator: " · "))
+                    // Category ids map to display names (same as
+                    // `FocusConfigView`'s chip summary two screens earlier);
+                    // bundle ids have no better display form, so they stay raw.
+                    let categoryNames = running.blockedCategories.map { model.resolver.categoriesByID[$0]?.name ?? $0 }
+                    let labels = (Array(running.blockedApps) + categoryNames).sorted()
+                    Text(labels.joined(separator: " · "))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
@@ -263,26 +277,41 @@ public final class FocusHUDController {
 
     public init() {}
 
-    /// Shows (or updates, if already visible) the HUD with
-    /// "专注中 mm:ss · \(appName) 已被隐藏（第 n 次）", auto-dismissing after 4s.
-    /// `keepFocusAppKey` is the key `keepFocusTapped` should be called with
-    /// for the HUD's "坚持专注" button (the blocked app's bundle ID).
+    /// Shows (or updates, if already visible) the HUD, auto-dismissing after
+    /// 4s. `hideCount == 0` is the R-T12e degraded-notice case (a
+    /// non-Chrome browser's site couldn't be hard-blocked -- nothing was
+    /// actually hidden), which drops the "已被隐藏（第 n 次）" suffix entirely
+    /// rather than claiming a hide that never happened; any other count
+    /// renders "专注中 mm:ss · \(appName) 已被隐藏（第 n 次）". `keepFocusAppKey`
+    /// is the key `keepFocusTapped` should be called with for the HUD's
+    /// "坚持专注" button (the blocked app's bundle ID).
     public func show(remaining: TimeInterval, appName: String, hideCount: Int,
                       keepFocusAppKey: String, controller: FocusSessionController) {
-        let message = "专注中 \(Format.mmss(remaining)) · \(appName) 已被隐藏（第 \(hideCount) 次）"
+        let message = hideCount == 0
+            ? "专注中 \(Format.mmss(remaining)) · \(appName)"
+            : "专注中 \(Format.mmss(remaining)) · \(appName) 已被隐藏（第 \(hideCount) 次）"
         let content = FocusHUDContentView(
             message: message,
             onKeepFocus: { [weak controller] in
                 controller?.keepFocusTapped(appKey: keepFocusAppKey, at: Date())
             },
-            onFinish: { [weak controller] in
+            onFinish: { [weak self, weak controller] in
                 controller?.finish(completed: false)
+                // Fold-in: 结束会话 dismisses the HUD immediately rather than
+                // leaving it up for the remainder of the 4s auto-dismiss timer.
+                self?.hide()
             }
         )
 
         let panel = self.panel ?? Self.makePanel()
-        panel.contentView = NSHostingView(rootView: content)
-        panel.contentView?.layout()
+        let hosting = NSHostingView(rootView: content)
+        panel.contentView = hosting
+        hosting.layout()
+        // Fold-in: size the panel to the SwiftUI content's own fitting size
+        // before positioning -- the panel is otherwise stuck at whatever
+        // fixed size `makePanel()` created it with, regardless of how tall
+        // the message/button row actually renders.
+        panel.setContentSize(hosting.fittingSize)
         position(panel)
         panel.orderFrontRegardless()
         self.panel = panel

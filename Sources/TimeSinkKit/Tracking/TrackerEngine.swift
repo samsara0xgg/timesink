@@ -291,6 +291,15 @@ public final class TrackerEngine {
         guard var sample = (windowSampleProvider.map { $0() } ?? windowSampler.sample(at: now)) else { return }
 
         if sample.appBundleID == Self.chromeBundleID {
+            // R-T12a: the AX title read fresh THIS tick, captured before
+            // anything below can overwrite `sample.windowTitle` with a
+            // ScriptingBridge title that can be stale (the throttle only
+            // re-fetches every 5s, and backoff can skip fetches for up to
+            // 60s without resetting `chromeTabState`). Used just below to
+            // keep the focus block page's marker title from being silently
+            // replaced by a stale SB title -- decision 2's block-page
+            // detection would otherwise lose its title signal.
+            let axTitle = sample.windowTitle
             if throttle.shouldFetch(title: sample.windowTitle, at: now),
                chromeBackoff.shouldAttempt(at: now) {
                 // Refresh the cached authorization answer once per attempt,
@@ -323,7 +332,12 @@ public final class TrackerEngine {
             switch chromeTabState {
             case .tab(let url, let title):
                 sample.url = url
-                sample.windowTitle = title
+                // R-T12a: keep the fresh AX title instead of the (possibly
+                // stale) SB title when the AX title already IS the block
+                // page's marker -- zero effect on every non-focus tab,
+                // since a real Chrome tab essentially never coincides with
+                // this exact literal title.
+                sample.windowTitle = (axTitle == FocusBlockPage.pageMarkerTitle) ? axTitle : title
             case .incognito:
                 sample.url = nil
                 sample.windowTitle = nil
@@ -341,7 +355,19 @@ public final class TrackerEngine {
             }
         }
 
-        if focusInterceptor?(sample, now) == true { return }
+        // Heartbeat runs regardless of whether this tick's sample is
+        // intercepted (fold-in fix): the interceptor only ever skips
+        // INGESTING the current sample, but the span already open in
+        // `builder` from BEFORE the interception (e.g. real activity right
+        // up to the moment a redirect landed on the block page) still needs
+        // its 30s checkpoint written while the user dwells there -- a naive
+        // early-return here left that open span's row un-checkpointed for
+        // the entire dwell (observed: 120 intercepted ticks, 0 heartbeat
+        // writes).
+        guard focusInterceptor?(sample, now) != true else {
+            heartbeat(now: now)
+            return
+        }
 
         latestSample = sample
 

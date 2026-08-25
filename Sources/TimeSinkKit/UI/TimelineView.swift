@@ -149,7 +149,7 @@ struct DayTimelineView: View {
                 }
                 ForEach(focusBlocks) { block in
                     RoundedRectangle(cornerRadius: 3)
-                        .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                        .strokeBorder(block.color, style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
                         .frame(width: activityWidth, height: max(2, CGFloat(block.duration / 3600) * hourHeight))
                         .offset(y: minutesFromMidnight(block.start) / 60 * hourHeight)
                         .help(block.tooltip)

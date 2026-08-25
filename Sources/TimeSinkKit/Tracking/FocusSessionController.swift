@@ -78,8 +78,10 @@ public final class FocusSessionController {
     public var notifier: (any Notifying)?
     /// Package resolver: domain (+ optional url) -> category id.
     public var categoryForDomain: ((_ domain: String, _ url: String?) -> String)?
-    /// Production = NSRunningApplication lookup + hide() (polls isHidden,
-    /// doesn't trust the return value).
+    /// Production = NSRunningApplication lookup + hide() -- doesn't poll or
+    /// retry (`FocusBlockPolicy`'s cooldown already rate-limits repeat
+    /// attempts) and doesn't trust `hide()`'s return value (it lies in
+    /// practice).
     public var hideApp: ((String) -> Void)?
     /// Production = ChromeBlocker.setActiveTabURL.
     public var redirectChrome: ((String) -> Bool)?
@@ -109,7 +111,12 @@ public final class FocusSessionController {
 
     /// Reads the current app/category block-list snapshot from `settings`
     /// into `Running`, inserts the session row, and starts the 1s UI timer.
+    /// No-op (not throwing) if a session is already running -- a second
+    /// `start` call would otherwise orphan the first row (never `finish`ed,
+    /// its `end` frozen at its last heartbeat) while overwriting `running`
+    /// with a brand-new session.
     public func start(minutes: Int) throws {
+        guard running == nil else { return }
         let now = Date()
         let plannedSeconds = minutes * 60
         let session = try store.start(at: now, plannedSeconds: plannedSeconds)
@@ -145,13 +152,32 @@ public final class FocusSessionController {
     /// no-op past the guard. Writes the final row, invokes `onFinish` (while
     /// `running` is still readable -- the notification body needs
     /// `running.plannedSeconds`, and `onFinish`'s own signature carries no
-    /// duration), then clears all running state.
+    /// duration), then clears all running state. Public entry point for
+    /// every caller OTHER than `tick`'s own auto-completion (HUD/popover
+    /// "结束会话", `applicationShouldTerminate`) -- uses the real wall clock
+    /// since none of those callers have a `now` to hand in.
     public func finish(completed: Bool) {
+        finish(completed: completed, now: Date())
+    }
+
+    /// R-T12d: when `completed` is true, `end` is clamped to no later than
+    /// `start + plannedSeconds` -- `tick(now:)` calls this with its own
+    /// `now`, which on a real `Timer` reflects the wall clock at the moment
+    /// the tick actually fires. Without the clamp, a missed-tick gap (e.g.
+    /// the lid closes mid-session and the `Timer` doesn't fire again until
+    /// wake) persists the row with `end` stamped at the FAR-future `now` the
+    /// first post-wake tick observes -- a 25-minute session waking 4 hours
+    /// later would otherwise persist as a 4-hour "completed" row. A manual
+    /// end (`completed == false`) is never clamped -- `now` there.
+    private func finish(completed: Bool, now: Date) {
         guard let running else { return }
         timer?.invalidate()
         timer = nil
+        let end = completed
+            ? min(now, running.start.addingTimeInterval(TimeInterval(running.plannedSeconds)))
+            : now
         do {
-            try store.finish(id: running.id, end: Date(), appBlocks: appBlocks, siteBlocks: siteBlocks, completed: completed)
+            try store.finish(id: running.id, end: end, appBlocks: appBlocks, siteBlocks: siteBlocks, completed: completed)
         } catch {
             logger.error("finish failed: \(String(describing: error))")
         }
@@ -167,11 +193,18 @@ public final class FocusSessionController {
     /// every other branch (app hide, site redirect, degraded notice) records
     /// the tick's sample normally (`false`), since the side effect (hiding,
     /// redirecting) takes effect from the NEXT sample on, not retroactively.
+    ///
+    /// R-T12c: the block-page check runs BEFORE the `running` guard --
+    /// stateless and pure, and TimeSink's own block page is never
+    /// meaningful data whether or not a session happens to be running (a
+    /// session can end while the block page is still the frontmost tab; the
+    /// original `guard let running` placement let that post-session dwell
+    /// accrue real "TimeSink 拦截页" spans).
     @discardableResult
     public func intercept(sample: Sample, at now: Date) -> Bool {
-        guard let running else { return false }
-
         if isBlockPageSample(sample) { return true }
+
+        guard let running else { return false }
 
         if settings.focusAppBlockEnabled,
            running.blockedApps.contains(sample.appBundleID),
@@ -183,11 +216,24 @@ public final class FocusSessionController {
             return false
         }
 
+        // R-T12b: `policy.shouldHide` (the same cooldown decision 3 uses)
+        // gates the redirect in addition to `!isAllowed` -- without it, a
+        // stale `chromeTabState` replay (the engine's Chrome throttle only
+        // re-fetches every 5s, and its backoff can skip fetches for up to
+        // 60s without resetting `chromeTabState`) re-fires the redirect on
+        // every tick the stale URL is still attached to the sample: a
+        // single blocked-domain visit was observed producing 3 redirects
+        // off 1 real fetch, and a persistently FAILING redirect would retry
+        // unboundedly at 1 synchronous AppleEvent/second from the main
+        // actor. `shouldHide` records its own `lastHidden` timestamp on a
+        // `true` result, so this reuses `FocusBlockPolicy`'s existing
+        // per-key cooldown rather than adding a second one.
         if settings.focusSiteBlockEnabled, sample.appBundleID == Self.chromeBundleID,
            let url = sample.url, let domain = DomainParser.domain(from: url),
            let category = categoryForDomain?(domain, url),
            running.blockedCategories.contains(category),
-           !policy.isAllowed(domain, at: now) {
+           !policy.isAllowed(domain, at: now),
+           policy.shouldHide(domain, at: now) {
             let target = Self.blockPageURL(domain: domain, remaining: remaining)
             if redirectChrome?(target) == true {
                 siteBlocks += 1
@@ -195,11 +241,18 @@ public final class FocusSessionController {
             return false
         }
 
-        if settings.focusSiteBlockEnabled, Self.otherBrowserBundleIDs.contains(sample.appBundleID) {
+        // R-T12e: gated on a non-empty `blockedCategories` -- otherwise this
+        // fires on the default config (site-block enabled, nothing actually
+        // chosen to block yet) and announces "already hidden" for a hide
+        // that never happened. `hideCount: 0` (not `appBlocks`) signals to
+        // the HUD that this is the degraded notice, not an actual hide --
+        // see `FocusHUDController.show`.
+        if settings.focusSiteBlockEnabled, !running.blockedCategories.isEmpty,
+           Self.otherBrowserBundleIDs.contains(sample.appBundleID) {
             if !shownDegradedFor.contains(sample.appBundleID) {
                 shownDegradedFor.insert(sample.appBundleID)
                 lastHiddenAppKey = sample.appBundleID
-                showHUD?(sample.appName + "（无法拦截该浏览器的网站）", appBlocks)
+                showHUD?(sample.appName + "（无法拦截该浏览器的网站）", 0)
             }
             return false
         }
@@ -252,7 +305,7 @@ public final class FocusSessionController {
             }
         }
         if remaining <= 0 {
-            finish(completed: true)
+            finish(completed: true, now: now)
         }
     }
 
@@ -262,8 +315,13 @@ public final class FocusSessionController {
         TimeInterval(planned) - now.timeIntervalSince(start)
     }
 
+    /// R-T12g: uses the pure `FocusBlockPage.location` -- never
+    /// `ensureWritten()` -- so the controller (and every test that exercises
+    /// this path) never performs the actual file write. `ensureWritten()`
+    /// is called exactly once, in the PRODUCTION `redirectChrome` closure
+    /// (`TimeSinkApp` assembly), immediately before the real redirect.
     private static func blockPageURL(domain: String, remaining: TimeInterval) -> String {
-        let pageURL = FocusBlockPage.ensureWritten()
+        let pageURL = FocusBlockPage.location
         var components = URLComponents(url: pageURL, resolvingAgainstBaseURL: false)
         components?.queryItems = [
             URLQueryItem(name: "domain", value: domain),
@@ -285,6 +343,6 @@ public final class FocusSessionController {
     }
 }
 
-enum FocusSessionError: Error {
+public enum FocusSessionError: Error {
     case missingRowID
 }
