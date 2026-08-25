@@ -42,6 +42,14 @@ public final class AppModel {
     /// instead; the General settings pane's toggle writes both in lockstep.
     public var menuTextEnabled: Bool
 
+    /// @Observable mirror of `engine.chromeCaptureDegraded` -- `TrackerEngine`
+    /// is a plain `@MainActor` class, not `@Observable`, so a SwiftUI body
+    /// reading `engine.chromeCaptureDegraded` directly registers no
+    /// dependency and never re-renders on its own. Refreshed at the end of
+    /// `refreshMenu()`, which already runs on every relevant update path
+    /// (engine writes via `dataChanged()`, and construction).
+    public private(set) var chromeDegraded: Bool = false
+
     private let logger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "appModel")
 
     /// Memoizes categorized fetches between `dataChanged()` bumps. Three
@@ -105,6 +113,7 @@ public final class AppModel {
         } else {
             todayPulseTitle = "--"
         }
+        chromeDegraded = engine.chromeCaptureDegraded
     }
 
     public func dataChanged() {

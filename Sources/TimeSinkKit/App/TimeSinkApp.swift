@@ -108,15 +108,19 @@ public struct TimeSinkApp: App {
 /// The menu bar's icon + optional text label. Text is today's focus time
 /// (`model.menuTitle` -- not `todayTotalTitle`), hidden entirely when
 /// `menuTextEnabled` is off so only the icon remains. The icon itself swaps
-/// to a badged variant while `chromeCaptureDegraded` is true, signaling that
-/// Chrome tab titles/URLs aren't being captured.
+/// to a badged variant while `model.chromeDegraded` is true, signaling that
+/// Chrome tab titles/URLs aren't being captured. Reads the `AppModel` mirror
+/// rather than `model.engine.chromeCaptureDegraded` directly -- `TrackerEngine`
+/// isn't `@Observable`, so a direct read would register no dependency and the
+/// icon would never update on its own (see `AppModel.chromeDegraded`).
 struct MenuBarLabel: View {
     let model: AppModel
 
     var body: some View {
         HStack(spacing: 3) {
-            Image(systemName: model.engine.chromeCaptureDegraded
+            Image(systemName: model.chromeDegraded
                   ? "hourglass.badge.exclamationmark" : "hourglass")
+                .accessibilityLabel(model.chromeDegraded ? "Chrome 采集降级" : "TimeSink")
             if model.menuTextEnabled {
                 Text(model.menuTitle).monospacedDigit()
             }
