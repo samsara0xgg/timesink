@@ -34,7 +34,7 @@ final class TitleRuleTests: XCTestCase {
     func testUpsertUserTitleRuleDoesNotStealBuiltinRow() throws {
         let db = try makeDB()
         let store = CategoryStore(db)
-        let builtinPattern = "lecture|course|教程|课程|讲座"
+        let builtinPattern = "教程|课程|讲座"
         try store.upsertUserTitleRule(pattern: builtinPattern, scopeKey: "", categoryID: "writing")
         let rules = try store.titleRules().filter { $0.pattern == builtinPattern }
         XCTAssertEqual(rules.count, 1)                    // no new row was added
@@ -129,5 +129,70 @@ extension TitleRuleTests {
         XCTAssertEqual(Classifier.categoryID(appBundleID: "b",
             url: "https://ycombinator.com/news", domain: "ycombinator.com",
             title: "Hacker news daily", context: c), "learning")
+    }
+
+    // Fix report F1: the builtin "course" seed was a bare substring match,
+    // so it retroactively miscategorized any title merely containing the
+    // letters "course" -- including plain English sentences and unrelated
+    // compound words. The replacement `re:` pattern must still catch real
+    // course/lecture titles while rejecting all of these.
+    func testBuiltinLectureCourseSeedAvoidsNaturalLanguageFalsePositives() {
+        let seeds = Taxonomy.builtinTitleRules.map { tr($0.pattern, $0.categoryID, source: "builtin") }
+        let c = trCtx(titleRules: seeds)
+        for title in [
+            "Of course I still love you — SpaceX booster landing",
+            "Best golf course near Toronto?",
+            "Concourse (2019) - Netflix",
+            "CourseView.swift — MyApp",
+            "discourse forum thread",
+            "racecourse betting tips",
+        ] {
+            XCTAssertEqual(Classifier.categoryID(appBundleID: "b", url: nil, domain: nil,
+                title: title, context: c), "uncategorized", "false positive on: \(title)")
+        }
+        for title in ["MIT Lecture 3", "CS540 Course Home"] {
+            XCTAssertEqual(Classifier.categoryID(appBundleID: "b", url: nil, domain: nil,
+                title: title, context: c), "learning", "missed true positive: \(title)")
+        }
+    }
+
+    // Fix report F3: split keywords must be trimmed, and a keyword that's
+    // empty after trimming must never survive to match everything.
+    func testKeywordsAreTrimmedBeforeMatching() {
+        XCTAssertTrue(Classifier.titleMatches(pattern: "swift | rust", title: "Learn Swift"))
+        XCTAssertFalse(Classifier.titleMatches(pattern: "lecture| ", title: "Weekend vlog"))
+    }
+
+    // Fix report F4: `re:` with an empty body must never compile to the
+    // empty regex (which `range(of:options:.regularExpression)` treats as
+    // matching every string).
+    func testEmptyRegexBodyNeverMatches() {
+        XCTAssertFalse(Classifier.titleMatches(pattern: "re:", title: "anything"))
+    }
+
+    // Fix report F2: the precompiled hot path (CompiledTitleRule) and the
+    // pure titleMatches(pattern:title:) function must agree on every
+    // pattern/title pair -- they share titleKeywords(from:) for exactly
+    // this reason.
+    func testCompiledTitleRuleAgreesWithTitleMatches() {
+        let cases: [(pattern: String, title: String)] = [
+            ("lecture|course|教程", "CS540 Course Home"),
+            ("lecture|course|教程", "Weekend Vlog"),
+            ("swift | rust", "Learn Swift"),
+            ("lecture| ", "Weekend vlog"),
+            (#"re:PR #\d+"#, "Fix bug PR #42"),
+            (#"re:PR #\d+"#, "PR # pending"),
+            ("re:", "anything"),
+            (Taxonomy.builtinTitleRules[0].pattern, "Of course I still love you"),
+            (Taxonomy.builtinTitleRules[0].pattern, "MIT Lecture 3"),
+        ]
+        for c in cases {
+            let compiled = CompiledTitleRule(tr(c.pattern, "x", source: "builtin"))
+            let loweredTitle = c.title.lowercased()
+            XCTAssertEqual(
+                Classifier.titleMatches(pattern: c.pattern, title: c.title),
+                compiled.matches(title: c.title, loweredTitle: loweredTitle),
+                "compiled/pure disagreement for pattern \(c.pattern) title \(c.title)")
+        }
     }
 }

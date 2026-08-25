@@ -113,8 +113,20 @@ public enum Taxonomy {
     /// Deliberately tiny: a global title substring reclassifies every matching
     /// activity across all apps and sites -- only ship phrases that are
     /// near-unambiguous.
+    ///
+    /// The first row is `re:`-prefixed rather than a plain `lecture|course`
+    /// substring list: bare "course" as a substring false-positives on
+    /// natural-language and compound-word titles that have nothing to do
+    /// with learning ("Of course I still love you", "Best golf course near
+    /// Toronto?", "Concourse (2019)", "CourseView.swift", "discourse",
+    /// "racecourse" -- all verified, Task 4 fix report F1). `\bcourse\b`
+    /// alone still isn't enough: "course" is a genuine standalone word in
+    /// "of course" and "golf course" too, so those two collocations are
+    /// excluded with negative lookbehind while "CS540 Course Home" /
+    /// "Online Course: Intro to ML" still match.
     public static let builtinTitleRules: [(pattern: String, categoryID: String)] = [
-        ("lecture|course|教程|课程|讲座", "learning"),
+        (#"re:\blecture\b|\b(?<!of )(?<!golf )course\b"#, "learning"),
+        ("教程|课程|讲座", "learning"),
         ("pull request|merge request|PR #", "softwareDev"),
     ]
 }
