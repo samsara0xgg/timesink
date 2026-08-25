@@ -57,3 +57,77 @@ final class TitleRuleTests: XCTestCase {
         XCTAssertEqual(after.categoryID, "learning")
     }
 }
+
+extension TitleRuleTests {
+    private func trCtx(titleRules: [TitleRule] = [], domains: [String: DomainEntry] = [:],
+                       rules: [URLRule] = []) -> ClassificationContext {
+        ClassificationContext(domainMap: domains, appMap: [:], urlRules: rules, titleRules: titleRules)
+    }
+    private func tr(_ pattern: String, _ cat: String, scope: String = "",
+                    source: String = "user", id: Int64? = nil) -> TitleRule {
+        TitleRule(id: id, pattern: pattern, scopeKey: scope, categoryID: cat, source: source)
+    }
+
+    func testUserTitleRuleBeatsUserDomainAndBuiltinURLRule() {
+        // 经典场景：youtube.com 整体娱乐（user domain + builtin urlRule 双重压制下），讲座标题仍归学习
+        let c = trCtx(
+            titleRules: [tr("lecture", "learning", scope: "youtube.com")],
+            domains: ["youtube.com": .init(categoryID: "entertainment", source: "user")],
+            rules: [URLRule(id: nil, pattern: "youtube.com/watch", categoryID: "entertainment", priority: 200, source: "builtin")])
+        XCTAssertEqual(Classifier.categoryID(appBundleID: "com.google.Chrome",
+            url: "https://youtube.com/watch?v=1", domain: "youtube.com",
+            title: "MIT Lecture 3 - YouTube", context: c), "learning")
+    }
+    func testScopedRuleDoesNotFireElsewhere() {
+        let c = trCtx(titleRules: [tr("lecture", "learning", scope: "youtube.com")])
+        XCTAssertEqual(Classifier.categoryID(appBundleID: "b",
+            url: "https://bilibili.com/v", domain: "bilibili.com",
+            title: "lecture 42", context: c), "uncategorized")
+    }
+    func testGlobalRuleFiresOnNativeApp() {
+        // 无 url/domain 的原生应用 span：scopeKey 落到 bundleID，全局规则也要命中
+        let c = trCtx(titleRules: [tr("教程", "learning")])
+        XCTAssertEqual(Classifier.categoryID(appBundleID: "com.apple.Preview",
+            url: nil, domain: nil, title: "SwiftUI 教程.pdf", context: c), "learning")
+    }
+    func testNilTitleFallsThroughFree() {
+        let c = trCtx(titleRules: [tr("lecture", "learning")],
+                      domains: ["x.com": .init(categoryID: "socialMedia", source: "seed")])
+        XCTAssertEqual(Classifier.categoryID(appBundleID: "b",
+            url: "https://x.com/", domain: "x.com", title: nil, context: c), "socialMedia")
+    }
+    func testUserURLRuleBeatsBuiltinTitleSeed() {
+        let c = trCtx(
+            titleRules: [tr("course", "learning", source: "builtin")],
+            rules: [URLRule(id: nil, pattern: "udemy.com", categoryID: "entertainment", priority: 1000, source: "user")])
+        XCTAssertEqual(Classifier.categoryID(appBundleID: "b",
+            url: "https://udemy.com/course/x", domain: "udemy.com",
+            title: "My course", context: c), "entertainment")
+    }
+    func testBuiltinTitleSeedBeatsBuiltinURLRule() {
+        let c = trCtx(
+            titleRules: [tr("pull request", "softwareDev", source: "builtin")],
+            rules: [URLRule(id: nil, pattern: "example.com", categoryID: "news", priority: 100, source: "builtin")])
+        XCTAssertEqual(Classifier.categoryID(appBundleID: "b",
+            url: "https://example.com/pr/1", domain: "example.com",
+            title: "Fix span clipping — Pull Request #42", context: c), "softwareDev")
+    }
+    func testPipeKeywordGroupAnyHit() {
+        XCTAssertTrue(Classifier.titleMatches(pattern: "lecture|course|教程", title: "线性代数教程 第3讲"))
+        XCTAssertTrue(Classifier.titleMatches(pattern: "lecture|course|教程", title: "CS540 Course Home"))
+        XCTAssertFalse(Classifier.titleMatches(pattern: "lecture|course|教程", title: "Weekend Vlog"))
+    }
+    func testRegexTitlePattern() {
+        XCTAssertTrue(Classifier.titleMatches(pattern: #"re:PR #\d+"#, title: "Fix bug PR #42"))
+        XCTAssertFalse(Classifier.titleMatches(pattern: #"re:PR #\d+"#, title: "PR # pending"))
+    }
+    func testScopedRuleSortsBeforeUnscoped() {
+        // 同为 user 层：scoped 的更具体，先命中
+        let scoped = tr("news", "learning", scope: "ycombinator.com", id: 1)
+        let global = tr("news", "news", id: 2)
+        let c = trCtx(titleRules: [scoped, global])   // resolver 排序后的顺序
+        XCTAssertEqual(Classifier.categoryID(appBundleID: "b",
+            url: "https://ycombinator.com/news", domain: "ycombinator.com",
+            title: "Hacker news daily", context: c), "learning")
+    }
+}
