@@ -65,11 +65,21 @@ struct ActivityListView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    /// Composes search-active and category-filter-active independently
+    /// (R-T9a) rather than short-circuiting on search alone: with a category
+    /// chip active, `matchCount` (now scoped to that category — see
+    /// `ActivitiesModel.recompute`) can be zero while the search still has
+    /// hits in *other* categories (`groups`, unlike `displayedGroups`, is
+    /// never narrowed by `activityFilter`) — that's a distinct state from
+    /// "the search matched nothing at all" and must not claim the latter.
     private var emptyStateText: String {
-        guard matchCount == nil else {
-            return "没有命中的活动（隐身窗口与未授权时段无记录）"
+        guard matchCount != nil else {
+            return model.activityFilter == nil ? "当前范围内没有活动记录" : "该分类在当前范围内没有活动记录"
         }
-        return model.activityFilter == nil ? "当前范围内没有活动记录" : "该分类在当前范围内没有活动记录"
+        if model.activityFilter != nil && !groups.isEmpty {
+            return "该分类下没有命中的活动（其他分类还有命中，可清除分类筛选查看）"
+        }
+        return "没有命中的活动（隐身窗口与未授权时段无记录）"
     }
 }
 
@@ -201,10 +211,21 @@ private struct TitleRowView: View {
         .foregroundStyle(.secondary)
         .contextMenu {
             Button("始终把此标题归为…") {
+                // `scopeKey` must be `parent.reassignKey` (domain/bundleID),
+                // never `parent.id` -- `TitleRuleInput.affected` and
+                // `Classifier.scopeMatches` both compare a rule's scopeKey
+                // against `span.domain ?? span.appBundleID`, which an
+                // entity row's finer-grained `id` (e.g. a specific repo)
+                // never equals. A rule scoped to `id` would show a live "影响
+                // 0 项" preview and never fire once saved. `scopeLabel`
+                // mirrors that: an entity row shows `reassignKey`, not its
+                // repo-level `label`, so the picker never promises a
+                // repo-level scope it can't honor -- same honesty as the
+                // 「（整站）」 reassignment-menu suffix.
                 pendingTitleRule = PendingTitleRule(
                     prefill: title.title == "(无标题)" ? "" : title.title,
-                    scopeKey: parent.id,
-                    scopeLabel: parent.label,
+                    scopeKey: parent.reassignKey,
+                    scopeLabel: parent.isEntity ? parent.reassignKey : parent.label,
                     categoryID: sortedCategories.first?.id ?? ""
                 )
             }

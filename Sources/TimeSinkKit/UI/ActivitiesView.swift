@@ -36,6 +36,7 @@ struct ActivitiesView: View {
         .onChange(of: model.range) { _, _ in activities.recompute(model: model) }
         .onChange(of: model.activityFilter) { _, _ in activities.recompute(model: model) }
         .onChange(of: model.activitySearch) { _, _ in scheduleSearchRecompute() }
+        .onDisappear { pendingSearch?.cancel() }
     }
 
     /// Search is a read-path filter over already-cached spans — it must
@@ -113,8 +114,24 @@ final class ActivitiesModel {
 
         let query = Self.normalizedQuery(model.activitySearch)
         let items = Self.filter(all, query: query)
-        matchCount = query == nil ? nil : items.count
-        matchSeconds = query == nil ? nil : Aggregator.totalDuration(items.map(\.span))
+
+        // R-T9a: the match-count row must agree with what `ActivityListView`
+        // actually displays. `ActivityListView` narrows `groups` to one
+        // category when `model.activityFilter` is set, so the count/seconds
+        // above the list have to be scoped the same way — otherwise the
+        // header can show hits from every category while the (single-category)
+        // list below it is empty. `groups` itself stays built from the
+        // category-unfiltered `items` below, so `ActivityListView` can still
+        // tell "no matches anywhere" apart from "matches exist, just not in
+        // this category" for its empty-state text.
+        let matchedItems: [CategorizedSpan]
+        if let filterCategoryID = model.activityFilter {
+            matchedItems = items.filter { $0.categoryID == filterCategoryID }
+        } else {
+            matchedItems = items
+        }
+        matchCount = query == nil ? nil : matchedItems.count
+        matchSeconds = query == nil ? nil : Aggregator.totalDuration(matchedItems.map(\.span))
 
         var byCategory: [String: [CategorizedSpan]] = [:]
         for item in items {
