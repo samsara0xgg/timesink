@@ -171,6 +171,26 @@ public final class AppModel {
         rangedSpans(for: range)
     }
 
+    // MARK: - C1+ navigation intents
+
+    /// Points the main window at Stats for `range` -- shared by the
+    /// popover's drill-down click routes (C1+) and notification routing.
+    /// Sets state only; the caller does `openWindow(id: "main")` (a SwiftUI
+    /// environment action `AppModel` itself never touches).
+    public func openStats(range: DateRangeSelection) {
+        self.range = range
+        sidebarSelection = .stats
+    }
+
+    /// Points the main window at Activities for `range`, filtered to
+    /// `category` (`nil` clears any existing filter). Same navigation-intent
+    /// convention as `openStats(range:)`.
+    public func openActivities(category: String?, range: DateRangeSelection) {
+        self.range = range
+        sidebarSelection = .activities
+        activityFilter = category
+    }
+
     public func todayFocusText() -> String {
         let items = rangedSpans(for: .today())
         let byCategory = Aggregator.durationByCategory(items)

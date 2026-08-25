@@ -56,4 +56,17 @@ final class TodayDashboardModelTests: XCTestCase {
         XCTAssertEqual(result[0].span.start, ts(3000))
         XCTAssertEqual(result[0].span.end, ts(3600)) // clipped at windowStart + elapsed
     }
+
+    /// C1+ 分数环 hover 下钻子窗的数据源：每分类的贡献 (seconds * points)
+    /// 降序，points 复用 pulse 公式的每分类换算（+2 → 100，-2 → 0），share 为
+    /// 该分类占当日总时长的比例。
+    func testScoreContributions() {
+        let cats = Dictionary(uniqueKeysWithValues: Taxonomy.categories.map { ($0.id, $0) })
+        let rows = TodayDashboardModel.scoreContributions(
+            byCategory: ["softwareDev": 3600, "entertainment": 1800], categories: cats)
+        XCTAssertEqual(rows[0].id, "softwareDev")                 // 贡献降序
+        XCTAssertEqual(rows[0].points, 100)                       // +2 → 100
+        XCTAssertEqual(rows[0].share, 3600.0/5400.0, accuracy: 0.001)
+        XCTAssertEqual(rows[1].points, 0)                         // -2 → 0
+    }
 }

@@ -49,6 +49,29 @@ final class TodayDashboardModel {
     /// SwiftUI body.
     var budgetWarnPercent = 20
 
+    /// C1+ drill-down: every enabled budget (not just the tightest 2 --
+    /// `budgetRows` above), same sort as `budgetRows`. Computed from the
+    /// SAME `budgetStore.budgets()` read as `budgetRows` (see `recompute`)
+    /// -- keeping the full list alongside the top-2 prefix costs no extra
+    /// DB read, only the drill-down pane consuming it instead of throwing
+    /// the rest away.
+    var allBudgetRows: [(id: String, name: String, colorHex: String, spent: TimeInterval, limit: TimeInterval)] = []
+
+    /// C1+ drill-down: today's raw categorized spans, kept around after
+    /// `recompute` derives `byCategory`/`hourProfile`/`topCategories` from
+    /// them, so a category-row hover (`CategoryDetailView`) can filter to
+    /// just that category and re-run `Aggregator.profileByHourOfDay`/
+    /// `durationByDomainOrApp` on demand -- no new `rangedSpans` query, just
+    /// re-aggregating an array already in memory.
+    var todayItems: [CategorizedSpan] = []
+
+    /// C1+ drill-down: the 30-day per-day pulse array `streakDays` above was
+    /// computed from (`StreakDotsView`'s dot pattern) -- see
+    /// `refreshStreakIfDayChanged`, which keeps this alongside `streakDays`
+    /// rather than discarding it, so no second `.last30` lookback runs just
+    /// to render the dots.
+    var streakLookbackPulses: [Int?] = []
+
     /// Calendar day (startOfDay) the 30-day streak lookback last ran for.
     /// That lookback is a full-month fetch+classify+day-split -- expensive
     /// enough that re-running it on every `recompute` (every dataVersion
@@ -76,6 +99,7 @@ final class TodayDashboardModel {
         let categories = model.resolver.categoriesByID
 
         let today = model.rangedSpans(for: .today())
+        todayItems = today
         let byCategory = Aggregator.durationByCategory(today)
         pulse = Aggregator.pulse(durationByCategory: byCategory, categories: categories)
         focus = Aggregator.focusTime(durationByCategory: byCategory, categories: categories)
@@ -120,7 +144,7 @@ final class TodayDashboardModel {
         // C4: reuses `byCategory` (already computed above) -- no new span
         // query, but `budgets()` itself still runs a DB read each recompute.
         budgetWarnPercent = model.settings.budgetWarnPercent
-        budgetRows = ((try? model.budgetStore?.budgets()) ?? [])
+        let sortedBudgetRows = ((try? model.budgetStore?.budgets()) ?? [])
             .filter(\.enabled)
             .compactMap { budget -> (id: String, name: String, colorHex: String, spent: TimeInterval, limit: TimeInterval)? in
                 guard let category = categories[budget.categoryID] else { return nil }
@@ -137,8 +161,11 @@ final class TodayDashboardModel {
                 if lhs.limit != rhs.limit { return lhs.limit < rhs.limit }
                 return lhs.id < rhs.id
             }
-            .prefix(2)
-            .map { $0 }
+        // C1+: the drill-down (`BudgetProgressView`) wants every enabled
+        // budget; the popover row itself only ever shows the tightest 2 --
+        // both are sliced from this one sorted list, no second DB read.
+        allBudgetRows = sortedBudgetRows
+        budgetRows = Array(sortedBudgetRows.prefix(2))
 
         refreshStreakIfDayChanged(model: model, calendar: calendar, categories: categories, force: forceStreak)
     }
@@ -157,11 +184,14 @@ final class TodayDashboardModel {
         lastStreakDay = todayStart
 
         let lookback = model.rangedSpans(for: DateRangeSelection(kind: .last30, anchor: Date()))
-        streakDays = Self.streak(
-            dailyPulses: Self.dailyPulses(items: lookback, categories: categories,
-                                          days: Self.streakLookbackDays,
-                                          endingAt: Date(), calendar: calendar),
-            threshold: Self.streakThreshold)
+        let pulses = Self.dailyPulses(items: lookback, categories: categories,
+                                       days: Self.streakLookbackDays,
+                                       endingAt: Date(), calendar: calendar)
+        // C1+: `StreakDotsView`'s dot pattern reuses this same 30-day
+        // lookback's per-day breakdown -- kept alongside the derived
+        // `streakDays` count instead of discarded, no second lookback.
+        streakLookbackPulses = pulses
+        streakDays = Self.streak(dailyPulses: pulses, threshold: Self.streakThreshold)
     }
 
     /// Lifted to `Aggregator.dailyPulses` (Task 7 C2) so `StatsModel` can
@@ -187,11 +217,185 @@ final class TodayDashboardModel {
     nonisolated static func streak(dailyPulses: [Int?], threshold: Int) -> Int {
         Aggregator.streak(dailyPulses: dailyPulses, threshold: threshold)
     }
+
+    /// C1+ 分数环 hover 下钻数据源: for each tracked category, its
+    /// color/name/duration, per-category pulse points (same 0-100 scale as
+    /// `Aggregator.pulse`'s per-category weighting -- productivity +2 → 100,
+    /// -2 → 0, linear between, clamped -- see `pulsePoints` below), and its
+    /// share of today's TOTAL tracked time (plain `seconds / totalSeconds`,
+    /// NOT weighted by points -- so the drill-down's bar width and this
+    /// number agree, matching `categoryRow`'s existing bar convention).
+    /// Sorted by weighted contribution (`seconds * points`) descending --
+    /// what actually drove the pulse ring, unlike a plain-duration sort
+    /// (that's `topCategories`); ties broken by `id` ascending for
+    /// determinism, same tiebreak convention as `budgetRows`' sort.
+    nonisolated static func scoreContributions(
+        byCategory: [String: TimeInterval], categories: [String: Category]
+    ) -> [(id: String, name: String, colorHex: String, seconds: TimeInterval, points: Double, share: Double)] {
+        let totalSeconds = byCategory.values.reduce(0, +)
+        guard totalSeconds > 0 else { return [] }
+        return byCategory
+            .compactMap { id, seconds -> (id: String, name: String, colorHex: String, seconds: TimeInterval, points: Double, share: Double)? in
+                guard let category = categories[id] else { return nil }
+                let points = pulsePoints(forProductivity: category.productivity)
+                return (id, category.name, category.colorHex, seconds, points, seconds / totalSeconds)
+            }
+            .sorted { lhs, rhs in
+                let lhsContribution = lhs.seconds * lhs.points
+                let rhsContribution = rhs.seconds * rhs.points
+                if lhsContribution != rhsContribution { return lhsContribution > rhsContribution }
+                return lhs.id < rhs.id
+            }
+    }
+
+    /// Same formula as `Aggregator.pulse`'s private per-category weighting
+    /// (productivity +2 → 100, -2 → 0, linear between, clamped to 0...100)
+    /// -- duplicated here rather than exposed from `Aggregator` since it's a
+    /// one-line pure expression and that formula is intentionally private
+    /// there (an implementation detail of the pulse average, not public
+    /// API).
+    nonisolated private static func pulsePoints(forProductivity productivity: Int) -> Double {
+        let raw = 50.0 + Double(productivity) * 25.0
+        return min(100, max(0, raw))
+    }
 }
 
 private func zip2<A, B>(_ a: A?, _ b: B?) -> (A, B)? {
     guard let a, let b else { return nil }
     return (a, b)
+}
+
+// MARK: - C1+ hover drill-down wiring
+
+/// Identifies one of the popover's seven hover-drillable rows -- both the
+/// key for `expandedDrill` (the in-popover degraded-path state) and the
+/// discriminator `MenuBarDashboardView` uses to pick which content-builder
+/// method to call. `category(id)` carries the row's category id so every
+/// category row shares one case.
+private enum DrillKind: Equatable {
+    case score, compareFocus, compareTotal, streak, category(String), spark, budget
+}
+
+/// Captures the `NSWindow` hosting this SwiftUI subtree (the `MenuBarExtra`
+/// popover's window under `.menuBarExtraStyle(.window)`) -- zero-size,
+/// attached once at `MenuBarDashboardView`'s root. `view.window` is nil at
+/// `makeNSView` time (the view isn't attached to the window hierarchy yet),
+/// so both callbacks defer to the next run-loop turn.
+private struct WindowAccessor: NSViewRepresentable {
+    @Binding var window: NSWindow?
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        DispatchQueue.main.async { self.window = view.window }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async { self.window = nsView.window }
+    }
+}
+
+/// Converts a SwiftUI `.global`-space rect (top-left origin, Y down -- the
+/// hosting hierarchy's own coordinate space) to AppKit screen coordinates
+/// (bottom-left origin) via `window`. `NSHostingView` runs SwiftUI's
+/// coordinate space flipped to match AppKit's content view, so a single
+/// Y-flip against the window's content height is the whole conversion.
+@MainActor
+private func screenRect(fromGlobal rect: CGRect, window: NSWindow) -> CGRect {
+    let contentHeight = window.contentView?.frame.height ?? window.frame.height
+    let flippedLocal = CGRect(x: rect.minX, y: contentHeight - rect.maxY, width: rect.width, height: rect.height)
+    return window.convertToScreen(flippedLocal)
+}
+
+/// Hover wiring for one of the popover's seven drill-down panes: hovering
+/// this view for 0.15s shows `content()` in `host`'s `NSPanel`, positioned
+/// next to this view's on-screen frame (via `hostWindow` + `screenRect`);
+/// the mouse leaving schedules the panel's close (`PanelHost`'s own 0.25s
+/// default, canceled by hovering the panel itself -- see `PanelHost.show`).
+/// `host.show` returning `false` (no host window yet, or a degenerate/
+/// off-screen anchor frame -- NSPanel positioning against a `MenuBarExtra`'s
+/// private layout is a known-risk area, spec §10) falls back to
+/// `expandedDrill`: the same `content()` expanded in place, dismissed by an
+/// explicit「收起」rather than by hover-out (avoids flicker for an
+/// already-degraded, presumably less precise hover signal).
+private struct DrillDownModifier<DrillContent: View>: ViewModifier {
+    let host: PanelHost
+    let kind: DrillKind
+    let hostWindow: NSWindow?
+    @Binding var expandedDrill: DrillKind?
+    let content: () -> DrillContent
+
+    private static var hoverDelay: TimeInterval { 0.15 }
+
+    @State private var frame: CGRect = .zero
+    @State private var showTask: Task<Void, Never>?
+
+    func body(content base: Content) -> some View {
+        base
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .onChange(of: geo.frame(in: .global), initial: true) { _, newValue in
+                            frame = newValue
+                        }
+                }
+            )
+            .onHover { hovering in
+                if hovering {
+                    host.cancelScheduledClose()
+                    showTask?.cancel()
+                    showTask = Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(Self.hoverDelay))
+                        guard !Task.isCancelled else { return }
+                        attemptShow()
+                    }
+                } else {
+                    showTask?.cancel()
+                    showTask = nil
+                    host.scheduleClose()
+                }
+            }
+    }
+
+    private func attemptShow() {
+        let anchorFrame = hostWindow.map { screenRect(fromGlobal: frame, window: $0) } ?? .zero
+        if host.show(content(), near: anchorFrame) {
+            if expandedDrill == kind { expandedDrill = nil }
+        } else {
+            expandedDrill = kind
+        }
+    }
+}
+
+extension View {
+    fileprivate func drillDown<DrillContent: View>(
+        host: PanelHost, kind: DrillKind, hostWindow: NSWindow?,
+        expandedDrill: Binding<DrillKind?>,
+        @ViewBuilder content: @escaping () -> DrillContent
+    ) -> some View {
+        modifier(DrillDownModifier(host: host, kind: kind, hostWindow: hostWindow,
+                                    expandedDrill: expandedDrill, content: content))
+    }
+}
+
+/// Degraded-path inline expansion for one drill-down pane: the SAME
+/// `content` `PanelHost` would have shown, expanded in place with a
+/// trailing「收起」-- the sanctioned fallback (spec §10) for when
+/// `WindowAccessor`/`PanelHost` can't resolve a valid on-screen position.
+/// Not a stub: this renders the real drill-down view, not a placeholder.
+private struct ExpandedDrillView<Content: View>: View {
+    let content: Content
+    let onCollapse: () -> Void
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            content
+            Button("收起", action: onCollapse)
+                .buttonStyle(.plain)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
 }
 
 /// The menu-bar popover dashboard (preview C1). Replaces the old
@@ -206,7 +410,17 @@ struct MenuBarDashboardView: View {
     /// of this mode -- see `body`'s top-level `if`.
     @State private var popoverMode: PopoverMode = .dashboard
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// C1+ hover drill-down: one reused `PanelHost` (see its own doc
+    /// comment for why it isn't `FocusHUDController`), the popover's own
+    /// `NSWindow` (captured by `WindowAccessor`, used to convert a hovered
+    /// row's local frame to screen coordinates), and which pane -- if any --
+    /// is expanded in the degraded in-popover path.
+    @State private var panelHost = PanelHost()
+    @State private var hostWindow: NSWindow?
+    @State private var expandedDrill: DrillKind?
 
     private var focusRunning: Bool { model.focus?.running != nil }
 
@@ -218,18 +432,52 @@ struct MenuBarDashboardView: View {
                 FocusConfigView(model: model, onCancel: { popoverMode = .dashboard }, onStart: startFocus)
             } else {
                 HStack(spacing: 14) {
-                    scoreColumn
+                    Button(action: openStatsToday) { scoreColumn }
+                        .buttonStyle(.plain)
+                        .drillDown(host: panelHost, kind: .score, hostWindow: hostWindow, expandedDrill: $expandedDrill) {
+                            scoreBreakdownContent()
+                        }
                     VStack(alignment: .leading, spacing: 4) {
-                        kpiLine(value: Format.duration(dashboard.focus), label: "专注",
-                                delta: dashboard.focusDelta.map(Format.durationDelta))
-                        kpiLine(value: Format.duration(dashboard.total), label: "总计",
-                                delta: dashboard.totalDelta.map(Format.durationDelta))
+                        Button(action: openStatsToday) {
+                            kpiLine(value: Format.duration(dashboard.focus), label: "专注",
+                                    delta: dashboard.focusDelta.map(Format.durationDelta))
+                        }
+                        .buttonStyle(.plain)
+                        .drillDown(host: panelHost, kind: .compareFocus, hostWindow: hostWindow, expandedDrill: $expandedDrill) {
+                            compareBaseContent(focus: true)
+                        }
+                        Button(action: openStatsToday) {
+                            kpiLine(value: Format.duration(dashboard.total), label: "总计",
+                                    delta: dashboard.totalDelta.map(Format.durationDelta))
+                        }
+                        .buttonStyle(.plain)
+                        .drillDown(host: panelHost, kind: .compareTotal, hostWindow: hostWindow, expandedDrill: $expandedDrill) {
+                            compareBaseContent(focus: false)
+                        }
                         if dashboard.streakDays >= 2 {
-                            Text("连续 \(dashboard.streakDays) 天保持 \(TodayDashboardModel.streakThreshold) 分以上")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.tint)
+                            Button(action: openStatsTrend) {
+                                Text("连续 \(dashboard.streakDays) 天保持 \(TodayDashboardModel.streakThreshold) 分以上")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.tint)
+                            }
+                            .buttonStyle(.plain)
+                            .drillDown(host: panelHost, kind: .streak, hostWindow: hostWindow, expandedDrill: $expandedDrill) {
+                                streakDotsContent()
+                            }
                         }
                     }
+                }
+                if expandedDrill == .score {
+                    ExpandedDrillView(content: scoreBreakdownContent()) { expandedDrill = nil }
+                }
+                if expandedDrill == .compareFocus {
+                    ExpandedDrillView(content: compareBaseContent(focus: true)) { expandedDrill = nil }
+                }
+                if expandedDrill == .compareTotal {
+                    ExpandedDrillView(content: compareBaseContent(focus: false)) { expandedDrill = nil }
+                }
+                if expandedDrill == .streak {
+                    ExpandedDrillView(content: streakDotsContent()) { expandedDrill = nil }
                 }
             }
 
@@ -237,17 +485,39 @@ struct MenuBarDashboardView: View {
                 if !dashboard.topCategories.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         ForEach(dashboard.topCategories, id: \.id) { entry in
-                            categoryRow(entry)
+                            Button(action: { openActivities(category: entry.id) }) {
+                                categoryRow(entry)
+                            }
+                            .buttonStyle(.plain)
+                            .drillDown(host: panelHost, kind: .category(entry.id), hostWindow: hostWindow, expandedDrill: $expandedDrill) {
+                                categoryDetailContent(entry)
+                            }
+                            if expandedDrill == .category(entry.id) {
+                                ExpandedDrillView(content: categoryDetailContent(entry)) { expandedDrill = nil }
+                            }
                         }
                     }
                 }
 
                 if dashboard.total > 0 {
                     sparkline
+                        .drillDown(host: panelHost, kind: .spark, hostWindow: hostWindow, expandedDrill: $expandedDrill) {
+                            hourlyBigContent()
+                        }
+                    if expandedDrill == .spark {
+                        ExpandedDrillView(content: hourlyBigContent()) { expandedDrill = nil }
+                    }
                 }
 
                 if !dashboard.budgetRows.isEmpty {
-                    budgetSection
+                    Button(action: openBudgetSettings) { budgetSection }
+                        .buttonStyle(.plain)
+                        .drillDown(host: panelHost, kind: .budget, hostWindow: hostWindow, expandedDrill: $expandedDrill) {
+                            budgetProgressContent()
+                        }
+                    if expandedDrill == .budget {
+                        ExpandedDrillView(content: budgetProgressContent()) { expandedDrill = nil }
+                    }
                 }
 
                 Button("开始专注") { popoverMode = .focusConfig }
@@ -284,6 +554,7 @@ struct MenuBarDashboardView: View {
         }
         .padding(16)
         .frame(width: 300)
+        .background(WindowAccessor(window: $hostWindow))
         // `.menuBarExtraStyle(.window)` keeps this view (and its @State
         // dashboard) alive across popover dismissals, so `.onAppear` fires
         // on every open, not just app launch -- force the streak lookback
@@ -292,6 +563,12 @@ struct MenuBarDashboardView: View {
         // see `TodayDashboardModel.recompute`.
         .onAppear { refresh(forceStreak: true) }
         .onChange(of: model.dataVersion) { refresh(forceStreak: false) }
+        // C1+: the hover panel (and any degraded in-popover expansion) must
+        // not outlive the popover itself -- spec §10's "弹出层关闭随之消失".
+        .onDisappear {
+            panelHost.closeNow()
+            expandedDrill = nil
+        }
     }
 
     /// Starts the session and, on success, drops back to the normal
@@ -318,6 +595,104 @@ struct MenuBarDashboardView: View {
             gaugeProgress = 0
             withAnimation(.spring(duration: 0.6)) { gaugeProgress = target }
         }
+    }
+
+    // MARK: - C1+ click-through routes
+
+    /// 分数环 / 专注行 / 总计行 all deepen to the same destination: 统计·今天.
+    private func openStatsToday() {
+        model.openStats(range: .today())
+        openWindow(id: "main")
+    }
+
+    /// 连续达标行 deepens to 统计 anchored on the same 30-day window its
+    /// hover pane (`StreakDotsView`) shows.
+    private func openStatsTrend() {
+        model.openStats(range: DateRangeSelection(kind: .last30, anchor: Date()))
+        openWindow(id: "main")
+    }
+
+    private func openActivities(category: String) {
+        model.openActivities(category: category, range: .today())
+        openWindow(id: "main")
+    }
+
+    /// R-T11g: activate-only, no `.setActivationPolicy(.regular)` -- same
+    /// convention as `BudgetSettingsPane`'s click route and the
+    /// `.settingsBudget` notification route (`TimeSinkApp.swift`); there's
+    /// no matching restore-to-`.accessory` path for a policy flip here.
+    private func openBudgetSettings() {
+        model.settingsTab = .budget
+        NSApp.activate(ignoringOtherApps: true)
+        openSettings()
+    }
+
+    // MARK: - C1+ drill-down content builders
+    //
+    // Each builds one hover pane's content from data `dashboard` already
+    // loaded this recompute (plus, for `hourlyBigContent`'s 近 7 天 toggle,
+    // a lazily-fetched `.last7` range) -- no view here reads `AppModel`/
+    // `TrackerEngine` directly (see `DrillDownViews.swift`'s header
+    // comment), so these methods are the one place that bridges dashboard
+    // state into the pure drill-down view types.
+
+    private func scoreBreakdownContent() -> ScoreBreakdownView {
+        let byCategory = Aggregator.durationByCategory(dashboard.todayItems)
+        let rows = TodayDashboardModel.scoreContributions(byCategory: byCategory, categories: model.resolver.categoriesByID)
+            .map { ScoreBreakdownView.Row(id: $0.id, name: $0.name, colorHex: $0.colorHex,
+                                           seconds: $0.seconds, points: $0.points, share: $0.share) }
+        return ScoreBreakdownView(rows: rows, pulse: dashboard.pulse, pulseDelta: dashboard.pulseDelta)
+    }
+
+    private func compareBaseContent(focus: Bool) -> CompareBaseView {
+        focus
+            ? CompareBaseView(label: "专注时长比较", todayValue: dashboard.focus, delta: dashboard.focusDelta)
+            : CompareBaseView(label: "总计时长比较", todayValue: dashboard.total, delta: dashboard.totalDelta)
+    }
+
+    private func streakDotsContent() -> StreakDotsView {
+        StreakDotsView(dailyPulses: dashboard.streakLookbackPulses,
+                        threshold: TodayDashboardModel.streakThreshold, streakDays: dashboard.streakDays)
+    }
+
+    private func categoryDetailContent(
+        _ entry: (id: String, name: String, colorHex: String, seconds: TimeInterval)
+    ) -> CategoryDetailView {
+        let items = dashboard.todayItems.filter { $0.categoryID == entry.id }
+        var bars = Array(repeating: 0.0, count: 24)
+        for (hour, seconds) in Aggregator.profileByHourOfDay(items, calendar: Calendar.current) {
+            bars[hour] = seconds / 3600.0
+        }
+        let subs = Aggregator.durationByDomainOrApp(items).prefix(5)
+            .map { CategoryDetailView.SubEntry(id: $0.key, label: $0.label, seconds: $0.seconds) }
+        return CategoryDetailView(name: entry.name, colorHex: entry.colorHex, seconds: entry.seconds,
+                                   hourBars: bars, subs: Array(subs))
+    }
+
+    private func hourlyBigContent() -> HourlyBigView {
+        let categories = model.resolver.categoriesByID
+        let todayBars = Self.hourlyBars(items: dashboard.todayItems, categories: categories)
+        return HourlyBigView(categories: categories, todayBars: todayBars, loadLast7Bars: {
+            let items = model.rangedSpans(for: DateRangeSelection(kind: .last7, anchor: Date()))
+            return Self.hourlyBars(items: items, categories: categories)
+        })
+    }
+
+    private static func hourlyBars(items: [CategorizedSpan], categories: [String: Category]) -> [HourlyBigView.Bar] {
+        let calendar = Calendar.current
+        return Aggregator.stackedSeries(items, bucket: .hour, calendar: calendar).map { entry in
+            HourlyBigView.Bar(hour: calendar.component(.hour, from: entry.bucketStart),
+                               categoryID: entry.categoryID,
+                               colorHex: categories[entry.categoryID]?.colorHex ?? "#8E8E93",
+                               seconds: entry.seconds)
+        }
+    }
+
+    private func budgetProgressContent() -> BudgetProgressView {
+        let rows = dashboard.allBudgetRows.map {
+            BudgetProgressView.Row(id: $0.id, name: $0.name, colorHex: $0.colorHex, spent: $0.spent, limit: $0.limit)
+        }
+        return BudgetProgressView(rows: rows, warnPercent: dashboard.budgetWarnPercent)
     }
 
     /// The score gauge plus its 环比 (pulse delta) chip, grouped together so
