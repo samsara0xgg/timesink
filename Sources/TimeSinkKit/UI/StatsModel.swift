@@ -36,10 +36,20 @@ final class StatsModel {
     }
 
     private static let weekdayLabels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+    static let streakThreshold = 70
 
     var total: TimeInterval = 0
     var avgPerDay: TimeInterval = 0
     var pulse: Int?
+    var focus: TimeInterval = 0
+    /// Same-elapsed-time-of-day comparison against the previous period; nil
+    /// when the previous period has no tracked time at all. See
+    /// `recomputeDeltas`.
+    var totalDelta: TimeInterval?
+    var focusDelta: TimeInterval?
+    /// Whole-period ratio comparison (unclipped, unlike `totalDelta`/
+    /// `focusDelta`) -- see `recomputeDeltas`.
+    var pulseDelta: Int?
 
     var hourProfile: [ProfilePoint] = []
     var weekdayProfile: [ProfilePoint] = []
@@ -54,7 +64,29 @@ final class StatsModel {
     var appRows: [RankingRow] = []
     var categoryRows: [RankingRow] = []
 
-    func recompute(model: AppModel) {
+    /// 30-day trailing score trend (tail = today, nil for untracked days),
+    /// its >= `streakThreshold` trailing streak, and the 7x24 weekday-by-hour
+    /// productivity heatmap. Refreshed only when `recompute`'s `forceHeavy`
+    /// is set or the calendar day has changed -- see
+    /// `recomputeHeavyIfNeeded`.
+    var scoreTrend: [Int?] = []
+    var trendStreak: Int = 0
+    var heatmap: [[(pulse: Int?, seconds: TimeInterval)]] = []
+
+    /// Calendar day (startOfDay) the 30-day trend/heatmap lookback last ran
+    /// for. That lookback is a full-month fetch+classify+day/hour-split --
+    /// expensive enough that re-running it on every `recompute` (every
+    /// `dataVersion` bump) would cost the main actor for numbers that change
+    /// at most once a day. Mirrors `TodayDashboardModel.lastStreakDay`'s
+    /// gating. `@ObservationIgnored`: never read by the view, so it must not
+    /// register through `@Observable`.
+    @ObservationIgnored
+    private var lastHeavyDay: Date?
+
+    /// Light part runs every call (cheap -- `AppModel.rangedSpans(for:)`
+    /// memoizes between `dataChanged()` bumps); the heavy part (30-day trend
+    /// + heatmap) is gated by `forceHeavy` -- see `recomputeHeavyIfNeeded`.
+    func recompute(model: AppModel, forceHeavy: Bool) {
         let items = model.rangedSpans()
         let calendar = Calendar.current
         let categories = model.resolver.categoriesByID
@@ -65,6 +97,7 @@ final class StatsModel {
 
         let byCategory = Aggregator.durationByCategory(items)
         pulse = Aggregator.pulse(durationByCategory: byCategory, categories: categories)
+        focus = Aggregator.focusTime(durationByCategory: byCategory, categories: categories)
 
         hourProfile = Self.densifyHours(Aggregator.profileByHourOfDay(items, calendar: calendar))
         weekdayProfile = Self.densifyWeekdays(Aggregator.profileByWeekday(items, calendar: calendar))
@@ -110,6 +143,68 @@ final class StatsModel {
                 .sorted { $0.seconds > $1.seconds }
                 .prefix(10)
         )
+
+        recomputeDeltas(model: model, categories: categories)
+        recomputeHeavyIfNeeded(model: model, calendar: calendar, categories: categories, force: forceHeavy)
+    }
+
+    /// Delta semantics (spec §6 ruling): `prev` is the previous period's raw
+    /// spans; empty -> all three deltas nil (cards hide their chip).
+    /// Duration-based deltas (`total`/`focus`) compare against `prev` clipped
+    /// to the SAME elapsed time-of-day when `range.containsNow` -- comparing
+    /// a still-running partial period against the full preceding one would be
+    /// biased by construction; `pulseDelta` is a whole-period ratio
+    /// comparison and always uses the unclipped `prev`.
+    private func recomputeDeltas(model: AppModel, categories: [String: Category]) {
+        let range = model.range
+        let prevItems = model.rangedSpans(for: range.previousInterval)
+        guard !prevItems.isEmpty else {
+            totalDelta = nil
+            focusDelta = nil
+            pulseDelta = nil
+            return
+        }
+
+        let prevFullByCategory = Aggregator.durationByCategory(prevItems)
+        let prevFullPulse = Aggregator.pulse(durationByCategory: prevFullByCategory, categories: categories)
+        if let pulse, let prevFullPulse {
+            pulseDelta = pulse - prevFullPulse
+        } else {
+            pulseDelta = nil
+        }
+
+        let durationPrevItems: [CategorizedSpan]
+        if range.containsNow {
+            let elapsed = Date().timeIntervalSince(range.interval.start)
+            durationPrevItems = Aggregator.clippedToElapsed(
+                prevItems, windowStart: range.previousInterval.start, elapsed: elapsed)
+        } else {
+            durationPrevItems = prevItems
+        }
+        totalDelta = total - Aggregator.totalDuration(durationPrevItems.map(\.span))
+        let prevDurationByCategory = Aggregator.durationByCategory(durationPrevItems)
+        focusDelta = focus - Aggregator.focusTime(durationByCategory: prevDurationByCategory, categories: categories)
+    }
+
+    /// Runs the 30-day score-trend + heatmap lookback when `force` is true
+    /// (StatsView's onAppear/range changes) or when the calendar day has
+    /// rolled over since the last run -- skipped otherwise (dataVersion-driven
+    /// refreshes within the same day). Shares its `rangedSpans(for:)` call
+    /// with `TodayDashboardModel`'s streak lookback (identical `.last30`
+    /// interval -> same `AppModel.rangeCache` key), so this is near-zero-cost
+    /// whenever the menu bar dashboard has already populated that entry.
+    private func recomputeHeavyIfNeeded(
+        model: AppModel, calendar: Calendar, categories: [String: Category], force: Bool
+    ) {
+        let todayStart = calendar.startOfDay(for: Date())
+        guard force || lastHeavyDay != todayStart else { return }
+        lastHeavyDay = todayStart
+
+        let lookback = model.rangedSpans(for: DateRangeSelection(kind: .last30, anchor: Date()))
+        scoreTrend = Aggregator.dailyPulses(
+            items: lookback, categories: categories, days: 30, endingAt: Date(), calendar: calendar)
+        trendStreak = Aggregator.streak(dailyPulses: scoreTrend, threshold: Self.streakThreshold)
+        heatmap = Aggregator.pulseByWeekdayHour(lookback, categories: categories, calendar: calendar)
     }
 
     private static func densifyHours(_ profile: [Int: TimeInterval]) -> [ProfilePoint] {

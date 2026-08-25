@@ -114,4 +114,50 @@ final class StatsRangeTests: XCTestCase {
         XCTAssertTrue(sel.contains(iv.end.addingTimeInterval(-1)))
         XCTAssertFalse(sel.contains(iv.end))
     }
+
+    // MARK: - Task 8 (C2 stats): delta semantics + heavy-recompute gating
+
+    func testDurationDeltaUsesClippedPreviousButPulseUsesFull() {
+        let cal = Calendar.current
+        let cats = Dictionary(uniqueKeysWithValues: Taxonomy.categories.map { ($0.id, $0) })
+        let todayStart = cal.startOfDay(for: ts(200_000))
+        let prevStart = cal.date(byAdding: .day, value: -1, to: todayStart)!
+        // 昨天：0-4h softwareDev(+2)，18h-20h entertainment(-2)；今天走到 5h，产出 2h softwareDev
+        let prev = [
+            CategorizedSpan(span: Span(start: prevStart, end: prevStart.addingTimeInterval(4 * 3600),
+                appBundleID: "x", appName: "X", title: nil, url: nil, domain: nil), categoryID: "softwareDev"),
+            CategorizedSpan(span: Span(start: prevStart.addingTimeInterval(18 * 3600),
+                end: prevStart.addingTimeInterval(20 * 3600),
+                appBundleID: "y", appName: "Y", title: nil, url: nil, domain: nil), categoryID: "entertainment"),
+        ]
+        let elapsed: TimeInterval = 5 * 3600
+        let clipped = Aggregator.clippedToElapsed(prev, windowStart: prevStart, elapsed: elapsed)
+        // 裁剪后昨天只剩 0-4h 的 softwareDev：时长基准 4h，娱乐段被裁掉
+        XCTAssertEqual(Aggregator.totalDuration(clipped.map(\.span)), 4 * 3600)
+        // 分数基准用未裁全天：4h*100 + 2h*0 → (400+0)/6 ≈ 67
+        let fullPulse = Aggregator.pulse(
+            durationByCategory: Aggregator.durationByCategory(prev), categories: cats)
+        XCTAssertEqual(fullPulse, 67)
+    }
+
+    @MainActor func testHeavyRecomputeGatedByDay() throws {
+        let db = try AppDatabase.openInMemory()
+        let store = SpanStore(db)
+        _ = try store.insert(Span(start: Date().addingTimeInterval(-3600), end: Date(),
+                                  appBundleID: "a", appName: "A", title: nil, url: nil, domain: nil))
+        let catStore = CategoryStore(db)
+        let model = AppModel(categoryStore: catStore, spanStore: store,
+                             settings: SettingsStore(db),
+                             resolver: CategoryResolver(categoryStore: catStore),
+                             engine: TrackerEngine(spanStore: store, settings: SettingsStore(db)))
+        let stats = StatsModel()
+        stats.recompute(model: model, forceHeavy: true)
+        let firstTrend = stats.scoreTrend
+        XCTAssertEqual(firstTrend.count, 30)
+        stats.scoreTrend = []                                  // 打标
+        stats.recompute(model: model, forceHeavy: false)       // 同日非强制：不重算重部分
+        XCTAssertEqual(stats.scoreTrend, [])
+        stats.recompute(model: model, forceHeavy: true)        // 强制：重算
+        XCTAssertEqual(stats.scoreTrend.count, 30)
+    }
 }
