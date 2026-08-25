@@ -12,6 +12,10 @@ struct ActivityListView: View {
     let model: AppModel
     let groups: [ActivitiesModel.CategoryGroup]
 
+    /// Sheet is hosted here (not inside the transient `contextMenu`) because
+    /// the menu tears itself down as soon as its action runs.
+    @State private var pendingTitleRule: PendingTitleRule?
+
     private var displayedGroups: [ActivitiesModel.CategoryGroup] {
         guard let filter = model.activityFilter else { return groups }
         return groups.filter { $0.id == filter }
@@ -30,11 +34,14 @@ struct ActivityListView: View {
             } else {
                 List {
                     ForEach(displayedGroups) { group in
-                        CategoryGroupRow(model: model, group: group)
+                        CategoryGroupRow(model: model, group: group, pendingTitleRule: $pendingTitleRule)
                     }
                 }
                 .listStyle(.inset)
             }
+        }
+        .sheet(item: $pendingTitleRule) { pending in
+            TitleRuleEditor(model: model, pending: pending)
         }
     }
 
@@ -75,13 +82,14 @@ private struct FilterChip: View {
 private struct CategoryGroupRow: View {
     let model: AppModel
     let group: ActivitiesModel.CategoryGroup
+    @Binding var pendingTitleRule: PendingTitleRule?
 
     @State private var isExpanded = true
 
     var body: some View {
         DisclosureGroup(isExpanded: $isExpanded) {
             ForEach(group.rows) { row in
-                ActivityRowView(model: model, row: row)
+                ActivityRowView(model: model, row: row, pendingTitleRule: $pendingTitleRule)
             }
         } label: {
             HStack {
@@ -103,6 +111,7 @@ private struct CategoryGroupRow: View {
 private struct ActivityRowView: View {
     let model: AppModel
     let row: ActivitiesModel.ActivityRow
+    @Binding var pendingTitleRule: PendingTitleRule?
 
     private var sortedCategories: [Category] {
         model.resolver.categoriesByID.values.sorted { $0.sortOrder < $1.sortOrder }
@@ -111,15 +120,7 @@ private struct ActivityRowView: View {
     var body: some View {
         DisclosureGroup {
             ForEach(row.titles) { title in
-                HStack {
-                    Text(title.title)
-                        .lineLimit(1)
-                    Spacer(minLength: 8)
-                    Text(Format.duration(title.seconds))
-                        .foregroundStyle(.secondary)
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                TitleRowView(model: model, parent: row, title: title, pendingTitleRule: $pendingTitleRule)
             }
         } label: {
             HStack {
@@ -149,6 +150,43 @@ private struct ActivityRowView: View {
             model.dataChanged()
         } catch {
             activityListLogger.error("reassign failed for \(row.id, privacy: .public): \(String(describing: error), privacy: .public)")
+        }
+    }
+}
+
+/// Level 3: a single title within a domain/app row. Right-click opens the
+/// title-rule editor sheet (hosted on `ActivityListView`'s List, since this
+/// menu is transient) prefilled with this title and scoped to the parent
+/// domain/app — "始终把此标题归为…".
+private struct TitleRowView: View {
+    let model: AppModel
+    let parent: ActivitiesModel.ActivityRow
+    let title: ActivitiesModel.TitleRow
+    @Binding var pendingTitleRule: PendingTitleRule?
+
+    private var sortedCategories: [Category] {
+        model.resolver.categoriesByID.values.sorted { $0.sortOrder < $1.sortOrder }
+    }
+
+    var body: some View {
+        HStack {
+            Text(title.title)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Text(Format.duration(title.seconds))
+                .foregroundStyle(.secondary)
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .contextMenu {
+            Button("始终把此标题归为…") {
+                pendingTitleRule = PendingTitleRule(
+                    prefill: title.title == "(无标题)" ? "" : title.title,
+                    scopeKey: parent.id,
+                    scopeLabel: parent.label,
+                    categoryID: sortedCategories.first?.id ?? ""
+                )
+            }
         }
     }
 }

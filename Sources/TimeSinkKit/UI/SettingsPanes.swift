@@ -252,15 +252,35 @@ private struct CategoryEditRow: View {
 
 // MARK: - 规则
 
-/// All URL classification rules. Builtin rows are grayed and undeletable;
-/// user rows carry a delete button. The add row is rejected (button
-/// disabled) for an empty pattern or the degenerate `re:` pattern, whose
-/// empty regex would match every URL.
+/// The two rule kinds `RulesSettingsPane` switches between via its top
+/// segmented picker.
+enum RuleMode: String, CaseIterable {
+    case url, title
+
+    var label: String {
+        switch self {
+        case .url: return "URL 规则"
+        case .title: return "标题规则"
+        }
+    }
+}
+
+/// URL and title classification rules, switched via a top segmented picker.
+/// Builtin rows are grayed and undeletable (URL rows show no delete button;
+/// title rows show a Toggle instead, since a builtin title rule can be
+/// disabled but never removed — see `CategoryStore.upsertUserTitleRule`).
+/// The URL add row is rejected (button disabled) for an empty pattern or the
+/// degenerate `re:` pattern, whose empty regex would match every URL.
 struct RulesSettingsPane: View {
     let model: AppModel
+    @State private var mode: RuleMode = .url
+
     @State private var rules: [URLRule] = []
     @State private var newPattern = ""
     @State private var newCategoryID = ""
+
+    @State private var titleRules: [TitleRule] = []
+    @State private var pendingTitleRule: PendingTitleRule?
 
     private var sortedCategories: [Category] {
         model.resolver.categoriesByID.values.sorted { $0.sortOrder < $1.sortOrder }
@@ -272,6 +292,41 @@ struct RulesSettingsPane: View {
     }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Picker("", selection: $mode) {
+                ForEach(RuleMode.allCases, id: \.self) { m in
+                    Text(m.label).tag(m)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding([.horizontal, .top])
+
+            if mode == .url {
+                urlRuleSection
+            } else {
+                titleRuleSection
+            }
+        }
+        .onAppear {
+            load()
+            loadTitleRules()
+            if newCategoryID.isEmpty {
+                newCategoryID = sortedCategories.first?.id ?? ""
+            }
+        }
+        .onChange(of: model.dataVersion) { _, _ in
+            load()
+            loadTitleRules()
+        }
+        .sheet(item: $pendingTitleRule) { pending in
+            TitleRuleEditor(model: model, pending: pending)
+        }
+    }
+
+    // MARK: URL rules
+
+    private var urlRuleSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             List {
                 ForEach(rules, id: \.id) { rule in
@@ -294,13 +349,6 @@ struct RulesSettingsPane: View {
             }
             .padding()
         }
-        .onAppear {
-            load()
-            if newCategoryID.isEmpty {
-                newCategoryID = sortedCategories.first?.id ?? ""
-            }
-        }
-        .onChange(of: model.dataVersion) { _, _ in load() }
     }
 
     @ViewBuilder
@@ -353,6 +401,120 @@ struct RulesSettingsPane: View {
             load()
         } catch {
             settingsLogger.error("deleteURLRule failed for \(id): \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    // MARK: Title rules
+
+    private var titleRuleSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            List {
+                ForEach(titleRules, id: \.id) { rule in
+                    titleRuleRow(rule)
+                }
+            }
+            Divider()
+            HStack {
+                Spacer()
+                Button("+ 新建标题规则…") {
+                    pendingTitleRule = PendingTitleRule(
+                        prefill: "", scopeKey: "", scopeLabel: "",
+                        categoryID: sortedCategories.first?.id ?? ""
+                    )
+                }
+            }
+            .padding()
+        }
+    }
+
+    /// A `re:`-prefixed pattern displays as a single chip (splitting it on
+    /// `|` would break a regex that itself uses `|` alternation); any other
+    /// pattern splits into its keyword chips.
+    private func chips(for rule: TitleRule) -> [String] {
+        rule.pattern.hasPrefix("re:") ? [rule.pattern] : rule.pattern.split(separator: "|").map(String.init)
+    }
+
+    private func todayHit(for rule: TitleRule) -> (count: Int, seconds: TimeInterval) {
+        TitleRuleInput.affected(items: model.rangedSpans(for: .today()), pattern: rule.pattern, scopeKey: rule.scopeKey)
+    }
+
+    @ViewBuilder
+    private func titleRuleRow(_ rule: TitleRule) -> some View {
+        let hit = todayHit(for: rule)
+        HStack {
+            HStack(spacing: 4) {
+                ForEach(chips(for: rule), id: \.self) { chip in
+                    Text(chip)
+                        .font(.caption)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(Color.secondary.opacity(0.15)))
+                }
+            }
+            Text(rule.scopeKey.isEmpty ? "全局" : rule.scopeKey)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(model.resolver.categoriesByID[rule.categoryID]?.name ?? rule.categoryID)
+                .foregroundStyle(.secondary)
+            Text(rule.source == "builtin" ? "内置" : "用户")
+                .foregroundStyle(.secondary)
+            Text("今日命中 \(Format.duration(hit.seconds))")
+                .foregroundStyle(.secondary)
+            if rule.source == "user" {
+                Button {
+                    deleteTitleRule(rule)
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.plain)
+            } else {
+                Toggle("", isOn: titleRuleEnabledBinding(rule))
+                    .labelsHidden()
+            }
+        }
+        .foregroundStyle(rule.source == "builtin" ? .secondary : .primary)
+    }
+
+    private func titleRuleEnabledBinding(_ rule: TitleRule) -> Binding<Bool> {
+        Binding(
+            get: { rule.enabled },
+            set: { newValue in setTitleRuleEnabled(rule, enabled: newValue) }
+        )
+    }
+
+    private func loadTitleRules() {
+        titleRules = (try? model.categoryStore.titleRules())?.sorted { lhs, rhs in
+            if lhs.scopeKey.isEmpty != rhs.scopeKey.isEmpty {
+                return !lhs.scopeKey.isEmpty // scoped rows before global ones
+            }
+            if lhs.scopeKey != rhs.scopeKey {
+                return lhs.scopeKey < rhs.scopeKey
+            }
+            return lhs.pattern < rhs.pattern
+        } ?? []
+    }
+
+    private func deleteTitleRule(_ rule: TitleRule) {
+        guard let id = rule.id else { return }
+        do {
+            try model.categoryStore.deleteTitleRule(id: id)
+            model.resolver.refresh()
+            model.dataChanged()
+            loadTitleRules()
+        } catch {
+            settingsLogger.error("deleteTitleRule failed for \(id): \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    private func setTitleRuleEnabled(_ rule: TitleRule, enabled: Bool) {
+        guard let id = rule.id else { return }
+        do {
+            try model.categoryStore.setTitleRuleEnabled(id: id, enabled: enabled)
+            model.resolver.refresh()
+            model.dataChanged()
+            loadTitleRules()
+        } catch {
+            settingsLogger.error("setTitleRuleEnabled failed for \(id): \(String(describing: error), privacy: .public)")
         }
     }
 }

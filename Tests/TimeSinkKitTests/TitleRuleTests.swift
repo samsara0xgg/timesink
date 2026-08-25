@@ -198,4 +198,29 @@ extension TitleRuleTests {
                 "compiled/pure disagreement for pattern \(c.pattern) title \(c.title)")
         }
     }
+
+    // MARK: - TitleRuleInput (Task 5 editor pure functions)
+
+    func testNormalizedPattern() {
+        XCTAssertEqual(TitleRuleInput.normalizedPattern("lecture, course，教程"), "lecture|course|教程")
+        XCTAssertEqual(TitleRuleInput.normalizedPattern("  pull request  "), "pull request")
+        XCTAssertNil(TitleRuleInput.normalizedPattern("a"))            // 单关键词过短
+        XCTAssertNil(TitleRuleInput.normalizedPattern("ok, a"))        // 任一关键词过短即整体拒绝
+        XCTAssertNil(TitleRuleInput.normalizedPattern(""))
+        XCTAssertNil(TitleRuleInput.normalizedPattern("re:"))
+        XCTAssertNil(TitleRuleInput.normalizedPattern("re:[unclosed"))  // 正则必须可编译
+        XCTAssertEqual(TitleRuleInput.normalizedPattern(#"re:PR #\d+"#), #"re:PR #\d+"#)
+    }
+
+    func testAffectedCount() {
+        let items = [
+            CategorizedSpan(span: Span(start: ts(0), end: ts(600), appBundleID: "c", appName: "C",
+                title: "MIT Lecture 3", url: "https://youtube.com/watch", domain: "youtube.com"), categoryID: "entertainment"),
+            CategorizedSpan(span: Span(start: ts(600), end: ts(900), appBundleID: "c", appName: "C",
+                title: "Cat video", url: "https://youtube.com/watch", domain: "youtube.com"), categoryID: "entertainment"),
+        ]
+        let (count, seconds) = TitleRuleInput.affected(items: items, pattern: "lecture", scopeKey: "youtube.com")
+        XCTAssertEqual(count, 1)
+        XCTAssertEqual(seconds, 600)
+    }
 }

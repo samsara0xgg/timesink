@@ -1,11 +1,12 @@
 import SwiftUI
 
 /// Settings window: five tabs — 通用 (idle threshold, login item, permission
-/// status), 分类 (edit the 12 taxonomy categories), 规则 (URL classification
-/// rules), 未分类 (last-30-days spans still resolving to "uncategorized"),
-/// 智能分类 (optional OpenAI-compatible LLM classification fallback). Opens
-/// via ⌘, from the main window or the menu bar's SettingsLink
-/// (`TimeSinkApp`'s `Settings` scene).
+/// status), 分类 (edit the 12 taxonomy categories), 规则 (URL and title
+/// classification rules, switched via a segmented picker), 未分类
+/// (last-30-days spans still resolving to "uncategorized"), 智能分类
+/// (optional OpenAI-compatible LLM classification fallback). Opens via ⌘,
+/// from the main window or the menu bar's SettingsLink (`TimeSinkApp`'s
+/// `Settings` scene).
 struct SettingsView: View {
     let model: AppModel
 
