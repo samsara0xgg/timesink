@@ -19,6 +19,7 @@ struct GeneralSettingsPane: View {
     @State private var loginItemAlertMessage: String?
     @State private var axState: PermissionState = .denied
     @State private var chromeState: PermissionState = .notDetermined
+    @State private var calendarState: PermissionState = .notDetermined
 
     /// SMAppService.mainApp only functions when the app runs from
     /// /Applications; toggling elsewhere silently fails, so the control is
@@ -69,6 +70,22 @@ struct GeneralSettingsPane: View {
                         chromeState = Permissions.chromeAutomationState(ask: true)
                     }
                 )
+                PermissionRow(
+                    title: "日历",
+                    state: calendarState,
+                    action: {
+                        if calendarState == .denied {
+                            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") {
+                                NSWorkspace.shared.open(url)
+                            }
+                        } else {
+                            Task { @MainActor in
+                                _ = await Permissions.requestCalendarAccess()
+                                refreshCalendar()
+                            }
+                        }
+                    }
+                )
             }
         }
         .formStyle(.grouped)
@@ -77,6 +94,7 @@ struct GeneralSettingsPane: View {
             loginItemEnabled = SMAppService.mainApp.status == .enabled
             refreshAccessibility()
             refreshChrome()
+            refreshCalendar()
         }
         .alert("登录项设置失败", isPresented: alertIsPresented) {
             Button("好", role: .cancel) {}
@@ -126,6 +144,10 @@ struct GeneralSettingsPane: View {
 
     private func refreshChrome() {
         chromeState = Permissions.chromeAutomationState(ask: false)
+    }
+
+    private func refreshCalendar() {
+        calendarState = Permissions.calendarState()
     }
 }
 

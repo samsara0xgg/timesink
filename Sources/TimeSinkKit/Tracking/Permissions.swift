@@ -1,5 +1,6 @@
 @preconcurrency import ApplicationServices
 import AppKit
+import EventKit
 
 public enum Permissions {
     @MainActor
@@ -51,5 +52,31 @@ extension Permissions {
     }
     @MainActor public static func chromeAutomationState(ask: Bool) -> PermissionState {
         chromeState(from: chromeAutomationStatus(ask: ask))
+    }
+
+    /// A cheap, non-prompting authorization read -- safe to call anywhere
+    /// (unlike `requestCalendarAccess`), same spirit as
+    /// `accessibilityState(prompt: false)`.
+    @MainActor public static func calendarState() -> PermissionState {
+        switch EKEventStore.authorizationStatus(for: .event) {
+        case .fullAccess: return .granted
+        case .denied, .restricted, .writeOnly: return .denied
+        case .notDetermined: return .notDetermined
+        @unknown default: return .unavailable("未知日历权限状态")
+        }
+    }
+
+    /// Requests full calendar read/write access, prompting the user if
+    /// `.notDetermined`. Bundle-gated -- the crash gate, not a style choice:
+    /// `EKEventStore`'s access-request APIs throw an uncatchable ObjC
+    /// exception outside an installed app bundle, same failure mode as
+    /// `UNUserNotificationCenter.current()` in `Notifier.swift`.
+    @MainActor public static func requestCalendarAccess() async -> Bool {
+        guard Bundle.main.bundleIdentifier == "com.alllllenshi.TimeSink" else { return false }
+        do {
+            return try await EKEventStore().requestFullAccessToEvents()
+        } catch {
+            return false
+        }
     }
 }

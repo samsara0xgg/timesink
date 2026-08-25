@@ -55,6 +55,30 @@ public final class AppModel {
     /// (engine writes via `dataChanged()`, and construction).
     public private(set) var chromeDegraded: Bool = false
 
+    /// C3 calendar overlay -- **injection convention**: every new
+    /// collaborator introduced this batch is a post-init optional property,
+    /// never a new `init` parameter. `TimeSinkApp.init` assigns this after
+    /// constructing `AppModel` (real `CalendarStore`, which eagerly holds an
+    /// `EKEventStore`); every existing construction point (`TimeSinkApp`
+    /// pre-Task-10, `AppModelCacheTests`, `ActivitiesModelTests`'s fixture)
+    /// is unaffected. It's `nil` throughout `init()`/`refreshMenu()`'s
+    /// bootstrap call, which doubles as a natural "not wired up yet" guard
+    /// for any bootstrap-time code that might otherwise touch it.
+    public var calendarStore: CalendarStore?
+
+    /// `@Observable` mirror of `settings.calendarOverlayEnabled` -- same
+    /// pattern as `menuTextEnabled`: the KV setting itself isn't observable,
+    /// so views read this instead, and the writer (the Activities calendar
+    /// band / Settings row) writes both in lockstep.
+    public var calendarOverlayEnabled: Bool
+
+    /// Today's meeting-tagged calendar events, refreshed by
+    /// `refreshCalendarWindows()`. Not `@Observable`-tracked -- only
+    /// `isNowInMeeting` (derived from it) needs to be, and that's read by
+    /// `TrackerEngine.isInMeetingProvider`, not SwiftUI.
+    @ObservationIgnored
+    private var todayMeetingEvents: [CalendarEvent] = []
+
     private let logger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "appModel")
 
     /// Memoizes categorized fetches between `dataChanged()` bumps. Three
@@ -97,6 +121,7 @@ public final class AppModel {
         self.resolver = resolver
         self.engine = engine
         self.menuTextEnabled = settings.menuBarTextEnabled
+        self.calendarOverlayEnabled = settings.calendarOverlayEnabled
         refreshMenu()
         // refreshMenu() just seeded rangeCache with a "today" snapshot taken
         // before any caller-visible dataChanged() boundary; drop it so the
@@ -202,6 +227,65 @@ public final class AppModel {
         if let idx = cacheOrder.firstIndex(of: key) {
             cacheOrder.remove(at: idx)
             cacheOrder.append(key)
+        }
+    }
+
+    // MARK: - C3 calendar overlay
+
+    /// Refreshes `todayMeetingEvents` from `calendarStore` -- only while the
+    /// overlay setting is on AND calendar access is actually granted;
+    /// otherwise clears the cache so a just-disabled/just-revoked state
+    /// can't keep exempting idle detection off a stale meeting window.
+    public func refreshCalendarWindows() async {
+        guard calendarOverlayEnabled, let calendarStore, Permissions.calendarState() == .granted else {
+            todayMeetingEvents = []
+            return
+        }
+        todayMeetingEvents = await calendarStore.events(on: Date())
+    }
+
+    /// Whether the current moment falls inside any of today's meeting
+    /// events -- read by `TrackerEngine.isInMeetingProvider` (idle
+    /// exemption) via the `[weak self]` closure `TimeSinkApp.init` wires up.
+    public var isNowInMeeting: Bool {
+        MeetingTagger.inMeeting(at: Date(), events: todayMeetingEvents)
+    }
+
+    /// Starts the 5-minute calendar-window refresh loop -- called once from
+    /// `TimeSinkApp.init` after `calendarStore` is assigned. Refreshes
+    /// immediately (covers "on launch"), then every 5 minutes; each
+    /// iteration only actually touches EventKit while `calendarOverlayEnabled`
+    /// is on, otherwise it just re-checks the flag and goes back to sleep.
+    /// `[weak self]`: this detached loop must never keep `AppModel` alive by
+    /// itself -- once `self` is deallocated, the next `guard let self`
+    /// fails and the loop exits instead of re-arming another sleep. Never
+    /// calls `dataChanged()`: a background calendar refresh updates only the
+    /// meeting-window cache `isNowInMeeting` reads, not app data views
+    /// re-query on.
+    public func startCalendarRefreshLoop() {
+        Task { @MainActor [weak self] in
+            while true {
+                guard let self else { return }
+                if self.calendarOverlayEnabled {
+                    await self.refreshCalendarWindows()
+                }
+                try? await Task.sleep(for: .seconds(300))
+            }
+        }
+    }
+
+    /// Registers for `.EKEventStoreChanged` via `CalendarStore.observeChanges`
+    /// -- called once from `TimeSinkApp.init` after `calendarStore` is
+    /// assigned. `[weak self]` so the registered closure (which lives for
+    /// the process's lifetime in `NotificationCenter`) never keeps `AppModel`
+    /// alive on its own.
+    public func observeCalendarChanges() {
+        CalendarStore.observeChanges { [weak self] in
+            guard let self else { return }
+            Task { @MainActor in
+                await self.calendarStore?.invalidateCache()
+                await self.refreshCalendarWindows()
+            }
         }
     }
 }

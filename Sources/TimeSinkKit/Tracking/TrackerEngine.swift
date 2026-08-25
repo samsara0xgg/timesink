@@ -182,6 +182,13 @@ public final class TrackerEngine {
     var chromeTabProvider: (() -> ChromeSampler.TabInfo?)?
     var chromeAutomationAuthorizedProvider: (() -> Bool)?
     var idleSecondsProvider: (() -> TimeInterval)?
+    /// True while the user is currently in a calendar meeting -- when set,
+    /// `tick` forces `idleSeconds` to 0 regardless of the real idle reading,
+    /// so hands-off-keyboard time during a video call never triggers
+    /// `becameIdle` (C3 idle exemption). Lock/sleep suspension is untouched
+    /// by this -- it only ever affects the idle branch of
+    /// `SuspensionState.tick`.
+    var isInMeetingProvider: (() -> Bool)?
 
     /// True when 5+ consecutive Chrome tab fetch failures coincide with
     /// Chrome Automation not being authorized; cleared by the next success.
@@ -230,7 +237,8 @@ public final class TrackerEngine {
     }
 
     func tick(now: Date = Date()) {
-        let idleSeconds = idleSecondsProvider?() ?? idleMonitor.idleSeconds()
+        let rawIdle = idleSecondsProvider?() ?? idleMonitor.idleSeconds()
+        let idleSeconds = (isInMeetingProvider?() == true) ? 0 : rawIdle
 
         switch suspensionState.tick(idleSeconds: idleSeconds, threshold: settings.idleThreshold) {
         case .systemSuspended, .stillIdle:

@@ -59,6 +59,12 @@ public struct TimeSinkApp: App {
         )
         self.model = model
 
+        let calendarStore = CalendarStore()
+        model.calendarStore = calendarStore
+        engine.isInMeetingProvider = { [weak model] in model?.isNowInMeeting ?? false }
+        model.observeCalendarChanges()
+        model.startCalendarRefreshLoop()
+
         let needsOnboarding = Bundle.main.bundleIdentifier == "com.alllllenshi.TimeSink"
             && !Permissions.accessibilityGranted(prompt: false)
         self.needsOnboarding = needsOnboarding

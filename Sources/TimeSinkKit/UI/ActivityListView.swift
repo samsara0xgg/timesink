@@ -15,6 +15,11 @@ struct ActivityListView: View {
     /// `ActivitiesModel.matchCount`/`matchSeconds`.
     let matchCount: Int?
     let matchSeconds: TimeInterval?
+    /// C3: summed duration of spans tagged as overlapping a meeting — see
+    /// `ActivitiesModel.meetingSeconds`. The summary row below only shows
+    /// while this is > 0, which is also true whenever the calendar overlay
+    /// is off (no events feed `MeetingTagger`, so it settles at 0).
+    let meetingSeconds: TimeInterval
 
     /// Sheet is hosted here (not inside the transient `contextMenu`) because
     /// the menu tears itself down as soon as its action runs.
@@ -29,6 +34,12 @@ struct ActivityListView: View {
         VStack(alignment: .leading, spacing: 8) {
             if let matchCount {
                 Text("命中 \(matchCount) 项 · 合计 \(Format.duration(matchSeconds ?? 0))")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
+            if meetingSeconds > 0 {
+                Text("会议时间 \(Format.duration(meetingSeconds))")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -153,6 +164,15 @@ private struct ActivityRowView: View {
             HStack {
                 Text(row.label)
                 Spacer()
+                if row.hasMeeting {
+                    Text("会议")
+                        .font(.caption2)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(Color.accentColor.opacity(0.15)))
+                        .foregroundStyle(Color.accentColor)
+                        .help("由日历事件自动标注")
+                }
                 Text(Format.duration(row.seconds))
                     .foregroundStyle(.secondary)
             }

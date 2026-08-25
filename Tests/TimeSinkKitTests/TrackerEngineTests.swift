@@ -276,3 +276,34 @@ final class TrackerEngineChromeCacheTests: XCTestCase {
         XCTAssertFalse(engine.chromeCaptureDegraded)
     }
 }
+
+/// C3 idle-exemption seam: meetings suppress `becameIdle` so a real-world
+/// idle stretch (hands off keyboard during a video call) never suspends
+/// tracking mid-meeting. `engine.isSuspended` is the observable proxy for
+/// "the current span is still open/extending" (`SpanBuilder.current` itself
+/// is private) -- while exempted, `tick` takes the `.active` branch instead
+/// of `.becameIdle`, so `isSuspended` stays false across ticks.
+@MainActor
+final class TrackerEngineMeetingExemptionTests: XCTestCase {
+    private func sampleAt(_ date: Date) -> Sample {
+        Sample(timestamp: date, appBundleID: "com.example.app", appName: "Example",
+               windowTitle: "T", url: nil)
+    }
+
+    func testMeetingExemptsIdleClose() throws {
+        let db = try AppDatabase.openInMemory()
+        let store = SpanStore(db)
+        let engine = TrackerEngine(spanStore: store, settings: SettingsStore(db))
+        engine.idleSecondsProvider = { 300 }         // > 默认阈值 180
+        engine.isInMeetingProvider = { true }
+        engine.windowSampleProvider = { [self] in sampleAt(Date()) }
+
+        engine.tick(now: ts(0))
+        engine.tick(now: ts(1))
+        XCTAssertFalse(engine.isSuspended)   // 会议期间空闲豁免：未挂起，span 仍在延长
+
+        engine.isInMeetingProvider = { false }
+        engine.tick(now: ts(2))
+        XCTAssertTrue(engine.isSuspended)    // 会议结束后，真实空闲照常触发挂起
+    }
+}
