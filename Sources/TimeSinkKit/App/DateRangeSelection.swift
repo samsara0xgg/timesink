@@ -63,10 +63,16 @@ public struct DateRangeSelection: Equatable {
         case .month:
             return cal.dateInterval(of: .month, for: anchor) ?? fallbackDayInterval(cal)
         case .custom:
-            let start = cal.startOfDay(for: customStart ?? anchor)
-            let endDayStart = cal.startOfDay(for: customEnd ?? anchor)
-            let end = cal.date(byAdding: .day, value: 1, to: endDayStart) ?? endDayStart.addingTimeInterval(86400)
-            return DateInterval(start: start, end: end)
+            // Normalized via min/max, not assumed order: `customStart`/
+            // `customEnd` are independently settable (the popover's two
+            // DatePickers, or a caller leaving one nil) and `DateInterval`
+            // fatalErrors on end < start -- this must never see a reversed
+            // pair.
+            let a = cal.startOfDay(for: customStart ?? anchor)
+            let b = cal.startOfDay(for: customEnd ?? anchor)
+            let lo = min(a, b), hi = max(a, b)
+            let end = cal.date(byAdding: .day, value: 1, to: hi) ?? hi.addingTimeInterval(86400)
+            return DateInterval(start: lo, end: end)
         }
     }
 
@@ -103,14 +109,33 @@ public struct DateRangeSelection: Equatable {
         }
     }
 
+    /// Whole-local-day arithmetic (controller ruling R-T7a): a raw
+    /// `iv.start.addingTimeInterval(-iv.duration)` is second-based, so when
+    /// `iv` spans a DST transition its own duration is off by an hour and
+    /// subtracting it lands the preceding window's start off-midnight.
+    /// Stepping back by the same whole-day count via `Calendar` instead
+    /// keeps it day-aligned regardless of DST.
     private var equalLengthPreceding: DateInterval {
         let iv = interval
+        let cal = Calendar.current
+        let days = cal.dateComponents([.day], from: iv.start, to: iv.end).day ?? 0
+        if days > 0, let prevStart = cal.date(byAdding: .day, value: -days, to: iv.start) {
+            return DateInterval(start: prevStart, end: iv.start)
+        }
         return DateInterval(start: iv.start.addingTimeInterval(-iv.duration), end: iv.start)
     }
 
-    /// Whether `interval` contains the current moment.
+    /// Whether `interval` contains the current moment. Half-open
+    /// (`[interval.start, interval.end)`), matching the `SpanStore`/clipping
+    /// convention elsewhere -- `DateInterval.contains(_:)` is closed on both
+    /// ends, which would make two adjacent day selections both report
+    /// `true` at exactly midnight.
     public var containsNow: Bool {
-        interval.contains(Date())
+        contains(Date())
+    }
+
+    func contains(_ date: Date) -> Bool {
+        interval.start <= date && date < interval.end
     }
 
     public var label: String {

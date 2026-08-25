@@ -45,7 +45,7 @@ struct MainWindowView: View {
                         model.range = DateRangeSelection(kind: kind, anchor: Date())
                     }
                 }
-                Button("自定义…") { showingCustomRangePopover = true }
+                Button(label(for: .custom)) { showingCustomRangePopover = true }
             }
             .popover(isPresented: $showingCustomRangePopover) {
                 customRangePopover
@@ -55,8 +55,14 @@ struct MainWindowView: View {
 
     private var customRangePopover: some View {
         VStack(alignment: .leading, spacing: 12) {
-            DatePicker("开始", selection: $customRangeStart, displayedComponents: .date)
-            DatePicker("结束", selection: $customRangeEnd, displayedComponents: .date)
+            // Cross-bounded and clamped to today, matching every other
+            // kind's future-clamp convention (R-T7b). The model-level
+            // normalization in `DateRangeSelection.interval` remains the
+            // real guarantee against a reversed range; this is UX only.
+            DatePicker("开始", selection: $customRangeStart,
+                       in: ...min(customRangeEnd, Date()), displayedComponents: .date)
+            DatePicker("结束", selection: $customRangeEnd,
+                       in: customRangeStart...Date(), displayedComponents: .date)
             Button("应用") {
                 model.range = DateRangeSelection(
                     kind: .custom, anchor: customRangeEnd,
