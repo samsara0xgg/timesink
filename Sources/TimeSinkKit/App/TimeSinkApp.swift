@@ -175,11 +175,15 @@ struct MenuBarLabel: View {
                 // forward while running `.accessory` (no Dock icon, e.g. the
                 // main window isn't currently open) -- the Settings window
                 // could otherwise open behind whatever app was frontmost.
-                // Matches the same `.setActivationPolicy(.regular)` +
-                // `.activate` pair `MainWindowView.onAppear` uses for the
-                // sibling `.statsToday`/`.activitiesToday` routes'
-                // `openWindow("main")`.
-                NSApp.setActivationPolicy(.regular)
+                //
+                // R-T11g: activate ONLY -- do NOT flip
+                // `.setActivationPolicy(.regular)` here the way
+                // `MainWindowView.onAppear` does for its own window. That
+                // pairs with `.onDisappear` restoring `.accessory`; this
+                // branch never opens (or closes) the "main" window, so a
+                // policy flip here would have no matching restore path and
+                // the Dock icon would linger indefinitely -- violating the
+                // app's menubar-first `.accessory` design.
                 NSApp.activate(ignoringOtherApps: true)
                 openSettings()
             }
