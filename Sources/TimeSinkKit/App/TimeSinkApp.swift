@@ -115,14 +115,58 @@ public struct TimeSinkApp: App {
 /// and its callbacks live in an extension in `Notifier.swift` instead of
 /// here, so `import UserNotifications` stays confined to that one file (the
 /// crash-gate file for `UNUserNotificationCenter` access).
-final class TimeSinkAppDelegate: NSObject, NSApplicationDelegate {
+///
+/// `@unchecked Sendable`: instances are reached from multiple execution
+/// contexts -- AppKit's main-thread delegate calls, and
+/// `UNUserNotificationCenterDelegate`'s off-main-thread ones -- but every
+/// mutation is manually disciplined onto the main actor (`MainActor
+/// .assumeIsolated` where AppKit guarantees the call site is already main
+/// thread, `Task { @MainActor in ... }` where it doesn't; see `route(_:)`
+/// and `Notifier.swift`), so this promise is upheld by convention rather
+/// than by the compiler.
+final class TimeSinkAppDelegate: NSObject, NSApplicationDelegate, @unchecked Sendable {
     var engine: TrackerEngine?
+
     /// Set by Task 11's wiring; invoked when a delivered notification is
-    /// tapped, decoded from its `userInfo["route"]`. `@Sendable` so the
-    /// nonisolated `UNUserNotificationCenterDelegate` callback (in
-    /// `Notifier.swift`) can hop it to the main actor without capturing
-    /// `self` (a non-`Sendable` `NSObject` subclass) across the boundary.
-    var onRoute: (@Sendable (NotificationRoute) -> Void)?
+    /// tapped, decoded from its `userInfo["route"]`. `@MainActor @Sendable`
+    /// so the value itself is safe to store and to invoke on the main actor
+    /// from the `UNUserNotificationCenterDelegate` callback's actor hop (in
+    /// `Notifier.swift`). If a route arrives before this is assigned (e.g.
+    /// macOS cold-launching the app from a notification tap, ahead of
+    /// SwiftUI's post-launch wiring), `route(_:)` buffers it in
+    /// `pendingRoute` instead; this `didSet` flushes that buffer once set.
+    var onRoute: (@MainActor @Sendable (NotificationRoute) -> Void)? {
+        didSet {
+            guard let onRoute else { return }
+            MainActor.assumeIsolated {
+                guard let pending = pendingRoute else { return }
+                pendingRoute = nil
+                onRoute(pending)
+            }
+        }
+    }
+
+    /// A route decoded from a tapped notification that arrived before
+    /// `onRoute` was assigned. Flushed by `onRoute`'s `didSet`. Read-only
+    /// outside this file (mutated only by `route(_:)` and that `didSet`,
+    /// both main-actor-disciplined per the type's `@unchecked Sendable`
+    /// note above); exposed for tests.
+    private(set) var pendingRoute: NotificationRoute?
+
+    /// Delivers a decoded notification route: invokes `onRoute` immediately
+    /// if it's set, otherwise buffers it in `pendingRoute` for delivery once
+    /// `onRoute` is assigned. Doesn't touch `UNUserNotificationCenter`, so
+    /// it's directly unit-testable; called from `Notifier.swift`'s
+    /// `UNUserNotificationCenterDelegate.userNotificationCenter(_:didReceive:)`
+    /// after hopping to the main actor.
+    @MainActor
+    func route(_ route: NotificationRoute) {
+        if let onRoute {
+            onRoute(route)
+        } else {
+            pendingRoute = route
+        }
+    }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         MainActor.assumeIsolated { engine?.stop() }

@@ -25,4 +25,32 @@ final class NotifierTests: XCTestCase {
         // swift test 无 bundle id，必须拿到 Noop——这是整条崩溃门的回归测试
         XCTAssertTrue(NotifierFactory.make() is NoopNotifier)
     }
+
+    // Fix for review Finding 2: a notification tap decoded before `onRoute`
+    // is assigned (e.g. a cold launch from Notification Center) must not be
+    // silently dropped -- it's buffered in `pendingRoute` and flushed once
+    // `onRoute` is set. Exercises `TimeSinkAppDelegate.route(_:)` directly,
+    // never touching `UNUserNotificationCenter`.
+    @MainActor func testRouteBuffersWhenOnRouteUnsetThenFlushesOnAssign() {
+        let delegate = TimeSinkAppDelegate()
+        delegate.route(.settingsBudget)
+        XCTAssertEqual(delegate.pendingRoute, .settingsBudget)
+
+        var received: [NotificationRoute] = []
+        delegate.onRoute = { received.append($0) }
+
+        XCTAssertEqual(received, [.settingsBudget])
+        XCTAssertNil(delegate.pendingRoute)
+    }
+
+    @MainActor func testRouteDeliversImmediatelyWhenOnRouteAlreadySet() {
+        let delegate = TimeSinkAppDelegate()
+        var received: [NotificationRoute] = []
+        delegate.onRoute = { received.append($0) }
+
+        delegate.route(.activitiesToday)
+
+        XCTAssertEqual(received, [.activitiesToday])
+        XCTAssertNil(delegate.pendingRoute)
+    }
 }

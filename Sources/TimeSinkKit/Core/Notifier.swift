@@ -114,8 +114,10 @@ extension TimeSinkAppDelegate: UNUserNotificationCenterDelegate {
     }
 
     /// Called on a background thread -- hops to the main actor before
-    /// touching `onRoute` rather than `MainActor.assumeIsolated`, which
-    /// would be a false assertion here.
+    /// calling `route(_:)` rather than `MainActor.assumeIsolated`, which
+    /// would be a false assertion here. `route(_:)` delivers immediately if
+    /// `onRoute` is set, or buffers into `pendingRoute` if this notification
+    /// tap cold-launched the app ahead of SwiftUI's post-launch wiring.
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
@@ -124,9 +126,8 @@ extension TimeSinkAppDelegate: UNUserNotificationCenterDelegate {
         defer { completionHandler() }
         guard let raw = response.notification.request.content.userInfo["route"] as? String,
               let route = NotificationRoute(rawValue: raw) else { return }
-        let callback = self.onRoute
         Task { @MainActor in
-            callback?(route)
+            self.route(route)
         }
     }
 }
