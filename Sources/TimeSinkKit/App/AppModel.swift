@@ -37,6 +37,11 @@ public final class AppModel {
     /// Today's productivity score (0-100), for the menu bar dropdown. "--" if no data yet.
     public var todayPulseTitle: String = "--"
 
+    /// @Observable mirror of `settings.menuBarTextEnabled` -- the KV setting
+    /// itself isn't observable, so the menu bar label reads this property
+    /// instead; the General settings pane's toggle writes both in lockstep.
+    public var menuTextEnabled: Bool
+
     private let logger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "appModel")
 
     /// Memoizes categorized fetches between `dataChanged()` bumps. Three
@@ -67,6 +72,7 @@ public final class AppModel {
         self.settings = settings
         self.resolver = resolver
         self.engine = engine
+        self.menuTextEnabled = settings.menuBarTextEnabled
         refreshMenu()
         // refreshMenu() just seeded rangeCache with a "today" snapshot taken
         // before any caller-visible dataChanged() boundary; drop it so the

@@ -46,6 +46,8 @@ struct GeneralSettingsPane: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+
+                Toggle("菜单栏显示今日专注时长", isOn: menuTextBinding)
             }
 
             Section("权限") {
@@ -104,6 +106,16 @@ struct GeneralSettingsPane: View {
                     loginItemAlertMessage = "无法\(newValue ? "启用" : "关闭")登录时启动：\(error.localizedDescription)"
                 }
                 loginItemEnabled = SMAppService.mainApp.status == .enabled
+            }
+        )
+    }
+
+    private var menuTextBinding: Binding<Bool> {
+        Binding(
+            get: { model.menuTextEnabled },
+            set: { newValue in
+                model.menuTextEnabled = newValue
+                model.settings.setMenuBarTextEnabled(newValue)
             }
         )
     }

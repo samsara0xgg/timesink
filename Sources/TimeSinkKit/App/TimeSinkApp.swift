@@ -71,7 +71,7 @@ public struct TimeSinkApp: App {
         MenuBarExtra {
             MenuBarDashboardView(model: model)
         } label: {
-            Label(model.menuTitle, systemImage: "hourglass")
+            MenuBarLabel(model: model)
                 .onAppear {
                     // The menu bar label renders as soon as the app launches
                     // (before any window is shown), so this is a reliable
@@ -101,6 +101,25 @@ public struct TimeSinkApp: App {
 
         Settings {
             SettingsView(model: model)
+        }
+    }
+}
+
+/// The menu bar's icon + optional text label. Text is today's focus time
+/// (`model.menuTitle` -- not `todayTotalTitle`), hidden entirely when
+/// `menuTextEnabled` is off so only the icon remains. The icon itself swaps
+/// to a badged variant while `chromeCaptureDegraded` is true, signaling that
+/// Chrome tab titles/URLs aren't being captured.
+struct MenuBarLabel: View {
+    let model: AppModel
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: model.engine.chromeCaptureDegraded
+                  ? "hourglass.badge.exclamationmark" : "hourglass")
+            if model.menuTextEnabled {
+                Text(model.menuTitle).monospacedDigit()
+            }
         }
     }
 }
