@@ -236,12 +236,31 @@ public final class AppModel {
     /// overlay setting is on AND calendar access is actually granted;
     /// otherwise clears the cache so a just-disabled/just-revoked state
     /// can't keep exempting idle detection off a stale meeting window.
+    ///
+    /// Re-checks `calendarOverlayEnabled` again AFTER the `await` -- both
+    /// call sites into this function (the Settings toggle's binding and
+    /// `enableCalendarOverlay()`) are independent `Task`s, so a rapid
+    /// ON->OFF flip can otherwise interleave: the ON call passes the
+    /// leading guard and suspends at `calendarStore.events(on:)`; the user
+    /// flips OFF; the OFF call runs to completion and clears
+    /// `todayMeetingEvents`; the ON call then resumes and would overwrite
+    /// it right back with the (now-stale) fetched events -- leaving the
+    /// idle exemption armed off a meeting window the user just turned off,
+    /// with nothing to self-correct it (the 5-minute background loop skips
+    /// its own refresh while disabled). The second guard closes that
+    /// window for every caller at once, rather than needing each call site
+    /// to duplicate the check.
     public func refreshCalendarWindows() async {
         guard calendarOverlayEnabled, let calendarStore, Permissions.calendarState() == .granted else {
             todayMeetingEvents = []
             return
         }
-        todayMeetingEvents = await calendarStore.events(on: Date())
+        let fetched = await calendarStore.events(on: Date())
+        guard calendarOverlayEnabled else {
+            todayMeetingEvents = []
+            return
+        }
+        todayMeetingEvents = fetched
     }
 
     /// Whether the current moment falls inside any of today's meeting
