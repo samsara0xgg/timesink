@@ -62,4 +62,28 @@ final class AppModelCacheTests: XCTestCase {
         try store.insert(span(hourOffset: 12))
         XCTAssertEqual(model.rangedSpans(for: DateRangeSelection(kind: .day, anchor: anchors[0])).count, 1)
     }
+
+    // MARK: - C3 fix round 2, item 1: `refreshCalendarWindows()`'s disabled
+    // path must never touch EventKit -- pinned here rather than in
+    // `CalendarMeetingTests` since it's `AppModel`-level guard-ordering
+    // behavior, not a pure `CalendarEvent`/`MeetingTagger` function.
+    //
+    // `todayMeetingEvents` (and therefore `isNowInMeeting`) can't be driven
+    // to a genuinely non-empty state from a test without either a real
+    // `CalendarStore`-backed `EKEventStore` (forbidden -- see Task 10's
+    // testing constraints) or reaching into `AppModel`'s private storage, so
+    // this doesn't pin a populated->cleared transition. What it DOES pin:
+    // the `guard calendarOverlayEnabled, let calendarStore, Permissions
+    // .calendarState() == .granted else { ... }` chain's clauses stay in
+    // this order -- `calendarOverlayEnabled` first -- so the whole call is
+    // safe from a bundle-less test process (a reordering that moved
+    // `Permissions.calendarState()` first would still pass this specific
+    // assertion, since that read is itself safe/non-crashing here, but
+    // would defeat the documented intent and this test's own doc comment).
+    @MainActor func testRefreshCalendarWindowsIsSafeAndClearsMeetingStateWhenOverlayDisabled() async throws {
+        let (model, _) = try makeModel()
+        XCTAssertFalse(model.calendarOverlayEnabled)   // 默认关闭，settings 默认值
+        await model.refreshCalendarWindows()
+        XCTAssertFalse(model.isNowInMeeting)
+    }
 }

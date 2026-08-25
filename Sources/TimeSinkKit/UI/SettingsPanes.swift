@@ -49,6 +49,7 @@ struct GeneralSettingsPane: View {
                 }
 
                 Toggle("菜单栏显示今日专注时长", isOn: menuTextBinding)
+                Toggle("日历叠加", isOn: calendarOverlayBinding)
             }
 
             Section("权限") {
@@ -70,7 +71,6 @@ struct GeneralSettingsPane: View {
                         chromeState = Permissions.chromeAutomationState(ask: true)
                     }
                 )
-                Toggle("日历叠加", isOn: calendarOverlayBinding)
                 PermissionRow(
                     title: "日历",
                     state: calendarState,
@@ -144,12 +144,30 @@ struct GeneralSettingsPane: View {
     /// control to turn it back OFF (a one-way switch the doc comments on
     /// `AppModel.calendarOverlayEnabled` and `ActivitiesView.CalendarTaskKey`
     /// already (aspirationally) described as having a "Settings row" writer).
+    ///
+    /// The `Task { await model.refreshCalendarWindows() }` closes the same
+    /// gap FOLD-IN 10 closed on the Activities card's enable path, on this
+    /// second path into the same setting: without it, turning the overlay
+    /// OFF here leaves `AppModel.todayMeetingEvents` (and therefore
+    /// `isNowInMeeting`) stale for up to 5 minutes -- exempting idle
+    /// detection off a meeting window that, from the user's perspective,
+    /// should have stopped applying the instant they flipped the switch --
+    /// and turning it ON here leaves the exemption inert for the same
+    /// window instead of picking up today's meetings immediately.
+    /// `refreshCalendarWindows()` itself already clears `todayMeetingEvents`
+    /// on the disabled path (its `guard` short-circuits on
+    /// `calendarOverlayEnabled` before ever reaching `Permissions
+    /// .calendarState()`), so this is safe to call unconditionally on
+    /// either direction of the toggle.
     private var calendarOverlayBinding: Binding<Bool> {
         Binding(
             get: { model.calendarOverlayEnabled },
             set: { newValue in
                 model.calendarOverlayEnabled = newValue
                 model.settings.setCalendarOverlayEnabled(newValue)
+                Task { @MainActor in
+                    await model.refreshCalendarWindows()
+                }
             }
         )
     }

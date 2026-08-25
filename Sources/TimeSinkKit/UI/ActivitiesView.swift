@@ -17,6 +17,11 @@ struct ActivitiesView: View {
     /// immediately, unrelated to this.
     @State private var pendingSearch: Task<Void, Never>?
 
+    /// Tracks the in-flight `refreshCalendarOverlay()` Task spawned by the
+    /// `didBecomeActive` handler below -- see that handler's doc comment for
+    /// why this needs the same store/cancel discipline `pendingSearch` uses.
+    @State private var pendingActivationRefresh: Task<Void, Never>?
+
     /// C3: the current range's calendar events, fetched by `.task` below and
     /// re-fed into every `recompute` call so `activities.calendarBlocks`/
     /// `meetingSpanIDs`/etc. stay in sync with what's on screen.
@@ -61,7 +66,10 @@ struct ActivitiesView: View {
         .onChange(of: model.range) { _, _ in activities.recompute(model: model, events: calendarEvents) }
         .onChange(of: model.activityFilter) { _, _ in activities.recompute(model: model, events: calendarEvents) }
         .onChange(of: model.activitySearch) { _, _ in scheduleSearchRecompute() }
-        .onDisappear { pendingSearch?.cancel() }
+        .onDisappear {
+            pendingSearch?.cancel()
+            pendingActivationRefresh?.cancel()
+        }
         .task(id: CalendarTaskKey(range: model.range, overlayEnabled: model.calendarOverlayEnabled)) {
             await refreshCalendarOverlay()
         }
@@ -72,8 +80,20 @@ struct ActivitiesView: View {
         // Settings and switching back would leave the guide card showing
         // until the range happened to change. Re-reads state and refetches
         // on every reactivation (harmless when nothing actually changed).
+        //
+        // Stores/cancels the spawned Task the same way `pendingSearch` does
+        // (rather than firing an untracked `Task { }` per notification):
+        // `refreshCalendarOverlay()`'s `Task.isCancelled` guard after its
+        // `await store.events(on:)` fetch only protects against a stale
+        // write if something actually cancels the stale Task -- `.task(id:)`
+        // gets that for free from SwiftUI when its id changes, but a plain
+        // `Task { }` spawned from `.onReceive` never does. Without this, two
+        // reactivations in quick succession (e.g. fast Cmd-Tabbing) could
+        // let an earlier, slower fetch for a since-abandoned range land
+        // after a newer one already wrote the correct state, clobbering it.
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            Task { @MainActor in
+            pendingActivationRefresh?.cancel()
+            pendingActivationRefresh = Task { @MainActor in
                 await refreshCalendarOverlay()
             }
         }
