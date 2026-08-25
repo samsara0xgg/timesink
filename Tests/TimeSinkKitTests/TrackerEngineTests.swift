@@ -279,10 +279,12 @@ final class TrackerEngineChromeCacheTests: XCTestCase {
 
 /// C3 idle-exemption seam: meetings suppress `becameIdle` so a real-world
 /// idle stretch (hands off keyboard during a video call) never suspends
-/// tracking mid-meeting. `engine.isSuspended` is the observable proxy for
-/// "the current span is still open/extending" (`SpanBuilder.current` itself
-/// is private) -- while exempted, `tick` takes the `.active` branch instead
-/// of `.becameIdle`, so `isSuspended` stays false across ticks.
+/// tracking mid-meeting. Both tests below drive `windowSampleProvider` and
+/// `tick(now:)` off a single shared `currentTime` var -- feeding the sample
+/// a real `Date()` while driving `tick` off a fake `ts(N)` (the original
+/// version of this file) desyncs `SpanBuilder`'s span start/end from the
+/// suspension/heartbeat timeline it's supposed to share, which is exactly
+/// what let the CRITICAL un-exemption bug below hide undetected.
 @MainActor
 final class TrackerEngineMeetingExemptionTests: XCTestCase {
     private func sampleAt(_ date: Date) -> Sample {
@@ -290,20 +292,84 @@ final class TrackerEngineMeetingExemptionTests: XCTestCase {
                windowTitle: "T", url: nil)
     }
 
-    func testMeetingExemptsIdleClose() throws {
+    private func makeEngine() throws -> (TrackerEngine, SpanStore) {
         let db = try AppDatabase.openInMemory()
         let store = SpanStore(db)
         let engine = TrackerEngine(spanStore: store, settings: SettingsStore(db))
-        engine.idleSecondsProvider = { 300 }         // > 默认阈值 180
+        return (engine, store)
+    }
+
+    private func allSpans(_ store: SpanStore) throws -> [Span] {
+        try store.spans(overlapping: DateInterval(start: ts(-1), end: ts(1000)))
+    }
+
+    /// Repaired: asserts the span is actually open/extending by querying the
+    /// persisted row (via a heartbeat-triggered insert) instead of only
+    /// `engine.isSuspended` -- `isSuspended` alone can't distinguish "still
+    /// extending" from "never opened".
+    func testMeetingExemptionKeepsSpanOpenAndExtending() throws {
+        let (engine, store) = try makeEngine()
+        var currentTime = ts(0)
+        engine.windowSampleProvider = { [self] in sampleAt(currentTime) }
+        engine.idleSecondsProvider = { 300 }         // > 默认阈值 180，模拟手离键盘
         engine.isInMeetingProvider = { true }
-        engine.windowSampleProvider = { [self] in sampleAt(Date()) }
 
-        engine.tick(now: ts(0))
-        engine.tick(now: ts(1))
-        XCTAssertFalse(engine.isSuspended)   // 会议期间空闲豁免：未挂起，span 仍在延长
+        for t in stride(from: 0.0, through: 30, by: 10) {
+            currentTime = ts(t)
+            engine.tick(now: currentTime)
+        }
 
+        let rows = try allSpans(store)
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].start, ts(0))
+        XCTAssertEqual(rows[0].end, ts(31))   // 30s 心跳写入时刻 + SpanBuilder 的 1s tick 余量
+        XCTAssertFalse(engine.isSuspended)    // 会议期间空闲豁免：未挂起
+    }
+
+    /// CRITICAL regression: un-exempting mid-idle-stretch must not backdate
+    /// the idle-close using the FULL raw idle duration -- right after a
+    /// meeting, that duration includes the entire meeting itself (hands were
+    /// off the keyboard throughout), which without `exemptionEndedAt`
+    /// collapses the just-persisted meeting span down to ~0s the instant the
+    /// meeting ends while still idle (probed: a real ~30min meeting
+    /// collapsed to 0s). Simulates the full sequence via the seams --
+    /// meeting ticks extending + a heartbeat persisting the row, then the
+    /// un-exemption tick -- and asserts the PERSISTED span's duration
+    /// survives by querying the store, not just `engine.isSuspended`.
+    func testUnExemptionAfterMeetingPreservesPersistedSpanDuration() throws {
+        let (engine, store) = try makeEngine()
+        var currentTime = ts(0)
+        engine.windowSampleProvider = { [self] in sampleAt(currentTime) }
+        engine.isInMeetingProvider = { true }
+        engine.idleSecondsProvider = { 9999 }   // 会中手一直离键盘
+
+        // 开会：每 5s 一 tick，持续到 595s -- 跨过多次 30s 心跳，span 被写入
+        // 并持续延长（tick 间隔 5s < maxGap 15s，SpanBuilder 视为同一 span）。
+        for t in stride(from: 0.0, through: 595, by: 5) {
+            currentTime = ts(t)
+            engine.tick(now: currentTime)
+        }
+
+        let midMeetingRows = try allSpans(store)
+        XCTAssertEqual(midMeetingRows.count, 1)
+        XCTAssertGreaterThan(midMeetingRows[0].end.timeIntervalSince(midMeetingRows[0].start), 500)
+
+        // 会议结束，手仍未动：isInMeetingProvider 翻 false，idleSecondsProvider
+        // 报告整段真实空闲 600s（>= 阈值 180）——这正是 bug 复现条件：不打
+        // 补丁的话，close(at: 600 - 600 = ts(0)) 会把 end 拍扁回 span.start。
         engine.isInMeetingProvider = { false }
-        engine.tick(now: ts(2))
-        XCTAssertTrue(engine.isSuspended)    // 会议结束后，真实空闲照常触发挂起
+        engine.idleSecondsProvider = { 600 }
+        currentTime = ts(600)
+        engine.tick(now: currentTime)
+
+        XCTAssertTrue(engine.isSuspended)   // 真实空闲照常触发挂起（会议已结束）
+
+        let finalRows = try allSpans(store)
+        XCTAssertEqual(finalRows.count, 1)
+        XCTAssertEqual(finalRows[0].start, ts(0))
+        // exemptionEndedAt 钳制：close 被限制在会议刚结束的时刻，span 保留
+        // 会议期间最后一次延长的位置（t=595 的 ingest 令 cur.end = 596），
+        // 而不是被 backdate 拍扁到 0。
+        XCTAssertEqual(finalRows[0].end, ts(596))
     }
 }

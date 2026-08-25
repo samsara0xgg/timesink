@@ -208,6 +208,20 @@ public final class TrackerEngine {
     public var isSuspended: Bool { suspensionState.isSuspended }
     public private(set) var latestSample: Sample?
 
+    /// Previous tick's `isInMeetingProvider` reading -- used only to detect
+    /// the true->false transition below.
+    private var wasInMeeting = false
+    /// Set on the tick where the meeting idle-exemption transitions
+    /// true->false (the moment it stops zeroing `idleSeconds`). CRITICAL
+    /// fix: without this, un-exempting mid-idle-stretch backdates
+    /// `builder.close(at:)` using the FULL raw idle duration -- which, right
+    /// after a meeting, includes the entire meeting itself (hands were off
+    /// the keyboard throughout) -- collapsing the just-persisted meeting
+    /// span's duration down to ~0s the instant the meeting ends while still
+    /// idle. Clamping the close to no earlier than this moment preserves
+    /// the span's real extent. Consumed (cleared) the next time it's read.
+    private var exemptionEndedAt: Date?
+
     private let logger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "tracker")
 
     public init(spanStore: SpanStore, settings: SettingsStore) {
@@ -238,13 +252,21 @@ public final class TrackerEngine {
 
     func tick(now: Date = Date()) {
         let rawIdle = idleSecondsProvider?() ?? idleMonitor.idleSeconds()
-        let idleSeconds = (isInMeetingProvider?() == true) ? 0 : rawIdle
+        let isInMeetingNow = isInMeetingProvider?() == true
+        if wasInMeeting, !isInMeetingNow {
+            exemptionEndedAt = now
+        }
+        wasInMeeting = isInMeetingNow
+        let idleSeconds = isInMeetingNow ? 0 : rawIdle
 
         switch suspensionState.tick(idleSeconds: idleSeconds, threshold: settings.idleThreshold) {
         case .systemSuspended, .stillIdle:
             return
         case .becameIdle:
-            if let closed = builder.close(at: now.addingTimeInterval(-idleSeconds)) {
+            let backdated = now.addingTimeInterval(-idleSeconds)
+            let closeAt = exemptionEndedAt.map { max(backdated, $0) } ?? backdated
+            exemptionEndedAt = nil
+            if let closed = builder.close(at: closeAt) {
                 persist(closed)
             }
             return

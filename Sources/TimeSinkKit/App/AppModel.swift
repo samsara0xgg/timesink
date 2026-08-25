@@ -251,6 +251,11 @@ public final class AppModel {
         MeetingTagger.inMeeting(at: Date(), events: todayMeetingEvents)
     }
 
+    /// Handle for the loop `startCalendarRefreshLoop()` starts -- stored so
+    /// the loop is a real, cancellable Task rather than a fire-and-forget
+    /// one nothing can ever stop.
+    private var calendarRefreshTask: Task<Void, Never>?
+
     /// Starts the 5-minute calendar-window refresh loop -- called once from
     /// `TimeSinkApp.init` after `calendarStore` is assigned. Refreshes
     /// immediately (covers "on launch"), then every 5 minutes; each
@@ -258,18 +263,24 @@ public final class AppModel {
     /// is on, otherwise it just re-checks the flag and goes back to sleep.
     /// `[weak self]`: this detached loop must never keep `AppModel` alive by
     /// itself -- once `self` is deallocated, the next `guard let self`
-    /// fails and the loop exits instead of re-arming another sleep. Never
-    /// calls `dataChanged()`: a background calendar refresh updates only the
-    /// meeting-window cache `isNowInMeeting` reads, not app data views
-    /// re-query on.
+    /// fails and the loop exits instead of re-arming another sleep. Also
+    /// checks `Task.isCancelled` right after waking from the sleep -- without
+    /// it, a cancelled-but-still-running loop (e.g. if this were ever called
+    /// a second time, or cancelled directly) would keep busy-looping through
+    /// `Task.sleep`'s immediate cancellation-error return instead of
+    /// actually stopping. Never calls `dataChanged()`: a background calendar
+    /// refresh updates only the meeting-window cache `isNowInMeeting` reads,
+    /// not app data views re-query on.
     public func startCalendarRefreshLoop() {
-        Task { @MainActor [weak self] in
+        calendarRefreshTask?.cancel()
+        calendarRefreshTask = Task { @MainActor [weak self] in
             while true {
                 guard let self else { return }
                 if self.calendarOverlayEnabled {
                     await self.refreshCalendarWindows()
                 }
                 try? await Task.sleep(for: .seconds(300))
+                guard !Task.isCancelled else { return }
             }
         }
     }

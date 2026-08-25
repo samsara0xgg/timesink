@@ -65,6 +65,18 @@ struct ActivitiesView: View {
         .task(id: CalendarTaskKey(range: model.range, overlayEnabled: model.calendarOverlayEnabled)) {
             await refreshCalendarOverlay()
         }
+        // Closes the "denied -> System Settings -> grant" round-trip: the
+        // guide card's permission state is otherwise only re-read by the
+        // `.task(id:)` above, which doesn't re-run just because the app
+        // regained focus -- without this, granting access in System
+        // Settings and switching back would leave the guide card showing
+        // until the range happened to change. Re-reads state and refetches
+        // on every reactivation (harmless when nothing actually changed).
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { @MainActor in
+                await refreshCalendarOverlay()
+            }
+        }
     }
 
     /// Three states (C3 interaction spec): overlay off or permission not yet
@@ -96,7 +108,14 @@ struct ActivitiesView: View {
     /// alone already retriggers the `.task(id:)` above via `CalendarTaskKey`,
     /// but that task computes its own fresh permission read at its own
     /// start, which can race ahead of the system prompt this triggers --
-    /// hence the explicit follow-up refresh once the request resolves.
+    /// hence the explicit follow-up work once the request resolves: on a
+    /// fresh grant, `invalidateCache()` (belt-and-braces alongside the
+    /// `.EKEventStoreChanged` notification that usually fires on its own --
+    /// see `CalendarStore.invalidateCache`'s doc comment), then
+    /// `refreshCalendarWindows()` so the idle-exemption seam
+    /// (`isNowInMeeting`) picks up today's meetings immediately rather than
+    /// staying inert for up to 5 minutes until the next background refresh,
+    /// then this view's own `refreshCalendarOverlay()` for the visible UI.
     private func enableCalendarOverlay() {
         model.calendarOverlayEnabled = true
         model.settings.setCalendarOverlayEnabled(true)
@@ -107,7 +126,11 @@ struct ActivitiesView: View {
         // re-query once.
         model.dataChanged()
         Task { @MainActor in
-            _ = await Permissions.requestCalendarAccess()
+            let granted = await Permissions.requestCalendarAccess()
+            if granted {
+                await model.calendarStore?.invalidateCache()
+            }
+            await model.refreshCalendarWindows()
             await refreshCalendarOverlay()
         }
     }
@@ -122,6 +145,12 @@ struct ActivitiesView: View {
     /// overlay setting is on AND access is granted, fetches the current
     /// range's events and feeds them into `recompute` -- otherwise clears
     /// both so a disabled/revoked state doesn't keep showing stale events.
+    /// Checks `Task.isCancelled` right after the fetch, before touching any
+    /// `@State` -- this runs inside `.task(id:)` (cancelled/replaced the
+    /// instant `model.range`/`calendarOverlayEnabled` changes again) as well
+    /// as one-shot callers, so without the guard a slow fetch for a range
+    /// the user has already navigated away from could land after a newer
+    /// task already wrote the correct state, clobbering it with stale data.
     private func refreshCalendarOverlay() async {
         calendarPermissionState = Permissions.calendarState()
         guard model.calendarOverlayEnabled, calendarPermissionState == .granted,
@@ -130,7 +159,9 @@ struct ActivitiesView: View {
             activities.recompute(model: model, events: calendarEvents)
             return
         }
-        calendarEvents = await store.events(on: model.range.interval.start)
+        let fetched = await store.events(on: model.range.interval.start)
+        guard !Task.isCancelled else { return }
+        calendarEvents = fetched
         activities.recompute(model: model, events: calendarEvents)
     }
 
@@ -261,15 +292,6 @@ final class ActivitiesModel {
         let query = Self.normalizedQuery(model.activitySearch)
         let items = Self.filter(all, query: query)
 
-        // Tagged against the search-filtered `items` (not `all`) so the
-        // per-row badges and the "会议时间" summary stay consistent with
-        // whatever the list is actually showing -- same scoping choice as
-        // `matchCount`/`matchSeconds` below. Must run on the flat,
-        // pre-merge span list -- see `MeetingTagger.tagged`'s doc comment.
-        let tagged = MeetingTagger.tagged(items: items, events: events)
-        meetingSpanIDs = tagged.spanIDs
-        meetingSeconds = tagged.seconds
-
         // R-T9a: the match-count row must agree with what `ActivityListView`
         // actually displays. `ActivityListView` narrows `groups` to one
         // category when `model.activityFilter` is set, so the count/seconds
@@ -287,6 +309,31 @@ final class ActivitiesModel {
         }
         matchCount = query == nil ? nil : matchedItems.count
         matchSeconds = query == nil ? nil : Aggregator.totalDuration(matchedItems.map(\.span))
+
+        // R-T10a: `meetingSpanIDs` badges live on `groups`' rows, and `groups`
+        // (like `matchCount`'s underlying `items`) stays category-UNFILTERED
+        // -- the category chip only narrows `displayedGroups` in the view
+        // layer, so narrowing the badge set to `matchedItems` would silently
+        // un-badge a meeting span in a category the chip has filtered out of
+        // view while its row is still shown elsewhere. `meetingSeconds`, by
+        // contrast, IS a single summary number shown above the (possibly
+        // category-narrowed) list -- exactly `matchSeconds`' situation above
+        // -- so it must share `matchedItems`' scoping (search AND category),
+        // not `meetingSpanIDs`'s. Two separate `tagged()` calls rather than
+        // reusing one result for both, since the two axes genuinely differ.
+        // R-T10b: both are gated off entirely outside single-day-ish ranges
+        // -- `events` was fetched for one specific day
+        // (`model.range.interval.start`), so tagging it against a multi-day
+        // range's spans (e.g. `last30`, whose spans span 29 other days) would
+        // silently score every span against the wrong day's calendar.
+        let showsTimeline = Self.showsTimeline(model.range)
+        if showsTimeline {
+            meetingSpanIDs = MeetingTagger.tagged(items: items, events: events).spanIDs
+            meetingSeconds = MeetingTagger.tagged(items: matchedItems, events: events).seconds
+        } else {
+            meetingSpanIDs = []
+            meetingSeconds = 0
+        }
 
         var byCategory: [String: [CategorizedSpan]] = [:]
         for item in items {
@@ -309,9 +356,8 @@ final class ActivitiesModel {
         // Timeline keeps the unfiltered `all` so a narrowed list still shows
         // the full day's context (spec §7) rather than collapsing around
         // just the search hits.
-        let showsTimeline = Self.showsTimeline(model.range)
         timelineBlocks = showsTimeline ? Self.timelineBlocks(all, categories: categories) : []
-        calendarBlocks = showsTimeline ? Self.eventBlocks(events) : []
+        calendarBlocks = showsTimeline ? Self.eventBlocks(events, dayInterval: model.range.interval) : []
         allDayTitles = showsTimeline ? events.filter { $0.isAllDay && !$0.isDeclined }.map(\.title) : []
     }
 
@@ -534,15 +580,31 @@ final class ActivitiesModel {
     /// for the day timeline's event lane. All-day events go through
     /// `allDayTitles` instead (no meaningful y-position); declined events
     /// are dropped entirely, same as they're excluded from `isMeeting`.
-    private nonisolated static func eventBlocks(_ events: [CalendarEvent]) -> [TimelineEventBlock] {
+    ///
+    /// Each block's `start`/`end` are clipped to `dayInterval` (the
+    /// displayed range) before being handed to `DayTimelineView`, which
+    /// positions purely off minutes-from-midnight -- without clipping, a
+    /// cross-midnight event (23:00-01:00) would draw at y=23h with a 2h
+    /// height on today's 24h grid, and a 3-day timed event would draw 72h
+    /// tall. `eventTooltip` still reads the ORIGINAL (unclipped) event, so
+    /// the tooltip keeps showing the event's true start/end regardless of
+    /// how much of it is visually clipped into this day's column. An event
+    /// clipped down to <= 0 duration (entirely outside `dayInterval`) is
+    /// dropped.
+    private nonisolated static func eventBlocks(
+        _ events: [CalendarEvent], dayInterval: DateInterval
+    ) -> [TimelineEventBlock] {
         events
             .filter { !$0.isAllDay && !$0.isDeclined }
-            .map { event in
-                TimelineEventBlock(
+            .compactMap { event -> TimelineEventBlock? in
+                let start = max(event.start, dayInterval.start)
+                let end = min(event.end, dayInterval.end)
+                guard end > start else { return nil }
+                return TimelineEventBlock(
                     id: event.id,
                     title: event.title,
-                    start: event.start,
-                    end: event.end,
+                    start: start,
+                    end: end,
                     color: Color(hex: event.colorHex),
                     tooltip: eventTooltip(event)
                 )

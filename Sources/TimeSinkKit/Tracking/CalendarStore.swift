@@ -129,8 +129,15 @@ public actor CalendarStore {
 
         let predicate = store.predicateForEvents(withStart: dayStart, end: dayEnd, calendars: nil)
         let events = store.events(matching: predicate)
-            .filter { !Self.excludedCalendarTypes.contains($0.calendar.type) }
-            .map(Self.convert)
+            .filter { event in
+                // `event.calendar` is `null_unspecified` in the SDK -- a
+                // mid-deletion account or malformed CalDAV item can hand
+                // back nil here, and an unguarded `.type` access would trap
+                // the whole actor. Drop the event rather than crash.
+                guard let calendar = event.calendar else { return false }
+                return !Self.excludedCalendarTypes.contains(calendar.type)
+            }
+            .compactMap(Self.convert)
 
         cache[key] = events
         return events
@@ -139,8 +146,17 @@ public actor CalendarStore {
     /// Drops the whole per-day cache -- called on `.EKEventStoreChanged`
     /// (see `observeChanges(_:)` below, wired up by `AppModel`) so the next
     /// `events(on:)` call re-fetches instead of serving stale data after a
-    /// calendar/event edit made elsewhere.
+    /// calendar/event edit made elsewhere. Also calls `store.reset()`:
+    /// authorization can flip from not-granted to granted on the SAME
+    /// `EKEventStore` instance's lifetime (the actor's `store` is
+    /// constructed once, pre-authorization, at app launch), and an
+    /// `EKEventStore` that first materialized its calendars/sources with
+    /// zero authorized sources does not spontaneously re-materialize them
+    /// afterward -- `reset()` forces that. Called both from here (the
+    /// `.EKEventStoreChanged` path, which normally fires right after a
+    /// grant) and explicitly from the enable flow as belt-and-braces.
     public func invalidateCache() {
+        store.reset()
         cache.removeAll()
     }
 
@@ -158,19 +174,38 @@ public actor CalendarStore {
         EKEventStore.authorizationStatus(for: .event) == .fullAccess
     }
 
-    private static func convert(_ event: EKEvent) -> CalendarEvent {
+    /// `event.calendar`/`.startDate`/`.endDate` are all `null_unspecified`
+    /// in the SDK -- an unguarded access traps the actor the moment any of
+    /// them is nil (a mid-deletion account, a malformed CalDAV item).
+    /// Returns `nil` to drop the event instead, via the caller's
+    /// `compactMap`.
+    private static func convert(_ event: EKEvent) -> CalendarEvent? {
+        guard let calendar = event.calendar, let start = event.startDate, let end = event.endDate else {
+            return nil
+        }
         let attendees = event.attendees ?? []
         let isDeclined = attendees.first(where: \.isCurrentUser)?.participantStatus == .declined
+        // `calendar.title` is likewise `null_unspecified`; binding through
+        // an explicit `String?` local (rather than using it directly)
+        // avoids an implicit force-unwrap on a nil title.
+        let calendarTitle: String? = calendar.title
+        // Per-occurrence id: every occurrence of a recurring event shares
+        // one `eventIdentifier`, so using it alone would collide today's
+        // and next week's instance of the same weekly standup into the same
+        // SwiftUI identity. Folding in the occurrence's own start time makes
+        // each occurrence unique without minting a fresh UUID on every
+        // fetch for events that DO have a stable identifier.
+        let id = "\(event.eventIdentifier ?? UUID().uuidString)-\(start.timeIntervalSince1970)"
         return CalendarEvent(
-            id: event.eventIdentifier ?? UUID().uuidString,
+            id: id,
             title: event.title ?? "",
-            start: event.startDate,
-            end: event.endDate,
+            start: start,
+            end: end,
             isAllDay: event.isAllDay,
             attendeeCount: attendees.count,
             isDeclined: isDeclined,
-            calendarTitle: event.calendar.title,
-            colorHex: hexString(from: event.calendar.cgColor)
+            calendarTitle: calendarTitle ?? "",
+            colorHex: hexString(from: calendar.cgColor)
         )
     }
 

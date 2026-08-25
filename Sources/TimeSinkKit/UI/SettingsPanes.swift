@@ -70,6 +70,7 @@ struct GeneralSettingsPane: View {
                         chromeState = Permissions.chromeAutomationState(ask: true)
                     }
                 )
+                Toggle("日历叠加", isOn: calendarOverlayBinding)
                 PermissionRow(
                     title: "日历",
                     state: calendarState,
@@ -134,6 +135,21 @@ struct GeneralSettingsPane: View {
             set: { newValue in
                 model.menuTextEnabled = newValue
                 model.settings.setMenuBarTextEnabled(newValue)
+            }
+        )
+    }
+
+    /// Makes the overlay a real two-way switch -- previously only
+    /// `ActivitiesView`'s enable card could turn it ON, with no Settings
+    /// control to turn it back OFF (a one-way switch the doc comments on
+    /// `AppModel.calendarOverlayEnabled` and `ActivitiesView.CalendarTaskKey`
+    /// already (aspirationally) described as having a "Settings row" writer).
+    private var calendarOverlayBinding: Binding<Bool> {
+        Binding(
+            get: { model.calendarOverlayEnabled },
+            set: { newValue in
+                model.calendarOverlayEnabled = newValue
+                model.settings.setCalendarOverlayEnabled(newValue)
             }
         )
     }
