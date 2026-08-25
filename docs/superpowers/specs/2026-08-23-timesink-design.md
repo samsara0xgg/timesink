@@ -62,7 +62,7 @@ settings(key PK, value)   -- idle_threshold, llm_enabled, llm_endpoint, llm_mode
   -- API key 存 Keychain，不入库
 ```
 
-**URL 是一等字段**——分类规则直接匹配 URL 而非窗口标题（ActivityWatch 只能对标题做正则，为其公认的架构遗憾，不重蹈）。
+**URL 是一等字段**——分类规则直接匹配 URL 而非窗口标题（ActivityWatch 只能对标题做正则，为其公认的架构遗憾，不重蹈）。（2026-08-24 修订：p1-batch2 引入受限的「标题规则」层作为用户主导的例外通道——scoped 默认、最小长度校验、影响预览三重护栏；裁定与理由见 docs/superpowers/specs/2026-08-24-timesink-p1-batch2-design.md §5。）
 
 ## 6. 分类引擎
 
