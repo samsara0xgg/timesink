@@ -19,45 +19,68 @@ struct PendingTitleRule: Identifiable {
 /// Pure validation/normalization for the editor's keyword field, kept free of
 /// any view state so it's directly unit-testable.
 enum TitleRuleInput {
-    /// Splits `raw` on 逗号/顿号/竖线/换行, trims each piece, drops empties.
-    /// Any surviving keyword shorter than 2 characters rejects the whole
-    /// input (tier-0 has no undo, so a short pattern is a historically
-    /// documented false-positive magnet). A `re:` prefix is kept whole and
-    /// must compile via `NSRegularExpression` (an empty body -- `"re:"`
-    /// alone -- is also rejected, since `Classifier.titleMatches` treats an
-    /// empty regex as never-matching). Returns the pattern to store
-    /// (`|`-joined keywords, or the `re:` string verbatim), or `nil` if
-    /// invalid.
+    /// Trims `raw` as a whole first (so a stray leading/trailing space never
+    /// hides a `re:` prefix from the check below, nor survives into a
+    /// keyword's regex body). Then: a `re:` prefix is kept whole -- its body
+    /// is separately trimmed, must be >= 2 characters (same floor as a
+    /// keyword, and the same rationale: tier-0 has no undo), must compile
+    /// via `NSRegularExpression`, and must NOT match the empty string (a
+    /// body like `"a?"` or `"|"` matches every title, empty or not -- just
+    /// as dangerous as the bare `"re:"` case). Otherwise splits on
+    /// 逗号/顿号/竖线/换行, trims each piece, drops empties; any surviving
+    /// keyword shorter than 2 characters rejects the whole input; keywords
+    /// are then deduped case-insensitively, first occurrence wins (matches
+    /// the matcher's own case-insensitive substring semantics, and keeps a
+    /// duplicate like "lecture, Lecture" from producing a duplicate chip).
+    /// Returns the pattern to store (`|`-joined keywords, or the `re:`
+    /// string with its trimmed body), or `nil` if invalid.
     nonisolated static func normalizedPattern(_ raw: String) -> String? {
-        if raw.hasPrefix("re:") {
-            let body = String(raw.dropFirst(3))
-            guard !body.isEmpty else { return nil }
-            guard (try? NSRegularExpression(pattern: body)) != nil else { return nil }
-            return raw
+        let trimmedRaw = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if trimmedRaw.hasPrefix("re:") {
+            let body = String(trimmedRaw.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard body.count >= 2,
+                  let regex = try? NSRegularExpression(pattern: body, options: [.caseInsensitive]) else { return nil }
+            guard regex.firstMatch(in: "", options: [], range: NSRange(location: 0, length: 0)) == nil else { return nil }
+            return "re:\(body)"
         }
 
         let separators = CharacterSet(charactersIn: ",，、|\n")
-        let pieces = raw.components(separatedBy: separators)
+        let pieces = trimmedRaw.components(separatedBy: separators)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
 
         guard !pieces.isEmpty else { return nil }
         guard pieces.allSatisfy({ $0.count >= 2 }) else { return nil }
-        return pieces.joined(separator: "|")
+
+        var seen = Set<String>()
+        var deduped: [String] = []
+        for piece in pieces where seen.insert(piece.lowercased()).inserted {
+            deduped.append(piece)
+        }
+        return deduped.joined(separator: "|")
     }
 
     /// Counts items whose scope (`span.domain ?? span.appBundleID`) matches
     /// `scopeKey` (empty = global, matches everything) and whose title
-    /// matches `pattern` via `Classifier.titleMatches` -- used for the
-    /// editor's live "影响 N 项" preview and the Rules pane's today-hit
-    /// column.
+    /// matches `pattern` -- used for the editor's live "影响 N 项" preview
+    /// (recomputed on every keystroke) and the Rules pane's today-hit
+    /// column. Builds one `CompiledTitleRule` up front and reuses it across
+    /// every item instead of calling the uncompiled `Classifier.titleMatches`
+    /// per item, which re-splits `|`-keywords (and, for a `re:` pattern,
+    /// recompiles the `NSRegularExpression`) on every single call --
+    /// measured 302ms/50k for keywords and 114ms/50k for regex recompilation
+    /// alone (matches `ClassificationContext`'s own precompilation
+    /// rationale, see its doc comment).
     nonisolated static func affected(items: [CategorizedSpan], pattern: String, scopeKey: String) -> (count: Int, seconds: TimeInterval) {
+        let compiled = CompiledTitleRule(TitleRule(pattern: pattern, scopeKey: scopeKey, categoryID: "", source: "user"))
         var count = 0
         var seconds: TimeInterval = 0
         for item in items {
             let itemScope = item.span.domain ?? item.span.appBundleID
             guard Classifier.scopeMatches(ruleScopeKey: scopeKey, scopeKey: itemScope) else { continue }
-            guard let title = item.span.title, Classifier.titleMatches(pattern: pattern, title: title) else { continue }
+            guard let title = item.span.title else { continue }
+            guard compiled.matches(title: title, loweredTitle: title.lowercased()) else { continue }
             count += 1
             seconds += item.span.duration
         }
@@ -98,6 +121,17 @@ struct TitleRuleEditor: View {
         TitleRuleInput.normalizedPattern(keywordText)
     }
 
+    /// The keyword chips `normalizedPattern` would actually store, shown
+    /// live under the field so a title that splits into several broad
+    /// keywords (e.g. right-click-prefilled "React Docs | Next.js" ->
+    /// "React Docs"/"Next.js") is visible before Save rather than a
+    /// surprise afterward. A `re:` pattern renders as one chip; invalid
+    /// input renders none (matching the disabled Save button).
+    private var previewChips: [String] {
+        guard let pattern = normalizedPattern else { return [] }
+        return pattern.hasPrefix("re:") ? [pattern] : pattern.split(separator: "|").map(String.init)
+    }
+
     private var affectedPreview: (count: Int, seconds: TimeInterval) {
         guard let pattern = normalizedPattern else { return (0, 0) }
         return TitleRuleInput.affected(items: model.rangedSpans(), pattern: pattern, scopeKey: scopeKey)
@@ -111,6 +145,19 @@ struct TitleRuleEditor: View {
                 Text("多个关键词用逗号分隔；`re:` 前缀为正则")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if !previewChips.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 4) {
+                            ForEach(previewChips, id: \.self) { chip in
+                                Text(chip)
+                                    .font(.caption)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Capsule().fill(Color.accentColor.opacity(0.15)))
+                            }
+                        }
+                    }
+                }
             }
 
             Section {
@@ -125,12 +172,14 @@ struct TitleRuleEditor: View {
                     Text("所有活动").tag("")
                 }
                 .pickerStyle(.radioGroup)
+                .onChange(of: scopeKey) { _, _ in duplicateMessage = nil }
 
                 Picker("分类", selection: $categoryID) {
                     ForEach(sortedCategories, id: \.id) { category in
                         Text(category.name).tag(category.id)
                     }
                 }
+                .onChange(of: categoryID) { _, _ in duplicateMessage = nil }
             }
 
             Section {
@@ -161,14 +210,27 @@ struct TitleRuleEditor: View {
     /// Pre-checks for a builtin collision (`upsertUserTitleRule` silently
     /// no-ops in that case -- see its doc comment) before writing, so the
     /// user gets an explicit message instead of a save that appears to
-    /// succeed but changed nothing.
+    /// succeed but changed nothing. The pre-check read itself is treated as
+    /// fail-closed: if `titleRules()` throws, we cannot tell whether a
+    /// collision exists, so the save is blocked (not silently allowed to
+    /// proceed into the no-op) and the sheet stays open with a message.
     private func save() {
         guard let pattern = normalizedPattern else { return }
-        let collidesWithBuiltin = (try? model.categoryStore.titleRules())?.contains {
+
+        let existingRules: [TitleRule]
+        do {
+            existingRules = try model.categoryStore.titleRules()
+        } catch {
+            duplicateMessage = "无法校验是否与内置规则冲突，请重试"
+            titleRuleEditorLogger.error("titleRules() failed before save: \(String(describing: error), privacy: .public)")
+            return
+        }
+
+        let collidesWithBuiltin = existingRules.contains {
             $0.source == "builtin"
                 && $0.scopeKey == scopeKey
                 && $0.pattern.caseInsensitiveCompare(pattern) == .orderedSame
-        } ?? false
+        }
         guard !collidesWithBuiltin else {
             duplicateMessage = "与内置规则重复，可在规则面板中启用/停用该内置规则"
             return
@@ -180,6 +242,7 @@ struct TitleRuleEditor: View {
             model.dataChanged()
             dismiss()
         } catch {
+            duplicateMessage = "保存失败，请重试"
             titleRuleEditorLogger.error("upsertUserTitleRule failed for \(pattern, privacy: .public): \(String(describing: error), privacy: .public)")
         }
     }

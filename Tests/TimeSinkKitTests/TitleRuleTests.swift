@@ -212,6 +212,26 @@ extension TitleRuleTests {
         XCTAssertEqual(TitleRuleInput.normalizedPattern(#"re:PR #\d+"#), #"re:PR #\d+"#)
     }
 
+    // Review finding 2: `re:` must not bypass every safety guard -- the
+    // prefix check runs on trimmed input, the body itself is trimmed and
+    // floor-checked like a keyword, and a regex that matches the empty
+    // string (e.g. alternation of two empties) is rejected exactly like the
+    // bare "re:" case already was.
+    func testNormalizedPatternRegexGuards() {
+        XCTAssertNil(TitleRuleInput.normalizedPattern(" re:[unclosed"))   // leading space must not hide the re: prefix
+        XCTAssertNil(TitleRuleInput.normalizedPattern("re:|"))            // alternation of two empties matches everything
+        XCTAssertNil(TitleRuleInput.normalizedPattern("re: "))           // whitespace-only body
+        XCTAssertNil(TitleRuleInput.normalizedPattern("re:a"))           // body below the 2-char floor
+        XCTAssertEqual(TitleRuleInput.normalizedPattern(#"re:PR #\d+"#), #"re:PR #\d+"#)
+        XCTAssertEqual(TitleRuleInput.normalizedPattern(#" re:PR #\d+ "#), #"re:PR #\d+"#)
+    }
+
+    // Review fold-in (c): duplicate keywords (case-insensitive) must dedupe
+    // to a single chip, first occurrence's casing wins.
+    func testNormalizedPatternDedupesKeywords() {
+        XCTAssertEqual(TitleRuleInput.normalizedPattern("lecture, Lecture"), "lecture")
+    }
+
     func testAffectedCount() {
         let items = [
             CategorizedSpan(span: Span(start: ts(0), end: ts(600), appBundleID: "c", appName: "C",
