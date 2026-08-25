@@ -87,6 +87,11 @@ final class PanelHost {
     func closeNow() {
         cancelScheduledClose()
         panel?.orderOut(nil)
+        // Fold-in 7: drops the last-shown pane's `NSHostingView` (and
+        // everything its SwiftUI content closure captured -- the
+        // `onHover` wrapper `show` adds, `loadLast7Bars`, etc.) instead of
+        // letting it sit retained on `panel` between hovers.
+        panel?.contentView = nil
     }
 
     private static func makePanel() -> NSPanel {

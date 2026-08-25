@@ -25,4 +25,12 @@ public enum Format {
         let clamped = max(0, Int(t.rounded()))
         return String(format: "%02d:%02d", clamped / 60, clamped % 60)
     }
+
+    /// Formats a signed integer delta, e.g. "+6" / "-3" / "+0". Shared by
+    /// the menu-bar popover's pulse-delta chip and its 分数环 drill-down's
+    /// 较昨日 line (fold-in 6: previously duplicated as two private
+    /// one-liners, one per file).
+    public static func signedInt(_ v: Int) -> String {
+        v >= 0 ? "+\(v)" : "\(v)"
+    }
 }

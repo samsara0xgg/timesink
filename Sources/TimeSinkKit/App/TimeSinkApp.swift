@@ -249,12 +249,20 @@ struct MenuBarLabel: View {
             guard let route else { return }
             switch route {
             case .statsToday:
-                model.range = .today()
-                model.sidebarSelection = .stats
+                // Fold-in 8 (R-T13e): routed through the same navigation
+                // helper the popover's drill-down click routes use (C1+
+                // `AppModel.openStats(range:)`) -- the brief's "弹出层与通知
+                // 路由共用" intent.
+                model.openStats(range: .today())
                 openWindow(id: "main")
             case .activitiesToday:
-                model.range = .today()
-                model.sidebarSelection = .activities
+                // `category: nil` clears any category filter left over from
+                // a previous Activities visit -- a notification-driven jump
+                // to "today's activities" should show the full list, not a
+                // silently-still-active old filter (mechanical substitution
+                // per `AppModel.openActivities(category:range:)`'s always-
+                // set semantics).
+                model.openActivities(category: nil, range: .today())
                 openWindow(id: "main")
             case .settingsBudget:
                 model.settingsTab = .budget

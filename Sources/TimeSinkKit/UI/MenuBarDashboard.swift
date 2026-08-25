@@ -227,8 +227,11 @@ final class TodayDashboardModel {
     /// number agree, matching `categoryRow`'s existing bar convention).
     /// Sorted by weighted contribution (`seconds * points`) descending --
     /// what actually drove the pulse ring, unlike a plain-duration sort
-    /// (that's `topCategories`); ties broken by `id` ascending for
-    /// determinism, same tiebreak convention as `budgetRows`' sort.
+    /// (that's `topCategories`). Ties (R-T13a: EVERY floor-points category,
+    /// e.g. all of socialMedia/entertainment, ties at contribution 0 --
+    /// alphabetical alone would rank a 1-minute row above a 3-hour one)
+    /// break by `seconds` descending first, THEN `id` ascending for
+    /// determinism.
     nonisolated static func scoreContributions(
         byCategory: [String: TimeInterval], categories: [String: Category]
     ) -> [(id: String, name: String, colorHex: String, seconds: TimeInterval, points: Double, share: Double)] {
@@ -244,6 +247,7 @@ final class TodayDashboardModel {
                 let lhsContribution = lhs.seconds * lhs.points
                 let rhsContribution = rhs.seconds * rhs.points
                 if lhsContribution != rhsContribution { return lhsContribution > rhsContribution }
+                if lhs.seconds != rhs.seconds { return lhs.seconds > rhs.seconds }
                 return lhs.id < rhs.id
             }
     }
@@ -276,53 +280,89 @@ private enum DrillKind: Equatable {
     case score, compareFocus, compareTotal, streak, category(String), spark, budget
 }
 
+/// A zero-size probe view, flipped to match SwiftUI's own top-left-origin,
+/// Y-down coordinate convention -- lets `NSView.convert(_:to:)` correctly
+/// reinterpret a SwiftUI `.global`-space rect without a hand-rolled Y-flip
+/// (F4 fix: the previous implementation hand-computed a flip against
+/// `window.contentView`'s height, assuming that view's origin was `.zero`
+/// in window base coordinates and making no X adjustment at all --
+/// `NSView.convert(_:to:)` is AppKit's own, assumption-free coordinate-space
+/// machinery; it only needs the source view's `isFlipped` to accurately
+/// describe how to interpret its own bounds).
+private final class FlippedProbeView: NSView {
+    override var isFlipped: Bool { true }
+}
+
 /// Captures the `NSWindow` hosting this SwiftUI subtree (the `MenuBarExtra`
-/// popover's window under `.menuBarExtraStyle(.window)`) -- zero-size,
+/// popover's window under `.menuBarExtraStyle(.window)`) plus the probe
+/// view itself (the reference `screenRect` converts through) -- zero-size,
 /// attached once at `MenuBarDashboardView`'s root. `view.window` is nil at
 /// `makeNSView` time (the view isn't attached to the window hierarchy yet),
-/// so both callbacks defer to the next run-loop turn.
+/// so both callbacks defer to the next run-loop turn. Writes are guarded
+/// (F3 fix): SwiftUI happens to dedupe equal `@State` writes today, but
+/// that's not a contract worth leaning on -- `updateNSView` runs on every
+/// SwiftUI update pass, and an unconditional write is a latent
+/// self-sustaining update cycle if that deduping behavior ever changes.
 private struct WindowAccessor: NSViewRepresentable {
     @Binding var window: NSWindow?
+    @Binding var anchorView: NSView?
 
     func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
-        DispatchQueue.main.async { self.window = view.window }
+        let view = FlippedProbeView(frame: .zero)
+        DispatchQueue.main.async {
+            self.window = view.window
+            self.anchorView = view
+        }
         return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        DispatchQueue.main.async { self.window = nsView.window }
+        DispatchQueue.main.async {
+            if self.window !== nsView.window { self.window = nsView.window }
+            if self.anchorView !== nsView { self.anchorView = nsView }
+        }
     }
 }
 
-/// Converts a SwiftUI `.global`-space rect (top-left origin, Y down -- the
-/// hosting hierarchy's own coordinate space) to AppKit screen coordinates
-/// (bottom-left origin) via `window`. `NSHostingView` runs SwiftUI's
-/// coordinate space flipped to match AppKit's content view, so a single
-/// Y-flip against the window's content height is the whole conversion.
+/// Converts a SwiftUI `.global`-space rect to AppKit screen coordinates:
+/// `anchorView.convert(_:to:)` (source view's own bounds space -> the
+/// window's base coordinate system), then `window.convertToScreen(_:)`
+/// (window base -> screen). `anchorView` must be a `FlippedProbeView` so
+/// `convert` interprets `rect`'s Y the way SwiftUI's `.global` space
+/// actually measures it (F4 fix -- see `FlippedProbeView`'s doc comment).
 @MainActor
-private func screenRect(fromGlobal rect: CGRect, window: NSWindow) -> CGRect {
-    let contentHeight = window.contentView?.frame.height ?? window.frame.height
-    let flippedLocal = CGRect(x: rect.minX, y: contentHeight - rect.maxY, width: rect.width, height: rect.height)
-    return window.convertToScreen(flippedLocal)
+private func screenRect(fromGlobal rect: CGRect, anchorView: NSView, window: NSWindow) -> CGRect {
+    let localRect = anchorView.convert(rect, to: nil)
+    return window.convertToScreen(localRect)
 }
 
 /// Hover wiring for one of the popover's seven drill-down panes: hovering
 /// this view for 0.15s shows `content()` in `host`'s `NSPanel`, positioned
-/// next to this view's on-screen frame (via `hostWindow` + `screenRect`);
-/// the mouse leaving schedules the panel's close (`PanelHost`'s own 0.25s
-/// default, canceled by hovering the panel itself -- see `PanelHost.show`).
-/// `host.show` returning `false` (no host window yet, or a degenerate/
-/// off-screen anchor frame -- NSPanel positioning against a `MenuBarExtra`'s
-/// private layout is a known-risk area, spec §10) falls back to
-/// `expandedDrill`: the same `content()` expanded in place, dismissed by an
-/// explicit「收起」rather than by hover-out (avoids flicker for an
-/// already-degraded, presumably less precise hover signal).
+/// next to the popover window (via `hostWindow`/`anchorView` + `screenRect`
+/// -- fold-in 3: X anchors off the WINDOW's own frame, not this row's
+/// narrower one; Y stays row-anchored, see `attemptShow`); the mouse
+/// leaving schedules the panel's close (`PanelHost`'s own 0.25s default,
+/// canceled by hovering the panel itself -- see `PanelHost.show`).
+/// `host.show` returning `false` (no host window/anchor view yet, or a
+/// degenerate/off-screen anchor frame -- NSPanel positioning against a
+/// `MenuBarExtra`'s private layout is a known-risk area, spec §10) falls
+/// back to `expandedDrill`: the same `content()` expanded in place,
+/// dismissed by an explicit「收起」rather than by hover-out (avoids flicker
+/// for an already-degraded, presumably less precise hover signal).
+///
+/// `shownKind` (shared across every row via one `MenuBarDashboardView`-level
+/// binding) tracks which pane, if any, is CURRENTLY showing in `host`'s
+/// panel -- `.onDisappear` uses it to close that panel if THIS row (the one
+/// that showed it) is torn down before its own hover-out ever fires (F2:
+/// reachable when the popover dismisses mid-hover-in, or when this row
+/// drops out of `topCategories` on a `dataVersion` recompute).
 private struct DrillDownModifier<DrillContent: View>: ViewModifier {
     let host: PanelHost
     let kind: DrillKind
     let hostWindow: NSWindow?
+    let anchorView: NSView?
     @Binding var expandedDrill: DrillKind?
+    @Binding var shownKind: DrillKind?
     let content: () -> DrillContent
 
     private static var hoverDelay: TimeInterval { 0.15 }
@@ -355,12 +395,57 @@ private struct DrillDownModifier<DrillContent: View>: ViewModifier {
                     host.scheduleClose()
                 }
             }
+            .onDisappear {
+                // F2: a pending 0.15s show timer must never fire after this
+                // row is gone. Two reachable orderings: (a) hover-in armed
+                // the timer, then a click within 150ms dismisses the
+                // popover before it elapses; (b) this row is removed by a
+                // `dataVersion` recompute (e.g. it fell out of
+                // `topCategories`) with no `onHover(false)` ever firing to
+                // schedule a close on its own.
+                showTask?.cancel()
+                showTask = nil
+                if shownKind == kind {
+                    host.closeNow()
+                    shownKind = nil
+                }
+                if expandedDrill == kind {
+                    expandedDrill = nil
+                }
+            }
     }
 
     private func attemptShow() {
-        let anchorFrame = hostWindow.map { screenRect(fromGlobal: frame, window: $0) } ?? .zero
+        guard let hostWindow, let anchorView else {
+            // WindowAccessor never resolved a window/probe view -- the
+            // sanctioned fallback (spec §10): expand in place.
+            expandedDrill = kind
+            return
+        }
+        guard hostWindow.isVisible else {
+            // F2 belt-and-suspenders: the popover already closed underneath
+            // this pending timer -- `.onDisappear` above should already
+            // have canceled it; this guards a race. Nothing live left to
+            // anchor against or to expand inline into.
+            return
+        }
+        let rowFrame = screenRect(fromGlobal: frame, anchorView: anchorView, window: hostWindow)
+        // Fold-in 3: synthesize an anchor whose X-extent is the POPOVER
+        // WINDOW's own screen frame (so `PanelHost.position`'s existing
+        // `anchorFrame.minX - size.width - gap` / `.maxX + gap` logic sits
+        // the panel just outside the WHOLE popover, not 8pt inside this
+        // row's own left edge) and whose Y-extent is this row's frame
+        // (vertical alignment stays row-anchored).
+        let windowFrame = hostWindow.frame
+        let anchorFrame = CGRect(x: windowFrame.minX, y: rowFrame.minY,
+                                  width: windowFrame.width, height: rowFrame.height)
         if host.show(content(), near: anchorFrame) {
-            if expandedDrill == kind { expandedDrill = nil }
+            shownKind = kind
+            // Fold-in 1: clear ANY inline expansion on a successful show,
+            // not just this row's own kind -- a different pane's degraded
+            // expansion left open, with this pane's NSPanel now succeeding,
+            // would otherwise leave a stale inline block behind it.
+            expandedDrill = nil
         } else {
             expandedDrill = kind
         }
@@ -369,12 +454,12 @@ private struct DrillDownModifier<DrillContent: View>: ViewModifier {
 
 extension View {
     fileprivate func drillDown<DrillContent: View>(
-        host: PanelHost, kind: DrillKind, hostWindow: NSWindow?,
-        expandedDrill: Binding<DrillKind?>,
+        host: PanelHost, kind: DrillKind, hostWindow: NSWindow?, anchorView: NSView?,
+        expandedDrill: Binding<DrillKind?>, shownKind: Binding<DrillKind?>,
         @ViewBuilder content: @escaping () -> DrillContent
     ) -> some View {
-        modifier(DrillDownModifier(host: host, kind: kind, hostWindow: hostWindow,
-                                    expandedDrill: expandedDrill, content: content))
+        modifier(DrillDownModifier(host: host, kind: kind, hostWindow: hostWindow, anchorView: anchorView,
+                                    expandedDrill: expandedDrill, shownKind: shownKind, content: content))
     }
 }
 
@@ -415,11 +500,14 @@ struct MenuBarDashboardView: View {
 
     /// C1+ hover drill-down: one reused `PanelHost` (see its own doc
     /// comment for why it isn't `FocusHUDController`), the popover's own
-    /// `NSWindow` (captured by `WindowAccessor`, used to convert a hovered
-    /// row's local frame to screen coordinates), and which pane -- if any --
-    /// is expanded in the degraded in-popover path.
+    /// `NSWindow` + probe view (captured by `WindowAccessor`, used to
+    /// convert a hovered row's local frame to screen coordinates), which
+    /// pane (if any) is CURRENTLY showing in `panelHost`'s NSPanel, and
+    /// which pane (if any) is expanded in the degraded in-popover path.
     @State private var panelHost = PanelHost()
     @State private var hostWindow: NSWindow?
+    @State private var anchorView: NSView?
+    @State private var shownKind: DrillKind?
     @State private var expandedDrill: DrillKind?
 
     private var focusRunning: Bool { model.focus?.running != nil }
@@ -434,7 +522,8 @@ struct MenuBarDashboardView: View {
                 HStack(spacing: 14) {
                     Button(action: openStatsToday) { scoreColumn }
                         .buttonStyle(.plain)
-                        .drillDown(host: panelHost, kind: .score, hostWindow: hostWindow, expandedDrill: $expandedDrill) {
+                        .drillDown(host: panelHost, kind: .score, hostWindow: hostWindow, anchorView: anchorView,
+                                   expandedDrill: $expandedDrill, shownKind: $shownKind) {
                             scoreBreakdownContent()
                         }
                     VStack(alignment: .leading, spacing: 4) {
@@ -443,7 +532,8 @@ struct MenuBarDashboardView: View {
                                     delta: dashboard.focusDelta.map(Format.durationDelta))
                         }
                         .buttonStyle(.plain)
-                        .drillDown(host: panelHost, kind: .compareFocus, hostWindow: hostWindow, expandedDrill: $expandedDrill) {
+                        .drillDown(host: panelHost, kind: .compareFocus, hostWindow: hostWindow, anchorView: anchorView,
+                                   expandedDrill: $expandedDrill, shownKind: $shownKind) {
                             compareBaseContent(focus: true)
                         }
                         Button(action: openStatsToday) {
@@ -451,7 +541,8 @@ struct MenuBarDashboardView: View {
                                     delta: dashboard.totalDelta.map(Format.durationDelta))
                         }
                         .buttonStyle(.plain)
-                        .drillDown(host: panelHost, kind: .compareTotal, hostWindow: hostWindow, expandedDrill: $expandedDrill) {
+                        .drillDown(host: panelHost, kind: .compareTotal, hostWindow: hostWindow, anchorView: anchorView,
+                                   expandedDrill: $expandedDrill, shownKind: $shownKind) {
                             compareBaseContent(focus: false)
                         }
                         if dashboard.streakDays >= 2 {
@@ -461,23 +552,24 @@ struct MenuBarDashboardView: View {
                                     .foregroundStyle(.tint)
                             }
                             .buttonStyle(.plain)
-                            .drillDown(host: panelHost, kind: .streak, hostWindow: hostWindow, expandedDrill: $expandedDrill) {
+                            .drillDown(host: panelHost, kind: .streak, hostWindow: hostWindow, anchorView: anchorView,
+                                       expandedDrill: $expandedDrill, shownKind: $shownKind) {
                                 streakDotsContent()
                             }
                         }
                     }
                 }
                 if expandedDrill == .score {
-                    ExpandedDrillView(content: scoreBreakdownContent()) { expandedDrill = nil }
+                    ExpandedDrillView(content: scoreBreakdownContent(compact: true)) { expandedDrill = nil }
                 }
                 if expandedDrill == .compareFocus {
-                    ExpandedDrillView(content: compareBaseContent(focus: true)) { expandedDrill = nil }
+                    ExpandedDrillView(content: compareBaseContent(focus: true, compact: true)) { expandedDrill = nil }
                 }
                 if expandedDrill == .compareTotal {
-                    ExpandedDrillView(content: compareBaseContent(focus: false)) { expandedDrill = nil }
+                    ExpandedDrillView(content: compareBaseContent(focus: false, compact: true)) { expandedDrill = nil }
                 }
                 if expandedDrill == .streak {
-                    ExpandedDrillView(content: streakDotsContent()) { expandedDrill = nil }
+                    ExpandedDrillView(content: streakDotsContent(compact: true)) { expandedDrill = nil }
                 }
             }
 
@@ -489,11 +581,12 @@ struct MenuBarDashboardView: View {
                                 categoryRow(entry)
                             }
                             .buttonStyle(.plain)
-                            .drillDown(host: panelHost, kind: .category(entry.id), hostWindow: hostWindow, expandedDrill: $expandedDrill) {
+                            .drillDown(host: panelHost, kind: .category(entry.id), hostWindow: hostWindow, anchorView: anchorView,
+                                       expandedDrill: $expandedDrill, shownKind: $shownKind) {
                                 categoryDetailContent(entry)
                             }
                             if expandedDrill == .category(entry.id) {
-                                ExpandedDrillView(content: categoryDetailContent(entry)) { expandedDrill = nil }
+                                ExpandedDrillView(content: categoryDetailContent(entry, compact: true)) { expandedDrill = nil }
                             }
                         }
                     }
@@ -501,22 +594,24 @@ struct MenuBarDashboardView: View {
 
                 if dashboard.total > 0 {
                     sparkline
-                        .drillDown(host: panelHost, kind: .spark, hostWindow: hostWindow, expandedDrill: $expandedDrill) {
+                        .drillDown(host: panelHost, kind: .spark, hostWindow: hostWindow, anchorView: anchorView,
+                                   expandedDrill: $expandedDrill, shownKind: $shownKind) {
                             hourlyBigContent()
                         }
                     if expandedDrill == .spark {
-                        ExpandedDrillView(content: hourlyBigContent()) { expandedDrill = nil }
+                        ExpandedDrillView(content: hourlyBigContent(compact: true)) { expandedDrill = nil }
                     }
                 }
 
                 if !dashboard.budgetRows.isEmpty {
                     Button(action: openBudgetSettings) { budgetSection }
                         .buttonStyle(.plain)
-                        .drillDown(host: panelHost, kind: .budget, hostWindow: hostWindow, expandedDrill: $expandedDrill) {
+                        .drillDown(host: panelHost, kind: .budget, hostWindow: hostWindow, anchorView: anchorView,
+                                   expandedDrill: $expandedDrill, shownKind: $shownKind) {
                             budgetProgressContent()
                         }
                     if expandedDrill == .budget {
-                        ExpandedDrillView(content: budgetProgressContent()) { expandedDrill = nil }
+                        ExpandedDrillView(content: budgetProgressContent(compact: true)) { expandedDrill = nil }
                     }
                 }
 
@@ -554,7 +649,7 @@ struct MenuBarDashboardView: View {
         }
         .padding(16)
         .frame(width: 300)
-        .background(WindowAccessor(window: $hostWindow))
+        .background(WindowAccessor(window: $hostWindow, anchorView: $anchorView))
         // `.menuBarExtraStyle(.window)` keeps this view (and its @State
         // dashboard) alive across popover dismissals, so `.onAppear` fires
         // on every open, not just app launch -- force the streak lookback
@@ -563,10 +658,19 @@ struct MenuBarDashboardView: View {
         // see `TodayDashboardModel.recompute`.
         .onAppear { refresh(forceStreak: true) }
         .onChange(of: model.dataVersion) { refresh(forceStreak: false) }
+        // Fold-in 2: switching `popoverMode` (常态 <-> 专注配置态) removes
+        // every drill-down row from the tree and re-adds fresh ones on the
+        // way back -- each row's own `.onDisappear` already clears
+        // `expandedDrill`/`shownKind` for ITS kind (see
+        // `DrillDownModifier`), but this is a direct, unconditional
+        // belt-and-suspenders clear so switching modes can never bring a
+        // stale inline expansion back pre-opened.
+        .onChange(of: popoverMode) { _, _ in expandedDrill = nil }
         // C1+: the hover panel (and any degraded in-popover expansion) must
         // not outlive the popover itself -- spec §10's "弹出层关闭随之消失".
         .onDisappear {
             panelHost.closeNow()
+            shownKind = nil
             expandedDrill = nil
         }
     }
@@ -634,29 +738,36 @@ struct MenuBarDashboardView: View {
     // a lazily-fetched `.last7` range) -- no view here reads `AppModel`/
     // `TrackerEngine` directly (see `DrillDownViews.swift`'s header
     // comment), so these methods are the one place that bridges dashboard
-    // state into the pure drill-down view types.
+    // state into the pure drill-down view types. `compact` (F1 fix)
+    // requests `DrillWidths.compact` instead of the pane's normal panel
+    // width -- passed `true` only by the `ExpandedDrillView` (in-popover
+    // degraded) call sites, since that path is bounded by the popover's own
+    // 268pt content width, unlike the floating `NSPanel`.
 
-    private func scoreBreakdownContent() -> ScoreBreakdownView {
+    private func scoreBreakdownContent(compact: Bool = false) -> ScoreBreakdownView {
         let byCategory = Aggregator.durationByCategory(dashboard.todayItems)
         let rows = TodayDashboardModel.scoreContributions(byCategory: byCategory, categories: model.resolver.categoriesByID)
             .map { ScoreBreakdownView.Row(id: $0.id, name: $0.name, colorHex: $0.colorHex,
                                            seconds: $0.seconds, points: $0.points, share: $0.share) }
-        return ScoreBreakdownView(rows: rows, pulse: dashboard.pulse, pulseDelta: dashboard.pulseDelta)
+        return ScoreBreakdownView(rows: rows, pulse: dashboard.pulse, pulseDelta: dashboard.pulseDelta,
+                                   width: compact ? DrillWidths.compact : DrillWidths.score)
     }
 
-    private func compareBaseContent(focus: Bool) -> CompareBaseView {
-        focus
-            ? CompareBaseView(label: "专注时长比较", todayValue: dashboard.focus, delta: dashboard.focusDelta)
-            : CompareBaseView(label: "总计时长比较", todayValue: dashboard.total, delta: dashboard.totalDelta)
+    private func compareBaseContent(focus: Bool, compact: Bool = false) -> CompareBaseView {
+        let width = compact ? DrillWidths.compact : DrillWidths.compare
+        return focus
+            ? CompareBaseView(label: "专注时长比较", todayValue: dashboard.focus, delta: dashboard.focusDelta, width: width)
+            : CompareBaseView(label: "总计时长比较", todayValue: dashboard.total, delta: dashboard.totalDelta, width: width)
     }
 
-    private func streakDotsContent() -> StreakDotsView {
+    private func streakDotsContent(compact: Bool = false) -> StreakDotsView {
         StreakDotsView(dailyPulses: dashboard.streakLookbackPulses,
-                        threshold: TodayDashboardModel.streakThreshold, streakDays: dashboard.streakDays)
+                        threshold: TodayDashboardModel.streakThreshold, streakDays: dashboard.streakDays,
+                        width: compact ? DrillWidths.compact : DrillWidths.streak)
     }
 
     private func categoryDetailContent(
-        _ entry: (id: String, name: String, colorHex: String, seconds: TimeInterval)
+        _ entry: (id: String, name: String, colorHex: String, seconds: TimeInterval), compact: Bool = false
     ) -> CategoryDetailView {
         let items = dashboard.todayItems.filter { $0.categoryID == entry.id }
         var bars = Array(repeating: 0.0, count: 24)
@@ -666,33 +777,47 @@ struct MenuBarDashboardView: View {
         let subs = Aggregator.durationByDomainOrApp(items).prefix(5)
             .map { CategoryDetailView.SubEntry(id: $0.key, label: $0.label, seconds: $0.seconds) }
         return CategoryDetailView(name: entry.name, colorHex: entry.colorHex, seconds: entry.seconds,
-                                   hourBars: bars, subs: Array(subs))
+                                   hourBars: bars, subs: Array(subs),
+                                   width: compact ? DrillWidths.compact : DrillWidths.category)
     }
 
-    private func hourlyBigContent() -> HourlyBigView {
+    private func hourlyBigContent(compact: Bool = false) -> HourlyBigView {
         let categories = model.resolver.categoriesByID
         let todayBars = Self.hourlyBars(items: dashboard.todayItems, categories: categories)
         return HourlyBigView(categories: categories, todayBars: todayBars, loadLast7Bars: {
             let items = model.rangedSpans(for: DateRangeSelection(kind: .last7, anchor: Date()))
             return Self.hourlyBars(items: items, categories: categories)
-        })
+        }, width: compact ? DrillWidths.compact : DrillWidths.hourly)
     }
 
+    /// Fold-in 4: collapses by `(hour-of-day, categoryID)` BEFORE
+    /// constructing bars -- `Aggregator.stackedSeries` keys by absolute
+    /// `bucketStart`, so a multi-day range (近 7 天) yields up to one entry
+    /// PER DAY sharing the same hour-of-day/category; handing those to
+    /// `HourlyBigView` unmerged meant each got its own `max(1, _)`-floored
+    /// stacked rectangle, inflating quiet-hour categories' visual height by
+    /// up to 6pt. Also gives every `Bar` a stable `(hour, categoryID)`-keyed
+    /// identity instead of a fresh `UUID()` per render (see `Bar.id`).
     private static func hourlyBars(items: [CategorizedSpan], categories: [String: Category]) -> [HourlyBigView.Bar] {
+        struct HourCategoryKey: Hashable { let hour: Int; let categoryID: String }
         let calendar = Calendar.current
-        return Aggregator.stackedSeries(items, bucket: .hour, calendar: calendar).map { entry in
-            HourlyBigView.Bar(hour: calendar.component(.hour, from: entry.bucketStart),
-                               categoryID: entry.categoryID,
-                               colorHex: categories[entry.categoryID]?.colorHex ?? "#8E8E93",
-                               seconds: entry.seconds)
+        var totals: [HourCategoryKey: TimeInterval] = [:]
+        for entry in Aggregator.stackedSeries(items, bucket: .hour, calendar: calendar) {
+            let key = HourCategoryKey(hour: calendar.component(.hour, from: entry.bucketStart), categoryID: entry.categoryID)
+            totals[key, default: 0] += entry.seconds
+        }
+        return totals.map { key, seconds in
+            HourlyBigView.Bar(hour: key.hour, categoryID: key.categoryID,
+                               colorHex: categories[key.categoryID]?.colorHex ?? "#8E8E93", seconds: seconds)
         }
     }
 
-    private func budgetProgressContent() -> BudgetProgressView {
+    private func budgetProgressContent(compact: Bool = false) -> BudgetProgressView {
         let rows = dashboard.allBudgetRows.map {
             BudgetProgressView.Row(id: $0.id, name: $0.name, colorHex: $0.colorHex, spent: $0.spent, limit: $0.limit)
         }
-        return BudgetProgressView(rows: rows, warnPercent: dashboard.budgetWarnPercent)
+        return BudgetProgressView(rows: rows, warnPercent: dashboard.budgetWarnPercent,
+                                   width: compact ? DrillWidths.compact : DrillWidths.budget)
     }
 
     /// The score gauge plus its 环比 (pulse delta) chip, grouped together so
@@ -702,7 +827,7 @@ struct MenuBarDashboardView: View {
         VStack(spacing: 4) {
             scoreGauge
             if let pulseDelta = dashboard.pulseDelta {
-                Text(Self.signed(pulseDelta) + " 分")
+                Text(Format.signedInt(pulseDelta) + " 分")
                     .font(.caption2.weight(.bold)).monospacedDigit()
                     .foregroundStyle(pulseDelta < 0 ? Color.red : Color.green)
             }
@@ -808,6 +933,4 @@ struct MenuBarDashboardView: View {
             .frame(height: 40)
         }
     }
-
-    private static func signed(_ v: Int) -> String { v >= 0 ? "+\(v)" : "\(v)" }
 }

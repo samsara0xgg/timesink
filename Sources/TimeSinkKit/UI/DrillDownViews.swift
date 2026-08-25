@@ -1,5 +1,4 @@
 import SwiftUI
-import Charts
 
 /// C1+ hover drill-down content: the seven popover panes' subwindow bodies.
 /// Every type here is a pure renderer over plain value data handed in by
@@ -25,8 +24,6 @@ extension View {
     fileprivate func flyoutCard() -> some View { modifier(FlyoutCard()) }
 }
 
-private func signedDelta(_ v: Int) -> String { v >= 0 ? "+\(v)" : "\(v)" }
-
 // MARK: - 分数环: ScoreBreakdownView
 
 /// 分数环 hover pane: `TodayDashboardModel.scoreContributions` rows (color
@@ -45,6 +42,10 @@ struct ScoreBreakdownView: View {
     let rows: [Row]
     let pulse: Int?
     let pulseDelta: Int?
+    /// Panel default is `DrillWidths.score`; the degraded in-popover
+    /// expansion passes `DrillWidths.compact` so it fits inside the
+    /// popover's own content width (F1 fix).
+    var width: CGFloat = DrillWidths.score
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -52,7 +53,7 @@ struct ScoreBreakdownView: View {
                 Text("分数构成").font(.headline)
                 Spacer()
                 if let pulse {
-                    Text(pulseDelta.map { "\(pulse) · 较昨日 \(signedDelta($0))" } ?? "\(pulse)")
+                    Text(pulseDelta.map { "\(pulse) · 较昨日 \(Format.signedInt($0))" } ?? "\(pulse)")
                         .font(.caption).monospacedDigit().foregroundStyle(.secondary)
                 }
             }
@@ -78,7 +79,7 @@ struct ScoreBreakdownView: View {
                 .font(.system(size: 9))
                 .foregroundStyle(.secondary)
         }
-        .frame(width: 280, alignment: .leading)
+        .frame(width: width, alignment: .leading)
         .flyoutCard()
     }
 }
@@ -93,6 +94,7 @@ struct CompareBaseView: View {
     let label: String
     let todayValue: TimeInterval
     let delta: TimeInterval?
+    var width: CGFloat = DrillWidths.compare
 
     private var yesterdayValue: TimeInterval? { delta.map { todayValue - $0 } }
 
@@ -120,7 +122,7 @@ struct CompareBaseView: View {
                 .font(.system(size: 9))
                 .foregroundStyle(.secondary)
         }
-        .frame(width: 240, alignment: .leading)
+        .frame(width: width, alignment: .leading)
         .flyoutCard()
     }
 }
@@ -134,6 +136,7 @@ struct StreakDotsView: View {
     let dailyPulses: [Int?]
     let threshold: Int
     let streakDays: Int
+    var width: CGFloat = DrillWidths.streak
 
     private var metDaysCount: Int { dailyPulses.compactMap { $0 }.filter { $0 >= threshold }.count }
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 10)
@@ -157,7 +160,7 @@ struct StreakDotsView: View {
                 .font(.system(size: 9))
                 .foregroundStyle(.secondary)
         }
-        .frame(width: 220, alignment: .leading)
+        .frame(width: width, alignment: .leading)
         .flyoutCard()
     }
 }
@@ -181,6 +184,7 @@ struct CategoryDetailView: View {
     let hourBars: [Double]
     /// Top 5, by duration descending.
     let subs: [SubEntry]
+    var width: CGFloat = DrillWidths.category
 
     private var maxHourBar: Double { max(hourBars.max() ?? 0, 0.01) }
 
@@ -217,7 +221,7 @@ struct CategoryDetailView: View {
                 .font(.system(size: 9))
                 .foregroundStyle(.secondary)
         }
-        .frame(width: 260, alignment: .leading)
+        .frame(width: width, alignment: .leading)
         .flyoutCard()
     }
 }
@@ -233,12 +237,19 @@ struct CategoryDetailView: View {
 /// actually asked for (and it's the same LRU-cached query path every other
 /// range fetch in the app already goes through).
 struct HourlyBigView: View {
+    /// `id` is derived from `(hour, categoryID)`, not a fresh `UUID()` per
+    /// render -- the caller (`MenuBarDashboard.swift`'s `hourlyBars(items:
+    /// categories:)`) guarantees at most one `Bar` per `(hour, categoryID)`
+    /// pair (fold-in 4: multi-day `stackedSeries` entries sharing an
+    /// hour-of-day are summed before this type ever sees them), so this id
+    /// is unique within any `[Bar]` this view receives.
     struct Bar: Identifiable {
-        let id = UUID()
         let hour: Int
         let categoryID: String
         let colorHex: String
         let seconds: TimeInterval
+
+        var id: String { "\(hour)_\(categoryID)" }
     }
 
     private enum Mode: String, CaseIterable { case today = "今天", last7 = "近 7 天" }
@@ -246,6 +257,7 @@ struct HourlyBigView: View {
     let categories: [String: Category]
     let todayBars: [Bar]
     let loadLast7Bars: () -> [Bar]
+    var width: CGFloat = DrillWidths.hourly
 
     @State private var mode: Mode = .today
     @State private var last7Bars: [Bar]?
@@ -279,7 +291,7 @@ struct HourlyBigView: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.segmented)
-                .frame(width: 140)
+                .frame(width: 120)
                 .onChange(of: mode) { _, newMode in
                     if newMode == .last7, last7Bars == nil {
                         last7Bars = loadLast7Bars()
@@ -305,7 +317,7 @@ struct HourlyBigView: View {
             .frame(height: 56)
             legend(categoryOrder)
         }
-        .frame(width: 300, alignment: .leading)
+        .frame(width: width, alignment: .leading)
         .flyoutCard()
     }
 
@@ -336,6 +348,7 @@ struct BudgetProgressView: View {
 
     let rows: [Row]
     let warnPercent: Int
+    var width: CGFloat = DrillWidths.budget
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -364,7 +377,28 @@ struct BudgetProgressView: View {
                 .font(.system(size: 9))
                 .foregroundStyle(.secondary)
         }
-        .frame(width: 280, alignment: .leading)
+        .frame(width: width, alignment: .leading)
         .flyoutCard()
     }
+}
+
+// MARK: - Widths
+
+/// Panel-mode widths for each drill-down pane (used when `PanelHost` shows
+/// the pane in its own floating `NSPanel` -- no width constraint there
+/// beyond looking reasonable) -- and `compact`, the one width every pane's
+/// degraded in-popover expansion (`ExpandedDrillView` in
+/// `MenuBarDashboard.swift`) uses instead. The popover's own content width
+/// is 268pt (`.frame(width: 300)` minus `.padding(16)` per side); `compact`
+/// (240) plus `FlyoutCard`'s 14pt/side padding (28) is exactly 268, so the
+/// inline expansion never clips its trailing edge (F1 fix -- panel widths
+/// alone overflowed by 20-60pt for four of the six pane types).
+enum DrillWidths {
+    static let score: CGFloat = 280
+    static let compare: CGFloat = 240
+    static let streak: CGFloat = 220
+    static let category: CGFloat = 260
+    static let hourly: CGFloat = 300
+    static let budget: CGFloat = 280
+    static let compact: CGFloat = 240
 }
