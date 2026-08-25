@@ -137,6 +137,46 @@ public enum AppDatabase {
             try db.execute(sql: "DROP INDEX IF EXISTS span_on_domain")
         }
 
+        migrator.registerMigration("v4") { db in
+            try db.create(table: "titleRule") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("pattern", .text).notNull()
+                t.column("scopeKey", .text).notNull().defaults(to: "")
+                t.column("categoryID", .text).notNull().references("category")
+                t.column("priority", .integer).notNull().defaults(to: 0)
+                t.column("source", .text).notNull()
+                t.column("enabled", .boolean).notNull().defaults(to: true)
+                t.column("createdAt", .datetime).notNull()
+                t.uniqueKey(["pattern", "scopeKey"])
+            }
+            try db.create(table: "budget") { t in
+                t.column("categoryID", .text).primaryKey().references("category")
+                t.column("dailySeconds", .integer).notNull()
+                t.column("enabled", .boolean).notNull().defaults(to: true)
+            }
+            try db.create(table: "budgetAlert") { t in
+                t.column("categoryID", .text).notNull()
+                t.column("day", .text).notNull()       // 本地日历 "YYYY-MM-DD"，绝不用 UTC Date
+                t.column("kind", .text).notNull()      // "warn" | "limit"
+                t.primaryKey(["categoryID", "day", "kind"])
+            }
+            try db.create(table: "focusSession") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("start", .datetime).notNull().indexed()
+                t.column("end", .datetime).notNull()
+                t.column("plannedSeconds", .integer).notNull()
+                t.column("appBlocks", .integer).notNull().defaults(to: 0)
+                t.column("siteBlocks", .integer).notNull().defaults(to: 0)
+                t.column("completed", .boolean).notNull().defaults(to: false)
+            }
+            for rule in Taxonomy.builtinTitleRules {
+                try db.execute(
+                    sql: "INSERT INTO titleRule (pattern, scopeKey, categoryID, priority, source, enabled, createdAt) VALUES (?, '', ?, 0, 'builtin', 1, ?)",
+                    arguments: [rule.pattern, rule.categoryID, Date()]
+                )
+            }
+        }
+
         return migrator
     }
 }

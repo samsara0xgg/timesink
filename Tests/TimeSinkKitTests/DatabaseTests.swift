@@ -101,4 +101,78 @@ final class DatabaseTests: XCTestCase {
         let plan = rows.map(String.init(describing:)).joined(separator: " ")
         XCTAssertTrue(plan.contains("span_on_end"), "expected span_on_end in query plan, got: \(plan)")
     }
+    func testV4CreatesTablesAndSeedsTitleRules() throws {
+        let db = try makeDB()
+        let tables = try db.read { db in
+            try String.fetchAll(db, sql: "SELECT name FROM sqlite_master WHERE type = 'table'")
+        }
+        for t in ["titleRule", "budget", "budgetAlert", "focusSession"] {
+            XCTAssertTrue(tables.contains(t), "missing table \(t)")
+        }
+        let store = CategoryStore(db)
+        let seeds = try store.titleRules()
+        XCTAssertEqual(seeds.filter { $0.source == "builtin" }.count, 2)
+        XCTAssertTrue(seeds.contains { $0.pattern == "lecture|course|教程|课程|讲座" && $0.categoryID == "learning" })
+        XCTAssertTrue(seeds.contains { $0.pattern == "pull request|merge request|PR #" && $0.categoryID == "softwareDev" })
+    }
+    func testV4DoesNotTouchSpanIndexes() throws {
+        // 与 testV3IndexesEndAndDropsUnusedIndexes 同一组断言，证明 v4 没动 span
+        let db = try AppDatabase.openInMemory()
+        let names = try db.read { db in
+            try String.fetchAll(db, sql: "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'span'")
+        }
+        XCTAssertTrue(names.contains("span_on_end"))
+        XCTAssertTrue(names.contains("span_on_start"))
+    }
+    func testUpgradeFromV3PreservesData() throws {
+        // 现有测试全测全新库；这是唯一的升级路径测试
+        let db = try DatabaseQueue()
+        try AppDatabase.migrator.migrate(db, upTo: "v3")
+        let spanStore = SpanStore(db)
+        let catStore = CategoryStore(db)
+        _ = try spanStore.insert(Span(start: ts(0), end: ts(100), appBundleID: "a",
+                                      appName: "A", title: "t", url: nil, domain: nil))
+        try catStore.addUserURLRule(pattern: "mysite.com", categoryID: "news", priority: 1000)
+        try AppDatabase.migrator.migrate(db)  // v3 → v4
+        XCTAssertEqual(try spanStore.spans(overlapping: DateInterval(start: ts(0), end: ts(200))).count, 1)
+        XCTAssertTrue(try catStore.urlRules().contains { $0.pattern == "mysite.com" })
+        XCTAssertEqual(try catStore.titleRules().filter { $0.source == "builtin" }.count, 2)
+    }
+    func testBudgetAlertCompositePKAndPrune() throws {
+        let db = try makeDB()
+        let store = BudgetStore(db)
+        try store.setBudget(categoryID: "entertainment", dailySeconds: 3600)
+        try store.noteAlert(categoryID: "entertainment", day: "2026-08-24", kind: "warn")
+        try store.noteAlert(categoryID: "entertainment", day: "2026-08-24", kind: "warn")  // 重复无效
+        XCTAssertEqual(try store.alertKinds(categoryID: "entertainment", day: "2026-08-24"), ["warn"])
+        try store.noteAlert(categoryID: "entertainment", day: "2026-05-01", kind: "limit")
+        try store.pruneAlerts(before: "2026-08-01")
+        XCTAssertEqual(try store.alertKinds(categoryID: "entertainment", day: "2026-05-01"), [])
+        XCTAssertEqual(try store.alertKinds(categoryID: "entertainment", day: "2026-08-24"), ["warn"])
+    }
+    func testFocusSessionLifecycle() throws {
+        let db = try makeDB()
+        let store = FocusSessionStore(db)
+        let s = try store.start(at: ts(0), plannedSeconds: 1500)
+        XCTAssertNotNil(s.id)
+        XCTAssertEqual(s.end, ts(0))          // 开始即落盘，end = start
+        try store.heartbeat(id: s.id!, end: ts(30))
+        try store.finish(id: s.id!, end: ts(1500), appBlocks: 1, siteBlocks: 2, completed: true)
+        let hits = try store.sessions(overlapping: DateInterval(start: ts(0), end: ts(2000)))
+        XCTAssertEqual(hits.count, 1)
+        XCTAssertTrue(hits[0].completed)
+        XCTAssertEqual(hits[0].siteBlocks, 2)
+    }
+    func testNewSettingsAccessors() throws {
+        let db = try makeDB()
+        let s = SettingsStore(db)
+        XCTAssertEqual(s.budgetWarnPercent, 20)
+        XCTAssertFalse(s.dailySummaryEnabled)
+        XCTAssertEqual(s.dailySummaryHour, 19)
+        XCTAssertTrue(s.menuBarTextEnabled)
+        XCTAssertEqual(s.focusDurationMinutes, 25)
+        XCTAssertEqual(s.focusBlockedApps, [])
+        s.setFocusBlockedApps(["com.tencent.xinWeChat", "com.hnc.Discord"])
+        XCTAssertEqual(s.focusBlockedApps, ["com.tencent.xinWeChat", "com.hnc.Discord"])
+    }
 }

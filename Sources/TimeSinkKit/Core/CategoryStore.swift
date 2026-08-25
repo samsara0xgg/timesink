@@ -150,4 +150,45 @@ public final class CategoryStore: Sendable {
             }
         }
     }
+
+    /// All titleRule rows, including disabled -- the settings page needs the
+    /// full set to render toggles.
+    public func titleRules() throws -> [TitleRule] {
+        try writer.read { db in
+            try TitleRule.fetchAll(db)
+        }
+    }
+
+    /// Upserts a user override for (pattern, scopeKey). Unlike
+    /// `addUserURLRule`, this must not bare-INSERT: re-saving the same rule
+    /// with a different category has to replace the row, not duplicate it.
+    public func upsertUserTitleRule(pattern: String, scopeKey: String, categoryID: String) throws {
+        try writer.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO titleRule (pattern, scopeKey, categoryID, priority, source, enabled, createdAt)
+                VALUES (?, ?, ?, 0, 'user', 1, ?)
+                ON CONFLICT(pattern, scopeKey) DO UPDATE SET
+                    categoryID = excluded.categoryID,
+                    source = 'user',
+                    enabled = 1
+                """,
+                arguments: [pattern, scopeKey, categoryID, Date()]
+            )
+        }
+    }
+
+    /// Deletes a titleRule row. Callers are responsible for only deleting
+    /// user-sourced rows (builtin rows are not meant to be removable here).
+    public func deleteTitleRule(id: Int64) throws {
+        try writer.write { db in
+            try db.execute(sql: "DELETE FROM titleRule WHERE id = ?", arguments: [id])
+        }
+    }
+
+    public func setTitleRuleEnabled(id: Int64, enabled: Bool) throws {
+        try writer.write { db in
+            try db.execute(sql: "UPDATE titleRule SET enabled = ? WHERE id = ?", arguments: [enabled, id])
+        }
+    }
 }

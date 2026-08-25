@@ -8,11 +8,30 @@ public final class SettingsStore: Sendable {
     private static let llmEnabledKey = "llmEnabled"
     private static let llmEndpointKey = "llmEndpoint"
     private static let llmModelKey = "llmModel"
+    private static let budgetWarnPercentKey = "budgetWarnPercent"
+    private static let dailySummaryEnabledKey = "dailySummaryEnabled"
+    private static let dailySummaryHourKey = "dailySummaryHour"
+    private static let lastSummaryDayKey = "lastSummaryDay"
+    private static let menuBarTextEnabledKey = "menuBarTextEnabled"
+    private static let focusDurationMinutesKey = "focusDurationMinutes"
+    private static let focusAppBlockEnabledKey = "focusAppBlockEnabled"
+    private static let focusSiteBlockEnabledKey = "focusSiteBlockEnabled"
+    private static let focusBlockedAppsKey = "focusBlockedApps"
+    private static let focusBlockedCategoriesKey = "focusBlockedCategories"
+    private static let calendarOverlayEnabledKey = "calendarOverlayEnabled"
 
     private static let defaultIdleThreshold: TimeInterval = 180
     private static let defaultLLMEnabled = false
     private static let defaultLLMEndpoint = "https://api.openai.com/v1"
     private static let defaultLLMModel = "gpt-4o-mini"
+    private static let defaultBudgetWarnPercent = 20
+    private static let defaultDailySummaryEnabled = false
+    private static let defaultDailySummaryHour = 19
+    private static let defaultMenuBarTextEnabled = true
+    private static let defaultFocusDurationMinutes = 25
+    private static let defaultFocusAppBlockEnabled = true
+    private static let defaultFocusSiteBlockEnabled = true
+    private static let defaultCalendarOverlayEnabled = false
 
     public init(_ writer: any DatabaseWriter) {
         self.writer = writer
@@ -68,5 +87,96 @@ public final class SettingsStore: Sendable {
 
     public func setLLMModel(_ v: String) {
         set(Self.llmModelKey, v)
+    }
+
+    public var budgetWarnPercent: Int {
+        self.get(Self.budgetWarnPercentKey).flatMap(Int.init) ?? Self.defaultBudgetWarnPercent
+    }
+
+    public func setBudgetWarnPercent(_ v: Int) {
+        set(Self.budgetWarnPercentKey, String(v))
+    }
+
+    public var dailySummaryEnabled: Bool {
+        self.get(Self.dailySummaryEnabledKey).flatMap { $0 == "true" } ?? Self.defaultDailySummaryEnabled
+    }
+
+    public func setDailySummaryEnabled(_ v: Bool) {
+        set(Self.dailySummaryEnabledKey, v ? "true" : "false")
+    }
+
+    public var dailySummaryHour: Int {
+        self.get(Self.dailySummaryHourKey).flatMap(Int.init) ?? Self.defaultDailySummaryHour
+    }
+
+    public func setDailySummaryHour(_ v: Int) {
+        set(Self.dailySummaryHourKey, String(v))
+    }
+
+    /// nil until the first daily summary is ever sent, or after an explicit
+    /// clear (an empty stored value round-trips back to nil).
+    public var lastSummaryDay: String? {
+        let v = self.get(Self.lastSummaryDayKey)
+        return (v?.isEmpty ?? true) ? nil : v
+    }
+
+    public func setLastSummaryDay(_ v: String?) {
+        set(Self.lastSummaryDayKey, v ?? "")
+    }
+
+    public var menuBarTextEnabled: Bool {
+        self.get(Self.menuBarTextEnabledKey).flatMap { $0 == "true" } ?? Self.defaultMenuBarTextEnabled
+    }
+
+    public func setMenuBarTextEnabled(_ v: Bool) {
+        set(Self.menuBarTextEnabledKey, v ? "true" : "false")
+    }
+
+    public var focusDurationMinutes: Int {
+        self.get(Self.focusDurationMinutesKey).flatMap(Int.init) ?? Self.defaultFocusDurationMinutes
+    }
+
+    public func setFocusDurationMinutes(_ v: Int) {
+        set(Self.focusDurationMinutesKey, String(v))
+    }
+
+    public var focusAppBlockEnabled: Bool {
+        self.get(Self.focusAppBlockEnabledKey).flatMap { $0 == "true" } ?? Self.defaultFocusAppBlockEnabled
+    }
+
+    public func setFocusAppBlockEnabled(_ v: Bool) {
+        set(Self.focusAppBlockEnabledKey, v ? "true" : "false")
+    }
+
+    public var focusSiteBlockEnabled: Bool {
+        self.get(Self.focusSiteBlockEnabledKey).flatMap { $0 == "true" } ?? Self.defaultFocusSiteBlockEnabled
+    }
+
+    public func setFocusSiteBlockEnabled(_ v: Bool) {
+        set(Self.focusSiteBlockEnabledKey, v ? "true" : "false")
+    }
+
+    public var focusBlockedApps: [String] {
+        (self.get(Self.focusBlockedAppsKey) ?? "").split(separator: ",").map(String.init).filter { !$0.isEmpty }
+    }
+
+    public func setFocusBlockedApps(_ values: [String]) {
+        set(Self.focusBlockedAppsKey, values.joined(separator: ","))
+    }
+
+    public var focusBlockedCategories: [String] {
+        (self.get(Self.focusBlockedCategoriesKey) ?? "").split(separator: ",").map(String.init).filter { !$0.isEmpty }
+    }
+
+    public func setFocusBlockedCategories(_ values: [String]) {
+        set(Self.focusBlockedCategoriesKey, values.joined(separator: ","))
+    }
+
+    public var calendarOverlayEnabled: Bool {
+        self.get(Self.calendarOverlayEnabledKey).flatMap { $0 == "true" } ?? Self.defaultCalendarOverlayEnabled
+    }
+
+    public func setCalendarOverlayEnabled(_ v: Bool) {
+        set(Self.calendarOverlayEnabledKey, v ? "true" : "false")
     }
 }

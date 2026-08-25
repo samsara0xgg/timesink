@@ -108,4 +108,13 @@ public enum Taxonomy {
         ("zoom.us", "communication", 100),
         ("outlook.", "communication", 100),
     ]
+
+    /// Builtin titleRule seed rows, seeded by migration v4. Global scope.
+    /// Deliberately tiny: a global title substring reclassifies every matching
+    /// activity across all apps and sites -- only ship phrases that are
+    /// near-unambiguous.
+    public static let builtinTitleRules: [(pattern: String, categoryID: String)] = [
+        ("lecture|course|教程|课程|讲座", "learning"),
+        ("pull request|merge request|PR #", "softwareDev"),
+    ]
 }
