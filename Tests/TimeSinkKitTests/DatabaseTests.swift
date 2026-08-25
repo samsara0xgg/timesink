@@ -111,9 +111,8 @@ final class DatabaseTests: XCTestCase {
         }
         let store = CategoryStore(db)
         let seeds = try store.titleRules()
-        XCTAssertEqual(seeds.filter { $0.source == "builtin" }.count, 3)
-        XCTAssertTrue(seeds.contains { $0.pattern == #"re:\blecture\b|\b(?<!of )(?<!golf )course\b"# && $0.categoryID == "learning" })
-        XCTAssertTrue(seeds.contains { $0.pattern == "教程|课程|讲座" && $0.categoryID == "learning" })
+        XCTAssertEqual(seeds.filter { $0.source == "builtin" }.count, 2)
+        XCTAssertTrue(seeds.contains { $0.pattern == "lecture|教程|课程|讲座" && $0.categoryID == "learning" })
         XCTAssertTrue(seeds.contains { $0.pattern == "pull request|merge request|PR #" && $0.categoryID == "softwareDev" })
     }
     func testV4DoesNotTouchSpanIndexes() throws {
@@ -137,7 +136,7 @@ final class DatabaseTests: XCTestCase {
         try AppDatabase.migrator.migrate(db)  // v3 → v4
         XCTAssertEqual(try spanStore.spans(overlapping: DateInterval(start: ts(0), end: ts(200))).count, 1)
         XCTAssertTrue(try catStore.urlRules().contains { $0.pattern == "mysite.com" })
-        XCTAssertEqual(try catStore.titleRules().filter { $0.source == "builtin" }.count, 3)
+        XCTAssertEqual(try catStore.titleRules().filter { $0.source == "builtin" }.count, 2)
     }
     func testBudgetAlertCompositePKAndPrune() throws {
         let db = try makeDB()

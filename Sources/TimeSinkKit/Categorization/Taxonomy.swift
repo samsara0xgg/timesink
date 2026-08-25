@@ -112,21 +112,20 @@ public enum Taxonomy {
     /// Builtin titleRule seed rows, seeded by migration v4. Global scope.
     /// Deliberately tiny: a global title substring reclassifies every matching
     /// activity across all apps and sites -- only ship phrases that are
-    /// near-unambiguous.
+    /// near-unambiguous. Conservative list, better to leave a phrase out than
+    /// misfire: the false-positive surface must stay small.
     ///
-    /// The first row is `re:`-prefixed rather than a plain `lecture|course`
-    /// substring list: bare "course" as a substring false-positives on
-    /// natural-language and compound-word titles that have nothing to do
-    /// with learning ("Of course I still love you", "Best golf course near
-    /// Toronto?", "Concourse (2019)", "CourseView.swift", "discourse",
-    /// "racecourse" -- all verified, Task 4 fix report F1). `\bcourse\b`
-    /// alone still isn't enough: "course" is a genuine standalone word in
-    /// "of course" and "golf course" too, so those two collocations are
-    /// excluded with negative lookbehind while "CS540 Course Home" /
-    /// "Online Course: Intro to ML" still match.
+    /// "course" is deliberately excluded (Task 4 fix report F1, amended in
+    /// fix round 2): it's a bare English word with no single unambiguous
+    /// sense -- "Of course I still love you", "Best golf course near
+    /// Toronto?", "crash course", "main course", "collision course", "course
+    /// of action", "in due course" are all common, none are learning-related,
+    /// and no word-boundary/lookbehind regex can rescue it without
+    /// overfitting to whichever false positives happened to get cited.
+    /// "lecture" has no such ambiguity and stays. Course-based titles simply
+    /// lose builtin coverage; a user can add their own scoped titleRule.
     public static let builtinTitleRules: [(pattern: String, categoryID: String)] = [
-        (#"re:\blecture\b|\b(?<!of )(?<!golf )course\b"#, "learning"),
-        ("教程|课程|讲座", "learning"),
+        ("lecture|教程|课程|讲座", "learning"),
         ("pull request|merge request|PR #", "softwareDev"),
     ]
 }

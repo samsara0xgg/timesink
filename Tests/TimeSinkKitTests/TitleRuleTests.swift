@@ -34,7 +34,7 @@ final class TitleRuleTests: XCTestCase {
     func testUpsertUserTitleRuleDoesNotStealBuiltinRow() throws {
         let db = try makeDB()
         let store = CategoryStore(db)
-        let builtinPattern = "教程|课程|讲座"
+        let builtinPattern = "lecture|教程|课程|讲座"
         try store.upsertUserTitleRule(pattern: builtinPattern, scopeKey: "", categoryID: "writing")
         let rules = try store.titleRules().filter { $0.pattern == builtinPattern }
         XCTAssertEqual(rules.count, 1)                    // no new row was added
@@ -131,12 +131,16 @@ extension TitleRuleTests {
             title: "Hacker news daily", context: c), "learning")
     }
 
-    // Fix report F1: the builtin "course" seed was a bare substring match,
-    // so it retroactively miscategorized any title merely containing the
-    // letters "course" -- including plain English sentences and unrelated
-    // compound words. The replacement `re:` pattern must still catch real
-    // course/lecture titles while rejecting all of these.
-    func testBuiltinLectureCourseSeedAvoidsNaturalLanguageFalsePositives() {
+    // Fix report F1 (amended in fix round 2): "course" as a bare substring
+    // false-positived on plain English sentences and unrelated compound
+    // words. "course" is inherently ambiguous ("of course", "golf course",
+    // "crash course", "main course", "collision course", "course of
+    // action", "in due course" are all common and none are learning-related)
+    // -- no word-boundary/lookbehind regex rescues it without overfitting to
+    // whichever cases got cited, so it's dropped from the builtin seeds
+    // entirely rather than pattern-patched. "lecture" has no such ambiguity
+    // and stays.
+    func testBuiltinSeedsExcludeAmbiguousCourseWord() {
         let seeds = Taxonomy.builtinTitleRules.map { tr($0.pattern, $0.categoryID, source: "builtin") }
         let c = trCtx(titleRules: seeds)
         for title in [
@@ -150,10 +154,9 @@ extension TitleRuleTests {
             XCTAssertEqual(Classifier.categoryID(appBundleID: "b", url: nil, domain: nil,
                 title: title, context: c), "uncategorized", "false positive on: \(title)")
         }
-        for title in ["MIT Lecture 3", "CS540 Course Home"] {
-            XCTAssertEqual(Classifier.categoryID(appBundleID: "b", url: nil, domain: nil,
-                title: title, context: c), "learning", "missed true positive: \(title)")
-        }
+        // "lecture" alone is unambiguous and still catches real lecture titles.
+        XCTAssertEqual(Classifier.categoryID(appBundleID: "b", url: nil, domain: nil,
+            title: "MIT Lecture 3 - YouTube", context: c), "learning")
     }
 
     // Fix report F3: split keywords must be trimmed, and a keyword that's
