@@ -1,6 +1,5 @@
 import SwiftUI
 import AppKit
-import ApplicationServices
 import ServiceManagement
 import os
 
@@ -18,8 +17,8 @@ struct GeneralSettingsPane: View {
     @State private var idleThreshold: Double = 180
     @State private var loginItemEnabled = false
     @State private var loginItemAlertMessage: String?
-    @State private var accessibilityGranted = false
-    @State private var chromeStatus: OSStatus = noErr
+    @State private var axState: PermissionState = .denied
+    @State private var chromeState: PermissionState = .notDetermined
 
     /// SMAppService.mainApp only functions when the app runs from
     /// /Applications; toggling elsewhere silently fails, so the control is
@@ -50,8 +49,24 @@ struct GeneralSettingsPane: View {
             }
 
             Section("权限") {
-                accessibilityRow
-                chromeRow
+                PermissionRow(
+                    title: "辅助功能",
+                    state: axState,
+                    action: {
+                        _ = Permissions.accessibilityGranted(prompt: true)
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                            NSWorkspace.shared.open(url)
+                        }
+                        refreshAccessibility()
+                    }
+                )
+                PermissionRow(
+                    title: "Chrome 自动化",
+                    state: chromeState,
+                    action: {
+                        chromeState = Permissions.chromeAutomationState(ask: true)
+                    }
+                )
             }
         }
         .formStyle(.grouped)
@@ -93,62 +108,12 @@ struct GeneralSettingsPane: View {
         )
     }
 
-    private var accessibilityRow: some View {
-        HStack {
-            Circle()
-                .fill(accessibilityGranted ? Color.green : Color.red)
-                .frame(width: 8, height: 8)
-            Text("辅助功能")
-            Spacer()
-            Text(accessibilityGranted ? "已授权" : "未授权")
-                .foregroundStyle(accessibilityGranted ? .green : .red)
-            Button("去授权") {
-                _ = Permissions.accessibilityGranted(prompt: true)
-                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-                    NSWorkspace.shared.open(url)
-                }
-                refreshAccessibility()
-            }
-        }
-    }
-
-    private var chromeRow: some View {
-        HStack {
-            Circle()
-                .fill(chromeStatusColor)
-                .frame(width: 8, height: 8)
-            Text("Chrome 自动化")
-            Spacer()
-            Text(chromeStatusText)
-                .foregroundStyle(chromeStatusColor)
-            Button("去授权") {
-                chromeStatus = Permissions.chromeAutomationStatus(ask: true)
-            }
-        }
-    }
-
-    private var chromeStatusText: String {
-        switch chromeStatus {
-        case noErr: return "已授权"
-        case -600: return "Chrome 未运行"
-        default: return "未授权"
-        }
-    }
-
-    private var chromeStatusColor: Color {
-        switch chromeStatus {
-        case noErr: return .green
-        case -600: return .secondary
-        default: return .red
-        }
-    }
-
     private func refreshAccessibility() {
-        accessibilityGranted = Permissions.accessibilityGranted(prompt: false)
+        axState = Permissions.accessibilityState(prompt: false)
     }
 
     private func refreshChrome() {
-        chromeStatus = Permissions.chromeAutomationStatus(ask: false)
+        chromeState = Permissions.chromeAutomationState(ask: false)
     }
 }
 
