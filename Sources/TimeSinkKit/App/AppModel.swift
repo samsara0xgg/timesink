@@ -7,6 +7,13 @@ public enum SidebarItem: Hashable {
     case stats, activities
 }
 
+/// Settings window tab destination -- driven by `AppModel.settingsTab`, read
+/// by `SettingsView`'s `TabView(selection:)` and written by notification
+/// routing (`.settingsBudget` → `.budget`).
+public enum SettingsTab: Hashable {
+    case general, categories, rules, uncategorized, llm, budget
+}
+
 /// App-wide observable state: the shared stores/engine, the current date-range
 /// selection, and the menu bar's live summary text. Views read `range`,
 /// `sidebarSelection`, `activityFilter` directly (tracked by `@Observable`);
@@ -25,6 +32,15 @@ public final class AppModel {
     public var range: DateRangeSelection = .today()
     public var sidebarSelection: SidebarItem = .stats
     public var activityFilter: String?
+
+    /// Selected Settings window tab -- default `.general`; notification
+    /// routing (`.settingsBudget`) jumps this to `.budget`.
+    public var settingsTab: SettingsTab = .general
+
+    /// A route decoded from a tapped notification, buffered here by
+    /// `TimeSinkApp`'s `appDelegate.onRoute` assignment until `MenuBarLabel`
+    /// (the one persistently-alive observation point) consumes and clears it.
+    public var pendingRoute: NotificationRoute?
 
     /// Live text from the Activities tab's `.searchable` field. A read-path
     /// filter only — `ActivitiesView` debounces its own recompute off this;
@@ -78,6 +94,15 @@ public final class AppModel {
     /// `TrackerEngine.isInMeetingProvider`, not SwiftUI.
     @ObservationIgnored
     private var todayMeetingEvents: [CalendarEvent] = []
+
+    /// C4 budgets -- same post-init injection convention as `calendarStore`:
+    /// `TimeSinkApp.init` assigns these after constructing `AppModel`. All
+    /// three are `nil` throughout `init()`'s bootstrap `refreshMenu()` call,
+    /// which doubles as the "not wired up yet" guard `BudgetMonitor` needs
+    /// (spec §8) -- `budgetMonitor?.evaluate(...)` is a no-op until assigned.
+    public var budgetStore: BudgetStore?
+    public var notifier: (any Notifying)?
+    public var budgetMonitor: BudgetMonitor?
 
     private let logger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "appModel")
 
@@ -156,6 +181,13 @@ public final class AppModel {
             todayPulseTitle = "--"
         }
         chromeDegraded = engine.chromeCaptureDegraded
+
+        // C4: budget/summary notifications, off the totals just computed
+        // above -- zero additional queries. `budgetMonitor` is nil until
+        // `TimeSinkApp.init` assigns it post-construction, so this is a
+        // no-op during the bootstrap `refreshMenu()` call inside `init()`.
+        budgetMonitor?.evaluate(byCategory: byCategory, categories: resolver.categoriesByID, now: Date())
+        budgetMonitor?.evaluateSummary(now: Date()) { [weak self] in self?.makeDailySummary() }
     }
 
     public func dataChanged() {
@@ -317,5 +349,64 @@ public final class AppModel {
                 await self.refreshCalendarWindows()
             }
         }
+    }
+
+    // MARK: - C4 daily summary
+
+    /// Builds today's daily-summary notification body, or `nil` if nothing's
+    /// been tracked yet today (per the brief: no items → no summary). Passed
+    /// to `BudgetMonitor.evaluateSummary` as `makeBody`, so it only actually
+    /// runs once that call's enabled/hour/not-already-sent gates pass.
+    ///
+    /// The pulse delta vs. yesterday uses the SAME "same elapsed time-of-day"
+    /// clipping (`Aggregator.clippedToElapsed`) the popover's focus/total
+    /// deltas use (CONTROLLER RULING 14) -- comparing today's partial day
+    /// against yesterday's full day would bias the delta negative by
+    /// construction for most of the day. Unlike the popover's own
+    /// `pulseDelta` (intentionally unclipped, a whole-day ratio comparison),
+    /// this summary explicitly opts into the clipped convention per the
+    /// brief. If yesterday has no data in that clipped window, the delta
+    /// falls back to 0 (today's pulse) rather than showing a misleadingly
+    /// large swing against an empty baseline.
+    private func makeDailySummary() -> (title: String, body: String)? {
+        let calendar = Calendar.current
+        let categories = resolver.categoriesByID
+
+        let items = rangedSpans(for: .today())
+        guard !items.isEmpty else { return nil }
+        let byCategory = Aggregator.durationByCategory(items)
+        let focus = Aggregator.focusTime(durationByCategory: byCategory, categories: categories)
+        guard let pulse = Aggregator.pulse(durationByCategory: byCategory, categories: categories) else { return nil }
+
+        let now = Date()
+        let elapsed = now.timeIntervalSince(calendar.startOfDay(for: now))
+        let yesterdayAnchor = calendar.date(byAdding: .day, value: -1, to: now) ?? now
+        let yesterdayItems = rangedSpans(for: DateRangeSelection(kind: .day, anchor: yesterdayAnchor))
+        let yesterdayStart = calendar.startOfDay(for: yesterdayAnchor)
+        let clippedYesterday = Aggregator.clippedToElapsed(yesterdayItems, windowStart: yesterdayStart, elapsed: elapsed)
+        let yesterdayByCategory = Aggregator.durationByCategory(clippedYesterday)
+        let yesterdayPulse = Aggregator.pulse(durationByCategory: yesterdayByCategory, categories: categories) ?? pulse
+        let delta = pulse - yesterdayPulse
+        let signedDelta = delta >= 0 ? "+\(delta)" : "\(delta)"
+
+        // Peak = the two-consecutive-hour window (of the 24 hourly buckets)
+        // with the most tracked time, per the brief.
+        var hourTotals = Array(repeating: 0.0, count: 24)
+        for (hour, seconds) in Aggregator.profileByHourOfDay(items, calendar: calendar) {
+            hourTotals[hour] = seconds
+        }
+        var peakStart = 0
+        var peakSum = -1.0
+        for h in 0..<23 {
+            let sum = hourTotals[h] + hourTotals[h + 1]
+            if sum > peakSum {
+                peakSum = sum
+                peakStart = h
+            }
+        }
+
+        let body = "专注 \(Format.duration(focus))，生产力分 \(pulse)（较昨日 \(signedDelta)）。"
+            + "最高峰在 \(peakStart) – \(peakStart + 2) 时。"
+        return ("今日小结", body)
     }
 }

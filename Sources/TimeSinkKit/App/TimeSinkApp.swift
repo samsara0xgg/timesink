@@ -65,6 +65,20 @@ public struct TimeSinkApp: App {
         model.observeCalendarChanges()
         model.startCalendarRefreshLoop()
 
+        // C4 budgets -- assigned AFTER `AppModel` construction (post-init
+        // injection convention, see `AppModel.budgetMonitor`'s doc comment):
+        // `model`'s own bootstrap `refreshMenu()` call inside `AppModel.init`
+        // already ran with `budgetMonitor == nil`, so it's a free
+        // didBootstrap guard against evaluating budgets/summary before
+        // launch settles.
+        let budgetStore = BudgetStore(db)
+        let notifier = NotifierFactory.make()
+        model.budgetStore = budgetStore
+        model.notifier = notifier
+        model.budgetMonitor = BudgetMonitor(budgetStore: budgetStore, settings: settingsStore, notifier: notifier)
+        let ninetyDaysAgo = Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? Date()
+        try? budgetStore.pruneAlerts(before: BudgetEngine.dayStamp(ninetyDaysAgo, calendar: Calendar.current))
+
         let needsOnboarding = Bundle.main.bundleIdentifier == "com.alllllenshi.TimeSink"
             && !Permissions.accessibilityGranted(prompt: false)
         self.needsOnboarding = needsOnboarding
@@ -84,6 +98,12 @@ public struct TimeSinkApp: App {
                     // launch hook for force-opening the main window when
                     // onboarding is needed.
                     appDelegate.engine = model.engine
+                    // C4: a tapped notification decodes to a route on
+                    // `appDelegate`; any route that arrived before this
+                    // assignment (e.g. a cold launch from Notification
+                    // Center) is buffered and flushed automatically by
+                    // `onRoute`'s `didSet` -- see `TimeSinkAppDelegate`.
+                    appDelegate.onRoute = { model.pendingRoute = $0 }
                     if needsOnboarding {
                         openWindow(id: "main")
                     }
@@ -122,6 +142,9 @@ public struct TimeSinkApp: App {
 struct MenuBarLabel: View {
     let model: AppModel
 
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
+
     var body: some View {
         HStack(spacing: 3) {
             Image(systemName: model.chromeDegraded
@@ -130,6 +153,27 @@ struct MenuBarLabel: View {
             if model.menuTextEnabled {
                 Text(model.menuTitle).monospacedDigit()
             }
+        }
+        // C4: consumes a tapped notification's route. This label is the
+        // menu bar's persistent view (unlike the popover content, which is
+        // only alive while open), so it's the one reliable place to observe
+        // `model.pendingRoute` regardless of what's currently on screen.
+        .onChange(of: model.pendingRoute) { _, route in
+            guard let route else { return }
+            switch route {
+            case .statsToday:
+                model.range = .today()
+                model.sidebarSelection = .stats
+                openWindow(id: "main")
+            case .activitiesToday:
+                model.range = .today()
+                model.sidebarSelection = .activities
+                openWindow(id: "main")
+            case .settingsBudget:
+                model.settingsTab = .budget
+                openSettings()
+            }
+            model.pendingRoute = nil
         }
     }
 }

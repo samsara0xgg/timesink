@@ -36,6 +36,11 @@ final class TodayDashboardModel {
     /// 24 entries, hours of tracked time per hour-of-day.
     var hourProfile: [Double] = Array(repeating: 0, count: 24)
 
+    /// C4: the tightest (highest spent/limit ratio) up to 2 enabled budgets,
+    /// for the popover's budget progress row. Empty when `budgetStore` isn't
+    /// wired up yet (bootstrap) or no budgets are enabled.
+    var budgetRows: [(id: String, name: String, colorHex: String, spent: TimeInterval, limit: TimeInterval)] = []
+
     /// Calendar day (startOfDay) the 30-day streak lookback last ran for.
     /// That lookback is a full-month fetch+classify+day-split -- expensive
     /// enough that re-running it on every `recompute` (every dataVersion
@@ -103,6 +108,22 @@ final class TodayDashboardModel {
             profile[hour] = seconds / 3600.0
         }
         hourProfile = profile
+
+        // C4: reuses `byCategory` (already computed above) -- no new query.
+        budgetRows = ((try? model.budgetStore?.budgets()) ?? [])
+            .filter(\.enabled)
+            .compactMap { budget -> (id: String, name: String, colorHex: String, spent: TimeInterval, limit: TimeInterval)? in
+                guard let category = categories[budget.categoryID] else { return nil }
+                return (budget.categoryID, category.name, category.colorHex,
+                        byCategory[budget.categoryID] ?? 0, TimeInterval(budget.dailySeconds))
+            }
+            .sorted { lhs, rhs in
+                let lhsRatio = lhs.limit > 0 ? lhs.spent / lhs.limit : 0
+                let rhsRatio = rhs.limit > 0 ? rhs.spent / rhs.limit : 0
+                return lhsRatio > rhsRatio
+            }
+            .prefix(2)
+            .map { $0 }
 
         refreshStreakIfDayChanged(model: model, calendar: calendar, categories: categories, force: forceStreak)
     }
@@ -194,6 +215,10 @@ struct MenuBarDashboardView: View {
 
             if dashboard.total > 0 {
                 sparkline
+            }
+
+            if !dashboard.budgetRows.isEmpty {
+                budgetSection
             }
 
             if model.engine.chromeCaptureDegraded {
@@ -299,6 +324,40 @@ struct MenuBarDashboardView: View {
             Text(Format.duration(entry.seconds))
                 .font(.caption2).monospacedDigit().foregroundStyle(.secondary)
                 .frame(width: 44, alignment: .trailing)
+        }
+    }
+
+    /// C4 budget progress row(s), between the sparkline and the Chrome
+    /// degraded notice -- the tightest up to 2 enabled budgets, reusing
+    /// `categoryRow`'s bar geometry with spent/limit on the right instead of
+    /// a plain duration.
+    private var budgetSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(dashboard.budgetRows, id: \.id) { row in
+                budgetProgressRow(row)
+            }
+            Text("剩 \(model.settings.budgetWarnPercent)% 时提醒")
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func budgetProgressRow(
+        _ row: (id: String, name: String, colorHex: String, spent: TimeInterval, limit: TimeInterval)
+    ) -> some View {
+        HStack(spacing: 8) {
+            Circle().fill(Color(hex: row.colorHex)).frame(width: 8, height: 8)
+            Text(row.name).font(.caption).frame(width: 60, alignment: .leading)
+            GeometryReader { geo in
+                let ratio = row.limit > 0 ? min(1, row.spent / row.limit) : 0
+                Capsule().fill(Color(hex: row.colorHex))
+                    .frame(width: max(4, geo.size.width * ratio))
+                    .frame(maxHeight: .infinity, alignment: .center)
+            }
+            .frame(height: 6)
+            Text("\(Format.duration(row.spent)) / \(Format.duration(row.limit))")
+                .font(.caption2).monospacedDigit().foregroundStyle(.secondary)
+                .frame(width: 70, alignment: .trailing)
         }
     }
 
