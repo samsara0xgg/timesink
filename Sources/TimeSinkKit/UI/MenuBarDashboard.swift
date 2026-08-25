@@ -593,7 +593,14 @@ struct MenuBarDashboardView: View {
                 }
 
                 if dashboard.total > 0 {
-                    sparkline
+                    // Spec §10's click-route enumeration ends with 「24h 图→
+                    // 统计」; the plan's hover table said 子窗即终点 instead,
+                    // which left this as the one dead click target in a
+                    // popover whose whole point is 全面可点击化. Same
+                    // Button + .drillDown composition as the six sibling
+                    // routes above/below.
+                    Button(action: openStatsToday) { sparkline }
+                        .buttonStyle(.plain)
                         .drillDown(host: panelHost, kind: .spark, hostWindow: hostWindow, anchorView: anchorView,
                                    expandedDrill: $expandedDrill, shownKind: $shownKind) {
                             hourlyBigContent()
@@ -625,7 +632,13 @@ struct MenuBarDashboardView: View {
             // so hiding it for the length of a running focus session (up to
             // 90 minutes) would bite. Shown regardless of `popoverMode`/
             // `focusRunning`.
-            if model.engine.chromeCaptureDegraded {
+            // Reads the `AppModel` mirror, not `engine.chromeCaptureDegraded`
+            // directly: `TrackerEngine` isn't `@Observable`, so a direct read
+            // registers no SwiftUI dependency (the Task 6 fix on
+            // `MenuBarLabel`). It happens to refresh today only because the
+            // whole popover body re-evaluates on each recompute -- that's an
+            // incidental re-render, not a declared dependency.
+            if model.chromeDegraded {
                 Label("Chrome 网页读取已降级，请检查自动化权限", systemImage: "exclamationmark.triangle")
                     .font(.caption2)
                     .foregroundStyle(.orange)
@@ -672,6 +685,14 @@ struct MenuBarDashboardView: View {
             panelHost.closeNow()
             shownKind = nil
             expandedDrill = nil
+            // `.menuBarExtraStyle(.window)` keeps this view's @State alive
+            // across dismissals (the same property `.onAppear`-per-open
+            // relies on), so without this a popover dismissed while in
+            // 专注配置态 reopens there instead of on the 常态仪表盘 -- the
+            // dashboard is the popover's primary surface (spec §3). The
+            // `.onChange(of: popoverMode)` above already clears any inline
+            // expansion on the transition back.
+            popoverMode = .dashboard
         }
     }
 

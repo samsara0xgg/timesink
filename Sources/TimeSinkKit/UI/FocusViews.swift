@@ -292,8 +292,9 @@ public final class FocusHUDController {
             : "专注中 \(Format.mmss(remaining)) · \(appName) 已被隐藏（第 \(hideCount) 次）"
         let content = FocusHUDContentView(
             message: message,
-            onKeepFocus: { [weak controller] in
-                controller?.keepFocusTapped(appKey: keepFocusAppKey, at: Date())
+            onKeepFocus: { [weak self, weak controller] in
+                guard let outcome = controller?.keepFocusTapped(appKey: keepFocusAppKey, at: Date()) else { return }
+                self?.collapseAfterKeepFocus(outcome)
             },
             onFinish: { [weak self, weak controller] in
                 controller?.finish(completed: false)
@@ -321,6 +322,30 @@ public final class FocusHUDController {
             try? await Task.sleep(for: .seconds(4))
             guard !Task.isCancelled else { return }
             self?.hide()
+        }
+    }
+
+    /// Spec §9's 「坚持专注」= 收 HUD 并回到被拦前的应用. The second half is
+    /// already satisfied implicitly (the blocked app was `hide()`d before the
+    /// HUD ever appeared, and this panel is `.nonactivatingPanel`, so the
+    /// pre-block app is still frontmost); the collapse is what was missing.
+    ///
+    /// A first tap can't collapse immediately or the double tap would be
+    /// unreachable, so it schedules the collapse one `doubleTapWindow` out;
+    /// the second tap cancels that pending collapse (`hide()` cancels
+    /// `dismissTask`) and collapses at once. Either way the button responds
+    /// visibly, which it previously never did on either branch.
+    private func collapseAfterKeepFocus(_ outcome: FocusSessionController.KeepFocusOutcome) {
+        switch outcome {
+        case .allowed:
+            hide()
+        case .armed:
+            dismissTask?.cancel()
+            dismissTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(FocusSessionController.doubleTapWindow))
+                guard !Task.isCancelled else { return }
+                self?.hide()
+            }
         }
     }
 

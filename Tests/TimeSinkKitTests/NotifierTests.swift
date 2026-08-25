@@ -50,6 +50,25 @@ final class NotifierTests: XCTestCase {
         XCTAssertNil(delegate.pendingRoute)
     }
 
+    /// Final review F1: the 设置·权限 通知 row reads its cached state through
+    /// the INJECTED notifier (never `UNUserNotificationCenter`), and a model
+    /// with no notifier wired reads `.denied` -- the conservative fallback
+    /// that keeps the row offering the recovery path rather than claiming
+    /// notifications work.
+    @MainActor func testNotificationStateReadsThroughInjectedNotifier() async {
+        let spy = SpyNotifier()
+        spy.authorized = true
+        var state = await Permissions.notificationState(spy)
+        XCTAssertEqual(state, .granted)
+
+        spy.authorized = false
+        state = await Permissions.notificationState(spy)
+        XCTAssertEqual(state, .denied)
+
+        state = await Permissions.notificationState(nil)
+        XCTAssertEqual(state, .denied)
+    }
+
     @MainActor func testRouteDeliversImmediatelyWhenOnRouteAlreadySet() {
         let delegate = TimeSinkAppDelegate()
         var received: [NotificationRoute] = []

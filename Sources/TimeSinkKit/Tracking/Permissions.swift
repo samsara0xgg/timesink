@@ -1,6 +1,9 @@
 @preconcurrency import ApplicationServices
 import AppKit
 import EventKit
+import os
+
+private let permissionsLogger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "permissions")
 
 public enum Permissions {
     @MainActor
@@ -76,7 +79,31 @@ extension Permissions {
         do {
             return try await EKEventStore().requestFullAccessToEvents()
         } catch {
+            // Spec §11 mandates this log by name: a missing
+            // `NSCalendarsFullAccessUsageDescription` in the app bundle makes
+            // this call fail silently and PERMANENTLY (calendar overlay,
+            // meeting badges and the idle exemption all dead, with no trace
+            // in Console). Every other error path in this batch logs the same
+            // way, so a silent `return false` here is convention drift too.
+            permissionsLogger.error(
+                "requestFullAccessToEvents failed (check NSCalendarsFullAccessUsageDescription in Info.plist): \(String(describing: error), privacy: .public)"
+            )
             return false
         }
+    }
+
+    /// The 通知 row's state read (spec §11's fourth permission), factored out
+    /// of `GeneralSettingsPane` so it's testable without a view.
+    ///
+    /// Async because `UNUserNotificationCenter.getNotificationSettings` is
+    /// callback-based -- callers cache the result in `@State` from `onAppear`
+    /// exactly like the three TCC reads above (spec §11's 通知状态缓存 note),
+    /// never polling. Always goes through the injected `Notifying` so
+    /// `swift test` / `swift run` (which get `NoopNotifier` via
+    /// `NotifierFactory`) never touch the real notification center. A nil
+    /// notifier (never injected) reads as `.denied` -- the same conservative
+    /// fallback `NoopNotifier` itself returns.
+    @MainActor public static func notificationState(_ notifier: (any Notifying)?) async -> PermissionState {
+        await notifier?.authorizationState() ?? .denied
     }
 }

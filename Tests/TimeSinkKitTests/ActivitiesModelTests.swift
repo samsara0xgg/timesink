@@ -243,6 +243,13 @@ final class ActivitiesModelTests: XCTestCase {
 
     // MARK: - C4 focus session timeline blocks
 
+    /// The local-calendar day containing `date`, i.e. exactly what
+    /// `DateRangeSelection(kind: .day)` hands `focusTimelineBlocks`.
+    private func dayAround(_ date: Date) -> DateInterval {
+        let start = Calendar.current.startOfDay(for: date)
+        return DateInterval(start: start, end: start.addingTimeInterval(86400))
+    }
+
     /// Pure mapper: tooltip's distraction count sums app+site blocks, and
     /// the productivity number is computed from `items` clipped to the
     /// session's own window (`Aggregator.clippedToElapsed` + `pulse`), not
@@ -261,7 +268,8 @@ final class ActivitiesModelTests: XCTestCase {
             CategorizedSpan(span: Span(start: ts(3000), end: ts(3600), appBundleID: "com.spotify.client",
                 appName: "Spotify", title: nil, url: nil, domain: nil), categoryID: "chat"),
         ]
-        let blocks = ActivitiesModel.focusTimelineBlocks([session], items: items, categories: categories)
+        let blocks = ActivitiesModel.focusTimelineBlocks([session], items: items, categories: categories,
+                                                         dayInterval: dayAround(ts(0)))
         XCTAssertEqual(blocks.count, 1)
         XCTAssertEqual(blocks[0].start, ts(0))
         XCTAssertEqual(blocks[0].end, ts(1500))
@@ -274,10 +282,58 @@ final class ActivitiesModelTests: XCTestCase {
     func testFocusTimelineBlocksTooltipFallsBackWhenNoOverlap() {
         let session = FocusSession(id: 1, start: ts(0), end: ts(60), plannedSeconds: 60,
                                     appBlocks: 0, siteBlocks: 0, completed: true)
-        let blocks = ActivitiesModel.focusTimelineBlocks([session], items: [], categories: categories)
+        let blocks = ActivitiesModel.focusTimelineBlocks([session], items: [], categories: categories,
+                                                         dayInterval: dayAround(ts(0)))
         XCTAssertEqual(blocks.count, 1)
         XCTAssertTrue(blocks[0].tooltip.contains("拦下 0 次分心"))
         XCTAssertTrue(blocks[0].tooltip.contains("期间分 --"))
+    }
+
+    /// A session that crosses midnight is returned by
+    /// `sessions(overlapping:)` on BOTH days, and `DayTimelineView` positions
+    /// blocks off minutes-from-midnight of the block's own date -- so an
+    /// unclipped block draws a phantom 23:50 bar on the END day (with its
+    /// real 00:00–00:15 slice missing) and overruns the bottom of the START
+    /// day's grid. Each day must get only its own slice; the tooltip keeps
+    /// reporting the WHOLE session either way.
+    func testFocusTimelineBlocksClipCrossMidnightSessionToDisplayedDay() {
+        let calendar = Calendar.current
+        let midnight = calendar.startOfDay(for: ts(0)).addingTimeInterval(86400)
+        let start = midnight.addingTimeInterval(-600)          // 23:50 D1
+        let end = midnight.addingTimeInterval(900)             // 00:15 D2
+        let session = FocusSession(id: 1, start: start, end: end, plannedSeconds: 1500,
+                                    appBlocks: 1, siteBlocks: 1, completed: true)
+
+        let startDay = ActivitiesModel.focusTimelineBlocks([session], items: [], categories: categories,
+                                                           dayInterval: dayAround(start))
+        XCTAssertEqual(startDay.count, 1)
+        XCTAssertEqual(startDay[0].start, start)
+        XCTAssertEqual(startDay[0].end, midnight)              // clipped at the grid's bottom
+
+        let endDay = ActivitiesModel.focusTimelineBlocks([session], items: [], categories: categories,
+                                                         dayInterval: dayAround(end))
+        XCTAssertEqual(endDay.count, 1)
+        XCTAssertEqual(endDay[0].start, midnight)              // top of the grid, not 23:50
+        XCTAssertEqual(endDay[0].end, end)
+
+        // Tooltip reads the ORIGINAL session on both days: 25 分钟, 2 次分心.
+        for block in startDay + endDay {
+            XCTAssertTrue(block.tooltip.contains("专注 \(Format.duration(1500))"), block.tooltip)
+            XCTAssertTrue(block.tooltip.contains("拦下 2 次分心"), block.tooltip)
+        }
+    }
+
+    /// A session entirely outside the displayed day contributes no block at
+    /// all (rather than a zero-height artifact at the grid's edge).
+    func testFocusTimelineBlocksDropSessionOutsideDisplayedDay() {
+        let start = Calendar.current.startOfDay(for: ts(0)).addingTimeInterval(10 * 3600)
+        let session = FocusSession(id: 1, start: start, end: start.addingTimeInterval(1500),
+                                    plannedSeconds: 1500, appBlocks: 0, siteBlocks: 0, completed: true)
+        let blocks = ActivitiesModel.focusTimelineBlocks(
+            [session], items: [], categories: categories,
+            dayInterval: dayAround(start.addingTimeInterval(3 * 86400))
+        )
+        XCTAssertTrue(blocks.isEmpty)
     }
 
     /// Integration: `recompute` actually fetches from `model.focusStore` and

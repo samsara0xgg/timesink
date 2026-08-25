@@ -20,6 +20,10 @@ struct GeneralSettingsPane: View {
     @State private var axState: PermissionState = .denied
     @State private var chromeState: PermissionState = .notDetermined
     @State private var calendarState: PermissionState = .notDetermined
+    /// Spec §11's fourth permission. Cached rather than read per render
+    /// because the underlying read is async/callback-based -- refreshed on
+    /// `onAppear` and after the row's own action, never polled.
+    @State private var notificationState: PermissionState = .notDetermined
 
     /// SMAppService.mainApp only functions when the app runs from
     /// /Applications; toggling elsewhere silently fails, so the control is
@@ -87,6 +91,27 @@ struct GeneralSettingsPane: View {
                         }
                     }
                 )
+                // Spec §8: once the one-shot authorization prompt (fired by
+                // 首次启用预算 / 首次开始专注) has been declined, the system
+                // never prompts again -- this row is the ONLY user-visible
+                // recovery path, and the only place the app admits that
+                // budget alerts / 每日小结 / 专注结束提醒 are being dropped.
+                PermissionRow(
+                    title: "通知",
+                    state: notificationState,
+                    action: {
+                        if notificationState == .denied {
+                            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") {
+                                NSWorkspace.shared.open(url)
+                            }
+                        } else {
+                            Task { @MainActor in
+                                _ = await model.notifier?.requestAuthorization()
+                                await refreshNotification()
+                            }
+                        }
+                    }
+                )
             }
         }
         .formStyle(.grouped)
@@ -96,6 +121,7 @@ struct GeneralSettingsPane: View {
             refreshAccessibility()
             refreshChrome()
             refreshCalendar()
+            Task { @MainActor in await refreshNotification() }
         }
         .alert("登录项设置失败", isPresented: alertIsPresented) {
             Button("好", role: .cancel) {}
@@ -182,6 +208,12 @@ struct GeneralSettingsPane: View {
 
     private func refreshCalendar() {
         calendarState = Permissions.calendarState()
+    }
+
+    /// Reads through the injected `Notifying` (never `UNUserNotificationCenter`
+    /// directly) so this pane stays safe in a bundle-less process.
+    private func refreshNotification() async {
+        notificationState = await Permissions.notificationState(model.notifier)
     }
 }
 

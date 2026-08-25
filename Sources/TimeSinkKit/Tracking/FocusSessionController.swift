@@ -60,8 +60,10 @@ public final class FocusSessionController {
         "com.apple.Safari", "org.mozilla.firefox", "company.thebrowser.Browser", "com.microsoft.edgemac",
     ]
     private static let heartbeatInterval: TimeInterval = 30
-    /// Double-tap window for `keepFocusTapped` (HUD "坚持专注" button).
-    private static let doubleTapWindow: TimeInterval = 0.4
+    /// Double-tap window for `keepFocusTapped` (HUD "坚持专注" button). Not
+    /// `private`: `FocusHUDController` waits exactly this long before
+    /// collapsing the HUD on a first tap, so the second tap stays reachable.
+    static let doubleTapWindow: TimeInterval = 0.4
 
     public private(set) var running: Running?
     public private(set) var remaining: TimeInterval = 0
@@ -265,17 +267,35 @@ public final class FocusSessionController {
         policy.allow(domain, at: Date())
     }
 
+    /// What a `keepFocusTapped` call decided, so the HUD can respond visibly
+    /// to BOTH taps (spec §9's 「坚持专注」= 收 HUD；双击 = 放行 5 分钟).
+    public enum KeepFocusOutcome: Equatable, Sendable {
+        /// First tap: nothing allowed (yet), but the double-tap window is now
+        /// open. The HUD collapses after `doubleTapWindow` so a second tap
+        /// stays reachable.
+        case armed
+        /// Second tap inside the window: the app is allowed for 5 minutes and
+        /// the HUD collapses immediately.
+        case allowed
+    }
+
     /// HUD "坚持专注" button. Two taps for the same `appKey` within
     /// `doubleTapWindow` allow that app for the rest of the 5-minute
     /// allowance (mirrors the block page's "放行 5 分钟").
-    public func keepFocusTapped(appKey: String, at now: Date) {
+    ///
+    /// The return value is what makes the button visibly responsive: before
+    /// it existed, both taps only mutated invisible state, so the HUD just
+    /// sat there until its 4s auto-dismiss and the button read as dead.
+    @discardableResult
+    public func keepFocusTapped(appKey: String, at now: Date) -> KeepFocusOutcome {
         if let last = lastKeepFocusTap, last.key == appKey,
            now.timeIntervalSince(last.date) <= Self.doubleTapWindow {
             policy.allow(appKey, at: now)
             lastKeepFocusTap = nil
-        } else {
-            lastKeepFocusTap = (appKey, now)
+            return .allowed
         }
+        lastKeepFocusTap = (appKey, now)
+        return .armed
     }
 
     // MARK: - 1s timer

@@ -387,7 +387,8 @@ final class ActivitiesModel {
 
         if showsTimeline, let focusStore = model.focusStore {
             let sessions = (try? focusStore.sessions(overlapping: model.range.interval)) ?? []
-            focusBlocks = Self.focusTimelineBlocks(sessions, items: all, categories: categories)
+            focusBlocks = Self.focusTimelineBlocks(sessions, items: all, categories: categories,
+                                                   dayInterval: model.range.interval)
         } else {
             focusBlocks = []
         }
@@ -614,19 +615,49 @@ final class ActivitiesModel {
     /// UNFILTERED spans (`all`, not search/category-narrowed) -- the
     /// tooltip's productivity number describes what actually happened during
     /// the session, not what a search happens to match.
+    ///
+    /// Each block's rendered `start`/`end` are clipped to `dayInterval` for
+    /// the same reason `eventBlocks` clips calendar events: `sessions(
+    /// overlapping:)` returns a midnight-crossing session on BOTH days, and
+    /// `DayTimelineView` positions purely off minutes-from-midnight. Without
+    /// the clip, a 23:50 -> 00:15 session draws a phantom 23:50 block on the
+    /// END day (while its real 00:00–00:15 slice goes missing) and overruns
+    /// the bottom of the START day's 24h grid. The tooltip keeps reading the
+    /// ORIGINAL session, so 专注 时长 and 拦下 次数 stay the session's true
+    /// totals on both days no matter how much is clipped away.
     nonisolated static func focusTimelineBlocks(
-        _ sessions: [FocusSession], items: [CategorizedSpan], categories: [String: Category]
+        _ sessions: [FocusSession], items: [CategorizedSpan], categories: [String: Category],
+        dayInterval: DateInterval
     ) -> [TimelineBlock] {
-        sessions.map { session in
+        sessions.compactMap { session -> TimelineBlock? in
+            guard let clip = clipToDay(start: session.start, end: session.end, dayInterval: dayInterval) else {
+                return nil
+            }
             let elapsed = session.end.timeIntervalSince(session.start)
             let clipped = Aggregator.clippedToElapsed(items, windowStart: session.start, elapsed: elapsed)
             let byCategory = Aggregator.durationByCategory(clipped)
             let pulse = Aggregator.pulse(durationByCategory: byCategory, categories: categories)
             let distractions = session.appBlocks + session.siteBlocks
             let tooltip = "专注 \(Format.duration(elapsed)) · 拦下 \(distractions) 次分心 · 期间分 \(pulse.map(String.init) ?? "--")"
-            return TimelineBlock(start: session.start, end: session.end, color: .accentColor,
+            return TimelineBlock(start: clip.start, end: clip.end, color: .accentColor,
                                   label: "专注", tooltip: tooltip)
         }
+    }
+
+    /// Clips `[start, end)` to the displayed day, or `nil` when nothing of it
+    /// lands inside. Every block handed to `DayTimelineView` must already be
+    /// inside the displayed day -- it positions off minutes-from-midnight of
+    /// the BLOCK's own date, so an unclipped cross-midnight block lands at
+    /// the wrong y on the wrong day. Shared by both lanes (calendar events
+    /// and focus sessions) so the two can never drift apart; `nonisolated
+    /// static` so it's unit-testable on its own.
+    nonisolated static func clipToDay(
+        start: Date, end: Date, dayInterval: DateInterval
+    ) -> (start: Date, end: Date)? {
+        let clippedStart = max(start, dayInterval.start)
+        let clippedEnd = min(end, dayInterval.end)
+        guard clippedEnd > clippedStart else { return nil }
+        return (clippedStart, clippedEnd)
     }
 
     // MARK: - Calendar event lane (C3)
@@ -652,14 +683,14 @@ final class ActivitiesModel {
         events
             .filter { !$0.isAllDay && !$0.isDeclined }
             .compactMap { event -> TimelineEventBlock? in
-                let start = max(event.start, dayInterval.start)
-                let end = min(event.end, dayInterval.end)
-                guard end > start else { return nil }
+                guard let clip = clipToDay(start: event.start, end: event.end, dayInterval: dayInterval) else {
+                    return nil
+                }
                 return TimelineEventBlock(
                     id: event.id,
                     title: event.title,
-                    start: start,
-                    end: end,
+                    start: clip.start,
+                    end: clip.end,
                     color: Color(hex: event.colorHex),
                     tooltip: eventTooltip(event)
                 )

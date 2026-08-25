@@ -264,6 +264,34 @@ final class FocusSessionControllerTests: XCTestCase {
         XCTAssertEqual(c.remaining, 0)
     }
 
+    // MARK: - Final review F2: 坚持专注 outcome drives the HUD collapse
+
+    /// Spec §9's 「坚持专注」= 收 HUD. The HUD itself is untestable here (it
+    /// owns an `NSPanel`), but the outcome it acts on is: a first tap reports
+    /// `.armed` (collapse after the double-tap window), a second tap inside
+    /// the window reports `.allowed` (collapse now, app allowed 5 minutes).
+    /// Before the outcome existed both branches returned Void and the button
+    /// produced no visible response at all.
+    func testKeepFocusTapReportsArmedThenAllowed() throws {
+        let (c, _, settings) = try makeController()
+        settings.setFocusBlockedApps(["a"])
+        try c.start(minutes: 25)
+        XCTAssertEqual(c.keepFocusTapped(appKey: "a", at: ts(0)), .armed)
+        XCTAssertEqual(c.keepFocusTapped(appKey: "a", at: ts(0.3)), .allowed)
+    }
+
+    /// Taps outside the window, or on a different app, only ever re-arm --
+    /// the HUD still collapses (that's the `.armed` half), but nothing is
+    /// allowed.
+    func testKeepFocusTapReportsArmedOutsideWindowAndAcrossKeys() throws {
+        let (c, _, settings) = try makeController()
+        settings.setFocusBlockedApps(["a", "b"])
+        try c.start(minutes: 25)
+        XCTAssertEqual(c.keepFocusTapped(appKey: "a", at: ts(0)), .armed)
+        XCTAssertEqual(c.keepFocusTapped(appKey: "a", at: ts(3)), .armed)     // window expired
+        XCTAssertEqual(c.keepFocusTapped(appKey: "b", at: ts(3.1)), .armed)   // different app
+    }
+
     // MARK: - Fold-in 7: double-start doesn't orphan the first row
 
     func testDoubleStartDoesNotOrphanFirstRow() throws {

@@ -129,8 +129,12 @@ public struct TimeSinkApp: App {
             guard let model else { return }
             let running = focusController?.running
             let plannedMinutes = (running?.plannedSeconds ?? 0) / 60
-            let prefix = completed ? "" : "提前结束，"
-            let body = "\(prefix)\(plannedMinutes) 分钟完成，期间拦下 \(appBlocks + siteBlocks) 次分心（\(siteBlocks) 次网站 · \(appBlocks) 次应用）。"
+            // `plannedSeconds` is the PLANNED duration, not the elapsed one:
+            // a 25-minute session ended manually after 3 minutes must not
+            // claim "提前结束，25 分钟完成". The early-end branch names the
+            // planned duration as the plan it fell short of instead.
+            let head = completed ? "\(plannedMinutes) 分钟完成" : "提前结束（原定 \(plannedMinutes) 分钟）"
+            let body = "\(head)，期间拦下 \(appBlocks + siteBlocks) 次分心（\(siteBlocks) 次网站 · \(appBlocks) 次应用）。"
             // Keyed by the session's row id, not a fixed string -- a fixed id
             // would make consecutive sessions silently replace each other's
             // notification at the OS level (the same de-dup mechanism budget

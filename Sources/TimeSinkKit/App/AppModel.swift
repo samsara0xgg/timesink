@@ -413,9 +413,10 @@ public final class AppModel {
 
         let deltaClause: String
         if let yesterdayPulse {
-            let delta = pulse - yesterdayPulse
-            let signedDelta = delta >= 0 ? "+\(delta)" : "\(delta)"
-            deltaClause = "（较昨日 \(signedDelta)）"
+            // Shared `Format.signedInt` (not a private copy): R-T11b made this
+            // number deliberately identical to the popover's 较昨日 chip, and
+            // the two must keep rendering it the same way.
+            deltaClause = "（较昨日 \(Format.signedInt(pulse - yesterdayPulse))）"
         } else {
             deltaClause = ""
         }
