@@ -9,9 +9,19 @@ struct ActivitiesView: View {
 
     @State private var activities = ActivitiesModel()
 
+    /// Debounces search-driven recomputes only — see `scheduleSearchRecompute()`.
+    /// Every other trigger (`dataVersion`/`range`/`activityFilter`) recomputes
+    /// immediately, unrelated to this.
+    @State private var pendingSearch: Task<Void, Never>?
+
+    private var searchBinding: Binding<String> {
+        Binding(get: { model.activitySearch }, set: { model.activitySearch = $0 })
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            ActivityListView(model: model, groups: activities.groups)
+            ActivityListView(model: model, groups: activities.groups,
+                              matchCount: activities.matchCount, matchSeconds: activities.matchSeconds)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             if model.range.kind == .day {
@@ -20,10 +30,30 @@ struct ActivitiesView: View {
             }
         }
         .padding()
+        .searchable(text: searchBinding, prompt: "搜索应用、网址、标题")
         .onAppear { activities.recompute(model: model) }
         .onChange(of: model.dataVersion) { _, _ in activities.recompute(model: model) }
         .onChange(of: model.range) { _, _ in activities.recompute(model: model) }
         .onChange(of: model.activityFilter) { _, _ in activities.recompute(model: model) }
+        .onChange(of: model.activitySearch) { _, _ in scheduleSearchRecompute() }
+    }
+
+    /// Search is a read-path filter over already-cached spans — it must
+    /// never call `model.dataChanged()` (that would bump `dataVersion` and
+    /// re-trigger the engine debounce). Shaped like
+    /// `AppModel.scheduleEngineDataChanged`: cancel any pending recompute,
+    /// then schedule a fresh one. Single-day ranges recompute immediately
+    /// (0ms) since their span count is small; every other range debounces
+    /// 200ms so fast typing doesn't re-filter a potentially large range on
+    /// every keystroke.
+    private func scheduleSearchRecompute() {
+        pendingSearch?.cancel()
+        let delay: Duration = model.range.kind == .day ? .zero : .milliseconds(200)
+        pendingSearch = Task { @MainActor in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+            activities.recompute(model: model)
+        }
     }
 }
 
@@ -40,15 +70,21 @@ final class ActivitiesModel {
         let seconds: TimeInterval
     }
 
-    /// A domain (browser) or app (native) row within a category, with its
-    /// per-title breakdown. `isDomain` says which `CategoryStore` method a
-    /// reassignment of `id` should use — derived from whether the underlying
-    /// spans carried a `domain`, not from the string shape of `id`.
+    /// A domain (browser), app (native), or (display-only) entity row within
+    /// a category, with its per-title breakdown. `isDomain` says which
+    /// `CategoryStore` method a reassignment should use — derived from
+    /// whether the underlying spans carried a `domain`, not from the string
+    /// shape of `id`. `id` is the display grouping key (may be a finer-grained
+    /// `EntityParser` key), while `reassignKey` is always the domain or
+    /// bundleID a reassignment actually writes to `CategoryStore` — the two
+    /// diverge exactly when `isEntity` is true.
     struct ActivityRow: Identifiable {
         let id: String
         let label: String
         let seconds: TimeInterval
         let isDomain: Bool
+        let reassignKey: String
+        let isEntity: Bool
         let titles: [TitleRow]
     }
 
@@ -63,11 +99,22 @@ final class ActivitiesModel {
     var groups: [CategoryGroup] = []
     var timelineBlocks: [TimelineBlock] = []
 
-    private static let titleTopCount = 20
+    /// Non-nil only while `model.activitySearch` holds a normalized query —
+    /// the match-count row above the list reads these; `nil` means "no
+    /// active search" (distinct from "search matched zero items").
+    var matchCount: Int?
+    var matchSeconds: TimeInterval?
+
+    private nonisolated static let titleTopCount = 20
 
     func recompute(model: AppModel) {
-        let items = model.rangedSpans()
+        let all = model.rangedSpans()
         let categories = model.resolver.categoriesByID
+
+        let query = Self.normalizedQuery(model.activitySearch)
+        let items = Self.filter(all, query: query)
+        matchCount = query == nil ? nil : items.count
+        matchSeconds = query == nil ? nil : Aggregator.totalDuration(items.map(\.span))
 
         var byCategory: [String: [CategorizedSpan]] = [:]
         for item in items {
@@ -87,36 +134,103 @@ final class ActivitiesModel {
             }
             .sorted { $0.seconds > $1.seconds }
 
-        timelineBlocks = model.range.kind == .day ? Self.timelineBlocks(items, categories: categories) : []
+        // Timeline keeps the unfiltered `all` so a narrowed list still shows
+        // the full day's context (spec §7) rather than collapsing around
+        // just the search hits.
+        timelineBlocks = model.range.kind == .day ? Self.timelineBlocks(all, categories: categories) : []
+    }
+
+    // MARK: - Search
+
+    /// Trims whitespace/newlines; an all-whitespace (or empty) query becomes
+    /// `nil`, meaning "no active search" (as opposed to a query nothing
+    /// matches).
+    nonisolated static func normalizedQuery(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// Case-insensitive substring match against `domain` / `appName` /
+    /// `title` / `url`, in that order, short-circuiting on first hit.
+    nonisolated static func matches(_ item: CategorizedSpan, query: String) -> Bool {
+        let span = item.span
+        if let domain = span.domain, domain.localizedCaseInsensitiveContains(query) { return true }
+        if span.appName.localizedCaseInsensitiveContains(query) { return true }
+        if let title = span.title, title.localizedCaseInsensitiveContains(query) { return true }
+        if let url = span.url, url.localizedCaseInsensitiveContains(query) { return true }
+        return false
+    }
+
+    /// `items` unchanged when `query` is `nil`; otherwise only the items
+    /// `matches` accepts.
+    nonisolated static func filter(_ items: [CategorizedSpan], query: String?) -> [CategorizedSpan] {
+        guard let query else { return items }
+        return items.filter { matches($0, query: query) }
     }
 
     // MARK: - List grouping
 
-    private static func rows(for items: [CategorizedSpan]) -> [ActivityRow] {
-        var isDomainByKey: [String: Bool] = [:]
-        var titlesByKey: [String: [String: TimeInterval]] = [:]
-        for item in items {
-            let span = item.span
-            let key = span.domain ?? span.appBundleID
-            isDomainByKey[key] = span.domain != nil
-            let title = (span.title?.isEmpty == false) ? span.title! : "(无标题)"
-            titlesByKey[key, default: [:]][title, default: 0] += span.duration
+    /// Not `private`, and `nonisolated`: pure function, exercised directly by
+    /// `ActivitiesModelTests` via `@testable import` (which sees `internal`,
+    /// not `private`, members) without needing a `@MainActor` hop — same
+    /// convention as `timelineBlocks` below.
+    ///
+    /// Groups by `EntityParser.entity(...)?.key ?? span.domain ??
+    /// span.appBundleID` — a finer display-level key than plain
+    /// domain-or-app when the span's URL resolves to a recognized entity
+    /// (github/gitlab owner-repo, youtube channel). `reassignKey` always
+    /// stays at the domain/bundleID level regardless, since that's the only
+    /// granularity `CategoryStore` understands.
+    nonisolated static func rows(for items: [CategorizedSpan]) -> [ActivityRow] {
+        struct Accum {
+            var seconds: TimeInterval = 0
+            var label: String?
+            var reassignKey: String = ""
+            var isDomain = false
+            var isEntity = false
+            var titles: [String: TimeInterval] = [:]
         }
 
-        return Aggregator.durationByDomainOrApp(items).map { entry in
-            let titles = (titlesByKey[entry.key] ?? [:])
+        var byKey: [String: Accum] = [:]
+        for item in items {
+            let span = item.span
+            let entity = span.domain.flatMap { domain in
+                span.url.flatMap { EntityParser.entity(urlString: $0, domain: domain) }
+            }
+            let key = entity?.key ?? span.domain ?? span.appBundleID
+
+            var accum = byKey[key] ?? Accum()
+            accum.seconds += span.duration
+            if accum.label == nil {
+                accum.label = entity?.label ?? span.domain ?? span.appName
+                accum.reassignKey = span.domain ?? span.appBundleID
+                accum.isDomain = span.domain != nil
+                accum.isEntity = entity != nil
+            }
+            let title = (span.title?.isEmpty == false) ? span.title! : "(无标题)"
+            accum.titles[title, default: 0] += span.duration
+            byKey[key] = accum
+        }
+
+        return byKey.map { key, accum in
+            let titles = accum.titles
                 .map { TitleRow(title: $0.key, seconds: $0.value) }
                 .sorted { lhs, rhs in
                     lhs.seconds != rhs.seconds ? lhs.seconds > rhs.seconds : lhs.title < rhs.title
                 }
                 .prefix(titleTopCount)
             return ActivityRow(
-                id: entry.key,
-                label: entry.label,
-                seconds: entry.seconds,
-                isDomain: isDomainByKey[entry.key] ?? false,
+                id: key,
+                label: accum.label ?? key,
+                seconds: accum.seconds,
+                isDomain: accum.isDomain,
+                reassignKey: accum.reassignKey,
+                isEntity: accum.isEntity,
                 titles: Array(titles)
             )
+        }
+        .sorted { lhs, rhs in
+            lhs.seconds != rhs.seconds ? lhs.seconds > rhs.seconds : lhs.id < rhs.id
         }
     }
 

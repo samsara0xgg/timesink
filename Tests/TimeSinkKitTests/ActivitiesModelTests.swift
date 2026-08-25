@@ -59,4 +59,35 @@ final class ActivitiesModelTests: XCTestCase {
         XCTAssertEqual(blocks[0].label, "Work")
         XCTAssertEqual(blocks[0].end, mkSpan("2026-08-23T09:00:00Z", "2026-08-23T09:30:00Z").end)
     }
+
+    func testSearchMatchesAcrossFields() {
+        let item = CategorizedSpan(span: Span(start: ts(0), end: ts(60), appBundleID: "c",
+            appName: "Chrome", title: "Fix span clipping — Pull Request #42",
+            url: "https://github.com/a/b/pull/42", domain: "github.com"), categoryID: "softwareDev")
+        XCTAssertTrue(ActivitiesModel.matches(item, query: "pull request"))   // title 大小写不敏感
+        XCTAssertTrue(ActivitiesModel.matches(item, query: "GITHUB.COM"))     // domain
+        XCTAssertTrue(ActivitiesModel.matches(item, query: "chrome"))         // appName
+        XCTAssertFalse(ActivitiesModel.matches(item, query: "youtube"))
+    }
+    func testFilterComposesAndNormalizes() {
+        XCTAssertNil(ActivitiesModel.normalizedQuery("   "))
+        XCTAssertEqual(ActivitiesModel.normalizedQuery(" Pull "), "Pull")
+        let hit = CategorizedSpan(span: Span(start: ts(0), end: ts(60), appBundleID: "c",
+            appName: "Chrome", title: "Pull Request #42", url: "https://github.com/a/b", domain: "github.com"),
+            categoryID: "softwareDev")
+        let miss = CategorizedSpan(span: Span(start: ts(60), end: ts(120), appBundleID: "m",
+            appName: "Music", title: "Daily Mix", url: nil, domain: nil), categoryID: "entertainment")
+        XCTAssertEqual(ActivitiesModel.filter([hit, miss], query: "pull").count, 1)
+        XCTAssertEqual(ActivitiesModel.filter([hit, miss], query: nil).count, 2)
+    }
+    func testEntityRowKeepsDomainReassignKey() {
+        let item = CategorizedSpan(span: Span(start: ts(0), end: ts(600), appBundleID: "c",
+            appName: "Chrome", title: "PR", url: "https://github.com/alllllenshi/timesink/pull/1",
+            domain: "github.com"), categoryID: "softwareDev")
+        let rows = ActivitiesModel.rows(for: [item])
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].id, "github.com/alllllenshi/timesink")
+        XCTAssertEqual(rows[0].reassignKey, "github.com")
+        XCTAssertTrue(rows[0].isEntity)
+    }
 }

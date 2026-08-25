@@ -26,6 +26,11 @@ public final class AppModel {
     public var sidebarSelection: SidebarItem = .stats
     public var activityFilter: String?
 
+    /// Live text from the Activities tab's `.searchable` field. A read-path
+    /// filter only — `ActivitiesView` debounces its own recompute off this;
+    /// setting it must never call `dataChanged()` or touch `dataVersion`.
+    public var activitySearch: String = ""
+
     /// Bumped on every `dataChanged()`; views observe this to know when to
     /// re-run range/category queries.
     public var dataVersion: Int = 0

@@ -11,6 +11,10 @@ private let activityListLogger = Logger(subsystem: "com.alllllenshi.TimeSink", c
 struct ActivityListView: View {
     let model: AppModel
     let groups: [ActivitiesModel.CategoryGroup]
+    /// Non-nil only while a search query is active — see
+    /// `ActivitiesModel.matchCount`/`matchSeconds`.
+    let matchCount: Int?
+    let matchSeconds: TimeInterval?
 
     /// Sheet is hosted here (not inside the transient `contextMenu`) because
     /// the menu tears itself down as soon as its action runs.
@@ -23,6 +27,12 @@ struct ActivityListView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if let matchCount {
+                Text("命中 \(matchCount) 项 · 合计 \(Format.duration(matchSeconds ?? 0))")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
             if let filter = model.activityFilter {
                 FilterChip(name: model.resolver.categoriesByID[filter]?.name ?? filter) {
                     model.activityFilter = nil
@@ -48,11 +58,18 @@ struct ActivityListView: View {
     private var emptyState: some View {
         VStack {
             Spacer()
-            Text(model.activityFilter == nil ? "当前范围内没有活动记录" : "该分类在当前范围内没有活动记录")
+            Text(emptyStateText)
                 .foregroundStyle(.secondary)
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var emptyStateText: String {
+        guard matchCount == nil else {
+            return "没有命中的活动（隐身窗口与未授权时段无记录）"
+        }
+        return model.activityFilter == nil ? "当前范围内没有活动记录" : "该分类在当前范围内没有活动记录"
     }
 }
 
@@ -132,24 +149,28 @@ private struct ActivityRowView: View {
         }
         .contextMenu {
             ForEach(sortedCategories, id: \.id) { category in
-                Button(category.name) {
+                Button(row.isEntity ? "\(category.name)（整站）" : category.name) {
                     reassign(to: category.id)
                 }
             }
         }
     }
 
+    /// Always writes at `row.reassignKey` (domain or bundleID) — an entity
+    /// row's finer-grained `row.id` (e.g. a specific github repo) is
+    /// display-only; `CategoryStore` only understands domain/app-level
+    /// overrides, hence the「（整站）」menu hint on entity rows.
     private func reassign(to categoryID: String) {
         do {
             if row.isDomain {
-                try model.categoryStore.setUserDomain(row.id, categoryID: categoryID)
+                try model.categoryStore.setUserDomain(row.reassignKey, categoryID: categoryID)
             } else {
-                try model.categoryStore.setUserApp(row.id, categoryID: categoryID)
+                try model.categoryStore.setUserApp(row.reassignKey, categoryID: categoryID)
             }
             model.resolver.refresh()
             model.dataChanged()
         } catch {
-            activityListLogger.error("reassign failed for \(row.id, privacy: .public): \(String(describing: error), privacy: .public)")
+            activityListLogger.error("reassign failed for \(row.reassignKey, privacy: .public): \(String(describing: error), privacy: .public)")
         }
     }
 }
