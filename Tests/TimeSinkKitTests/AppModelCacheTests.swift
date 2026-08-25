@@ -40,4 +40,26 @@ final class AppModelCacheTests: XCTestCase {
         model.dataChanged()
         XCTAssertEqual(model.rangedSpans().count, 2)
     }
+
+    func testRangeCacheEvictsOldestBeyondCap() throws {
+        let (model, store) = try makeModel()
+        let today = Calendar.current.startOfDay(for: Date()).addingTimeInterval(12 * 3600)
+
+        // 9 distinct day-anchors, spaced 10 days apart so their intervals
+        // never overlap and each produces a distinct cache key. Querying all
+        // 9 fills the cache past its 8-entry cap, evicting the oldest
+        // (queried first: index 0, "today").
+        let anchors = (0..<9).map { today.addingTimeInterval(Double(-$0) * 10 * 86400) }
+        for anchor in anchors {
+            _ = model.rangedSpans(for: DateRangeSelection(kind: .day, anchor: anchor))
+        }
+
+        // "today"'s entry was queried first, so it's the oldest and should
+        // have been evicted. Insert a span into its window directly
+        // (bypassing dataChanged, which would trivially clear the whole
+        // cache) and confirm a re-query sees it -- if the entry were still
+        // cached, this would still read 0.
+        try store.insert(span(hourOffset: 12))
+        XCTAssertEqual(model.rangedSpans(for: DateRangeSelection(kind: .day, anchor: anchors[0])).count, 1)
+    }
 }

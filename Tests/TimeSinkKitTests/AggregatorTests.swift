@@ -66,4 +66,34 @@ final class AggregatorTests: XCTestCase {
         XCTAssertEqual(Format.duration(30), "<1m")
         XCTAssertEqual(Format.duration(0), "0m")
     }
+    func testPulseByWeekdayHourBuckets() {
+        // 周一 10 点 1h softwareDev(+2=100分) + 周一 11 点 30m entertainment(-2=0分)
+        let good = mkSpan("2026-08-17T10:00:00Z", "2026-08-17T11:00:00Z")
+        let bad = mkSpan("2026-08-17T11:00:00Z", "2026-08-17T11:30:00Z")
+        let grid = Aggregator.pulseByWeekdayHour(
+            [CategorizedSpan(span: good, categoryID: "softwareDev"),
+             CategorizedSpan(span: bad, categoryID: "entertainment")],
+            categories: cats, calendar: cal)
+        XCTAssertEqual(grid[0][10].pulse, 100)
+        XCTAssertEqual(grid[0][10].seconds, 3600)
+        XCTAssertEqual(grid[0][11].pulse, 0)
+    }
+    func testLiftedHelpersStillBehave() {
+        // Same behavior as TodayDashboardModelTests, exercised directly
+        // against Aggregator now that dailyPulses/clippedToElapsed/streak
+        // are lifted there (TodayDashboardModel's versions are one-line
+        // forwards -- TodayDashboardModelTests passing unchanged is the
+        // proof those forwards preserved behavior).
+        XCTAssertEqual(Aggregator.streak(dailyPulses: [70, 71, nil, 80, 90], threshold: 70), 2)
+        XCTAssertEqual(Aggregator.streak(dailyPulses: [60, 72, 75, 71], threshold: 70), 3)
+        XCTAssertEqual(Aggregator.streak(dailyPulses: [], threshold: 70), 0)
+
+        let straddling = CategorizedSpan(
+            span: Span(start: ts(3000), end: ts(4200), appBundleID: "a", appName: "a",
+                       title: nil, url: nil, domain: nil),
+            categoryID: "softwareDev")
+        let clipped = Aggregator.clippedToElapsed([straddling], windowStart: ts(0), elapsed: 3600)
+        XCTAssertEqual(clipped.count, 1)
+        XCTAssertEqual(clipped[0].span.end, ts(3600))
+    }
 }

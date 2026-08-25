@@ -63,6 +63,17 @@ public final class AppModel {
     @ObservationIgnored
     private var rangeCache: [String: [CategorizedSpan]] = [:]
 
+    /// LRU order for `rangeCache`'s keys, oldest first. Capped at
+    /// `rangeCacheCap` entries -- once querying a *new* interval would push
+    /// it over the cap, the least-recently-used entry is evicted. Bounds
+    /// memory for callers that page through many distinct ranges (e.g. a
+    /// heatmap or "environment comparison" view issuing several
+    /// `rangedSpans(for:)` calls with different intervals per recompute)
+    /// without ever hitting `dataChanged()` to clear the whole cache.
+    @ObservationIgnored
+    private var cacheOrder: [String] = []
+    private static let rangeCacheCap = 8
+
     /// Trailing debounce for `scheduleEngineDataChanged()` -- see its doc
     /// comment.
     private static let engineChangeDebounce: Duration = .seconds(1.5)
@@ -87,6 +98,7 @@ public final class AppModel {
         // first real query after construction always re-reads the store
         // rather than serving that bootstrap-time snapshot indefinitely.
         rangeCache.removeAll()
+        cacheOrder.removeAll()
         engine.onChange = { [weak self] in self?.scheduleEngineDataChanged() }
     }
 
@@ -118,6 +130,7 @@ public final class AppModel {
 
     public func dataChanged() {
         rangeCache.removeAll()
+        cacheOrder.removeAll()
         refreshMenu()
         dataVersion += 1
     }
@@ -140,14 +153,23 @@ public final class AppModel {
         }
     }
 
+    /// `range.interval`'s spans -- one-line delegate to the interval
+    /// primitive below.
+    public func rangedSpans(for range: DateRangeSelection) -> [CategorizedSpan] {
+        rangedSpans(for: range.interval)
+    }
+
     /// `spanStore.spans(overlapping:)`, each span clipped to the interval's
     /// intersection, then categorized. Result is memoized per interval in
-    /// `rangeCache` until the next `dataChanged()`. DB errors are logged and
+    /// `rangeCache` (an LRU capped at `rangeCacheCap` entries -- see
+    /// `cacheOrder`) until the next `dataChanged()`. DB errors are logged and
     /// yield [] (not cached, so a transient failure doesn't stick).
-    public func rangedSpans(for range: DateRangeSelection) -> [CategorizedSpan] {
-        let interval = range.interval
+    public func rangedSpans(for interval: DateInterval) -> [CategorizedSpan] {
         let key = "\(interval.start.timeIntervalSinceReferenceDate)-\(interval.end.timeIntervalSinceReferenceDate)"
-        if let cached = rangeCache[key] { return cached }
+        if let cached = rangeCache[key] {
+            touchCacheKey(key)
+            return cached
+        }
         do {
             let spans = try spanStore.spans(overlapping: interval)
             let clipped = spans.map { span -> Span in
@@ -158,10 +180,23 @@ public final class AppModel {
             }
             let result = resolver.categorized(clipped)
             rangeCache[key] = result
+            cacheOrder.append(key)
+            while cacheOrder.count > Self.rangeCacheCap {
+                rangeCache.removeValue(forKey: cacheOrder.removeFirst())
+            }
             return result
         } catch {
             logger.error("rangedSpans failed: \(String(describing: error))")
             return []
+        }
+    }
+
+    /// Moves `key` to the most-recently-used end of `cacheOrder` on a cache
+    /// hit, so a repeatedly-read interval isn't the one evicted next.
+    private func touchCacheKey(_ key: String) {
+        if let idx = cacheOrder.firstIndex(of: key) {
+            cacheOrder.remove(at: idx)
+            cacheOrder.append(key)
         }
     }
 }

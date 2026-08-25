@@ -128,59 +128,28 @@ final class TodayDashboardModel {
             threshold: Self.streakThreshold)
     }
 
-    /// Per-day pulse over the trailing `days` days (last element = the day
-    /// containing `endingAt`); nil for days with no tracked time. Pure (no
-    /// actor-isolated state touched) so it's `nonisolated`, matching
-    /// `ActivitiesModel`'s convention -- lets `TodayDashboardModelTests` call
-    /// it synchronously without a `@MainActor` hop.
+    /// Lifted to `Aggregator.dailyPulses` (Task 7 C2) so `StatsModel` can
+    /// share it; this stays as a one-line forward so this type's tests and
+    /// call sites are unaffected. Pure, so `nonisolated` -- lets
+    /// `TodayDashboardModelTests` call it synchronously without a
+    /// `@MainActor` hop.
     nonisolated static func dailyPulses(items: [CategorizedSpan], categories: [String: Category],
                             days: Int, endingAt: Date, calendar: Calendar) -> [Int?] {
-        var perDay: [Date: [String: TimeInterval]] = [:]
-        for item in items {
-            for part in Aggregator.split(item.span, by: .day, calendar: calendar) {
-                perDay[part.bucketStart, default: [:]][item.categoryID, default: 0] += part.seconds
-            }
-        }
-        let todayStart = calendar.startOfDay(for: endingAt)
-        return (0..<days).reversed().map { offset in
-            guard let day = calendar.date(byAdding: .day, value: -offset, to: todayStart),
-                  let byCategory = perDay[day] else { return nil }
-            return Aggregator.pulse(durationByCategory: byCategory, categories: categories)
-        }
+        Aggregator.dailyPulses(items: items, categories: categories, days: days, endingAt: endingAt, calendar: calendar)
     }
 
-    /// Clips `items` to `[windowStart, windowStart + elapsed]`: each span's
-    /// start/end is clamped to the window and spans with no overlap left are
-    /// dropped -- same clipping idiom `AppModel.rangedSpans(for:)` uses when
-    /// clipping a fetch to its query interval. Used to compare yesterday's
-    /// spans up to the same time-of-day as "now", instead of yesterday's
-    /// full day (CONTROLLER RULING 14). Pure, so `nonisolated` -- see
-    /// `dailyPulses` above.
+    /// Lifted to `Aggregator.clippedToElapsed` (Task 7 C2); see `dailyPulses`
+    /// above. Used to compare yesterday's spans up to the same time-of-day as
+    /// "now", instead of yesterday's full day (CONTROLLER RULING 14).
     nonisolated static func clippedToElapsed(
         _ items: [CategorizedSpan], windowStart: Date, elapsed: TimeInterval
     ) -> [CategorizedSpan] {
-        let windowEnd = windowStart.addingTimeInterval(elapsed)
-        return items.compactMap { item in
-            let start = max(item.span.start, windowStart)
-            let end = min(item.span.end, windowEnd)
-            guard start < end else { return nil }
-            var span = item.span
-            span.start = start
-            span.end = end
-            return CategorizedSpan(span: span, categoryID: item.categoryID)
-        }
+        Aggregator.clippedToElapsed(items, windowStart: windowStart, elapsed: elapsed)
     }
 
-    /// Trailing run of days (ending at the array's last element) whose pulse
-    /// is >= threshold. A nil (untracked) day breaks the run. Pure, so
-    /// `nonisolated` -- see `dailyPulses` above.
+    /// Lifted to `Aggregator.streak` (Task 7 C2); see `dailyPulses` above.
     nonisolated static func streak(dailyPulses: [Int?], threshold: Int) -> Int {
-        var count = 0
-        for pulse in dailyPulses.reversed() {
-            guard let pulse, pulse >= threshold else { break }
-            count += 1
-        }
-        return count
+        Aggregator.streak(dailyPulses: dailyPulses, threshold: threshold)
     }
 }
 
@@ -204,9 +173,9 @@ struct MenuBarDashboardView: View {
                 scoreColumn
                 VStack(alignment: .leading, spacing: 4) {
                     kpiLine(value: Format.duration(dashboard.focus), label: "专注",
-                            delta: dashboard.focusDelta.map(Self.durationDelta))
+                            delta: dashboard.focusDelta.map(Format.durationDelta))
                     kpiLine(value: Format.duration(dashboard.total), label: "总计",
-                            delta: dashboard.totalDelta.map(Self.durationDelta))
+                            delta: dashboard.totalDelta.map(Format.durationDelta))
                     if dashboard.streakDays >= 2 {
                         Text("连续 \(dashboard.streakDays) 天保持 \(TodayDashboardModel.streakThreshold) 分以上")
                             .font(.caption2.weight(.semibold))
@@ -353,7 +322,4 @@ struct MenuBarDashboardView: View {
     }
 
     private static func signed(_ v: Int) -> String { v >= 0 ? "+\(v)" : "\(v)" }
-    private static func durationDelta(_ t: TimeInterval) -> String {
-        (t >= 0 ? "+" : "-") + Format.duration(abs(t))
-    }
 }

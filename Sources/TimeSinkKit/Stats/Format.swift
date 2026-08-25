@@ -12,4 +12,9 @@ public enum Format {
         guard hours > 0 else { return "\(minutes)m" }
         return "\(hours)h \(minutes)m"
     }
+
+    /// Formats a signed duration delta, e.g. "+42m" / "-1h 3m".
+    public static func durationDelta(_ t: TimeInterval) -> String {
+        (t >= 0 ? "+" : "-") + Format.duration(abs(t))
+    }
 }
