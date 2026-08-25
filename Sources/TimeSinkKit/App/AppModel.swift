@@ -183,7 +183,7 @@ public final class AppModel {
         chromeDegraded = engine.chromeCaptureDegraded
 
         // C4: budget/summary notifications, off the totals just computed
-        // above -- zero additional queries. `budgetMonitor` is nil until
+        // above -- no new span query. `budgetMonitor` is nil until
         // `TimeSinkApp.init` assigns it post-construction, so this is a
         // no-op during the bootstrap `refreshMenu()` call inside `init()`.
         budgetMonitor?.evaluate(byCategory: byCategory, categories: resolver.categoriesByID, now: Date())
@@ -358,16 +358,14 @@ public final class AppModel {
     /// to `BudgetMonitor.evaluateSummary` as `makeBody`, so it only actually
     /// runs once that call's enabled/hour/not-already-sent gates pass.
     ///
-    /// The pulse delta vs. yesterday uses the SAME "same elapsed time-of-day"
-    /// clipping (`Aggregator.clippedToElapsed`) the popover's focus/total
-    /// deltas use (CONTROLLER RULING 14) -- comparing today's partial day
-    /// against yesterday's full day would bias the delta negative by
-    /// construction for most of the day. Unlike the popover's own
-    /// `pulseDelta` (intentionally unclipped, a whole-day ratio comparison),
-    /// this summary explicitly opts into the clipped convention per the
-    /// brief. If yesterday has no data in that clipped window, the delta
-    /// falls back to 0 (today's pulse) rather than showing a misleadingly
-    /// large swing against an empty baseline.
+    /// R-T11b: the pulse delta vs. yesterday uses the SAME unclipped
+    /// whole-day comparison the popover's own `pulseDelta` uses
+    /// (`MenuBarDashboard.swift` -- deliberately NOT
+    /// `Aggregator.clippedToElapsed`), so the two surfaces agree on what
+    /// "较昨日" means for the same day. When yesterday has no tracked time at
+    /// all, the `（较昨日 ±D）` parenthetical is omitted entirely (parity with
+    /// how the popover suppresses its own delta chip when there's no
+    /// baseline) rather than fabricating a misleading "+0".
     private func makeDailySummary() -> (title: String, body: String)? {
         let calendar = Calendar.current
         let categories = resolver.categoriesByID
@@ -379,34 +377,29 @@ public final class AppModel {
         guard let pulse = Aggregator.pulse(durationByCategory: byCategory, categories: categories) else { return nil }
 
         let now = Date()
-        let elapsed = now.timeIntervalSince(calendar.startOfDay(for: now))
         let yesterdayAnchor = calendar.date(byAdding: .day, value: -1, to: now) ?? now
         let yesterdayItems = rangedSpans(for: DateRangeSelection(kind: .day, anchor: yesterdayAnchor))
-        let yesterdayStart = calendar.startOfDay(for: yesterdayAnchor)
-        let clippedYesterday = Aggregator.clippedToElapsed(yesterdayItems, windowStart: yesterdayStart, elapsed: elapsed)
-        let yesterdayByCategory = Aggregator.durationByCategory(clippedYesterday)
-        let yesterdayPulse = Aggregator.pulse(durationByCategory: yesterdayByCategory, categories: categories) ?? pulse
-        let delta = pulse - yesterdayPulse
-        let signedDelta = delta >= 0 ? "+\(delta)" : "\(delta)"
+        let yesterdayByCategory = Aggregator.durationByCategory(yesterdayItems)
+        let yesterdayPulse = Aggregator.pulse(durationByCategory: yesterdayByCategory, categories: categories)
 
-        // Peak = the two-consecutive-hour window (of the 24 hourly buckets)
-        // with the most tracked time, per the brief.
+        let deltaClause: String
+        if let yesterdayPulse {
+            let delta = pulse - yesterdayPulse
+            let signedDelta = delta >= 0 ? "+\(delta)" : "\(delta)"
+            deltaClause = "（较昨日 \(signedDelta)）"
+        } else {
+            deltaClause = ""
+        }
+
+        // Peak = the highest-total consecutive 2-hour window, per the brief.
         var hourTotals = Array(repeating: 0.0, count: 24)
         for (hour, seconds) in Aggregator.profileByHourOfDay(items, calendar: calendar) {
             hourTotals[hour] = seconds
         }
-        var peakStart = 0
-        var peakSum = -1.0
-        for h in 0..<23 {
-            let sum = hourTotals[h] + hourTotals[h + 1]
-            if sum > peakSum {
-                peakSum = sum
-                peakStart = h
-            }
-        }
+        let peak = BudgetEngine.peakTwoHourWindow(hourTotals)
 
-        let body = "专注 \(Format.duration(focus))，生产力分 \(pulse)（较昨日 \(signedDelta)）。"
-            + "最高峰在 \(peakStart) – \(peakStart + 2) 时。"
+        let body = "专注 \(Format.duration(focus))，生产力分 \(pulse)\(deltaClause)。"
+            + "最高峰在 \(peak.start) – \(peak.end) 时。"
         return ("今日小结", body)
     }
 }

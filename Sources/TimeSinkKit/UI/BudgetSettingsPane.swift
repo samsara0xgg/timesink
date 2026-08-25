@@ -287,14 +287,28 @@ private struct FocusBlockedAppsEditor: View {
     @State private var selected: Set<String> = []
     @State private var manualBundleID = ""
 
-    private var runningApps: [(bundleID: String, name: String)] {
-        NSWorkspace.shared.runningApplications
-            .filter { $0.activationPolicy == .regular }
-            .compactMap { app -> (String, String)? in
-                guard let bundleID = app.bundleIdentifier else { return nil }
-                return (bundleID, app.localizedName ?? bundleID)
-            }
-            .sorted { $0.1 < $1.1 }
+    /// Snapshotted once in `onAppear` (fold-in 9), not recomputed on every
+    /// render: as a computed property this re-enumerated
+    /// `NSWorkspace.shared.runningApplications` on every keystroke in the
+    /// manual-entry field, and row identity would churn if an app
+    /// launched/quit mid-edit.
+    @State private var runningApps: [(bundleID: String, name: String)] = []
+
+    /// `selected` entries with no row in `runningApps` -- a previously
+    /// hand-added (or since-quit) bundle ID has nowhere to be un-toggled
+    /// without this (I6): the checklist alone only ever covers apps running
+    /// right now.
+    private var offlineSelectedBundleIDs: [String] {
+        let runningIDs = Set(runningApps.map(\.bundleID))
+        return selected.subtracting(runningIDs).sorted()
+    }
+
+    private var isManualEntryValid: Bool {
+        let trimmed = manualBundleID.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Fold-in 10: `SettingsStore.focusBlockedApps` round-trips through a
+        // comma-joined string -- a comma surviving into a stored entry would
+        // silently split into bogus entries on the next read-back.
+        return !trimmed.isEmpty && !trimmed.contains(",")
     }
 
     var body: some View {
@@ -304,12 +318,19 @@ private struct FocusBlockedAppsEditor: View {
                     Toggle(app.name, isOn: toggleBinding(app.bundleID))
                 }
             }
+            if !offlineSelectedBundleIDs.isEmpty {
+                Section("已添加但未运行") {
+                    ForEach(offlineSelectedBundleIDs, id: \.self) { bundleID in
+                        Toggle(bundleID, isOn: toggleBinding(bundleID))
+                    }
+                }
+            }
             Section("手动添加 Bundle ID") {
                 HStack {
                     TextField("com.example.app", text: $manualBundleID)
                         .textFieldStyle(.roundedBorder)
                     Button("添加") { addManual() }
-                        .disabled(manualBundleID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled(!isManualEntryValid)
                 }
             }
             Section {
@@ -324,7 +345,20 @@ private struct FocusBlockedAppsEditor: View {
         .formStyle(.grouped)
         .frame(minWidth: 360, minHeight: 320)
         .padding()
-        .onAppear { selected = Set(blockedApps) }
+        .onAppear {
+            selected = Set(blockedApps)
+            runningApps = Self.snapshotRunningApps()
+        }
+    }
+
+    private static func snapshotRunningApps() -> [(bundleID: String, name: String)] {
+        NSWorkspace.shared.runningApplications
+            .filter { $0.activationPolicy == .regular }
+            .compactMap { app -> (String, String)? in
+                guard let bundleID = app.bundleIdentifier else { return nil }
+                return (bundleID, app.localizedName ?? bundleID)
+            }
+            .sorted { $0.1 < $1.1 }
     }
 
     private func toggleBinding(_ bundleID: String) -> Binding<Bool> {
@@ -337,9 +371,8 @@ private struct FocusBlockedAppsEditor: View {
     }
 
     private func addManual() {
-        let trimmed = manualBundleID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        selected.insert(trimmed)
+        guard isManualEntryValid else { return }
+        selected.insert(manualBundleID.trimmingCharacters(in: .whitespacesAndNewlines))
         manualBundleID = ""
     }
 

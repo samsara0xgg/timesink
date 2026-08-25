@@ -5,9 +5,16 @@ import XCTest
 final class SpyNotifier: Notifying {
     var authorized = true
     var posted: [(id: String, title: String, body: String, route: NotificationRoute?)] = []
+    /// Invoked synchronously inside `post`, BEFORE the call is appended to
+    /// `posted` -- lets a test observe intermediate state (e.g. a store read)
+    /// at the exact moment a post happens, to pin a caller's post-then-stamp
+    /// ordering (Task 11 fix round, I4). `nil` by default: existing callers
+    /// that never set it see no change in behavior.
+    var onPost: (() -> Void)?
     func requestAuthorization() async -> Bool { authorized }
     func authorizationState() async -> PermissionState { authorized ? .granted : .denied }
     func post(id: String, title: String, body: String, route: NotificationRoute?) {
+        onPost?()
         posted.append((id, title, body, route))
     }
 }

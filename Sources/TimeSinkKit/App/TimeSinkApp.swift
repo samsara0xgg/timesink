@@ -171,6 +171,16 @@ struct MenuBarLabel: View {
                 openWindow(id: "main")
             case .settingsBudget:
                 model.settingsTab = .budget
+                // R-T11c: `openSettings()` alone doesn't bring the app
+                // forward while running `.accessory` (no Dock icon, e.g. the
+                // main window isn't currently open) -- the Settings window
+                // could otherwise open behind whatever app was frontmost.
+                // Matches the same `.setActivationPolicy(.regular)` +
+                // `.activate` pair `MainWindowView.onAppear` uses for the
+                // sibling `.statsToday`/`.activitiesToday` routes'
+                // `openWindow("main")`.
+                NSApp.setActivationPolicy(.regular)
+                NSApp.activate(ignoringOtherApps: true)
                 openSettings()
             }
             model.pendingRoute = nil

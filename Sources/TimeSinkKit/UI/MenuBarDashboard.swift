@@ -40,6 +40,11 @@ final class TodayDashboardModel {
     /// for the popover's budget progress row. Empty when `budgetStore` isn't
     /// wired up yet (bootstrap) or no budgets are enabled.
     var budgetRows: [(id: String, name: String, colorHex: String, spent: TimeInterval, limit: TimeInterval)] = []
+    /// Mirror of `settings.budgetWarnPercent`, refreshed alongside
+    /// `budgetRows` -- lets the popover's caption read observable
+    /// `@Observable` state instead of a live SQLite read from inside a
+    /// SwiftUI body.
+    var budgetWarnPercent = 20
 
     /// Calendar day (startOfDay) the 30-day streak lookback last ran for.
     /// That lookback is a full-month fetch+classify+day-split -- expensive
@@ -109,7 +114,9 @@ final class TodayDashboardModel {
         }
         hourProfile = profile
 
-        // C4: reuses `byCategory` (already computed above) -- no new query.
+        // C4: reuses `byCategory` (already computed above) -- no new span
+        // query, but `budgets()` itself still runs a DB read each recompute.
+        budgetWarnPercent = model.settings.budgetWarnPercent
         budgetRows = ((try? model.budgetStore?.budgets()) ?? [])
             .filter(\.enabled)
             .compactMap { budget -> (id: String, name: String, colorHex: String, spent: TimeInterval, limit: TimeInterval)? in
@@ -118,9 +125,14 @@ final class TodayDashboardModel {
                         byCategory[budget.categoryID] ?? 0, TimeInterval(budget.dailySeconds))
             }
             .sorted { lhs, rhs in
+                // Deterministic tiebreak (fold-in 4): equal ratios (e.g. all
+                // 0/limit first thing in the morning) would otherwise fall
+                // back to `budgets()`'s undocumented fetch order.
                 let lhsRatio = lhs.limit > 0 ? lhs.spent / lhs.limit : 0
                 let rhsRatio = rhs.limit > 0 ? rhs.spent / rhs.limit : 0
-                return lhsRatio > rhsRatio
+                if lhsRatio != rhsRatio { return lhsRatio > rhsRatio }
+                if lhs.limit != rhs.limit { return lhs.limit < rhs.limit }
+                return lhs.id < rhs.id
             }
             .prefix(2)
             .map { $0 }
@@ -336,7 +348,7 @@ struct MenuBarDashboardView: View {
             ForEach(dashboard.budgetRows, id: \.id) { row in
                 budgetProgressRow(row)
             }
-            Text("剩 \(model.settings.budgetWarnPercent)% 时提醒")
+            Text("剩 \(dashboard.budgetWarnPercent)% 时提醒")
                 .font(.system(size: 9))
                 .foregroundStyle(.secondary)
         }
