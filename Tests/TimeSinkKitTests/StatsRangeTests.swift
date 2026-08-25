@@ -160,4 +160,121 @@ final class StatsRangeTests: XCTestCase {
         stats.recompute(model: model, forceHeavy: true)        // 强制：重算
         XCTAssertEqual(stats.scoreTrend.count, 30)
     }
+
+    // MARK: - Fix round 1, IMPORTANT 6: StatsModel-level delta coverage
+    //
+    // `testDurationDeltaUsesClippedPreviousButPulseUsesFull` above only
+    // exercises the `Aggregator` primitives directly -- it never calls
+    // `StatsModel.recompute`, so it can't catch a wiring bug in
+    // `recomputeDeltas` itself (e.g. an unclipped `prev` fed into
+    // `totalDelta`, or an inverted delta sign). These three tests drive a
+    // real in-memory `AppModel` through `StatsModel.recompute` and pin
+    // concrete `totalDelta`/`focusDelta`/`pulseDelta` values.
+
+    @MainActor
+    private func makeStatsRangeModel() throws -> (AppModel, SpanStore) {
+        let db = try AppDatabase.openInMemory()
+        let store = SpanStore(db)
+        let catStore = CategoryStore(db)
+        let model = AppModel(categoryStore: catStore, spanStore: store,
+                             settings: SettingsStore(db),
+                             resolver: CategoryResolver(categoryStore: catStore),
+                             engine: TrackerEngine(spanStore: store, settings: SettingsStore(db)))
+        return (model, store)
+    }
+
+    private func span(_ appBundleID: String, appName: String, start: Date, seconds: TimeInterval) -> Span {
+        Span(start: start, end: start.addingTimeInterval(seconds),
+             appBundleID: appBundleID, appName: appName, title: nil, url: nil, domain: nil)
+    }
+
+    /// `.today()` (the default range) is always `containsNow` by
+    /// construction, so this pins the CLIPPED branch: previous-day spans are
+    /// clipped to `[yesterdayStart, yesterdayStart + elapsed]` before being
+    /// used for `totalDelta`/`focusDelta`, but NOT for `pulseDelta`. The
+    /// previous day gets an "early" 30-min span (inside the clip unless the
+    /// test runs within ~31 min of local midnight) and a "late" 30-min span
+    /// at 23:00 (outside the clip unless the test runs after 23:00) -- this
+    /// makes the clipped-vs-unclipped split observable regardless of what
+    /// time of day the test happens to run, without needing to control
+    /// `Date()` directly (residual midnight-adjacent flake risk accepted,
+    /// same as `testHeavyRecomputeGatedByDay`'s).
+    @MainActor func testRecomputeDeltasClipPreviousToElapsedTimeOfDayWhenRangeContainsNow() throws {
+        let (model, store) = try makeStatsRangeModel()
+        let cal = Calendar.current
+        let todayStart = cal.startOfDay(for: Date())
+        let yesterdayStart = cal.date(byAdding: .day, value: -1, to: todayStart)!
+
+        // Current period (today): 1h softwareDev (Xcode, productivity +2),
+        // placed a minute after midnight so it's inside today's window
+        // regardless of the current time.
+        try store.insert(span("com.apple.dt.Xcode", appName: "Xcode",
+                               start: todayStart.addingTimeInterval(60), seconds: 3600))
+
+        // Previous period (yesterday): early softwareDev span (survives the
+        // elapsed clip) + late entertainment span at 23:00 (clipped away).
+        try store.insert(span("com.apple.dt.Xcode", appName: "Xcode",
+                               start: yesterdayStart.addingTimeInterval(60), seconds: 1800))
+        try store.insert(span("com.spotify.client", appName: "Spotify",
+                               start: yesterdayStart.addingTimeInterval(23 * 3600), seconds: 1800))
+
+        let stats = StatsModel()
+        stats.recompute(model: model, forceHeavy: true)
+
+        XCTAssertEqual(stats.total, 3600)
+        XCTAssertEqual(stats.focus, 3600)
+        XCTAssertEqual(stats.pulse, 100)
+
+        // Duration deltas: current (1h) minus the CLIPPED previous (only the
+        // early 30-min softwareDev span survives) == +30min.
+        XCTAssertEqual(stats.totalDelta, 1800)
+        XCTAssertEqual(stats.focusDelta, 1800)
+        // Pulse delta: current (100) minus the UNCLIPPED previous full-day
+        // pulse (30min softwareDev @100 + 30min entertainment @0 -> avg 50).
+        XCTAssertEqual(stats.pulseDelta, 50)
+    }
+
+    /// A historical (never `containsNow`) day range, so this test has no
+    /// wall-clock dependency at all: pins the UNCLIPPED branch, where
+    /// duration deltas compare against the full previous day.
+    @MainActor func testRecomputeDeltasUseFullPreviousPeriodWhenRangeDoesNotContainNow() throws {
+        let (model, store) = try makeStatsRangeModel()
+        let cal = Calendar.current
+        let currentDayStart = cal.startOfDay(for: Date().addingTimeInterval(-10 * 86400))
+        let previousDayStart = cal.date(byAdding: .day, value: -1, to: currentDayStart)!
+
+        try store.insert(span("com.apple.dt.Xcode", appName: "Xcode",
+                               start: currentDayStart.addingTimeInterval(9 * 3600), seconds: 3 * 3600))
+        try store.insert(span("com.spotify.client", appName: "Spotify",
+                               start: previousDayStart.addingTimeInterval(8 * 3600), seconds: 3600))
+
+        model.range = DateRangeSelection(kind: .day, anchor: currentDayStart.addingTimeInterval(12 * 3600))
+        XCTAssertFalse(model.range.containsNow)
+
+        let stats = StatsModel()
+        stats.recompute(model: model, forceHeavy: true)
+
+        XCTAssertEqual(stats.total, 3 * 3600)
+        XCTAssertEqual(stats.focus, 3 * 3600)
+        XCTAssertEqual(stats.pulse, 100)
+
+        XCTAssertEqual(stats.totalDelta, 2 * 3600)   // 3h - 1h
+        XCTAssertEqual(stats.focusDelta, 3 * 3600)   // 3h - 0 (entertainment isn't focus time)
+        XCTAssertEqual(stats.pulseDelta, 100)        // 100 - 0
+    }
+
+    @MainActor func testRecomputeDeltasAreNilWhenPreviousPeriodIsEmpty() throws {
+        let (model, store) = try makeStatsRangeModel()
+        let todayStart = Calendar.current.startOfDay(for: Date())
+        try store.insert(span("com.apple.dt.Xcode", appName: "Xcode",
+                               start: todayStart.addingTimeInterval(60), seconds: 3600))
+        // No spans inserted for yesterday -- `prev` is empty.
+
+        let stats = StatsModel()
+        stats.recompute(model: model, forceHeavy: true)
+
+        XCTAssertNil(stats.totalDelta)
+        XCTAssertNil(stats.focusDelta)
+        XCTAssertNil(stats.pulseDelta)
+    }
 }

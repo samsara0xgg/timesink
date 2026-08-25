@@ -127,7 +127,7 @@ struct ProductivityScoreCard: View {
                     .font(.system(size: 34, weight: .bold))
                     .foregroundStyle(color)
                 if let delta {
-                    DeltaChip(text: (delta >= 0 ? "+\(delta)" : "\(delta)") + " 分", isNegative: delta < 0)
+                    DeltaChip(text: (delta >= 0 ? "+\(delta)" : "\(delta)") + "%", isNegative: delta < 0)
                 }
             }
             Text(subtitle)
@@ -260,12 +260,15 @@ struct DonutRankingCard: View {
     }
 }
 
-/// 生产力趋势: 30-day daily-pulse line (nil days leave a gap, no mark drawn),
-/// a dashed 阈值=70 reference line, and a hover crosshair (`chartOverlay` +
-/// `onContinuousHover`, mirroring the plotFrame-relative hit-testing pattern
-/// used for Swift Charts hover overlays) that annotates the nearest day's
-/// score. A `SpatialTapGesture` on the same overlay reports the tapped day
-/// via `onSelectDay` so the caller can jump the range to that single day.
+/// 生产力趋势: 30-day daily-pulse line -- untracked days are gapped (each
+/// contiguous run of tracked days is its own `LineMark` series, so the
+/// polyline actually breaks across a nil run instead of bridging it; no mark
+/// is drawn for an untracked day itself) -- a dashed 阈值 reference line, and
+/// a hover crosshair (`chartOverlay` + `onContinuousHover`, mirroring the
+/// plotFrame-relative hit-testing pattern used for Swift Charts hover
+/// overlays) that annotates the nearest day's score. A `SpatialTapGesture` on
+/// the same overlay reports the tapped day via `onSelectDay` so the caller
+/// can jump the range to that single day.
 struct ScoreTrendCard: View {
     let trend: [Int?]
     let streak: Int
@@ -288,6 +291,26 @@ struct ScoreTrendCard: View {
         return "\(cal.component(.month, from: d))月\(cal.component(.day, from: d))日 · \(pulse) 分"
     }
 
+    /// Contiguous runs of tracked (non-nil) days, each `(index, pulse)`.
+    /// Swift Charts connects every `LineMark` sharing an implicit series into
+    /// one polyline regardless of gaps in the drawn marks -- `Optional` has
+    /// no `Plottable` conformance to encode a nil-y directly, so each run is
+    /// instead tagged with its own `series:` value (see `body`) to force a
+    /// break between runs.
+    private var runs: [[(index: Int, pulse: Int)]] {
+        var result: [[(index: Int, pulse: Int)]] = []
+        var current: [(index: Int, pulse: Int)] = []
+        for (index, value) in trend.enumerated() {
+            guard let value else {
+                if !current.isEmpty { result.append(current); current = [] }
+                continue
+            }
+            current.append((index, value))
+        }
+        if !current.isEmpty { result.append(current) }
+        return result
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -300,15 +323,19 @@ struct ScoreTrendCard: View {
                 }
             }
             Chart {
-                ForEach(Array(trend.enumerated()), id: \.offset) { index, pulse in
-                    if let pulse {
-                        LineMark(x: .value("日", index), y: .value("分数", pulse))
-                            .interpolationMethod(.monotone)
-                        PointMark(x: .value("日", index), y: .value("分数", pulse))
-                            .symbolSize(hoverIndex == index ? 60 : 18)
+                ForEach(Array(runs.enumerated()), id: \.offset) { runIndex, run in
+                    ForEach(run, id: \.index) { point in
+                        LineMark(
+                            x: .value("日", point.index),
+                            y: .value("分数", point.pulse),
+                            series: .value("段", runIndex)
+                        )
+                        .interpolationMethod(.monotone)
+                        PointMark(x: .value("日", point.index), y: .value("分数", point.pulse))
+                            .symbolSize(hoverIndex == point.index ? 60 : 18)
                     }
                 }
-                RuleMark(y: .value("阈值", 70))
+                RuleMark(y: .value("阈值", StatsModel.streakThreshold))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
                     .foregroundStyle(.secondary)
                 if let hoverIndex {
@@ -341,9 +368,14 @@ struct ScoreTrendCard: View {
                         }
                         .gesture(
                             SpatialTapGesture().onEnded { value in
-                                if let idx = nearestIndex(at: value.location, proxy: proxy, geo: geo) {
-                                    onSelectDay(day(forIndex: idx))
-                                }
+                                // Empty trend (heavy lookback hasn't populated
+                                // yet) -> `nearestIndex` still resolves to 0
+                                // against the domain's 0...0 fallback; guard
+                                // so a tap can't navigate to a fabricated day.
+                                guard !trend.isEmpty,
+                                      let idx = nearestIndex(at: value.location, proxy: proxy, geo: geo)
+                                else { return }
+                                onSelectDay(day(forIndex: idx))
                             }
                         )
                 }
@@ -366,18 +398,32 @@ struct ScoreTrendCard: View {
 /// grid -- `DayTimelineView` established that per-mark `.help()` tooltips are
 /// unreliable on Charts marks, so this card places plain `RoundedRectangle`s
 /// with `.help()` directly, same as `DayTimelineView`'s timeline blocks.
-/// Cell color is `scoreColor(pulse)` at an opacity driven by tracked seconds
-/// (clamped to 3600 -- a DST fall-back day's last hour can exceed 3600
-/// wall-clock seconds, and intensity must never exceed 100%); cells with
-/// under 15 minutes of sample lose most of their opacity and get a
-/// "样本不足" tooltip instead of a score.
+/// Cell color is `scoreColor(pulse)` at an opacity driven by the cell's
+/// PER-OCCURRENCE average tracked seconds -- `cells[row][hour].seconds` is a
+/// SUM across every occurrence of that weekday in the 30-day window (4 or 5,
+/// per `occurrences`), so dividing the raw sum by one hour would saturate
+/// any weekday with as little as ~12 min/day tracked (fix round 1, IMPORTANT
+/// 1). The per-occurrence average is then clamped to 3600 -- a DST
+/// fall-back day's last hour can exceed 3600 wall-clock seconds, and
+/// intensity must never exceed 100%. The low-sample rule is unchanged from
+/// the original brief: cells with under 15 minutes of AGGREGATE sample lose
+/// most of their opacity and get a "样本不足" tooltip instead of a score.
+/// Cell side is derived from the available width (fix round 1, IMPORTANT 4)
+/// so the grid compresses rather than overflowing its column at narrower
+/// window widths, capped at 12pt.
 struct HeatmapCard: View {
     let cells: [[(pulse: Int?, seconds: TimeInterval)]]
+    /// 7 entries, Monday=0...Sunday=6 -- see `StatsModel.heatmapOccurrences`.
+    let occurrences: [Int]
 
     private static let weekdayLabels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
     private static let hourTickLabels: [Int: String] = [0: "0", 6: "6", 12: "12", 18: "18", 23: "23"]
     private static let lowSampleThreshold: TimeInterval = 900
     private static let secondsPerHour: TimeInterval = 3600
+    private static let labelColumnWidth: CGFloat = 24
+    private static let gridSpacing: CGFloat = 2
+    private static let minCellSide: CGFloat = 6
+    private static let maxCellSide: CGFloat = 12
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -388,24 +434,27 @@ struct HeatmapCard: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
-            Grid(horizontalSpacing: 2, verticalSpacing: 2) {
-                ForEach(0..<7, id: \.self) { row in
-                    GridRow {
-                        Text(Self.weekdayLabels[row])
-                            .font(.system(size: 9))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 24, alignment: .trailing)
-                        ForEach(0..<24, id: \.self) { hour in
-                            cellView(row: row, hour: hour)
+            GeometryReader { geo in
+                let cellSide = Self.cellSide(forAvailableWidth: geo.size.width)
+                Grid(horizontalSpacing: Self.gridSpacing, verticalSpacing: Self.gridSpacing) {
+                    ForEach(0..<7, id: \.self) { row in
+                        GridRow {
+                            Text(Self.weekdayLabels[row])
+                                .font(.system(size: 9))
+                                .foregroundStyle(.secondary)
+                                .frame(width: Self.labelColumnWidth, alignment: .trailing)
+                            ForEach(0..<24, id: \.self) { hour in
+                                cellView(row: row, hour: hour, side: cellSide)
+                            }
                         }
                     }
-                }
-                GridRow {
-                    Color.clear.frame(width: 24, height: 10)
-                    ForEach(0..<24, id: \.self) { hour in
-                        Text(Self.hourTickLabels[hour] ?? "")
-                            .font(.system(size: 8))
-                            .foregroundStyle(.secondary)
+                    GridRow {
+                        Color.clear.frame(width: Self.labelColumnWidth, height: 10)
+                        ForEach(0..<24, id: \.self) { hour in
+                            Text(Self.hourTickLabels[hour] ?? "")
+                                .font(.system(size: 8))
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
             }
@@ -414,14 +463,25 @@ struct HeatmapCard: View {
         .statCardBackground()
     }
 
+    /// `(available width - label column - inter-column spacing) / 24`,
+    /// clamped to `minCellSide...maxCellSide`. 25 columns (1 label + 24
+    /// hours) means 24 gaps of `gridSpacing`.
+    private static func cellSide(forAvailableWidth width: CGFloat) -> CGFloat {
+        let totalSpacing = gridSpacing * 24
+        let available = (width - labelColumnWidth - totalSpacing) / 24
+        return max(minCellSide, min(maxCellSide, available))
+    }
+
     private func entry(row: Int, hour: Int) -> (pulse: Int?, seconds: TimeInterval) {
         guard cells.indices.contains(row), cells[row].indices.contains(hour) else { return (nil, 0) }
         return cells[row][hour]
     }
 
-    private func cellView(row: Int, hour: Int) -> some View {
+    private func cellView(row: Int, hour: Int, side: CGFloat) -> some View {
         let e = entry(row: row, hour: hour)
-        let clampedSeconds = min(e.seconds, Self.secondsPerHour)
+        let occurrenceCount = max(1, row < occurrences.count ? occurrences[row] : 1)
+        let perOccurrenceSeconds = e.seconds / Double(occurrenceCount)
+        let clampedSeconds = min(perOccurrenceSeconds, Self.secondsPerHour)
         let intensity = e.pulse == nil ? 0.06 : 0.2 + 0.8 * (clampedSeconds / Self.secondsPerHour)
         let lowSample = e.seconds < Self.lowSampleThreshold
         let opacity = lowSample ? intensity * 0.35 : intensity
@@ -430,7 +490,7 @@ struct HeatmapCard: View {
             : "\(Self.weekdayLabels[row]) \(hour) 时 · 平均分 \(e.pulse.map(String.init) ?? "--")"
         return RoundedRectangle(cornerRadius: 2)
             .fill(scoreColor(e.pulse).opacity(opacity))
-            .frame(width: 12, height: 12)
+            .frame(width: side, height: side)
             .help(tooltip)
     }
 }

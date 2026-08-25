@@ -32,7 +32,13 @@ struct StatsView: View {
         }
         .onAppear { stats.recompute(model: model, forceHeavy: true) }
         .onChange(of: model.dataVersion) { _, _ in stats.recompute(model: model, forceHeavy: false) }
-        .onChange(of: model.range) { _, _ in stats.recompute(model: model, forceHeavy: true) }
+        // NOT forceHeavy: the 30-day trend/heatmap lookback is a fixed
+        // `.last30` window, independent of `model.range` -- forcing it on
+        // every range change (a paging click, a segment tap, a trend-card
+        // click) would re-run a ~70ms main-actor aggregation for no reason.
+        // `StatsModel`'s own day-rollover gate still refreshes it once a day
+        // through this same call (fix round 1, IMPORTANT 5).
+        .onChange(of: model.range) { _, _ in stats.recompute(model: model, forceHeavy: false) }
     }
 
     // MARK: - (1) In-page range control
@@ -40,9 +46,9 @@ struct StatsView: View {
     private var rangeControlRow: some View {
         HStack {
             Picker("", selection: pageRangeKind) {
-                Text("今天").tag(DateRangeSelection.Kind.day)
-                Text("本周").tag(DateRangeSelection.Kind.week)
-                Text("本月").tag(DateRangeSelection.Kind.month)
+                Text("今天").tag(DateRangeSelection.Kind?.some(.day))
+                Text("本周").tag(DateRangeSelection.Kind?.some(.week))
+                Text("本月").tag(DateRangeSelection.Kind?.some(.month))
             }
             .labelsHidden()
             .pickerStyle(.segmented)
@@ -59,13 +65,28 @@ struct StatsView: View {
 
     /// Reads/writes `model.range` directly (same state the toolbar's range
     /// menu writes -- see `MainWindowView.rangeToolbar`), so the two controls
-    /// stay in sync automatically: no separate local selection state to
-    /// desync. Selecting a segment discards any custom start/end, matching
-    /// the toolbar menu's plain-kind buttons.
-    private var pageRangeKind: Binding<DateRangeSelection.Kind> {
+    /// stay in sync. The getter is `nil` (no segment highlighted) unless
+    /// `model.range` genuinely IS one of the three segment kinds anchored to
+    /// right now -- comparing `.kind` alone would keep "今天" highlighted
+    /// after the toolbar pages back to 昨天, AND would make re-tapping "今天"
+    /// a no-op (the bound value wouldn't actually change, so SwiftUI never
+    /// calls the setter). Comparing `.interval` catches that: a paged range
+    /// still reports `kind == .day` but its interval differs from a
+    /// freshly-anchored today. Every tap always writes a brand-new
+    /// `DateRangeSelection(kind:, anchor: Date())`, discarding any custom
+    /// start/end -- matching the toolbar menu's plain-kind buttons.
+    private var pageRangeKind: Binding<DateRangeSelection.Kind?> {
         Binding(
-            get: { model.range.kind },
-            set: { model.range = DateRangeSelection(kind: $0, anchor: Date()) }
+            get: {
+                let kind = model.range.kind
+                guard kind == .day || kind == .week || kind == .month else { return nil }
+                let fresh = DateRangeSelection(kind: kind, anchor: Date())
+                return model.range.interval == fresh.interval ? kind : nil
+            },
+            set: { newKind in
+                guard let newKind else { return }
+                model.range = DateRangeSelection(kind: newKind, anchor: Date())
+            }
         )
     }
 
@@ -112,7 +133,7 @@ struct StatsView: View {
                 }
                 .frame(width: leftWidth)
 
-                HeatmapCard(cells: stats.heatmap)
+                HeatmapCard(cells: stats.heatmap, occurrences: stats.heatmapOccurrences)
                     .frame(width: rightWidth)
             }
         }

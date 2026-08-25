@@ -72,6 +72,14 @@ final class StatsModel {
     var scoreTrend: [Int?] = []
     var trendStreak: Int = 0
     var heatmap: [[(pulse: Int?, seconds: TimeInterval)]] = []
+    /// How many times each weekday (row index, Monday=0...Sunday=6 -- same
+    /// convention as `heatmap`) occurs as a whole calendar day inside the
+    /// 30-day lookback window. A trailing 30-day window has either 4 or 5
+    /// occurrences of a given weekday depending on where it falls, so
+    /// `HeatmapCard` needs this to normalize a cell's summed seconds (across
+    /// every occurrence) down to a per-occurrence average before mapping to
+    /// intensity -- see fix round 1, IMPORTANT 1.
+    var heatmapOccurrences: [Int] = Array(repeating: 0, count: 7)
 
     /// Calendar day (startOfDay) the 30-day trend/heatmap lookback last ran
     /// for. That lookback is a full-month fetch+classify+day/hour-split --
@@ -187,12 +195,14 @@ final class StatsModel {
     }
 
     /// Runs the 30-day score-trend + heatmap lookback when `force` is true
-    /// (StatsView's onAppear/range changes) or when the calendar day has
-    /// rolled over since the last run -- skipped otherwise (dataVersion-driven
-    /// refreshes within the same day). Shares its `rangedSpans(for:)` call
-    /// with `TodayDashboardModel`'s streak lookback (identical `.last30`
-    /// interval -> same `AppModel.rangeCache` key), so this is near-zero-cost
-    /// whenever the menu bar dashboard has already populated that entry.
+    /// (StatsView's `onAppear` -- NOT range changes, since this lookback is a
+    /// fixed `.last30` window, independent of `model.range`; see fix round 1,
+    /// IMPORTANT 5) or when the calendar day has rolled over since the last
+    /// run -- skipped otherwise (dataVersion-driven refreshes within the same
+    /// day). Shares its `rangedSpans(for:)` call with `TodayDashboardModel`'s
+    /// streak lookback (identical `.last30` interval -> same
+    /// `AppModel.rangeCache` key), so this is near-zero-cost whenever the
+    /// menu bar dashboard has already populated that entry.
     private func recomputeHeavyIfNeeded(
         model: AppModel, calendar: Calendar, categories: [String: Category], force: Bool
     ) {
@@ -200,11 +210,32 @@ final class StatsModel {
         guard force || lastHeavyDay != todayStart else { return }
         lastHeavyDay = todayStart
 
-        let lookback = model.rangedSpans(for: DateRangeSelection(kind: .last30, anchor: Date()))
+        let last30 = DateRangeSelection(kind: .last30, anchor: Date())
+        let lookback = model.rangedSpans(for: last30)
         scoreTrend = Aggregator.dailyPulses(
             items: lookback, categories: categories, days: 30, endingAt: Date(), calendar: calendar)
         trendStreak = Aggregator.streak(dailyPulses: scoreTrend, threshold: Self.streakThreshold)
         heatmap = Aggregator.pulseByWeekdayHour(lookback, categories: categories, calendar: calendar)
+        heatmapOccurrences = Self.weekdayOccurrences(in: last30.interval, calendar: calendar)
+    }
+
+    /// Counts how many times each weekday (Monday=0...Sunday=6, matching
+    /// `Aggregator.pulseByWeekdayHour`'s row convention) occurs as a whole
+    /// calendar day inside `interval`. `pulseByWeekdayHour`'s `seconds` is a
+    /// SUM across every occurrence of that weekday in the window, so a
+    /// renderer dividing by a fixed 3600s (one hour) saturates any weekday
+    /// with as little as ~12 min/day tracked, once 4-5 occurrences are
+    /// summed -- this must be counted from the actual window, not assumed.
+    private static func weekdayOccurrences(in interval: DateInterval, calendar: Calendar) -> [Int] {
+        var counts = Array(repeating: 0, count: 7)
+        var day = calendar.startOfDay(for: interval.start)
+        while day < interval.end {
+            let weekday = calendar.component(.weekday, from: day) // 1 = Sunday
+            counts[(weekday + 5) % 7] += 1 // 0 = Monday ... 6 = Sunday
+            guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
+            day = next
+        }
+        return counts
     }
 
     private static func densifyHours(_ profile: [Int: TimeInterval]) -> [ProfilePoint] {
