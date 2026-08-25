@@ -140,7 +140,12 @@ public enum AppDatabase {
         migrator.registerMigration("v4") { db in
             try db.create(table: "titleRule") { t in
                 t.autoIncrementedPrimaryKey("id")
-                t.column("pattern", .text).notNull()
+                // NOCASE: title matching is case-insensitive (大小写不敏感子串命中),
+                // so the (pattern, scopeKey) uniqueKey below must dedupe
+                // case-insensitively too, or upsertUserTitleRule's ON CONFLICT
+                // silently stops firing for patterns differing only in ASCII
+                // case. CJK has no case, so Chinese keywords are unaffected.
+                t.column("pattern", .text).notNull().collate(.nocase)
                 t.column("scopeKey", .text).notNull().defaults(to: "")
                 t.column("categoryID", .text).notNull().references("category")
                 t.column("priority", .integer).notNull().defaults(to: 0)

@@ -162,6 +162,15 @@ public final class CategoryStore: Sendable {
     /// Upserts a user override for (pattern, scopeKey). Unlike
     /// `addUserURLRule`, this must not bare-INSERT: re-saving the same rule
     /// with a different category has to replace the row, not duplicate it.
+    ///
+    /// If (pattern, scopeKey) collides with an existing *builtin* row, this
+    /// is a silent no-op: builtin rows can only ever be disabled via
+    /// `setTitleRuleEnabled`, never deleted or reassigned, so a user upsert
+    /// must not be able to flip one to source='user' (which would make it
+    /// deletable) or silently re-enable a builtin the user had disabled.
+    /// There is no re-seed path for a collided builtin row. Callers (the
+    /// rules UI) are expected to pre-check for a builtin collision and
+    /// message the user instead of relying on this to surface an error.
     public func upsertUserTitleRule(pattern: String, scopeKey: String, categoryID: String) throws {
         try writer.write { db in
             try db.execute(
@@ -172,6 +181,7 @@ public final class CategoryStore: Sendable {
                     categoryID = excluded.categoryID,
                     source = 'user',
                     enabled = 1
+                WHERE titleRule.source = 'user'
                 """,
                 arguments: [pattern, scopeKey, categoryID, Date()]
             )
