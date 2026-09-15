@@ -1,5 +1,27 @@
 # TimeSink Optimization Plan
 
+> **Status as of 2026-09-14 (second session).** This document is the audit and
+> the ranked plan; it is no longer a description of the tree. Several of its
+> items have shipped and two of its recommendations turned out to be wrong.
+> **Read `2026-09-14-session-handoff.md` first** for what is actually built,
+> the measured numbers, and what is deliberately left open.
+>
+> Shipped since: Batch 0 items 1, 3 (title-rule debounce), 5 (tab-visibility
+> guard, plus the same defect found in `RulesSettingsPane`); Batch 1 items a,
+> b (as a `refreshCategories()` split, narrower than the `refreshRules()`
+> sketch below), d.
+>
+> Two corrections to the plan below, both from measurement:
+>
+> - **Batch 0 item 4 is not safe as written.** Evicting only cache entries
+>   with `interval.end >= Date()` leaves a stale entry when the tracker clamps
+>   a span's end into an already-closed window after sleep/wake. See the
+>   handoff doc for the safe version and why it was not built.
+> - The audit did not identify `Aggregator.split`'s per-span
+>   `Calendar.dateInterval` at all, which turned out to be the single largest
+>   interactive cost (731 ms -> 95 ms per Stats recompute). No static lens
+>   found it; a `sample` of the running process did.
+
 Date: 2026-09-07. Read-only audit; nothing implemented. All `file:line` references were
 produced by the audit and the load-bearing ones re-checked by hand against HEAD.
 
