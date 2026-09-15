@@ -23,6 +23,17 @@ public struct ClassificationContext: Sendable {
     /// precompiled (Task 4 fix report F2).
     let compiledTitleRules: [CompiledTitleRule]
 
+    /// `urlRules` compiled once at construction, for the same reason as
+    /// `compiledTitleRules` above -- the URL scan just never got the
+    /// treatment. `matches(pattern:in:)`'s `range(of:options:
+    /// .caseInsensitive)` is an ICU case-folding search, and tiers 3+5 run
+    /// it once per rule per span (51 builtin rules on real data, so up to
+    /// 51 ICU searches per classified span). Measured over the real
+    /// database's 2,381 distinct URLs x 51 patterns: 2301ms via ICU vs
+    /// 537ms via lowercased `contains`, 4.3x, and that gap accounted for
+    /// essentially all of a cold classification pass.
+    let compiledURLRules: [CompiledURLRule]
+
     public init(domainMap: [String: DomainEntry], appMap: [String: DomainEntry], urlRules: [URLRule],
                 titleRules: [TitleRule] = []) {
         self.domainMap = domainMap
@@ -30,6 +41,65 @@ public struct ClassificationContext: Sendable {
         self.urlRules = urlRules
         self.titleRules = titleRules
         self.compiledTitleRules = titleRules.map(CompiledTitleRule.init)
+        self.compiledURLRules = urlRules.map(CompiledURLRule.init)
+    }
+}
+
+/// A `URLRule` compiled once at `ClassificationContext` construction, exactly
+/// mirroring `CompiledTitleRule`: a `re:`-prefixed pattern's
+/// `NSRegularExpression` is built once instead of per call, and any other
+/// pattern is lowercased ahead of time so the hot path is a plain `contains`
+/// against a once-per-call lowercased URL rather than a per-rule ICU search.
+///
+/// Semantics are pinned against the pure `Classifier.matches(pattern:in:)` by
+/// `testCompiledURLRuleAgreesWithMatches`, the same way
+/// `testCompiledTitleRuleAgreesWithTitleMatches` pins the title pair. This is
+/// a performance change only, so the two empty-pattern behaviors are carried
+/// over verbatim even where they are surprising:
+/// - empty non-regex pattern never matches (`range(of: "")` is nil, whereas a
+///   bare `contains("")` would return true for every URL);
+/// - empty `re:` body matches EVERY url, because `range(of: "", options:
+///   .regularExpression)` does. That is the opposite of `CompiledTitleRule`'s
+///   F4 guard, and deliberately so -- `titleMatches`'s doc comment records
+///   that the URL-rule-facing empty-regex behavior was left as-is. The
+///   agreement test caught this when the F4 guard was first copied over here.
+struct CompiledURLRule: Sendable {
+    let source: String
+    let categoryID: String
+    private let isRegexPattern: Bool
+    private let regex: NSRegularExpression?
+    /// An empty `re:` body: no regex to run, matches unconditionally.
+    private let matchesEverything: Bool
+    private let loweredPattern: String
+
+    init(_ rule: URLRule) {
+        source = rule.source
+        categoryID = rule.categoryID
+        if rule.pattern.hasPrefix("re:") {
+            isRegexPattern = true
+            let body = String(rule.pattern.dropFirst(3))
+            matchesEverything = body.isEmpty
+            regex = body.isEmpty ? nil : try? NSRegularExpression(pattern: body, options: [.caseInsensitive])
+            loweredPattern = ""
+        } else {
+            isRegexPattern = false
+            matchesEverything = false
+            regex = nil
+            loweredPattern = rule.pattern.lowercased()
+        }
+    }
+
+    /// `loweredURL` is `url.lowercased()`, hoisted once per
+    /// `Classifier.categoryID` call by the caller rather than recomputed per
+    /// rule -- the whole point of the compilation.
+    func matches(url: String, loweredURL: String) -> Bool {
+        if isRegexPattern {
+            if matchesEverything { return true }
+            guard let regex else { return false }
+            let range = NSRange(url.startIndex..<url.endIndex, in: url)
+            return regex.firstMatch(in: url, options: [], range: range) != nil
+        }
+        return loweredPattern.isEmpty ? false : loweredURL.contains(loweredPattern)
     }
 }
 
@@ -139,8 +209,15 @@ public enum Classifier {
         // 3. user URL rules (array is user-first sorted by the caller; the
         //    original single loop splits into two source-filtered passes so
         //    builtin title seeds can slot in between).
+        // Hoisted once per call and reused by tier 5, mirroring
+        // `loweredTitle` above -- stays nil for a nil url, keeping the
+        // non-browser path zero-cost.
+        var loweredURL: String?
         if let url {
-            for rule in context.urlRules where rule.source == "user" && matches(rule, url: url) {
+            let lowered = url.lowercased()
+            loweredURL = lowered
+            for rule in context.compiledURLRules where rule.source == "user"
+                && rule.matches(url: url, loweredURL: lowered) {
                 return rule.categoryID
             }
         }
@@ -155,8 +232,9 @@ public enum Classifier {
         }
 
         // 5. builtin URL rules.
-        if let url {
-            for rule in context.urlRules where rule.source != "user" && matches(rule, url: url) {
+        if let url, let loweredURL {
+            for rule in context.compiledURLRules where rule.source != "user"
+                && rule.matches(url: url, loweredURL: loweredURL) {
                 return rule.categoryID
             }
         }
@@ -206,12 +284,12 @@ public enum Classifier {
     /// A `re:`-prefixed pattern is matched as a case-insensitive regular
     /// expression (prefix stripped); any other pattern is a case-insensitive
     /// substring match.
-    public static func matches(_ rule: URLRule, url: String) -> Bool {
-        matches(pattern: rule.pattern, in: url)
-    }
-
     /// `re:`-prefixed pattern -> case-insensitive regular expression (prefix
     /// stripped); any other pattern -> case-insensitive substring match.
+    ///
+    /// No longer on the classification hot path -- `CompiledURLRule` is (see
+    /// its doc comment). This stays as the reference semantics the compiled
+    /// form is pinned against by `testCompiledURLRuleAgreesWithMatches`.
     public static func matches(pattern: String, in text: String) -> Bool {
         if pattern.hasPrefix("re:") {
             let regex = String(pattern.dropFirst(3))

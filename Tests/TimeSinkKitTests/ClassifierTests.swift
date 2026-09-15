@@ -90,3 +90,101 @@ final class ClassifierTests: XCTestCase {
             "softwareDev")
     }
 }
+
+/// Pins `CompiledURLRule` against the pure `Classifier.matches(pattern:in:)`
+/// it replaced on the hot path, the same way
+/// `testCompiledTitleRuleAgreesWithTitleMatches` pins the title pair. The
+/// compiled path trades ICU case folding for lowercased `contains` (4.3x on
+/// real data), so these cases exist to catch that trade changing an answer.
+final class CompiledURLRuleTests: XCTestCase {
+    private func rule(_ pattern: String) -> URLRule {
+        URLRule(id: nil, pattern: pattern, categoryID: "learning", priority: 0, source: "builtin")
+    }
+
+    func testCompiledURLRuleAgreesWithMatches() {
+        let cases: [(pattern: String, url: String)] = [
+            ("youtube.com", "https://www.youtube.com/watch?v=1"),
+            ("YouTube.com", "https://www.youtube.com/watch?v=1"),
+            ("youtube.com", "https://vimeo.com/1"),
+            ("/docs/", "https://swift.org/DOCS/guide"),
+            ("", "https://example.com"),
+            (#"re:^https://\w+\.github\.io"#, "https://alice.github.io/blog"),
+            (#"re:^https://\w+\.github\.io"#, "https://github.io/blog"),
+            ("re:", "https://example.com"),
+            ("中文", "https://example.com/中文/page"),
+        ]
+        for c in cases {
+            let compiled = CompiledURLRule(rule(c.pattern))
+            XCTAssertEqual(
+                Classifier.matches(pattern: c.pattern, in: c.url),
+                compiled.matches(url: c.url, loweredURL: c.url.lowercased()),
+                "compiled/pure disagreement for pattern \(c.pattern) url \(c.url)")
+        }
+    }
+}
+
+/// `CategoryResolver`'s per-tuple memo (perf: ~8x fewer `Classifier` calls on
+/// real data). The memo is keyed on the four fields classification reads and
+/// cleared only by `refresh()`, so the one way it can go wrong is serving a
+/// stale answer after the rules underneath it changed.
+@MainActor
+final class CategoryResolverMemoTests: XCTestCase {
+    private func makeResolver() throws -> (CategoryResolver, CategoryStore) {
+        let db = try AppDatabase.openInMemory()
+        let store = CategoryStore(db)
+        return (CategoryResolver(categoryStore: store), store)
+    }
+
+    private func span(domain: String) -> Span {
+        Span(start: Date(), end: Date().addingTimeInterval(60),
+             appBundleID: "com.google.Chrome", appName: "Chrome",
+             title: nil, url: "https://\(domain)/x", domain: domain)
+    }
+
+    // The load-bearing one: a memo that isn't cleared on `refresh()` keeps
+    // serving "uncategorized" here forever, so a user reassigning a domain
+    // would silently not take effect.
+    func testMemoIsInvalidatedByRefresh() throws {
+        let (resolver, store) = try makeResolver()
+        let probe = span(domain: "memo-test.example")
+
+        XCTAssertEqual(resolver.categoryID(for: probe), "uncategorized")
+
+        try store.setUserDomain("memo-test.example", categoryID: "learning")
+        resolver.refresh()
+
+        XCTAssertEqual(resolver.categoryID(for: probe), "learning")
+    }
+
+    // The memo is a cache on a hot path, so its one hard obligation is the
+    // memory bound: never more than `memoCap` entries, however many distinct
+    // tuples get classified. (Which eviction policy is used is a perf
+    // tradeoff measured in `memoCap`'s doc comment, not a correctness one --
+    // this deliberately does not pin it.)
+    func testMemoNeverExceedsCap() throws {
+        let (resolver, _) = try makeResolver()
+        let cap = CategoryResolver.memoCapForTesting
+
+        for i in 0..<(cap + 100) {
+            _ = resolver.categoryID(for: span(domain: "d\(i).example"))
+        }
+
+        XCTAssertLessThanOrEqual(resolver.memoEntryCount, cap)
+    }
+
+    // A hit must return what a cold call returns, and must not bleed across
+    // distinct inputs (a key that dropped a field would collapse these two).
+    func testMemoHitAgreesWithColdCallAndDoesNotBleedAcrossInputs() throws {
+        let (resolver, store) = try makeResolver()
+        try store.setUserDomain("a.example", categoryID: "learning")
+        try store.setUserDomain("b.example", categoryID: "business")
+        resolver.refresh()
+
+        let a = span(domain: "a.example")
+        let b = span(domain: "b.example")
+        XCTAssertEqual(resolver.categoryID(for: a), "learning")   // cold
+        XCTAssertEqual(resolver.categoryID(for: b), "business")   // cold
+        XCTAssertEqual(resolver.categoryID(for: a), "learning")   // memo hit
+        XCTAssertEqual(resolver.categoryID(for: b), "business")   // memo hit
+    }
+}

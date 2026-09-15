@@ -101,6 +101,25 @@ final class DatabaseTests: XCTestCase {
         let plan = rows.map(String.init(describing:)).joined(separator: " ")
         XCTAssertTrue(plan.contains("span_on_end"), "expected span_on_end in query plan, got: \(plan)")
     }
+    /// `dailyTupleTotals` issues this once per day bucket, so the plan is
+    /// the difference between touching each day's rows once (a span_on_start
+    /// RANGE scan) and re-scanning the whole tail of the table 30 times: with
+    /// a year of history that is 43k row visits versus ~650k. Same
+    /// hoisted-SQL-constant reasoning as `testOverlapQueryPlanUsesEndIndex`
+    /// above.
+    func testDayTupleTotalsQueryPlanUsesStartIndexRange() throws {
+        let db = try AppDatabase.openInMemory()
+        let rows = try db.read { db in
+            try Row.fetchAll(
+                db,
+                sql: "EXPLAIN QUERY PLAN " + SpanStore.dayTupleTotalsSQL,
+                arguments: [Date(), Date(), Date()]
+            )
+        }
+        let plan = rows.map(String.init(describing:)).joined(separator: " ")
+        XCTAssertTrue(plan.contains("span_on_start (start>? AND start<?)"),
+                      "expected a span_on_start range scan in query plan, got: \(plan)")
+    }
     func testV4CreatesTablesAndSeedsTitleRules() throws {
         let db = try makeDB()
         let tables = try db.read { db in

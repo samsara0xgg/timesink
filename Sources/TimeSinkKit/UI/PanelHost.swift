@@ -22,6 +22,19 @@ final class PanelHost {
     private var panel: NSPanel?
     private var closeTask: Task<Void, Never>?
 
+    /// Creates the `NSPanel` before the first hover needs it, so that show
+    /// pays only content layout instead of also paying window creation (a
+    /// window-server round trip plus shadow setup for a transparent panel).
+    /// Idempotent. Call it off the popover's first-frame path, not inside it.
+    ///
+    /// Deliberately panel-only: an earlier version also pre-built and reused
+    /// a shared `NSHostingView` across shows, which drifted off spec §10 and
+    /// is not re-applied here -- `show` still builds a fresh hosting view per
+    /// hover and `closeNow` still drops it.
+    func prewarm() {
+        if panel == nil { panel = Self.makePanel() }
+    }
+
     /// Shows (or updates, if already visible) `content`, positioned just
     /// outside `anchorFrame` (screen coordinates -- the hovered row's frame,
     /// converted by the caller). Prefers the anchor's left side (the

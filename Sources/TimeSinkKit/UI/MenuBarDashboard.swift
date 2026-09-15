@@ -167,7 +167,7 @@ final class TodayDashboardModel {
         allBudgetRows = sortedBudgetRows
         budgetRows = Array(sortedBudgetRows.prefix(2))
 
-        refreshStreakIfDayChanged(model: model, calendar: calendar, categories: categories, force: forceStreak)
+        refreshStreakIfDayChanged(model: model, calendar: calendar, force: forceStreak)
     }
 
     /// Runs the 30-day streak lookback when `force` is true (every popover
@@ -177,15 +177,20 @@ final class TodayDashboardModel {
     /// streak-threshold crossing while the popover sits open without being
     /// reopened surfaces only on the next open, not live.
     private func refreshStreakIfDayChanged(
-        model: AppModel, calendar: Calendar, categories: [String: Category], force: Bool
+        model: AppModel, calendar: Calendar, force: Bool
     ) {
         let todayStart = calendar.startOfDay(for: Date())
         guard force || lastStreakDay != todayStart else { return }
         lastStreakDay = todayStart
 
-        let lookback = model.rangedSpans(for: DateRangeSelection(kind: .last30, anchor: Date()))
-        let pulses = Self.dailyPulses(items: lookback, categories: categories,
-                                       days: Self.streakLookbackDays,
+        // Was `rangedSpans(for: .last30)` + `Self.dailyPulses(items:)`, i.e.
+        // one materialized+classified Span per row of the whole month to
+        // produce 30 integers. `AppModel.dailyPulses` aggregates the same
+        // window in SQL down to one row per (day, classification tuple)
+        // instead; see its doc comment for the measured before/after. The
+        // `categories` parameter went with it -- the model folds with its own
+        // `resolver.categoriesByID`, the same dictionary `recompute` reads.
+        let pulses = model.dailyPulses(days: Self.streakLookbackDays,
                                        endingAt: Date(), calendar: calendar)
         // C1+: `StreakDotsView`'s dot pattern reuses this same 30-day
         // lookback's per-day breakdown -- kept alongside the derived
@@ -669,7 +674,13 @@ struct MenuBarDashboardView: View {
         // there so a reopen always reflects same-day changes (a threshold
         // crossing, a category edit). The dataVersion path stays unforced;
         // see `TodayDashboardModel.recompute`.
-        .onAppear { refresh(forceStreak: true) }
+        .onAppear {
+            refresh(forceStreak: true)
+            // Create the drill-down panel now rather than inside the first
+            // hover, but in a follow-up main-actor hop so it lands after the
+            // popover's own first frame instead of adding to it.
+            Task { @MainActor in panelHost.prewarm() }
+        }
         .onChange(of: model.dataVersion) { refresh(forceStreak: false) }
         // Fold-in 2: switching `popoverMode` (常态 <-> 专注配置态) removes
         // every drill-down row from the tree and re-adds fresh ones on the

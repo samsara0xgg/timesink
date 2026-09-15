@@ -310,7 +310,7 @@ public final class FocusSessionController {
     }
 
     /// Internal (not `private`) so tests can inject a fake `now` without a
-    /// real 1s wait -- mirrors `TrackerEngine.tick(now:)`'s shape. Updates
+    /// real 1s wait -- mirrors `TrackerEngine.tickAsync(now:)`'s shape. Updates
     /// only this controller's own `@Observable` state; never calls
     /// `AppModel.dataChanged()` (that's the explicit `finish` path's job).
     func tick(now: Date) {
@@ -353,7 +353,7 @@ public final class FocusSessionController {
     /// Decision 2: the block page's own sample must never be recorded into
     /// stats (it would misattribute the interception itself as browsing
     /// time). Two independent signals -- either is sufficient -- since which
-    /// one is actually populated depends on where in `TrackerEngine.tick`
+    /// one is actually populated depends on where in `TrackerEngine.tickAsync`
     /// this fires relative to Chrome's own tab enrichment.
     private func isBlockPageSample(_ sample: Sample) -> Bool {
         if let url = sample.url, url.hasPrefix(FocusBlockPage.location.absoluteString) {

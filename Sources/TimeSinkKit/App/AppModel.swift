@@ -282,6 +282,86 @@ public final class AppModel {
         }
     }
 
+    /// Per-day pulse over the trailing `days` days (last element = the day
+    /// containing `endingAt`), nil for days with no tracked time -- exactly
+    /// `Aggregator.dailyPulses`'s contract, computed without materializing
+    /// one `Span` per row.
+    ///
+    /// Replaces `rangedSpans(for: .last30)` + `Aggregator.dailyPulses` in the
+    /// popover's streak lookback. That path fetched every span overlapping 30
+    /// days, built a clipped `Span` for each, classified it, then
+    /// day-split it one span at a time, all to produce 30 integers.
+    /// `SpanStore.dailyTupleTotals` collapses the same window to one row per
+    /// (day, classification tuple) inside SQLite instead, so what reaches
+    /// Swift scales with days x distinct tuples, not with span count.
+    ///
+    /// Release-build medians on a 541k-row one-year fixture (built from the
+    /// real db, 30-day window = 43,362 rows), memo warm:
+    ///
+    ///   before ... 43,362 rows: 126 ms fetch + 21 ms classify + 180 ms
+    ///              `Aggregator.dailyPulses` = 327 ms
+    ///   after .... 7,340 group rows + 12 boundary-crossing spans: 56 ms,
+    ///              of which 52 ms is the SQL
+    ///
+    /// 5.9x. On the real db (31,849 rows in the window) the same measurement
+    /// is 240 ms -> 41 ms. Cold (memo just cleared by `refresh()`) both paths
+    /// pay the same ~720 ms to classify ~5.3k distinct tuples, so cold is
+    /// 1026 ms -> 755 ms; that residue is `Classifier`'s per-tuple cost, the
+    /// one term this lookback is *supposed* to scale with.
+    ///
+    /// Day buckets are built here with `Calendar.current`, never in SQL:
+    /// SQLite's `date()`/`strftime()` bucket in UTC, and its `'localtime'`
+    /// modifier is both DST-fragile and slower than the whole aggregation
+    /// (measured via sqlite3 on the same fixture: 134 ms for one grouped scan
+    /// using it, versus 38 ms for these 30 per-day queries).
+    public func dailyPulses(days: Int, endingAt: Date, calendar: Calendar) -> [Int?] {
+        // days + 1 ascending boundaries, built with the same
+        // `date(byAdding: .day)` walk `Aggregator.dailyPulses` uses for its
+        // per-day lookup keys, so bucket i is the same calendar day it would
+        // have looked up -- including DST days, which are 23 or 25 hours long
+        // here and in `Aggregator.split` alike.
+        let todayStart = calendar.startOfDay(for: endingAt)
+        let boundaries = ((-1)...(days - 1)).reversed().compactMap {
+            calendar.date(byAdding: .day, value: -$0, to: todayStart)
+        }
+        guard boundaries.count == days + 1 else { return Array(repeating: nil, count: days) }
+
+        do {
+            let (totals, straddlers) = try spanStore.dailyTupleTotals(dayBoundaries: boundaries)
+            var byDay = Array(repeating: [String: TimeInterval](), count: days)
+            for total in totals {
+                // `CategoryResolver.categoryID(for:)` reads only these four
+                // fields (they are its memo key), so a probe span with
+                // placeholder timestamps classifies identically to the rows
+                // it stands for -- and the resolver's memo means each tuple
+                // costs a dictionary hit after its first day.
+                let probe = Span(start: todayStart, end: todayStart, appBundleID: total.appBundleID,
+                                 appName: "", title: total.title, url: total.url, domain: total.domain)
+                byDay[total.dayIndex][resolver.categoryID(for: probe), default: 0] += total.seconds
+            }
+            // Boundary-crossing spans, split across the buckets they touch.
+            // Clipping is implicit: a part outside [first, last] boundary
+            // never matches, which is what `rangedSpans`' clip-to-interval
+            // did at both ends of the window.
+            for span in straddlers {
+                let categoryID = resolver.categoryID(for: span)
+                for index in 0..<days {
+                    let start = max(span.start, boundaries[index])
+                    let end = min(span.end, boundaries[index + 1])
+                    guard end > start else { continue }
+                    byDay[index][categoryID, default: 0] += end.timeIntervalSince(start)
+                }
+            }
+            return byDay.map { Aggregator.pulse(durationByCategory: $0, categories: resolver.categoriesByID) }
+        } catch {
+            // Matches the old path's failure mode: `rangedSpans` logged and
+            // returned [], which `Aggregator.dailyPulses` turned into `days`
+            // nils -- an all-untracked lookback, not an empty array.
+            logger.error("dailyPulses failed: \(String(describing: error))")
+            return Array(repeating: nil, count: days)
+        }
+    }
+
     /// Moves `key` to the most-recently-used end of `cacheOrder` on a cache
     /// hit, so a repeatedly-read interval isn't the one evicted next.
     private func touchCacheKey(_ key: String) {

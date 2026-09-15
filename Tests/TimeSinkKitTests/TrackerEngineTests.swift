@@ -1,4 +1,5 @@
 import XCTest
+import os
 @testable import TimeSinkKit
 
 final class ChromeThrottleTests: XCTestCase {
@@ -9,6 +10,17 @@ final class ChromeThrottleTests: XCTestCase {
         XCTAssertFalse(t.shouldFetch(title: "A", at: ts(2)))   // 同标题未超时
         XCTAssertTrue(t.shouldFetch(title: "B", at: ts(2)))    // 标题变了
         XCTAssertTrue(t.shouldFetch(title: "A", at: ts(6)))    // 超时
+    }
+}
+
+/// The Apple Event reply timeout went 60 ticks (1s) -> 15 (0.25s), which is a
+/// real behavior change: a Chrome reply between 0.25s and 1s now counts as a
+/// failure and feeds `chromeBackoff`. Nothing else pins the constant, so this
+/// does -- asserted in seconds, since that (matching `WindowSampler`'s 0.25s
+/// AX messaging timeout) is the property that matters, not the tick count.
+final class ChromeSamplerTimeoutTests: XCTestCase {
+    func testAppleEventTimeoutIsQuarterSecond() {
+        XCTAssertEqual(Double(ChromeSampler.timeoutTicks) / 60, 0.25, accuracy: 0.001)
     }
 }
 
@@ -133,6 +145,14 @@ final class ChromeFetchBackoffTests: XCTestCase {
     }
 }
 
+/// Hoisted out of the test class: `windowSampleProvider` is `@Sendable`
+/// (it runs off the main actor in `tickAsync`), so its closure cannot
+/// capture a `@MainActor` XCTestCase `self`.
+private func chromeSample(at date: Date) -> Sample {
+    Sample(timestamp: date, appBundleID: "com.google.Chrome",
+           appName: "Google Chrome", windowTitle: "AX Title", url: nil)
+}
+
 @MainActor
 final class TrackerEngineChromeCacheTests: XCTestCase {
     private func makeEngine() throws -> (TrackerEngine, SpanStore) {
@@ -147,14 +167,9 @@ final class TrackerEngineChromeCacheTests: XCTestCase {
         return (engine, store)
     }
 
-    private func chromeSample(at date: Date) -> Sample {
-        Sample(timestamp: date, appBundleID: "com.google.Chrome",
-               appName: "Google Chrome", windowTitle: "AX Title", url: nil)
-    }
-
-    func testFetchFailureFallsBackToAXTitleInsteadOfStaleURL() throws {
+    func testFetchFailureFallsBackToAXTitleInsteadOfStaleURL() async throws {
         let (engine, _) = try makeEngine()
-        engine.windowSampleProvider = { [self] in chromeSample(at: Date()) }
+        engine.windowSampleProvider = { chromeSample(at: $0) }
         // Automation is authorized in this scenario -- the AX-title fallback
         // is only safe to observe when we can confirm the window isn't
         // incognito, and being authorized is what lets a successful fetch
@@ -165,20 +180,20 @@ final class TrackerEngineChromeCacheTests: XCTestCase {
         engine.chromeTabProvider = {
             ChromeSampler.TabInfo(url: "https://github.com/a/b", title: "PR #1", isIncognito: false)
         }
-        engine.tick(now: ts(0))
+        await engine.tickAsync(now: ts(0))
         XCTAssertEqual(engine.latestSample?.url, "https://github.com/a/b")
         XCTAssertEqual(engine.latestSample?.windowTitle, "PR #1")
 
         // 再失败：不得沿用旧 URL，标题回退到 AX 标题
         engine.chromeTabProvider = { nil }
-        engine.tick(now: ts(6))
+        await engine.tickAsync(now: ts(6))
         XCTAssertNil(engine.latestSample?.url)
         XCTAssertEqual(engine.latestSample?.windowTitle, "AX Title")
     }
 
-    func testIncognitoStillSuppressesTitle() throws {
+    func testIncognitoStillSuppressesTitle() async throws {
         let (engine, _) = try makeEngine()
-        engine.windowSampleProvider = { [self] in chromeSample(at: Date()) }
+        engine.windowSampleProvider = { chromeSample(at: $0) }
         // Seam set even though this test doesn't assert on it: the fetch
         // attempt now unconditionally refreshes the cached authorization
         // answer, so without a seam this would hit the real TCC check.
@@ -186,7 +201,7 @@ final class TrackerEngineChromeCacheTests: XCTestCase {
         engine.chromeTabProvider = {
             ChromeSampler.TabInfo(url: nil, title: nil, isIncognito: true)
         }
-        engine.tick(now: ts(0))
+        await engine.tickAsync(now: ts(0))
         XCTAssertNil(engine.latestSample?.url)
         XCTAssertNil(engine.latestSample?.windowTitle)
     }
@@ -194,20 +209,20 @@ final class TrackerEngineChromeCacheTests: XCTestCase {
     /// Regression: a fetch failure right after a confirmed-incognito window
     /// must not un-suppress it by falling back to the AX title -- the AX
     /// title of an incognito Chrome window IS the private page title.
-    func testFetchFailureAfterIncognitoPreservesSuppression() throws {
+    func testFetchFailureAfterIncognitoPreservesSuppression() async throws {
         let (engine, _) = try makeEngine()
-        engine.windowSampleProvider = { [self] in chromeSample(at: Date()) }
+        engine.windowSampleProvider = { chromeSample(at: $0) }
         engine.chromeAutomationAuthorizedProvider = { true }
 
         engine.chromeTabProvider = {
             ChromeSampler.TabInfo(url: nil, title: nil, isIncognito: true)
         }
-        engine.tick(now: ts(0))
+        await engine.tickAsync(now: ts(0))
         XCTAssertNil(engine.latestSample?.url)
         XCTAssertNil(engine.latestSample?.windowTitle)
 
         engine.chromeTabProvider = { nil }
-        engine.tick(now: ts(6))
+        await engine.tickAsync(now: ts(6))
         XCTAssertNil(engine.latestSample?.url)
         XCTAssertNil(engine.latestSample?.windowTitle)
     }
@@ -218,12 +233,12 @@ final class TrackerEngineChromeCacheTests: XCTestCase {
     /// leaking the raw AX title would be a privacy regression versus the
     /// pre-change build (which never wrote a Chrome title without a
     /// successful fetch).
-    func testFetchFailureWithoutAutomationSuppressesAXTitle() throws {
+    func testFetchFailureWithoutAutomationSuppressesAXTitle() async throws {
         let (engine, _) = try makeEngine()
-        engine.windowSampleProvider = { [self] in chromeSample(at: Date()) }
+        engine.windowSampleProvider = { chromeSample(at: $0) }
         engine.chromeAutomationAuthorizedProvider = { false }
         engine.chromeTabProvider = { nil }
-        engine.tick(now: ts(0))
+        await engine.tickAsync(now: ts(0))
         XCTAssertNil(engine.latestSample?.url)
         XCTAssertNil(engine.latestSample?.windowTitle)
     }
@@ -233,65 +248,68 @@ final class TrackerEngineChromeCacheTests: XCTestCase {
     /// `chromeCaptureDegraded` when Automation is actually authorized --
     /// that combination used to mislabel a window-less Chrome as a
     /// permissions problem.
-    func testChromeCaptureDegradedStaysFalseWhenAuthorizedDespiteRepeatedFailures() throws {
+    func testChromeCaptureDegradedStaysFalseWhenAuthorizedDespiteRepeatedFailures() async throws {
         let (engine, _) = try makeEngine()
-        engine.windowSampleProvider = { [self] in chromeSample(at: Date()) }
+        engine.windowSampleProvider = { chromeSample(at: $0) }
         engine.chromeAutomationAuthorizedProvider = { true }
         engine.chromeTabProvider = { nil }
         for t in [0.0, 6, 12, 18, 24, 30] {
-            engine.tick(now: ts(t))
+            await engine.tickAsync(now: ts(t))
         }
         XCTAssertFalse(engine.chromeCaptureDegraded)
     }
 
     /// Same repeated-failure sequence, but Automation is NOT authorized --
     /// this is the real permissions-revoked case, and the flag must flip.
-    func testChromeCaptureDegradedBecomesTrueWhenNotAuthorized() throws {
+    func testChromeCaptureDegradedBecomesTrueWhenNotAuthorized() async throws {
         let (engine, _) = try makeEngine()
-        engine.windowSampleProvider = { [self] in chromeSample(at: Date()) }
+        engine.windowSampleProvider = { chromeSample(at: $0) }
         engine.chromeAutomationAuthorizedProvider = { false }
         engine.chromeTabProvider = { nil }
         for t in [0.0, 6, 12, 18, 24, 30] {
-            engine.tick(now: ts(t))
+            await engine.tickAsync(now: ts(t))
         }
         XCTAssertTrue(engine.chromeCaptureDegraded)
     }
 
     /// A subsequent successful fetch clears the degraded flag, same as it
     /// clears the underlying backoff.
-    func testChromeCaptureDegradedClearsOnSubsequentSuccess() throws {
+    func testChromeCaptureDegradedClearsOnSubsequentSuccess() async throws {
         let (engine, _) = try makeEngine()
-        engine.windowSampleProvider = { [self] in chromeSample(at: Date()) }
+        engine.windowSampleProvider = { chromeSample(at: $0) }
         engine.chromeAutomationAuthorizedProvider = { false }
         engine.chromeTabProvider = { nil }
         for t in [0.0, 6, 12, 18, 24, 30] {
-            engine.tick(now: ts(t))
+            await engine.tickAsync(now: ts(t))
         }
         XCTAssertTrue(engine.chromeCaptureDegraded)
 
         engine.chromeTabProvider = {
             ChromeSampler.TabInfo(url: "https://example.com", title: "Example", isIncognito: false)
         }
-        engine.tick(now: ts(40))
+        await engine.tickAsync(now: ts(40))
         XCTAssertFalse(engine.chromeCaptureDegraded)
     }
 }
 
 /// C3 idle-exemption seam: meetings suppress `becameIdle` so a real-world
 /// idle stretch (hands off keyboard during a video call) never suspends
-/// tracking mid-meeting. Both tests below drive `windowSampleProvider` and
-/// `tick(now:)` off a single shared `currentTime` var -- feeding the sample
-/// a real `Date()` while driving `tick` off a fake `ts(N)` (the original
-/// version of this file) desyncs `SpanBuilder`'s span start/end from the
-/// suspension/heartbeat timeline it's supposed to share, which is exactly
-/// what let the CRITICAL un-exemption bug below hide undetected.
+/// tracking mid-meeting. Both tests below keep the sampled timestamp and
+/// `tick(now:)` on one timeline -- feeding the sample a real `Date()` while
+/// driving `tick` off a fake `ts(N)` (the original version of this file)
+/// desyncs `SpanBuilder`'s span start/end from the suspension/heartbeat
+/// timeline it's supposed to share, which is exactly what let the CRITICAL
+/// un-exemption bug below hide undetected. The seam now hands the provider
+/// the tick's own `now`, so the two cannot drift apart by construction
+/// (they used to be kept in sync by hand through a shared `currentTime`
+/// var, which a `@Sendable` seam can no longer capture).
+private func meetingSample(at date: Date) -> Sample {
+    Sample(timestamp: date, appBundleID: "com.example.app", appName: "Example",
+           windowTitle: "T", url: nil)
+}
+
 @MainActor
 final class TrackerEngineMeetingExemptionTests: XCTestCase {
-    private func sampleAt(_ date: Date) -> Sample {
-        Sample(timestamp: date, appBundleID: "com.example.app", appName: "Example",
-               windowTitle: "T", url: nil)
-    }
-
     private func makeEngine() throws -> (TrackerEngine, SpanStore) {
         let db = try AppDatabase.openInMemory()
         let store = SpanStore(db)
@@ -307,16 +325,16 @@ final class TrackerEngineMeetingExemptionTests: XCTestCase {
     /// persisted row (via a heartbeat-triggered insert) instead of only
     /// `engine.isSuspended` -- `isSuspended` alone can't distinguish "still
     /// extending" from "never opened".
-    func testMeetingExemptionKeepsSpanOpenAndExtending() throws {
+    func testMeetingExemptionKeepsSpanOpenAndExtending() async throws {
         let (engine, store) = try makeEngine()
         var currentTime = ts(0)
-        engine.windowSampleProvider = { [self] in sampleAt(currentTime) }
+        engine.windowSampleProvider = { meetingSample(at: $0) }
         engine.idleSecondsProvider = { 300 }         // > 默认阈值 180，模拟手离键盘
         engine.isInMeetingProvider = { true }
 
         for t in stride(from: 0.0, through: 30, by: 10) {
             currentTime = ts(t)
-            engine.tick(now: currentTime)
+            await engine.tickAsync(now: currentTime)
         }
 
         let rows = try allSpans(store)
@@ -336,10 +354,10 @@ final class TrackerEngineMeetingExemptionTests: XCTestCase {
     /// meeting ticks extending + a heartbeat persisting the row, then the
     /// un-exemption tick -- and asserts the PERSISTED span's duration
     /// survives by querying the store, not just `engine.isSuspended`.
-    func testUnExemptionAfterMeetingPreservesPersistedSpanDuration() throws {
+    func testUnExemptionAfterMeetingPreservesPersistedSpanDuration() async throws {
         let (engine, store) = try makeEngine()
         var currentTime = ts(0)
-        engine.windowSampleProvider = { [self] in sampleAt(currentTime) }
+        engine.windowSampleProvider = { meetingSample(at: $0) }
         engine.isInMeetingProvider = { true }
         engine.idleSecondsProvider = { 9999 }   // 会中手一直离键盘
 
@@ -347,7 +365,7 @@ final class TrackerEngineMeetingExemptionTests: XCTestCase {
         // 并持续延长（tick 间隔 5s < maxGap 15s，SpanBuilder 视为同一 span）。
         for t in stride(from: 0.0, through: 595, by: 5) {
             currentTime = ts(t)
-            engine.tick(now: currentTime)
+            await engine.tickAsync(now: currentTime)
         }
 
         let midMeetingRows = try allSpans(store)
@@ -360,7 +378,7 @@ final class TrackerEngineMeetingExemptionTests: XCTestCase {
         engine.isInMeetingProvider = { false }
         engine.idleSecondsProvider = { 600 }
         currentTime = ts(600)
-        engine.tick(now: currentTime)
+        await engine.tickAsync(now: currentTime)
 
         XCTAssertTrue(engine.isSuspended)   // 真实空闲照常触发挂起（会议已结束）
 
@@ -381,7 +399,7 @@ final class TrackerEngineMeetingExemptionTests: XCTestCase {
 /// actual intercept() decision logic is covered by FocusSessionTests).
 @MainActor
 final class TrackerEngineFocusInterceptorTests: XCTestCase {
-    func testFocusInterceptorSkipsRecording() throws {
+    func testFocusInterceptorSkipsRecording() async throws {
         let db = try AppDatabase.openInMemory()
         let store = SpanStore(db)
         let engine = TrackerEngine(spanStore: store, settings: SettingsStore(db))
@@ -391,12 +409,12 @@ final class TrackerEngineFocusInterceptorTests: XCTestCase {
         // `SBApplication` (forbidden in tests, see ChromeSampler/ChromeBlocker
         // docs) -- this test only cares about the interceptor short-circuit,
         // not Chrome-specific enrichment.
-        engine.windowSampleProvider = {
+        engine.windowSampleProvider = { _ in
             Sample(timestamp: ts(0), appBundleID: "com.hnc.Discord", appName: "Discord",
                    windowTitle: FocusBlockPage.pageMarkerTitle, url: nil)
         }
         engine.focusInterceptor = { _, _ in true }
-        engine.tick(now: ts(0))
+        await engine.tickAsync(now: ts(0))
         // SpanBuilder never ingested the sample -- no current span opened.
         XCTAssertNil(engine.latestSample)
     }
@@ -408,14 +426,14 @@ final class TrackerEngineFocusInterceptorTests: XCTestCase {
     /// actually redirect through the REAL engine tick -- if the interceptor
     /// were consulted before enrichment (the brief's literal placement),
     /// `sample.url` would be `nil` and this domain block could never fire.
-    @MainActor func testChromeDomainBlockFiresThroughRealEngineSeam() throws {
+    @MainActor func testChromeDomainBlockFiresThroughRealEngineSeam() async throws {
         let db = try AppDatabase.openInMemory()
         let spanStore = SpanStore(db)
         let settings = SettingsStore(db)
         let engine = TrackerEngine(spanStore: spanStore, settings: settings)
         engine.idleSecondsProvider = { 0 }
         engine.chromeAutomationAuthorizedProvider = { true }
-        engine.windowSampleProvider = {
+        engine.windowSampleProvider = { _ in
             Sample(timestamp: ts(0), appBundleID: "com.google.Chrome", appName: "Chrome",
                    windowTitle: "AX Title", url: nil)
         }
@@ -432,7 +450,7 @@ final class TrackerEngineFocusInterceptorTests: XCTestCase {
         try controller.start(minutes: 25)
 
         engine.focusInterceptor = { sample, now in controller.intercept(sample: sample, at: now) }
-        engine.tick(now: ts(0))
+        await engine.tickAsync(now: ts(0))
 
         XCTAssertEqual(redirected.count, 1)
         XCTAssertEqual(controller.siteBlocks, 1)
@@ -443,18 +461,18 @@ final class TrackerEngineFocusInterceptorTests: XCTestCase {
     /// heartbeat threshold, and assert directly against the store (not
     /// `latestSample`, which only proves the sample wasn't cached, not that
     /// nothing was written).
-    @MainActor func testInterceptedSamplesNeverPersist() throws {
+    @MainActor func testInterceptedSamplesNeverPersist() async throws {
         let db = try AppDatabase.openInMemory()
         let store = SpanStore(db)
         let engine = TrackerEngine(spanStore: store, settings: SettingsStore(db))
         engine.idleSecondsProvider = { 0 }
-        engine.windowSampleProvider = {
+        engine.windowSampleProvider = { _ in
             Sample(timestamp: ts(0), appBundleID: "com.hnc.Discord", appName: "Discord",
                    windowTitle: nil, url: nil)
         }
         engine.focusInterceptor = { _, _ in true }
         for t in stride(from: 0.0, through: 40, by: 1) {
-            engine.tick(now: ts(t))
+            await engine.tickAsync(now: ts(t))
         }
         let rows = try store.spans(overlapping: DateInterval(start: ts(-1), end: ts(100)))
         XCTAssertEqual(rows.count, 0)
@@ -465,13 +483,13 @@ final class TrackerEngineFocusInterceptorTests: XCTestCase {
     /// (stale-simulated) ScriptingBridge fetch reports a DIFFERENT title --
     /// without the fix, the SB title would silently overwrite the fresh AX
     /// marker and decision 2 would lose its title-based signal.
-    @MainActor func testBlockPageAXTitlePreservedOverStaleSBTitle() throws {
+    @MainActor func testBlockPageAXTitlePreservedOverStaleSBTitle() async throws {
         let db = try AppDatabase.openInMemory()
         let store = SpanStore(db)
         let engine = TrackerEngine(spanStore: store, settings: SettingsStore(db))
         engine.idleSecondsProvider = { 0 }
         engine.chromeAutomationAuthorizedProvider = { true }
-        engine.windowSampleProvider = {
+        engine.windowSampleProvider = { _ in
             Sample(timestamp: ts(0), appBundleID: "com.google.Chrome", appName: "Chrome",
                    windowTitle: FocusBlockPage.pageMarkerTitle, url: nil)
         }
@@ -480,7 +498,7 @@ final class TrackerEngineFocusInterceptorTests: XCTestCase {
         }
         var sawSample: Sample?
         engine.focusInterceptor = { sample, _ in sawSample = sample; return false }
-        engine.tick(now: ts(0))
+        await engine.tickAsync(now: ts(0))
         XCTAssertEqual(sawSample?.windowTitle, FocusBlockPage.pageMarkerTitle)
     }
 
@@ -492,12 +510,12 @@ final class TrackerEngineFocusInterceptorTests: XCTestCase {
     /// the 30s heartbeat fire for that already-open span -- proven via
     /// `engine.onChange`, which only ever fires from a successful
     /// `SpanStore` write.
-    @MainActor func testHeartbeatContinuesDuringInterceptedDwell() throws {
+    @MainActor func testHeartbeatContinuesDuringInterceptedDwell() async throws {
         let db = try AppDatabase.openInMemory()
         let store = SpanStore(db)
         let engine = TrackerEngine(spanStore: store, settings: SettingsStore(db))
         engine.idleSecondsProvider = { 0 }
-        engine.windowSampleProvider = {
+        engine.windowSampleProvider = { _ in
             Sample(timestamp: ts(0), appBundleID: "com.apple.dt.Xcode", appName: "Xcode",
                    windowTitle: "main.swift", url: nil)
         }
@@ -506,7 +524,7 @@ final class TrackerEngineFocusInterceptorTests: XCTestCase {
 
         // Normal activity: opens a span and crosses the first 30s heartbeat.
         for t in stride(from: 0.0, through: 35, by: 5) {
-            engine.tick(now: ts(t))
+            await engine.tickAsync(now: ts(t))
         }
         XCTAssertGreaterThan(onChangeCount, 0)
 
@@ -516,8 +534,236 @@ final class TrackerEngineFocusInterceptorTests: XCTestCase {
         engine.focusInterceptor = { _, _ in true }
         onChangeCount = 0
         for t in stride(from: 40.0, through: 100, by: 30) {
-            engine.tick(now: ts(t))
+            await engine.tickAsync(now: ts(t))
         }
         XCTAssertGreaterThan(onChangeCount, 0)
+    }
+}
+
+// MARK: - Task B: off-main-actor sampling
+
+/// The 1s tick used to make both `AXUIElementCopyAttributeValue` calls (0.25s
+/// messaging timeout each) and Chrome's synchronous Apple Event on the main
+/// actor, so a beachballing frontmost app stalled the menu bar along with it.
+/// `tickAsync` now runs that IPC off-actor, which introduces a suspension
+/// point mid-tick -- and with it the reentrancy hazard these tests pin down.
+@MainActor
+final class TrackerEngineAsyncTickTests: XCTestCase {
+    private func makeEngine() throws -> (TrackerEngine, SpanStore) {
+        let db = try AppDatabase.openInMemory()
+        let store = SpanStore(db)
+        let engine = TrackerEngine(spanStore: store, settings: SettingsStore(db))
+        engine.idleSecondsProvider = { 0 }   // hermetic: ignore the host's real idle time
+        return (engine, store)
+    }
+
+    /// Both halves of the Task B guarantee, in one run:
+    ///
+    /// (a) the main actor is never blocked by the sampler -- while the
+    ///     provider sleeps 250ms off-actor, the test body keeps running main-
+    ///     actor work to completion and measurably finishes before the tick
+    ///     does;
+    /// (b) the ticks that fire during that window are SKIPPED, not queued --
+    ///     the provider is entered exactly once, `latestSample` only ever
+    ///     shows the first tick's sample, and the run persists exactly one
+    ///     span whose start/end are the uncorrupted values for that single
+    ///     sample.
+    ///
+    /// The provider call count is the load-bearing assertion: without the
+    /// in-flight guard, all six ticks enter the sampler concurrently and
+    /// their continuations interleave over `builder.current`, `currentRowID`
+    /// and `lastHeartbeat`.
+    func testSlowSamplerRunsOffMainActorAndOverlappingTicksAreSkipped() async throws {
+        let (engine, store) = try makeEngine()
+        // OSAllocatedUnfairLock is genuinely `Sendable` (no `@unchecked`):
+        // the counter is mutated from the cooperative pool by the sampler and
+        // read back on the main actor.
+        let calls = OSAllocatedUnfairLock(initialState: 0)
+        engine.windowSampleProvider = { date in
+            calls.withLock { $0 += 1 }
+            Thread.sleep(forTimeInterval: 0.25)   // stand-in for a hung AX read
+            return Sample(timestamp: date, appBundleID: "com.apple.dt.Xcode",
+                          appName: "Xcode", windowTitle: "main.swift", url: nil)
+        }
+
+        let slow = Task { await engine.tickAsync(now: ts(0)) }
+        // Hand the main actor to `slow` so it reaches its off-actor hop; it
+        // runs synchronously up to that `await`, so when control comes back
+        // here the tick is provably in flight and off the main actor.
+        await Task.yield()
+
+        let mainActorStart = Date()
+        for t in 1...5 {
+            await engine.tickAsync(now: ts(Double(t)))
+        }
+        let mainActorElapsed = Date().timeIntervalSince(mainActorStart)
+        await slow.value
+        let totalElapsed = Date().timeIntervalSince(mainActorStart)
+
+        // (a) five ticks' worth of main-actor work completed while the
+        // sampler was still sleeping. If the sampler ran on the main actor,
+        // `mainActorElapsed` would itself be >= 0.25s (and `calls` would be 6).
+        XCTAssertLessThan(mainActorElapsed, 0.1)
+        XCTAssertGreaterThan(totalElapsed, 0.2)
+
+        // (b) skipped, not queued.
+        XCTAssertEqual(calls.withLock { $0 }, 1)
+        XCTAssertEqual(engine.latestSample?.timestamp, ts(0))
+
+        // The open span is the first tick's and only the first tick's. Drive
+        // it past the 30s heartbeat with a fast sampler so it actually hits
+        // the store, then assert on the persisted row.
+        engine.windowSampleProvider = { date in
+            Sample(timestamp: date, appBundleID: "com.apple.dt.Xcode",
+                   appName: "Xcode", windowTitle: "main.swift", url: nil)
+        }
+        for t in stride(from: 5.0, through: 35, by: 5) {
+            await engine.tickAsync(now: ts(t))
+        }
+        let rows = try store.spans(overlapping: DateInterval(start: ts(-1), end: ts(100)))
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].start, ts(0))     // no stale sample dragged the start
+        XCTAssertEqual(rows[0].end, ts(31))      // 30s heartbeat + SpanBuilder's 1s tick
+    }
+
+    /// A sample that comes back from IPC after the screen locked must be
+    /// DROPPED, not ingested: the main actor stayed live during the hop, so
+    /// `suspend(at:)` already closed and persisted the span, and applying the
+    /// sample now would reopen one behind the lock screen -- the bug class
+    /// `SuspensionState` exists to prevent, re-entering through the new
+    /// suspension point.
+    func testSampleArrivingAfterLockIsDropped() async throws {
+        let (engine, store) = try makeEngine()
+        let locked = OSAllocatedUnfairLock(initialState: false)
+        engine.windowSampleProvider = { date in
+            Thread.sleep(forTimeInterval: 0.1)
+            locked.withLock { $0 = true }
+            return Sample(timestamp: date, appBundleID: "com.apple.dt.Xcode",
+                          appName: "Xcode", windowTitle: "main.swift", url: nil)
+        }
+
+        let slow = Task { await engine.tickAsync(now: ts(0)) }
+        await Task.yield()
+        // Screen locks while the AX read is still out.
+        engine.suspend(at: ts(0))
+        await slow.value
+
+        XCTAssertTrue(locked.withLock { $0 })   // the sampler really did run
+        XCTAssertNil(engine.latestSample)       // ... and its sample was dropped
+        XCTAssertTrue(engine.isSuspended)
+        let rows = try store.spans(overlapping: DateInterval(start: ts(-1), end: ts(100)))
+        XCTAssertEqual(rows.count, 0)
+    }
+
+    /// The case a post-`await` `isSuspended` READ cannot catch: the machine
+    /// sleeps AND wakes while one tick is parked on IPC, so by the time the
+    /// sample comes back the flag reads `false` again -- yet `suspend(at:)`
+    /// has already closed and persisted the span underneath it, and the
+    /// sample in hand is stamped before all of that. Only a change detector
+    /// (`suspensionEpoch`) drops it.
+    func testSampleArrivingAfterSuspendResumePairIsDropped() async throws {
+        let (engine, store) = try makeEngine()
+        let fast: @Sendable (Date) -> Sample? = { date in
+            Sample(timestamp: date, appBundleID: "com.apple.dt.Xcode",
+                   appName: "Xcode", windowTitle: "main.swift", url: nil)
+        }
+        // A completed tick first, so `latestSample` and the open span are
+        // both non-nil going in: without that, "dropped" and "never ran" look
+        // identical and the assertions below prove nothing.
+        engine.windowSampleProvider = fast
+        await engine.tickAsync(now: ts(0))
+        XCTAssertEqual(engine.latestSample?.timestamp, ts(0))
+
+        let entered = OSAllocatedUnfairLock(initialState: false)
+        engine.windowSampleProvider = { date in
+            entered.withLock { $0 = true }
+            Thread.sleep(forTimeInterval: 0.1)   // stand-in for a hung AX read
+            return fast(date)
+        }
+        let slow = Task { await engine.tickAsync(now: ts(40)) }
+        await Task.yield()   // let the tick reach its off-actor hop
+        // Sleep and wake both land inside that 0.1s window.
+        engine.suspend(at: ts(40))
+        engine.resume(source: .unlock)
+        await slow.value
+
+        XCTAssertTrue(entered.withLock { $0 })    // the sampler really did run
+        XCTAssertFalse(engine.isSuspended)        // ... and the pair cancelled out
+        // Dropped: `latestSample` is still the first tick's.
+        XCTAssertEqual(engine.latestSample?.timestamp, ts(0))
+
+        // And the drop reached `SpanBuilder`, not just the cached sample: the
+        // suspend closed the ts(0) span, so the next tick must open a fresh
+        // span at ts(41). If the ts(40) sample had been ingested, that tick
+        // would extend ITS span instead and this row would start at ts(40).
+        engine.windowSampleProvider = fast
+        await engine.tickAsync(now: ts(41))
+        engine.suspend(at: ts(42))
+
+        let rows = try store.spans(overlapping: DateInterval(start: ts(-1), end: ts(100)))
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertEqual(rows[0].start, ts(0))
+        XCTAssertEqual(rows[0].end, ts(1))
+        XCTAssertEqual(rows[1].start, ts(41))
+        XCTAssertEqual(rows[1].end, ts(42))
+    }
+
+    /// Same drop, triggered by `stop()` rather than a lock: it closes and
+    /// persists the current span, so a tick still parked on IPC must not come
+    /// back and reopen one. Both production callers quit the app, but
+    /// `NSApp.terminate` still spins the run loop, so that continuation can
+    /// land before the process is gone.
+    func testSampleArrivingAfterStopIsDropped() async throws {
+        let (engine, store) = try makeEngine()
+        let fast: @Sendable (Date) -> Sample? = { date in
+            Sample(timestamp: date, appBundleID: "com.apple.dt.Xcode",
+                   appName: "Xcode", windowTitle: "main.swift", url: nil)
+        }
+        engine.windowSampleProvider = fast
+        await engine.tickAsync(now: ts(0))
+
+        engine.windowSampleProvider = { date in
+            Thread.sleep(forTimeInterval: 0.1)
+            return fast(date)
+        }
+        let slow = Task { await engine.tickAsync(now: ts(40)) }
+        await Task.yield()
+        engine.stop()
+        await slow.value
+
+        XCTAssertEqual(engine.latestSample?.timestamp, ts(0))
+        let rows = try store.spans(overlapping: DateInterval(start: ts(-1), end: ts(100)))
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].start, ts(0))
+        XCTAssertEqual(rows[0].end, ts(1))
+    }
+
+    /// The Chrome Apple Event is a second, separately parked window, and it
+    /// needs the same guard as the AX read: a sleep/wake pair landing inside
+    /// IT must drop the sample too.
+    func testSampleIsDroppedWhenSuspensionChangesDuringChromeFetch() async throws {
+        let (engine, store) = try makeEngine()
+        engine.chromeAutomationAuthorizedProvider = { true }
+        engine.windowSampleProvider = { chromeSample(at: $0) }
+        let inFetch = OSAllocatedUnfairLock(initialState: false)
+        engine.chromeTabProvider = {
+            inFetch.withLock { $0 = true }
+            Thread.sleep(forTimeInterval: 0.2)   // stand-in for a slow Apple Event
+            return ChromeSampler.TabInfo(url: "https://github.com/a/b", title: "PR #1",
+                                         isIncognito: false)
+        }
+
+        let slow = Task { await engine.tickAsync(now: ts(0)) }
+        // Yield until the tick is provably parked in the SECOND hop -- one
+        // `Task.yield()` only gets it as far as the first.
+        while !inFetch.withLock({ $0 }) { await Task.yield() }
+        engine.suspend(at: ts(0))
+        engine.resume(source: .unlock)
+        await slow.value
+
+        XCTAssertFalse(engine.isSuspended)   // the pair cancelled out again
+        XCTAssertNil(engine.latestSample)    // ... and the sample was dropped
+        let rows = try store.spans(overlapping: DateInterval(start: ts(-1), end: ts(100)))
+        XCTAssertEqual(rows.count, 0)
     }
 }

@@ -178,8 +178,14 @@ public final class TrackerEngine {
     private var cachedChromeAutomationAuthorized = false
 
     /// Test seams: when set, replace the real AX / ScriptingBridge samplers.
-    var windowSampleProvider: (() -> Sample?)?
-    var chromeTabProvider: (() -> ChromeSampler.TabInfo?)?
+    /// The two sampler seams are `@Sendable` and take the tick's own `now`
+    /// because `tickAsync` invokes them off the main actor, exactly where the
+    /// real samplers run. `chromeAutomationAuthorizedProvider` stays
+    /// main-actor because the real check behind it
+    /// (`Permissions.chromeAutomationStatus`) is `@MainActor`, and the
+    /// throttle+backoff gate already keeps it to at most once per 5s.
+    var windowSampleProvider: (@Sendable (Date) -> Sample?)?
+    var chromeTabProvider: (@Sendable () -> ChromeSampler.TabInfo?)?
     var chromeAutomationAuthorizedProvider: (() -> Bool)?
     var idleSecondsProvider: (() -> TimeInterval)?
     /// True while the user is currently in a calendar meeting -- when set,
@@ -216,9 +222,60 @@ public final class TrackerEngine {
 
     private var timer: Timer?
 
+    /// Reentrancy guard for `tickAsync`. The 1s timer keeps firing while a
+    /// tick is parked on off-actor IPC, and a tick's worst case is ~0.75s
+    /// (two 0.25s AX reads + one 0.25s Apple Event) -- more with a hung app
+    /// still inside its timeout. Without this guard a slow tick's
+    /// continuation interleaves with the next tick and both mutate
+    /// `builder.current`, `chromeTabState`, `throttle`, `chromeBackoff`,
+    /// `currentRowID` and `lastHeartbeat`: that double-inserts a span or
+    /// corrupts the open one, which is a data-integrity bug, not a perf nit.
+    ///
+    /// Overlapping ticks are SKIPPED, never queued. Queuing would turn one
+    /// slow app into an unbounded backlog of stale samples, each applied with
+    /// a timestamp the state machine has already moved past --
+    /// `SpanBuilder.ingest` sets `cur.end = sample.timestamp + tick`
+    /// unconditionally, so a late sample applied after a newer one drags the
+    /// open span's end backwards. Skipping keeps sample order monotonic by
+    /// construction: at most one tick is ever in flight, and each one starts
+    /// at a later wall time than the last one finished.
+    ///
+    /// Cost of a skip: one lost 1s sample and a heartbeat checkpoint deferred
+    /// to the next tick, both well inside the existing 30s heartbeat slack.
+    private var tickInFlight = false
+
     public var onChange: (() -> Void)?
     public var llmCoordinator: LLMCoordinator?
     private var suspensionState = SuspensionState()
+
+    /// Bumped by every suspension-context change: `suspend(at:)`,
+    /// `resume(source:)` and `stop()`. `tickAsync` captures it immediately
+    /// before each `await` and drops the sample if it moved.
+    ///
+    /// A CHANGE detector, not a state read. Reading `isSuspended` after the
+    /// await answers "am I suspended now", which a suspend/resume pair landing
+    /// entirely inside one IPC window (the machine sleeps and wakes while a
+    /// tick is parked) answers `false` to -- waving through exactly the stale
+    /// sample the recheck exists to stop. The epoch also subsumes the flag
+    /// read: `beginTick` only returns `true` when nothing is suspended, so any
+    /// suspension after it necessarily arrives with a bump.
+    ///
+    /// Why a recheck at all: the main actor stays live while a tick is parked
+    /// on IPC, so `suspend(at:)` -- screen lock or sleep, delivered by
+    /// `SystemMonitor`, not by ticking -- can have closed and persisted the
+    /// current span in between. Ingesting the sample afterwards would reopen a
+    /// span behind the lock screen: the exact bug class `SuspensionState`
+    /// exists to prevent, reintroduced through the back door of a suspension
+    /// point.
+    ///
+    /// A late sample is DROPPED, never re-timestamped to "now": its `now` is
+    /// the timestamp every state-machine decision earlier in this tick was
+    /// already made against (idle backdating, the Chrome throttle window,
+    /// `focusInterceptor`), and re-stamping it would silently disagree with
+    /// all of them. Dropping costs one 1s sample; the reentrancy guard
+    /// guarantees the next tick starts from a clean state.
+    private var suspensionEpoch = 0
+
     public var isSuspended: Bool { suspensionState.isSuspended }
     public private(set) var latestSample: Sample?
 
@@ -248,8 +305,16 @@ public final class TrackerEngine {
         systemMonitor.onResume = { [weak self] _, source in self?.resume(source: source) }
         systemMonitor.start()
 
+        // `now` is captured at timer-fire time, not inside the tick, so span
+        // timestamps stay on the 1s grid regardless of how long the IPC
+        // takes. The `Task` inherits MainActor isolation, so the state
+        // machine still starts (and ends) on the main actor.
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.tick() }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let now = Date()
+                Task { await self.tickAsync(now: now) }
+            }
         }
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
@@ -259,12 +324,94 @@ public final class TrackerEngine {
     public func stop() {
         timer?.invalidate()
         timer = nil
+        // Same bump as a suspension, for the same reason: a tick parked on IPC
+        // right now must not come back and reopen a span after this close.
+        // Both callers quit the app, but `NSApp.terminate` still spins the run
+        // loop, so that continuation can land.
+        suspensionEpoch += 1
         if let closed = builder.close(at: Date()) {
             persist(closed)
         }
     }
 
-    func tick(now: Date = Date()) {
+    /// The one state-machine entry point -- production and tests both drive
+    /// this, so there is no second copy of the phase ordering to drift.
+    /// Everything that touches engine state stays on the main actor,
+    /// including the `NSWorkspace` frontmost-app read; only the AX Mach IPC
+    /// and the Chrome Apple Event leave it.
+    ///
+    /// Two hops rather than one because the Chrome fetch gate
+    /// (`shouldFetchChromeTab`) depends on the AX window title AND on
+    /// `throttle`/`chromeBackoff`, which live here. Keeping the decision on
+    /// the actor avoids shipping copies of that state across the boundary,
+    /// and the second hop only happens when Chrome is frontmost and the 5s
+    /// throttle allows -- at most once per 5s, not once per tick.
+    func tickAsync(now: Date = Date()) async {
+        guard !tickInFlight else { return }
+        tickInFlight = true
+        defer { tickInFlight = false }
+
+        guard beginTick(now: now) else { return }
+
+        // AppKit on the actor (see `WindowSampler.frontmostApp`). Skipped
+        // entirely when a seam is installed, so tests never depend on whichever
+        // app happens to be frontmost on the machine running them.
+        let frontmost = windowSampleProvider == nil ? windowSampler.frontmostApp() : nil
+        let epochBeforeSample = suspensionEpoch
+        guard var sample = await offActorWindowSample(
+            now: now, provider: windowSampleProvider, app: frontmost
+        ) else { return }
+        guard suspensionEpoch == epochBeforeSample else { return }
+
+        if sample.appBundleID == Self.chromeBundleID {
+            if shouldFetchChromeTab(title: sample.windowTitle, at: now) {
+                // Refresh the cached authorization answer once per attempt,
+                // regardless of whether the fetch itself succeeds -- this is
+                // the only place that ever calls the real TCC check.
+                cachedChromeAutomationAuthorized = chromeAutomationAuthorized()
+                let epochBeforeChrome = suspensionEpoch
+                let fetched = await offActorChromeTab(provider: chromeTabProvider)
+                guard suspensionEpoch == epochBeforeChrome else { return }
+                noteChromeFetch(fetched, title: sample.windowTitle, at: now)
+            }
+            applyChromeTabState(to: &sample)
+        }
+
+        finishTick(sample, now: now)
+    }
+
+    /// Runs on the cooperative pool: a `nonisolated async` function does not
+    /// inherit its caller's isolation (SE-0338), so the `await` at the call
+    /// site IS the hop off the main thread -- `TrackerEngineAsyncTickTests`
+    /// measures that hop rather than assuming it, so a toolchain change
+    /// undoing it shows up as a red test, not as a beachball. The provider and
+    /// the app identity are passed in because reading them through `self`
+    /// would hop straight back.
+    ///
+    /// Blocking Mach IPC on a cooperative-pool thread is only acceptable
+    /// because `tickInFlight` bounds it to one such thread at a time: do not
+    /// remove that guard without revisiting this.
+    nonisolated private func offActorWindowSample(
+        now: Date, provider: (@Sendable (Date) -> Sample?)?, app: WindowSampler.FrontmostApp?
+    ) async -> Sample? {
+        if let provider { return provider(now) }
+        guard let app else { return nil }
+        return windowSampler.sample(at: now, app: app)
+    }
+
+    /// Off-actor counterpart for the Chrome Apple Event -- likewise bounded to
+    /// one cooperative-pool thread by `tickInFlight`. See
+    /// `offActorWindowSample`.
+    nonisolated private func offActorChromeTab(
+        provider: (@Sendable () -> ChromeSampler.TabInfo?)?
+    ) async -> ChromeSampler.TabInfo? {
+        provider.map { $0() } ?? chromeSampler.activeTab()
+    }
+
+    /// Tick phase 1 (main actor, no IPC): meeting idle-exemption and the
+    /// idle/lock/sleep suspension state machine. Returns `true` when the
+    /// caller should go on to sample.
+    private func beginTick(now: Date) -> Bool {
         let rawIdle = idleSecondsProvider?() ?? idleMonitor.idleSeconds()
         let isInMeetingNow = isInMeetingProvider?() == true
         if wasInMeeting, !isInMeetingNow {
@@ -275,7 +422,7 @@ public final class TrackerEngine {
 
         switch suspensionState.tick(idleSeconds: idleSeconds, threshold: settings.idleThreshold) {
         case .systemSuspended, .stillIdle:
-            return
+            return false
         case .becameIdle:
             let backdated = now.addingTimeInterval(-idleSeconds)
             let closeAt = exemptionEndedAt.map { max(backdated, $0) } ?? backdated
@@ -283,78 +430,87 @@ public final class TrackerEngine {
             if let closed = builder.close(at: closeAt) {
                 persist(closed)
             }
-            return
+            return false
         case .active:
-            break
+            return true
         }
+    }
 
-        guard var sample = (windowSampleProvider.map { $0() } ?? windowSampler.sample(at: now)) else { return }
+    /// Chrome tab-fetch gate: the 5s/title-change throttle AND the failure
+    /// backoff must both allow it. Pure read -- neither call mutates.
+    private func shouldFetchChromeTab(title: String?, at now: Date) -> Bool {
+        throttle.shouldFetch(title: title, at: now) && chromeBackoff.shouldAttempt(at: now)
+    }
 
-        if sample.appBundleID == Self.chromeBundleID {
-            // R-T12a: the AX title read fresh THIS tick, captured before
-            // anything below can overwrite `sample.windowTitle` with a
-            // ScriptingBridge title that can be stale (the throttle only
-            // re-fetches every 5s, and backoff can skip fetches for up to
-            // 60s without resetting `chromeTabState`). Used just below to
-            // keep the focus block page's marker title from being silently
-            // replaced by a stale SB title -- decision 2's block-page
-            // detection would otherwise lose its title signal.
-            let axTitle = sample.windowTitle
-            if throttle.shouldFetch(title: sample.windowTitle, at: now),
-               chromeBackoff.shouldAttempt(at: now) {
-                // Refresh the cached authorization answer once per attempt,
-                // regardless of whether the fetch itself succeeds -- this is
-                // the only place that ever calls the real TCC check.
-                cachedChromeAutomationAuthorized = chromeAutomationAuthorized()
-                let fetched = chromeTabProvider.map { $0() } ?? chromeSampler.activeTab()
-                if let tab = fetched {
-                    throttle.noteFetched(title: sample.windowTitle, at: now)
-                    chromeBackoff.noteSuccess()
-                    chromeTabState = tab.isIncognito
-                        ? .incognito
-                        : .tab(url: tab.url, title: tab.title)
-                } else {
-                    chromeBackoff.noteFailure(at: now)
-                    // A failed re-fetch must not un-suppress a window we
-                    // already confirmed is incognito -- only .tab/.none
-                    // collapse to .none; .incognito is sticky until the next
-                    // successful (non-incognito) fetch.
-                    if case .incognito = chromeTabState {} else { chromeTabState = .none }
-                    if chromeBackoff.isDegraded, !cachedChromeAutomationAuthorized {
-                        logger.error("Chrome capture degraded: automation likely revoked")
-                    }
-                }
-                // 5+ failures while window-less (Chrome frontmost, zero
-                // windows) is not a permissions problem -- only surface the
-                // warning when authorization is actually the cause.
-                chromeCaptureDegraded = chromeBackoff.isDegraded && !cachedChromeAutomationAuthorized
+    /// Folds one Chrome tab fetch result into `throttle`, `chromeBackoff`,
+    /// `chromeTabState` and `chromeCaptureDegraded`. `title` is the AX window
+    /// title of the sample that triggered the fetch (what the throttle keys
+    /// on).
+    private func noteChromeFetch(_ fetched: ChromeSampler.TabInfo?, title: String?, at now: Date) {
+        if let tab = fetched {
+            throttle.noteFetched(title: title, at: now)
+            chromeBackoff.noteSuccess()
+            chromeTabState = tab.isIncognito
+                ? .incognito
+                : .tab(url: tab.url, title: tab.title)
+        } else {
+            chromeBackoff.noteFailure(at: now)
+            // A failed re-fetch must not un-suppress a window we
+            // already confirmed is incognito -- only .tab/.none
+            // collapse to .none; .incognito is sticky until the next
+            // successful (non-incognito) fetch.
+            if case .incognito = chromeTabState {} else { chromeTabState = .none }
+            if chromeBackoff.isDegraded, !cachedChromeAutomationAuthorized {
+                logger.error("Chrome capture degraded: automation likely revoked")
             }
-            switch chromeTabState {
-            case .tab(let url, let title):
-                sample.url = url
-                // R-T12a: keep the fresh AX title instead of the (possibly
-                // stale) SB title when the AX title already IS the block
-                // page's marker -- zero effect on every non-focus tab,
-                // since a real Chrome tab essentially never coincides with
-                // this exact literal title.
-                sample.windowTitle = (axTitle == FocusBlockPage.pageMarkerTitle) ? axTitle : title
-            case .incognito:
+        }
+        // 5+ failures while window-less (Chrome frontmost, zero
+        // windows) is not a permissions problem -- only surface the
+        // warning when authorization is actually the cause.
+        chromeCaptureDegraded = chromeBackoff.isDegraded && !cachedChromeAutomationAuthorized
+    }
+
+    /// Overlays the cached Chrome tab state onto a Chrome sample. Runs on
+    /// every Chrome tick, whether or not this tick fetched.
+    private func applyChromeTabState(to sample: inout Sample) {
+        // R-T12a: the AX title read fresh THIS tick, captured before
+        // anything below can overwrite `sample.windowTitle` with a
+        // ScriptingBridge title that can be stale (the throttle only
+        // re-fetches every 5s, and backoff can skip fetches for up to
+        // 60s without resetting `chromeTabState`). Used just below to
+        // keep the focus block page's marker title from being silently
+        // replaced by a stale SB title -- decision 2's block-page
+        // detection would otherwise lose its title signal.
+        let axTitle = sample.windowTitle
+        switch chromeTabState {
+        case .tab(let url, let title):
+            sample.url = url
+            // R-T12a: keep the fresh AX title instead of the (possibly
+            // stale) SB title when the AX title already IS the block
+            // page's marker -- zero effect on every non-focus tab,
+            // since a real Chrome tab essentially never coincides with
+            // this exact literal title.
+            sample.windowTitle = (axTitle == FocusBlockPage.pageMarkerTitle) ? axTitle : title
+        case .incognito:
+            sample.url = nil
+            sample.windowTitle = nil
+        case .none:
+            // No confirmed tab state. Automation still authorized: keep
+            // the AX window title (classification degrades to app-level,
+            // but nothing private leaks -- Chrome's AX title for a
+            // non-incognito window is just the page title). Automation
+            // NOT authorized: we cannot tell whether this window is
+            // incognito, so suppress both, matching pre-change behavior.
+            if !cachedChromeAutomationAuthorized {
                 sample.url = nil
                 sample.windowTitle = nil
-            case .none:
-                // No confirmed tab state. Automation still authorized: keep
-                // the AX window title (classification degrades to app-level,
-                // but nothing private leaks -- Chrome's AX title for a
-                // non-incognito window is just the page title). Automation
-                // NOT authorized: we cannot tell whether this window is
-                // incognito, so suppress both, matching pre-change behavior.
-                if !cachedChromeAutomationAuthorized {
-                    sample.url = nil
-                    sample.windowTitle = nil
-                }
             }
         }
+    }
 
+    /// Tick phase 3 (main actor, no IPC): focus intercept, span ingest,
+    /// heartbeat.
+    private func finishTick(_ sample: Sample, now: Date) {
         // Heartbeat runs regardless of whether this tick's sample is
         // intercepted (fold-in fix): the interceptor only ever skips
         // INGESTING the current sample, but the span already open in
@@ -380,13 +536,23 @@ public final class TrackerEngine {
     /// True when Chrome Automation is currently authorized. Backed by the
     /// real `Permissions` check (no prompt: `ask: false`); when a test seam
     /// is present it answers instead and the real check is never invoked.
-    /// Only called from the cached-refresh site in `tick(now:)` -- never
-    /// call this directly elsewhere, or the whole point of caching is lost.
+    /// Only called from the cached-refresh site inside the
+    /// `shouldFetchChromeTab` gate in `tickAsync(now:)` -- never call this
+    /// directly elsewhere, or the whole point of caching is lost. Stays on the
+    /// main actor because `Permissions.chromeAutomationStatus` is
+    /// `@MainActor`; the gate already keeps it to at most once per 5s.
     private func chromeAutomationAuthorized() -> Bool {
         chromeAutomationAuthorizedProvider?() ?? (Permissions.chromeAutomationStatus(ask: false) == 0)
     }
 
-    private func suspend(at date: Date) {
+    /// Internal rather than private so a test can simulate the screen
+    /// locking mid-tick, which is what `SystemMonitor.onSuspend` does in
+    /// production (see `testSampleArrivingAfterLockIsDropped`).
+    func suspend(at date: Date) {
+        // Bumped before the idempotence guard: the epoch only has to be a
+        // superset of "the suspension context moved", and a redundant signal
+        // costs at most one dropped 1s sample.
+        suspensionEpoch += 1
         guard suspensionState.suspendSystem() else { return }
         if let closed = builder.close(at: date) {
             persist(closed)
@@ -400,7 +566,11 @@ public final class TrackerEngine {
     /// display while the screen is still locked -- the later
     /// `screenIsUnlocked` notification is what clears suspension in that
     /// case.
-    private func resume(source: SystemMonitor.ResumeSource) {
+    ///
+    /// Internal for the same reason as `suspend(at:)`: a test drives a
+    /// lock+unlock pair that both land inside one IPC window.
+    func resume(source: SystemMonitor.ResumeSource) {
+        suspensionEpoch += 1
         switch source {
         case .unlock:
             suspensionState.unlock()
