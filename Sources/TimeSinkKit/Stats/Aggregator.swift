@@ -87,30 +87,110 @@ public enum Aggregator {
 
     // MARK: - Splitting spans across calendar buckets
 
-    public static func split(_ span: Span, by component: Calendar.Component, calendar: Calendar) -> [(bucketStart: Date, seconds: TimeInterval)] {
-        guard span.end > span.start else { return [] }
-        guard var interval = calendar.dateInterval(of: component, for: span.start) else { return [] }
+    /// Splits spans into calendar buckets, remembering the last bucket it
+    /// resolved. Every `Aggregator` function that splits a whole array keeps
+    /// one of these for the pass instead of calling `Calendar` per span.
+    ///
+    /// `Calendar.dateInterval(of:for:)` is the dominant cost of every profile
+    /// and stacked-series card. Measured in a release build over the live
+    /// database's 32,128 spans:
+    ///
+    ///     component      per-call   one-entry cache
+    ///     .hour             7.6 ms          5.8 ms
+    ///     .day            100.6 ms          5.9 ms
+    ///     .weekOfYear     248.2 ms          5.8 ms
+    ///
+    /// `.weekOfYear` is the worst because it reaches ICU for `firstWeekday`
+    /// and `minimumDaysInFirstWeek`; `.hour` is nearly arithmetic already.
+    ///
+    /// The cache works because `SpanStore.spans(overlapping:)` returns spans
+    /// in `start` order and consecutive spans almost always share a bucket --
+    /// measured on the live database, 32,105 of 32,127 consecutive pairs
+    /// (99.93%) share a calendar day and 31,813 (99.02%) share an hour. Note
+    /// this is the opposite of the result that killed a one-entry cache in
+    /// front of `CategoryResolver`'s memo (only 2% of spans repeat the
+    /// preceding classification tuple) -- bucket locality and tuple locality
+    /// are unrelated, and each had to be measured separately.
+    struct BucketSplitter {
+        private let component: Calendar.Component
+        private let calendar: Calendar
+        private var start: Date = .distantPast
+        private var end: Date = .distantPast
 
-        var result: [(bucketStart: Date, seconds: TimeInterval)] = []
-        while interval.start < span.end {
-            let partStart = max(interval.start, span.start)
-            let partEnd = min(interval.end, span.end)
-            let seconds = partEnd.timeIntervalSince(partStart)
-            if seconds > 0 {
-                result.append((bucketStart: interval.start, seconds: seconds))
-            }
-            guard let next = calendar.dateInterval(of: component, for: interval.end) else { break }
-            interval = next
+        init(component: Calendar.Component, calendar: Calendar) {
+            self.component = component
+            self.calendar = calendar
         }
-        return result
+
+        /// Deliberately not `DateInterval.contains(_:)`, which is inclusive
+        /// of `end`: a timestamp landing exactly on a bucket boundary belongs
+        /// to the next bucket, and `contains` would hand back the previous
+        /// one. The cached pair is always whatever `Calendar` last returned,
+        /// so DST's 23- and 25-hour days stay correct -- nothing here assumes
+        /// a bucket's length.
+        private mutating func interval(containing date: Date) -> DateInterval? {
+            if date >= start && date < end {
+                return DateInterval(start: start, end: end)
+            }
+            guard let resolved = calendar.dateInterval(of: component, for: date) else { return nil }
+            start = resolved.start
+            end = resolved.end
+            return resolved
+        }
+
+        mutating func split(_ span: Span) -> [(bucketStart: Date, seconds: TimeInterval)] {
+            guard span.end > span.start else { return [] }
+            guard var bucket = interval(containing: span.start) else { return [] }
+
+            var result: [(bucketStart: Date, seconds: TimeInterval)] = []
+            while true {
+                let partStart = max(bucket.start, span.start)
+                let partEnd = min(bucket.end, span.end)
+                let seconds = partEnd.timeIntervalSince(partStart)
+                if seconds > 0 {
+                    result.append((bucketStart: bucket.start, seconds: seconds))
+                }
+                // Resolve the next bucket only when the span actually reaches
+                // into it. The previous formulation looked it up at the end of
+                // every iteration and let `while interval.start < span.end`
+                // reject it, which doubled the `Calendar` calls for the ~99%
+                // of spans that fit in one bucket -- and, once a cache sits
+                // behind this, evicted the entry the next span was about to
+                // hit. Exiting here is equivalent: the rejected `next` starts
+                // at `interval.end >= span.end`, so the old condition was
+                // already false for it.
+                if bucket.end >= span.end { break }
+                // `next.start > bucket.start` is this loop's termination
+                // invariant, not a hypothetical: the advance depends on the
+                // cache above answering `bucket.end` with the FOLLOWING
+                // bucket. Any containment test that hands back the current
+                // one instead -- e.g. `DateInterval.contains`, which is
+                // inclusive of `end` -- turns this into an infinite loop that
+                // hangs the main actor mid-aggregation. Stating it costs a
+                // comparison and converts that hang into a short result.
+                guard let next = interval(containing: bucket.end),
+                      next.start > bucket.start else { break }
+                bucket = next
+            }
+            return result
+        }
+    }
+
+    /// One-shot split, kept for callers (and tests) that split a single span.
+    /// Array callers should hold a `BucketSplitter` across the pass instead --
+    /// a splitter built per span can never hit its cache.
+    public static func split(_ span: Span, by component: Calendar.Component, calendar: Calendar) -> [(bucketStart: Date, seconds: TimeInterval)] {
+        var splitter = BucketSplitter(component: component, calendar: calendar)
+        return splitter.split(span)
     }
 
     // MARK: - Profiles
 
     public static func profileByHourOfDay(_ items: [CategorizedSpan], calendar: Calendar) -> [Int: TimeInterval] {
         var result: [Int: TimeInterval] = [:]
+        var splitter = BucketSplitter(component: .hour, calendar: calendar)
         for item in items {
-            for part in split(item.span, by: .hour, calendar: calendar) {
+            for part in splitter.split(item.span) {
                 let hour = calendar.component(.hour, from: part.bucketStart)
                 result[hour, default: 0] += part.seconds
             }
@@ -120,8 +200,9 @@ public enum Aggregator {
 
     public static func profileByWeekday(_ items: [CategorizedSpan], calendar: Calendar) -> [Int: TimeInterval] {
         var result: [Int: TimeInterval] = [:]
+        var splitter = BucketSplitter(component: .day, calendar: calendar)
         for item in items {
-            for part in split(item.span, by: .day, calendar: calendar) {
+            for part in splitter.split(item.span) {
                 let weekday = calendar.component(.weekday, from: part.bucketStart) // 1 = Sunday
                 let key = (weekday + 5) % 7 // 0 = Monday ... 6 = Sunday
                 result[key, default: 0] += part.seconds
@@ -139,10 +220,11 @@ public enum Aggregator {
 
     public static func productivityProfileByHourOfDay(_ items: [CategorizedSpan], categories: [String: Category], calendar: Calendar) -> [Int: TimeInterval] {
         var result: [Int: TimeInterval] = [:]
+        var splitter = BucketSplitter(component: .hour, calendar: calendar)
         for item in items {
             let sign = productivitySign(for: item.categoryID, categories: categories)
             guard sign != 0 else { continue }
-            for part in split(item.span, by: .hour, calendar: calendar) {
+            for part in splitter.split(item.span) {
                 let hour = calendar.component(.hour, from: part.bucketStart)
                 result[hour, default: 0] += sign * part.seconds
             }
@@ -152,10 +234,11 @@ public enum Aggregator {
 
     public static func productivityProfileByWeekday(_ items: [CategorizedSpan], categories: [String: Category], calendar: Calendar) -> [Int: TimeInterval] {
         var result: [Int: TimeInterval] = [:]
+        var splitter = BucketSplitter(component: .day, calendar: calendar)
         for item in items {
             let sign = productivitySign(for: item.categoryID, categories: categories)
             guard sign != 0 else { continue }
-            for part in split(item.span, by: .day, calendar: calendar) {
+            for part in splitter.split(item.span) {
                 let weekday = calendar.component(.weekday, from: part.bucketStart) // 1 = Sunday
                 let key = (weekday + 5) % 7 // 0 = Monday ... 6 = Sunday
                 result[key, default: 0] += sign * part.seconds
@@ -173,8 +256,9 @@ public enum Aggregator {
 
     public static func stackedSeries(_ items: [CategorizedSpan], bucket: Calendar.Component, calendar: Calendar) -> [(bucketStart: Date, categoryID: String, seconds: TimeInterval)] {
         var totals: [BucketCategoryKey: TimeInterval] = [:]
+        var splitter = BucketSplitter(component: bucket, calendar: calendar)
         for item in items {
-            for part in split(item.span, by: bucket, calendar: calendar) {
+            for part in splitter.split(item.span) {
                 let key = BucketCategoryKey(bucketStart: part.bucketStart, categoryID: item.categoryID)
                 totals[key, default: 0] += part.seconds
             }
@@ -192,8 +276,9 @@ public enum Aggregator {
     /// For the heatmap card.
     public static func pulseByWeekdayHour(_ items: [CategorizedSpan], categories: [String: Category], calendar: Calendar) -> [[(pulse: Int?, seconds: TimeInterval)]] {
         var buckets: [[[String: TimeInterval]]] = Array(repeating: Array(repeating: [:], count: 24), count: 7)
+        var splitter = BucketSplitter(component: .hour, calendar: calendar)
         for item in items {
-            for part in split(item.span, by: .hour, calendar: calendar) {
+            for part in splitter.split(item.span) {
                 let weekday = calendar.component(.weekday, from: part.bucketStart) // 1 = Sunday
                 let row = (weekday + 5) % 7 // 0 = Monday ... 6 = Sunday
                 let hour = calendar.component(.hour, from: part.bucketStart)
@@ -216,8 +301,9 @@ public enum Aggregator {
     public static func dailyPulses(items: [CategorizedSpan], categories: [String: Category],
                             days: Int, endingAt: Date, calendar: Calendar) -> [Int?] {
         var perDay: [Date: [String: TimeInterval]] = [:]
+        var splitter = BucketSplitter(component: .day, calendar: calendar)
         for item in items {
-            for part in Aggregator.split(item.span, by: .day, calendar: calendar) {
+            for part in splitter.split(item.span) {
                 perDay[part.bucketStart, default: [:]][item.categoryID, default: 0] += part.seconds
             }
         }

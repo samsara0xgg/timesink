@@ -26,6 +26,85 @@ final class AggregatorTests: XCTestCase {
         XCTAssertEqual(parts[1].seconds, 3600)   // 11:00-12:00
         XCTAssertEqual(parts[2].seconds, 900)    // 12:00-12:15
     }
+    /// `BucketSplitter` caches the last bucket `Calendar` resolved and reuses
+    /// it for the next span, which is only safe if the reuse test is
+    /// half-open and nothing assumes a fixed bucket length. Neither condition
+    /// is exercised by the live database (its spans never cross a DST
+    /// transition) or by the UTC fixtures above, so this drives a sequence
+    /// through one splitter across both 2026 US transitions and requires it to
+    /// agree with the uncached per-span `split` on every part.
+    ///
+    /// Fails if the cache goes stale, if the containment test becomes
+    /// inclusive of `end` (a span starting exactly on a boundary would then
+    /// be attributed to the previous bucket), or if the loop stops crossing
+    /// into later buckets.
+    func testBucketSplitterMatchesUncachedSplitAcrossDSTTransitions() {
+        var pacific = Calendar(identifier: .gregorian)
+        pacific.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        let f = ISO8601DateFormatter()
+
+        // 2026-03-08 springs forward (23h), 2026-11-01 falls back (25h).
+        for (label, windowStart, expectedHours) in [
+            ("spring forward", "2026-03-07T08:00:00Z", 23.0),
+            ("fall back", "2026-10-31T07:00:00Z", 25.0),
+        ] as [(String, String, Double)] {
+            let base = f.date(from: windowStart)!
+
+            // Prove the window really contains the transition, so a calendar
+            // or timezone-data change can't silently turn this into a test of
+            // ordinary 24-hour days.
+            let transitionDay = pacific.startOfDay(for: base.addingTimeInterval(36 * 3600))
+            let dayLength = pacific.dateInterval(of: .day, for: transitionDay)!.duration
+            XCTAssertEqual(dayLength / 3600, expectedHours, "\(label): window does not contain the DST transition")
+
+            // Every 20 minutes for three days: short spans that mostly stay
+            // inside one bucket (so the cache is actually reused), plus some
+            // that straddle, plus spans starting exactly on bucket edges.
+            var spans: [Span] = []
+            for step in 0..<(3 * 72) {
+                let start = base.addingTimeInterval(Double(step) * 1200)
+                spans.append(Span(start: start, end: start.addingTimeInterval(900),
+                                  appBundleID: "a", appName: "a", title: nil, url: nil, domain: nil))
+            }
+            for hourOffset in [0.0, 23.0, 24.0, 25.0, 47.0, 48.0] {
+                let edge = pacific.startOfDay(for: base).addingTimeInterval(hourOffset * 3600)
+                spans.append(Span(start: edge, end: edge.addingTimeInterval(5400),
+                                  appBundleID: "a", appName: "a", title: nil, url: nil, domain: nil))
+            }
+            spans.sort { $0.start < $1.start }
+
+            for component in [Calendar.Component.hour, .day, .weekOfYear] {
+                var splitter = Aggregator.BucketSplitter(component: component, calendar: pacific)
+                for span in spans {
+                    let cached = splitter.split(span)
+                    let uncached = Aggregator.split(span, by: component, calendar: pacific)
+                    XCTAssertEqual(cached.count, uncached.count,
+                                   "\(label) .\(component): part count differs at \(span.start)")
+                    for (a, b) in zip(cached, uncached) {
+                        XCTAssertEqual(a.bucketStart, b.bucketStart,
+                                       "\(label) .\(component): bucketStart differs at \(span.start)")
+                        XCTAssertEqual(a.seconds, b.seconds,
+                                       "\(label) .\(component): seconds differ at \(span.start)")
+                    }
+                }
+            }
+        }
+    }
+
+    /// A span whose whole duration sits inside one bucket must produce exactly
+    /// one part, and a span starting exactly on a bucket boundary belongs to
+    /// the bucket that boundary opens -- not the one it closes.
+    func testSplitBoundaryExactness() {
+        let inside = mkSpan("2026-08-17T10:10:00Z", "2026-08-17T10:50:00Z")
+        XCTAssertEqual(Aggregator.split(inside, by: .hour, calendar: cal).count, 1)
+
+        let onEdge = mkSpan("2026-08-17T11:00:00Z", "2026-08-17T11:30:00Z")
+        let parts = Aggregator.split(onEdge, by: .hour, calendar: cal)
+        XCTAssertEqual(parts.count, 1)
+        XCTAssertEqual(parts[0].bucketStart, ISO8601DateFormatter().date(from: "2026-08-17T11:00:00Z")!)
+        XCTAssertEqual(parts[0].seconds, 1800)
+    }
+
     func testPulseFormula() {
         // 2h softwareDev(+2=100分) + 1h entertainment(-2=0分) → (7200*100+3600*0)/10800 = 66.67 → 67
         let by = ["softwareDev": 7200.0, "entertainment": 3600.0]
