@@ -105,6 +105,20 @@ struct TitleRuleEditor: View {
     @State private var categoryID: String
     @State private var duplicateMessage: String?
 
+    /// "影响 N 项", recomputed behind `pendingPreview` rather than read
+    /// straight out of `body`. As a computed property this scanned every span
+    /// in the current range on every keystroke, since each character
+    /// re-evaluates `body` -- measured at 53-62 ms per pass, which is exactly
+    /// the visible per-character stutter when the range is 本月 or 近30天.
+    @State private var affectedPreview: (count: Int, seconds: TimeInterval) = (0, 0)
+    @State private var pendingPreview: Task<Void, Never>?
+
+    /// Long enough to swallow a burst of typing, short enough that the count
+    /// still feels attached to the field. Same trailing-debounce shape as
+    /// `CategoryEditRow.scheduleDebouncedRefresh` and `ActivitiesView`'s
+    /// search recompute.
+    private static let previewDebounce: Duration = .milliseconds(250)
+
     init(model: AppModel, pending: PendingTitleRule) {
         self.model = model
         self.pending = pending
@@ -132,16 +146,35 @@ struct TitleRuleEditor: View {
         return pattern.hasPrefix("re:") ? [pattern] : pattern.split(separator: "|").map(String.init)
     }
 
-    private var affectedPreview: (count: Int, seconds: TimeInterval) {
-        guard let pattern = normalizedPattern else { return (0, 0) }
-        return TitleRuleInput.affected(items: model.rangedSpans(), pattern: pattern, scopeKey: scopeKey)
+    /// Restarts the trailing debounce; the scan itself runs once the user
+    /// stops. Cancelling first means a burst of keystrokes costs one pass,
+    /// not one per character.
+    private func schedulePreview() {
+        pendingPreview?.cancel()
+        pendingPreview = Task { @MainActor in
+            try? await Task.sleep(for: Self.previewDebounce)
+            guard !Task.isCancelled else { return }
+            recomputePreview()
+        }
+    }
+
+    private func recomputePreview() {
+        guard let pattern = normalizedPattern else {
+            affectedPreview = (0, 0)
+            return
+        }
+        affectedPreview = TitleRuleInput.affected(
+            items: model.rangedSpans(), pattern: pattern, scopeKey: scopeKey)
     }
 
     var body: some View {
         Form {
             Section {
                 TextField("关键词", text: $keywordText)
-                    .onChange(of: keywordText) { _, _ in duplicateMessage = nil }
+                    .onChange(of: keywordText) { _, _ in
+                        duplicateMessage = nil
+                        schedulePreview()
+                    }
                 Text("多个关键词用逗号分隔；`re:` 前缀为正则")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -172,7 +205,13 @@ struct TitleRuleEditor: View {
                     Text("所有活动").tag("")
                 }
                 .pickerStyle(.radioGroup)
-                .onChange(of: scopeKey) { _, _ in duplicateMessage = nil }
+                .onChange(of: scopeKey) { _, _ in
+                    duplicateMessage = nil
+                    // A single discrete choice, not a keystroke stream: run it
+                    // straight away so the count does not lag a click.
+                    pendingPreview?.cancel()
+                    recomputePreview()
+                }
 
                 Picker("分类", selection: $categoryID) {
                     ForEach(sortedCategories, id: \.id) { category in
@@ -183,8 +222,7 @@ struct TitleRuleEditor: View {
             }
 
             Section {
-                let preview = affectedPreview
-                Text("将影响当前范围内 \(preview.count) 项 · \(Format.duration(preview.seconds))")
+                Text("将影响当前范围内 \(affectedPreview.count) 项 · \(Format.duration(affectedPreview.seconds))")
                     .foregroundStyle(.secondary)
                 if let duplicateMessage {
                     Text(duplicateMessage)
@@ -205,6 +243,10 @@ struct TitleRuleEditor: View {
         .formStyle(.grouped)
         .frame(minWidth: 360)
         .padding()
+        // The right-click path opens with `pending.prefill` already in the
+        // field, so the count has to be right before the first keystroke.
+        .onAppear { recomputePreview() }
+        .onDisappear { pendingPreview?.cancel() }
     }
 
     /// Pre-checks for a builtin collision (`upsertUserTitleRule` silently

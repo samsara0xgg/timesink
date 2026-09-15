@@ -25,6 +25,10 @@ struct GeneralSettingsPane: View {
     /// `onAppear` and after the row's own action, never polled.
     @State private var notificationState: PermissionState = .notDetermined
 
+    /// Whether the four permission probes have run since the app last became
+    /// active -- see `refreshPermissionsIfNeeded()`.
+    @State private var didProbePermissions = false
+
     /// SMAppService.mainApp only functions when the app runs from
     /// /Applications; toggling elsewhere silently fails, so the control is
     /// disabled instead.
@@ -118,10 +122,14 @@ struct GeneralSettingsPane: View {
         .onAppear {
             idleThreshold = model.settings.idleThreshold
             loginItemEnabled = SMAppService.mainApp.status == .enabled
-            refreshAccessibility()
-            refreshChrome()
-            refreshCalendar()
-            Task { @MainActor in await refreshNotification() }
+            refreshPermissionsIfNeeded()
+        }
+        // The user grants or revokes a permission in System Settings, which
+        // means leaving and returning to this app -- so reactivation, not a
+        // tab switch, is when the answers can actually have changed.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            didProbePermissions = false
+            refreshPermissionsIfNeeded()
         }
         .alert("登录项设置失败", isPresented: alertIsPresented) {
             Button("好", role: .cancel) {}
@@ -196,6 +204,23 @@ struct GeneralSettingsPane: View {
                 }
             }
         )
+    }
+
+    /// `TabView` re-runs `onAppear` every time 通用 becomes the selected tab,
+    /// and `refreshChrome()` is a synchronous
+    /// `AEDeterminePermissionToAutomateTarget` -- an Apple Event/TCC
+    /// round-trip to another process on the main thread, and the
+    /// `Permissions.chromeAutomationStatus(ask:)` frame the 60s sample caught
+    /// 108 times. None of these four answers can change while the app stays
+    /// frontmost, so probe once per activation instead of once per tab
+    /// switch.
+    private func refreshPermissionsIfNeeded() {
+        guard !didProbePermissions else { return }
+        didProbePermissions = true
+        refreshAccessibility()
+        refreshChrome()
+        refreshCalendar()
+        Task { @MainActor in await refreshNotification() }
     }
 
     private func refreshAccessibility() {
