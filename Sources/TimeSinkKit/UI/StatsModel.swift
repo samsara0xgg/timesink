@@ -194,15 +194,22 @@ final class StatsModel {
         focusDelta = focus - Aggregator.focusTime(durationByCategory: prevDurationByCategory, categories: categories)
     }
 
-    /// Runs the 30-day score-trend + heatmap lookback when `force` is true
-    /// (StatsView's `onAppear` -- NOT range changes, since this lookback is a
-    /// fixed `.last30` window, independent of `model.range`; see fix round 1,
-    /// IMPORTANT 5) or when the calendar day has rolled over since the last
-    /// run -- skipped otherwise (dataVersion-driven refreshes within the same
-    /// day). Shares its `rangedSpans(for:)` call with `TodayDashboardModel`'s
-    /// streak lookback (identical `.last30` interval -> same
-    /// `AppModel.rangeCache` key), so this is near-zero-cost whenever the
-    /// menu bar dashboard has already populated that entry.
+    /// Runs the 30-day score-trend + heatmap lookback when `force` is true --
+    /// NOT range changes, since this lookback is a fixed `.last30` window,
+    /// independent of `model.range`; see fix round 1, IMPORTANT 5 -- or when
+    /// the calendar day has rolled over since the last run; skipped otherwise
+    /// (dataVersion-driven refreshes within the same day).
+    ///
+    /// This used to share its `rangedSpans(for:)` call with
+    /// `TodayDashboardModel`'s streak lookback (identical `.last30` interval,
+    /// so the same `AppModel.rangeCache` key), making it near-free whenever
+    /// the menu bar dashboard had already populated that entry. It no longer
+    /// does: that lookback moved onto `AppModel.dailyPulses`, a SQL-bucketed
+    /// path that never touches `rangeCache`. This is now the sole caller of
+    /// that key and runs cold whenever `dataChanged()` has cleared the cache,
+    /// so the day gate is the only thing keeping it off the interactive path.
+    /// That in turn is why `StatsView`'s model is owned by `MainWindowView`:
+    /// a per-switch rebuild would reset `lastHeavyDay` and defeat the gate.
     private func recomputeHeavyIfNeeded(
         model: AppModel, calendar: Calendar, categories: [String: Category], force: Bool
     ) {

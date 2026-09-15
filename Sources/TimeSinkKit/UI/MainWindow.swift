@@ -2,6 +2,17 @@ import SwiftUI
 
 struct MainWindowView: View {
     let model: AppModel
+
+    /// Owned here, not inside `StatsView`. `detailContent` below is a
+    /// `switch`, so its two branches are different concrete View types and
+    /// SwiftUI tears the inactive one down -- a `@State` model inside
+    /// `StatsView` was rebuilt from scratch on every 统计/活动 switch, which
+    /// reset `StatsModel.lastHeavyDay` and re-ran the full 30-day
+    /// trend+heatmap lookback each time. `MainWindowView` itself is not torn
+    /// down by a sidebar selection change, so the model (and its once-a-day
+    /// gate) survives here.
+    @State private var stats = StatsModel()
+
     @State private var showingCustomRangePopover = false
     @State private var customRangeStart = Date()
     @State private var customRangeEnd = Date()
@@ -20,7 +31,7 @@ struct MainWindowView: View {
     private var detailContent: some View {
         switch model.sidebarSelection {
         case .stats:
-            StatsView(model: model)
+            StatsView(model: model, stats: stats)
         case .activities:
             ActivitiesView(model: model)
         }

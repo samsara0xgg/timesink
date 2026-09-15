@@ -382,6 +382,15 @@ struct RulesSettingsPane: View {
     @State private var titleRules: [TitleRule] = []
     @State private var pendingTitleRule: PendingTitleRule?
 
+    /// Set when `dataVersion` bumps while this pane is not the selected tab.
+    /// `TabView` keeps every visited pane mounted, so its `.onChange`
+    /// handlers keep firing for edits made on other tabs -- without this the
+    /// pane reloads itself while off screen, and an edit on one tab pays for
+    /// the work of every other tab the user has ever opened. Reloading on
+    /// becoming visible again is not enough on its own either: that would
+    /// put the cost back on every tab switch even when nothing changed.
+    @State private var needsReload = true
+
     private var sortedCategories: [Category] {
         model.resolver.categoriesByID.values.sorted { $0.sortOrder < $1.sortOrder }
     }
@@ -409,19 +418,26 @@ struct RulesSettingsPane: View {
             }
         }
         .onAppear {
-            load()
-            loadTitleRules()
+            reloadIfVisibleAndStale()
             if newCategoryID.isEmpty {
                 newCategoryID = sortedCategories.first?.id ?? ""
             }
         }
         .onChange(of: model.dataVersion) { _, _ in
-            load()
-            loadTitleRules()
+            needsReload = true
+            reloadIfVisibleAndStale()
         }
+        .onChange(of: model.settingsTab) { _, _ in reloadIfVisibleAndStale() }
         .sheet(item: $pendingTitleRule) { pending in
             TitleRuleEditor(model: model, pending: pending)
         }
+    }
+
+    private func reloadIfVisibleAndStale() {
+        guard model.settingsTab == .rules, needsReload else { return }
+        needsReload = false
+        load()
+        loadTitleRules()
     }
 
     // MARK: URL rules
@@ -630,6 +646,15 @@ struct UncategorizedSettingsPane: View {
     let model: AppModel
     @State private var rows: [Row] = []
 
+    /// Set when `dataVersion` bumps while this pane is not the selected tab.
+    /// `TabView` keeps every visited pane mounted, so its `.onChange`
+    /// handlers keep firing for edits made on other tabs -- without this the
+    /// pane reloads itself while off screen, and an edit on one tab pays for
+    /// the work of every other tab the user has ever opened. Reloading on
+    /// becoming visible again is not enough on its own either: that would
+    /// put the cost back on every tab switch even when nothing changed.
+    @State private var needsRecompute = true
+
     private struct Row: Identifiable {
         let id: String
         let label: String
@@ -653,8 +678,21 @@ struct UncategorizedSettingsPane: View {
                 }
             }
         }
-        .onAppear { recompute() }
-        .onChange(of: model.dataVersion) { _, _ in recompute() }
+        .onAppear { recomputeIfVisibleAndStale() }
+        .onChange(of: model.dataVersion) { _, _ in
+            needsRecompute = true
+            recomputeIfVisibleAndStale()
+        }
+        .onChange(of: model.settingsTab) { _, _ in recomputeIfVisibleAndStale() }
+    }
+
+    /// `recompute()` reads 30 days of spans and classifies each one, so it
+    /// runs only when this pane is actually on screen and something has
+    /// changed since it last ran.
+    private func recomputeIfVisibleAndStale() {
+        guard model.settingsTab == .uncategorized, needsRecompute else { return }
+        needsRecompute = false
+        recompute()
     }
 
     private var emptyState: some View {

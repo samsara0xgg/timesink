@@ -7,8 +7,10 @@ import SwiftUI
 /// summary row) + stacked-category card, and the bottom donut+ranking row.
 struct StatsView: View {
     let model: AppModel
+    /// Owned by `MainWindowView` so it outlives a sidebar switch -- see the
+    /// declaration there.
+    let stats: StatsModel
 
-    @State private var stats = StatsModel()
     @State private var granularity: StatsModel.Granularity = .day
     @State private var showingCustomRangePopover = false
     @State private var customRangeStart = Date()
@@ -30,7 +32,12 @@ struct StatsView: View {
             }
             .padding()
         }
-        .onAppear { stats.recompute(model: model, forceHeavy: true) }
+        // NOT forceHeavy: `stats` now outlives this view, so the first
+        // appearance still runs the heavy lookback (its `lastHeavyDay` gate
+        // starts nil) while every later switch back into 统计 reuses what is
+        // already computed. Forcing it here was only ever compensating for a
+        // model that was rebuilt on each switch.
+        .onAppear { stats.recompute(model: model, forceHeavy: false) }
         .onChange(of: model.dataVersion) { _, _ in stats.recompute(model: model, forceHeavy: false) }
         // NOT forceHeavy: the 30-day trend/heatmap lookback is a fixed
         // `.last30` window, independent of `model.range` -- forcing it on
