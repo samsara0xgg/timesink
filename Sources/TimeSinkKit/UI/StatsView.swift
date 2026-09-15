@@ -38,6 +38,10 @@ struct StatsView: View {
         // already computed. Forcing it here was only ever compensating for a
         // model that was rebuilt on each switch.
         .onAppear { stats.recompute(model: model, forceHeavy: false) }
+        // A user edit also reaches the heavy lookback, without a second
+        // handler here that would recompute twice per edit -- see
+        // `StatsModel.recomputeHeavyIfNeeded`, which compares
+        // `model.dataEditVersion` itself.
         .onChange(of: model.dataVersion) { _, _ in stats.recompute(model: model, forceHeavy: false) }
         // NOT forceHeavy: the 30-day trend/heatmap lookback is a fixed
         // `.last30` window, independent of `model.range` -- forcing it on

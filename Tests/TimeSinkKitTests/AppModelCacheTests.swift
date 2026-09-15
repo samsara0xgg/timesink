@@ -41,6 +41,34 @@ final class AppModelCacheTests: XCTestCase {
         XCTAssertEqual(model.rangedSpans().count, 2)
     }
 
+    /// `dataEditVersion` exists so a view can tell a user edit apart from the
+    /// tracker's own span writes, which arrive about every 1.5s. If an engine
+    /// write ever started bumping it, `StatsModel`'s 30-day trend and heatmap
+    /// would go back to recomputing on the tracking cadence -- the cost the
+    /// day gate exists to avoid. If a user edit ever stopped bumping it, that
+    /// trend would show pre-edit numbers until midnight.
+    func testDataEditVersionSeparatesUserEditsFromEngineWrites() throws {
+        let (model, _) = try makeModel()
+        let startData = model.dataVersion
+        let startEdit = model.dataEditVersion
+
+        model.dataChanged()
+        XCTAssertEqual(model.dataVersion, startData + 1)
+        XCTAssertEqual(model.dataEditVersion, startEdit + 1, "a user edit must bump the edit counter")
+
+        // Productivity lives on Category, and both the pulse score and the
+        // heatmap are weighted by it, so a metadata edit counts as an edit
+        // even though it re-categorizes nothing.
+        model.categoryMetadataChanged()
+        XCTAssertEqual(model.dataVersion, startData + 2)
+        XCTAssertEqual(model.dataEditVersion, startEdit + 2, "a productivity/colour edit must bump it too")
+
+        // The engine's own path: same invalidation, no edit signal.
+        model.engineDataChangedForTesting()
+        XCTAssertEqual(model.dataVersion, startData + 3, "an engine write must still invalidate")
+        XCTAssertEqual(model.dataEditVersion, startEdit + 2, "an engine write must NOT count as an edit")
+    }
+
     func testRangeCacheEvictsOldestBeyondCap() throws {
         let (model, store) = try makeModel()
         let today = Calendar.current.startOfDay(for: Date()).addingTimeInterval(12 * 3600)

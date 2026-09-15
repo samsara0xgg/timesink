@@ -126,11 +126,15 @@ struct GeneralSettingsPane: View {
         }
         // The user grants or revokes a permission in System Settings, which
         // means leaving and returning to this app -- so reactivation, not a
-        // tab switch, is when the answers can actually have changed.
+        // tab switch, is when the answers can actually have changed. This
+        // only marks them stale; `refreshPermissionsIfNeeded` decides whether
+        // 通用 is actually on screen, because `TabView` keeps this pane (and
+        // this subscription) alive while the user works on another tab.
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             didProbePermissions = false
             refreshPermissionsIfNeeded()
         }
+        .onChange(of: model.settingsTab) { _, _ in refreshPermissionsIfNeeded() }
         .alert("登录项设置失败", isPresented: alertIsPresented) {
             Button("好", role: .cancel) {}
         } message: {
@@ -214,8 +218,16 @@ struct GeneralSettingsPane: View {
     /// 108 times. None of these four answers can change while the app stays
     /// frontmost, so probe once per activation instead of once per tab
     /// switch.
+    ///
+    /// Gated on 通用 being the selected tab for the same reason its sibling
+    /// panes are: `TabView` keeps every visited pane mounted, so this pane's
+    /// activation subscription stays live while the user works on 规则 or
+    /// 预算, and without the guard every Cmd-Tab back into the app would run
+    /// the Chrome round-trip for a pane nobody is looking at. Reactivation
+    /// only marks the answers stale; the probe itself waits until the pane is
+    /// on screen, which `onChange(of: model.settingsTab)` delivers.
     private func refreshPermissionsIfNeeded() {
-        guard !didProbePermissions else { return }
+        guard model.settingsTab == .general, !didProbePermissions else { return }
         didProbePermissions = true
         refreshAccessibility()
         refreshChrome()

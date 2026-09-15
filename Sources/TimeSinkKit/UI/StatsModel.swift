@@ -91,6 +91,17 @@ final class StatsModel {
     @ObservationIgnored
     private var lastHeavyDay: Date?
 
+    /// `AppModel.dataEditVersion` as of the last heavy run. A user edit
+    /// (reassignment, rule change, a category's productivity) does change the
+    /// 30-day numbers, so the day gate alone would leave the trend and
+    /// heatmap showing pre-edit values until midnight. Comparing the edit
+    /// counter here rather than adding a second `onChange` in `StatsView`
+    /// keeps one recompute per bump: an edit bumps `dataVersion` and
+    /// `dataEditVersion` together, and two handlers would each fire.
+    /// Starts at -1 so the first run is never mistaken for up to date.
+    @ObservationIgnored
+    private var lastHeavyEditVersion: Int = -1
+
     /// Light part runs every call (cheap -- `AppModel.rangedSpans(for:)`
     /// memoizes between `dataChanged()` bumps); the heavy part (30-day trend
     /// + heatmap) is gated by `forceHeavy` -- see `recomputeHeavyIfNeeded`.
@@ -214,8 +225,12 @@ final class StatsModel {
         model: AppModel, calendar: Calendar, categories: [String: Category], force: Bool
     ) {
         let todayStart = calendar.startOfDay(for: Date())
-        guard force || lastHeavyDay != todayStart else { return }
+        guard force
+                || lastHeavyDay != todayStart
+                || lastHeavyEditVersion != model.dataEditVersion
+        else { return }
         lastHeavyDay = todayStart
+        lastHeavyEditVersion = model.dataEditVersion
 
         let last30 = DateRangeSelection(kind: .last30, anchor: Date())
         let lookback = model.rangedSpans(for: last30)

@@ -51,6 +51,18 @@ public final class AppModel {
     /// re-run range/category queries.
     public var dataVersion: Int = 0
 
+    /// Bumped only when the USER changed data -- a reassignment, a rule or
+    /// category edit -- never for the engine's own span writes, which arrive
+    /// roughly every 1.5s while tracking runs.
+    ///
+    /// `dataVersion` cannot distinguish the two, and a view with an
+    /// aggregation too expensive to run on every engine write is stuck
+    /// choosing between recomputing constantly and going stale after an edit.
+    /// `StatsModel`'s 30-day trend and heatmap are exactly that: gated to
+    /// once a calendar day, so without this signal they would keep showing
+    /// pre-edit numbers until midnight.
+    public private(set) var dataEditVersion: Int = 0
+
     /// Menu bar icon label: today's focus time, kept in sync by `refreshMenu()`.
     public var menuTitle: String = "0m"
     /// Today's total tracked duration, for the menu bar dropdown.
@@ -219,7 +231,28 @@ public final class AppModel {
         budgetMonitor?.evaluateSummary(now: Date()) { [weak self] in self?.makeDailySummary() }
     }
 
+    /// The user changed data. Invalidates everything and signals both
+    /// versions -- see `dataEditVersion`.
     public func dataChanged() {
+        dataEditVersion += 1
+        invalidateAndBump()
+    }
+
+    /// The tracker wrote a span. Same invalidation, but deliberately does not
+    /// touch `dataEditVersion`: this fires about every 1.5s while tracking
+    /// and must not drag a once-a-day aggregation along with it.
+    private func engineDataChanged() {
+        invalidateAndBump()
+    }
+
+    /// The engine path is private and only ever reached through a 1.5s
+    /// debounce, so `testDataEditVersionSeparatesUserEditsFromEngineWrites`
+    /// needs a way in that does not involve waiting on a timer.
+    func engineDataChangedForTesting() {
+        engineDataChanged()
+    }
+
+    private func invalidateAndBump() {
         rangeCache.removeAll()
         cacheOrder.removeAll()
         refreshMenu()
@@ -238,6 +271,11 @@ public final class AppModel {
     /// classification memo survives too -- see that method for why the memo,
     /// not the table reload, is what makes the full path expensive.
     public func categoryMetadataChanged() {
+        // Bumps `dataEditVersion` too: productivity is a category field, and
+        // both the pulse score and the heatmap are weighted by it, so this
+        // edit does change the 30-day numbers even though it changes no
+        // span's category.
+        dataEditVersion += 1
         refreshMenu()
         dataVersion += 1
     }
@@ -256,7 +294,7 @@ public final class AppModel {
         pendingEngineRefresh = Task { @MainActor [weak self] in
             try? await Task.sleep(for: Self.engineChangeDebounce)
             guard !Task.isCancelled else { return }
-            self?.dataChanged()
+            self?.engineDataChanged()
         }
     }
 
