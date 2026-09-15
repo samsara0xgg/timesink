@@ -156,6 +156,40 @@ final class CategoryResolverMemoTests: XCTestCase {
         XCTAssertEqual(resolver.categoryID(for: probe), "learning")
     }
 
+    /// The complement of `testMemoIsInvalidatedByRefresh`: a metadata-only
+    /// edit must NOT pay the invalidation. `refreshCategories()` has to pick
+    /// up the new category row while leaving the memo populated and every
+    /// classification answer unchanged -- if it ever starts clearing the memo,
+    /// a colour change costs a full reclassification pass (measured at ~600 ms
+    /// against ~14 ms warm on the live database) and this is the only thing
+    /// that would notice.
+    func testRefreshCategoriesKeepsMemoAndClassification() throws {
+        let (resolver, store) = try makeResolver()
+        try store.setUserDomain("meta-test.example", categoryID: "learning")
+        resolver.refresh()
+
+        let probe = span(domain: "meta-test.example")
+        XCTAssertEqual(resolver.categoryID(for: probe), "learning")
+        let populated = resolver.memoEntryCount
+        XCTAssertGreaterThan(populated, 0)
+
+        guard var learning = resolver.categoriesByID["learning"] else {
+            return XCTFail("learning category missing")
+        }
+        learning.name = "重命名"
+        learning.colorHex = "#123456"
+        learning.productivity = -2
+        try store.updateCategory(learning)
+
+        resolver.refreshCategories()
+
+        XCTAssertEqual(resolver.categoriesByID["learning"]?.name, "重命名")
+        XCTAssertEqual(resolver.categoriesByID["learning"]?.colorHex, "#123456")
+        XCTAssertEqual(resolver.categoriesByID["learning"]?.productivity, -2)
+        XCTAssertEqual(resolver.memoEntryCount, populated, "metadata edit must not wipe the memo")
+        XCTAssertEqual(resolver.categoryID(for: probe), "learning")
+    }
+
     // The memo is a cache on a hot path, so its one hard obligation is the
     // memory bound: never more than `memoCap` entries, however many distinct
     // tuples get classified. (Which eviction policy is used is a perf

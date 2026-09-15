@@ -226,6 +226,22 @@ public final class AppModel {
         dataVersion += 1
     }
 
+    /// `dataChanged()` for edits that change how a category is presented or
+    /// scored but not which category any span resolves to -- a name, a color,
+    /// a productivity level, a sort order.
+    ///
+    /// Keeps `rangeCache`: its entries are `CategorizedSpan`s, span plus
+    /// categoryID, and this kind of edit changes neither. The menu bar still
+    /// has to be recomputed, because focus time and the pulse score are
+    /// weighted by productivity. Pair this with
+    /// `CategoryResolver.refreshCategories()` rather than `refresh()`, so the
+    /// classification memo survives too -- see that method for why the memo,
+    /// not the table reload, is what makes the full path expensive.
+    public func categoryMetadataChanged() {
+        refreshMenu()
+        dataVersion += 1
+    }
+
     /// Debounced entry point wired ONLY to `engine.onChange` -- every span
     /// insert/update while live tracking is running. Every live view
     /// responds to `dataVersion` with a full `rangedSpans()` + aggregation

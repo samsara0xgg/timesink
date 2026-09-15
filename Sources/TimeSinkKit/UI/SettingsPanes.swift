@@ -242,15 +242,19 @@ struct CategoriesSettingsPane: View {
 }
 
 /// A row's `updateCategory` write is cheap (single-row SQLite UPDATE) and
-/// happens on every field mutation, per-keystroke included. But
-/// `resolver.refresh()` re-reads the full domain/app/rule tables (8k+ rows)
-/// on the main actor, and `model.dataChanged()` fans `dataVersion` out to
-/// every open view (including this pane's own siblings — `RulesSettingsPane`
-/// reloads and `UncategorizedSettingsPane` re-runs its 30-day query, and
-/// `TabView` keeps visited tabs alive so both are live even when not the
-/// selected tab). Doing that on every keystroke/drag event is wasteful, so
-/// the two are decoupled: the write is immediate and unconditional, while
-/// the refresh+dataChanged only fires once the edit "settles" —
+/// happens on every field mutation, per-keystroke included. The follow-up
+/// used to be `resolver.refresh()` + `model.dataChanged()`, which re-read the
+/// full domain/app/rule tables, wiped the classification memo (~600 ms on the
+/// next recompute, against 14 ms warm) and cleared the range cache. None of
+/// that is needed here: this row edits a category's name, color, productivity
+/// and sort order, and a span's classification depends on none of them. It
+/// now calls `refreshCategories()` + `categoryMetadataChanged()`, which reload
+/// 12 category rows and leave both caches standing.
+///
+/// The `dataVersion` bump still fans out to every open view (including this
+/// pane's own siblings — `TabView` keeps visited tabs alive), so the write and
+/// the fan-out remain decoupled: the write is immediate and unconditional,
+/// while the refresh+fan-out only fires once the edit "settles" —
 /// `onSubmit`/focus-loss for the name field, a short debounce for the
 /// continuous ColorPicker drag stream, and immediately for the productivity
 /// `Picker` (a single discrete selection per event, not a continuous stream,
@@ -321,8 +325,8 @@ private struct CategoryEditRow: View {
     private func commitRefresh() {
         pendingColorRefresh?.cancel()
         pendingColorRefresh = nil
-        model.resolver.refresh()
-        model.dataChanged()
+        model.resolver.refreshCategories()
+        model.categoryMetadataChanged()
     }
 
     /// Debounces the refresh+dataChanged fan-out behind a short delay,
@@ -334,8 +338,8 @@ private struct CategoryEditRow: View {
         pendingColorRefresh = Task { @MainActor in
             try? await Task.sleep(for: Self.colorRefreshDebounce)
             guard !Task.isCancelled else { return }
-            model.resolver.refresh()
-            model.dataChanged()
+            model.resolver.refreshCategories()
+            model.categoryMetadataChanged()
         }
     }
 
