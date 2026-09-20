@@ -182,6 +182,30 @@ public enum AppDatabase {
             }
         }
 
+        migrator.registerMigration("v5") { db in
+            // Why the tracker stopped or resumed (idle/lock/sleep/pause/
+            // start/stop) -- so an empty stretch of spans is explainable.
+            try db.create(table: "stateEvent") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("at", .datetime).notNull().indexed()
+                t.column("kind", .text).notNull()
+            }
+            // One row per distinct front-window content; `lastSeenAt` is
+            // extended while a re-check finds the content unchanged.
+            try db.create(table: "capture") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("at", .datetime).notNull().indexed()
+                t.column("lastSeenAt", .datetime).notNull()
+                t.column("appBundleID", .text).notNull()
+                t.column("appName", .text).notNull()
+                t.column("windowID", .integer).notNull()
+                t.column("title", .text)
+                t.column("spanID", .integer)
+                t.column("text", .text).notNull()
+                t.column("imagePath", .text)
+            }
+        }
+
         return migrator
     }
 }

@@ -1,0 +1,185 @@
+import AppKit
+import CoreGraphics
+import ImageIO
+import ScreenCaptureKit
+import UniformTypeIdentifiers
+import Vision
+import os
+
+/// Looks at the front window on the tracker's schedule and stores one
+/// capture (OCR text + a 1x JPEG of that window only) per distinct content.
+/// Everything happens off the main actor; `TrackerEngine` hands each tick's
+/// sample over and never waits for a capture.
+public actor ScreenCollector {
+    /// Never captured, whatever is in front.
+    public static let excludedBundleIDs: Set<String> = [
+        "com.apple.keychainaccess",
+        "com.apple.Passwords",
+        "com.1password.1password",
+        "com.bitwarden.desktop",
+    ]
+
+    private let store: ObservationStore
+    private let imagesRoot: URL
+    private var policy = ScreenCapturePolicy()
+    /// Last stored capture per window, so re-checks of unchanged content
+    /// extend that row instead of inserting a duplicate.
+    private var last: [WindowKey: (rowID: Int64, signature: [UInt8])] = [:]
+    private var inFlight = false
+    private var permissionLogged = false
+    private var lastPrune = Date.distantPast
+    public private(set) var paused: Bool
+    private let logger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "screen")
+
+    public init(store: ObservationStore, imagesRoot: URL, paused: Bool) {
+        self.store = store
+        self.imagesRoot = imagesRoot
+        self.paused = paused
+    }
+
+    public static func defaultImagesRoot() throws -> URL {
+        try AppDatabase.defaultURL().deletingLastPathComponent()
+            .appendingPathComponent("captures", isDirectory: true)
+    }
+
+    public func setPaused(_ value: Bool) {
+        guard value != paused else { return }
+        paused = value
+        store.logState(value ? "pause" : "resume")
+    }
+
+    /// One tracker tick. `spanID` is the open span's row, nil while idle.
+    public func tick(now: Date, sample: Sample, spanID: Int64?) async {
+        if now.timeIntervalSince(lastPrune) > 3600 {
+            lastPrune = now
+            prune(now: now)
+        }
+        var key: WindowKey?
+        if !paused, !Self.excludedBundleIDs.contains(sample.appBundleID), let id = sample.windowID {
+            key = WindowKey(bundleID: sample.appBundleID, windowID: id)
+        }
+        guard policy.tick(now: now, window: key), let key, !inFlight else { return }
+        guard hasPermission() else { return }
+        inFlight = true
+        defer { inFlight = false }
+        await capture(key: key, sample: sample, spanID: spanID, at: now)
+    }
+
+    private func hasPermission() -> Bool {
+        if CGPreflightScreenCaptureAccess() { return true }
+        if !permissionLogged {
+            permissionLogged = true
+            store.logState("screen_denied")
+            CGRequestScreenCaptureAccess()
+        }
+        return false
+    }
+
+    private func capture(key: WindowKey, sample: Sample, spanID: Int64?, at now: Date) async {
+        guard let image = await screenshot(windowID: key.windowID) else { return }
+        // The window may have changed while the screenshot was in flight;
+        // a sample of A must never be filed under B.
+        guard await Self.frontWindowKey() == key else { return }
+        let signature = Self.signature(of: image)
+        if let previous = last[key], !ScreenSignature.changed(previous.signature, signature) {
+            try? store.extend(id: previous.rowID, lastSeenAt: now)
+            return
+        }
+        // First OCR in a process takes ~20s of model warm-up, then ~0.5s.
+        let text = Self.recognizeText(in: image)
+        let imagePath = writeJPEG(image, at: now)
+        let capture = Capture(at: now, lastSeenAt: now, appBundleID: sample.appBundleID,
+                              appName: sample.appName, windowID: Int64(key.windowID),
+                              title: sample.windowTitle, spanID: spanID, text: text, imagePath: imagePath)
+        do {
+            let inserted = try store.insert(capture)
+            if let id = inserted.id { last[key] = (id, signature) }
+        } catch {
+            logger.error("capture insert failed: \(String(describing: error))")
+        }
+    }
+
+    // MARK: - OS calls
+
+    private func screenshot(windowID: UInt32) async -> CGImage? {
+        do {
+            let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+            guard let window = content.windows.first(where: { $0.windowID == windowID }) else {
+                logger.error("window \(windowID) not in shareable content")
+                return nil
+            }
+            let filter = SCContentFilter(desktopIndependentWindow: window)
+            let config = SCStreamConfiguration()
+            config.width = Int(window.frame.width)
+            config.height = Int(window.frame.height)
+            config.showsCursor = false
+            config.captureResolution = .nominal
+            return try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+        } catch {
+            logger.error("screenshot failed: \(String(describing: error))")
+            return nil
+        }
+    }
+
+    private static func frontWindowKey() async -> WindowKey? {
+        guard let app = await MainActor.run(body: { WindowSampler().frontmostApp() }),
+              let id = WindowSampler().focusedWindow(pid: app.pid).id else { return nil }
+        return WindowKey(bundleID: app.bundleID, windowID: id)
+    }
+
+    /// Grayscale thumbnail, one byte per cell, row-major.
+    static func signature(of image: CGImage) -> [UInt8] {
+        let w = ScreenSignature.columns, h = ScreenSignature.rows
+        var cells = [UInt8](repeating: 0, count: w * h)
+        cells.withUnsafeMutableBytes { buffer in
+            guard let context = CGContext(data: buffer.baseAddress, width: w, height: h, bitsPerComponent: 8,
+                                          bytesPerRow: w, space: CGColorSpaceCreateDeviceGray(),
+                                          bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return }
+            context.interpolationQuality = .low
+            context.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        }
+        return cells
+    }
+
+    static func recognizeText(in image: CGImage) -> String {
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.recognitionLanguages = ["zh-Hans", "en-US"]
+        request.usesLanguageCorrection = true
+        let handler = VNImageRequestHandler(cgImage: image)
+        guard (try? handler.perform([request])) != nil, let results = request.results else { return "" }
+        // Vision's origin is bottom-left; read top to bottom.
+        return results
+            .sorted { $0.boundingBox.midY > $1.boundingBox.midY }
+            .compactMap { $0.topCandidates(1).first?.string }
+            .joined(separator: "\n")
+    }
+
+    private func writeJPEG(_ image: CGImage, at now: Date) -> String? {
+        let day = CaptureRetention.dayStamp(now)
+        let dir = imagesRoot.appendingPathComponent(day, isDirectory: true)
+        let relative = "\(day)/\(Int(now.timeIntervalSince1970 * 1000)).jpg"
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let url = imagesRoot.appendingPathComponent(relative)
+            guard let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.jpeg.identifier as CFString, 1, nil)
+            else { return nil }
+            CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.6] as CFDictionary)
+            return CGImageDestinationFinalize(destination) ? relative : nil
+        } catch {
+            logger.error("capture image write failed: \(String(describing: error))")
+            return nil
+        }
+    }
+
+    /// Deletes day folders older than the retention window and forgets
+    /// their paths; capture rows and text stay.
+    private func prune(now: Date) {
+        let fm = FileManager.default
+        let days = (try? fm.contentsOfDirectory(atPath: imagesRoot.path)) ?? []
+        for day in days where CaptureRetention.isExpired(dayFolder: day, now: now) {
+            try? fm.removeItem(at: imagesRoot.appendingPathComponent(day))
+        }
+        try? store.forgetImages(before: CaptureRetention.cutoff(now: now))
+    }
+}

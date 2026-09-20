@@ -100,6 +100,12 @@ public final class AppModel {
     /// band / Settings row) writes both in lockstep.
     public var calendarOverlayEnabled: Bool
 
+    /// Mirrors `settings.screenCapturePaused`; the collector is told on toggle.
+    public var screenCapturePaused: Bool
+
+    public var screenCollector: ScreenCollector?
+    public var observationStore: ObservationStore?
+
     /// Today's meeting-tagged calendar events, refreshed by
     /// `refreshCalendarWindows()`. Not `@Observable`-tracked -- only
     /// `isNowInMeeting` (derived from it) needs to be, and that's read by
@@ -168,6 +174,7 @@ public final class AppModel {
         self.engine = engine
         self.menuTextEnabled = settings.menuBarTextEnabled
         self.calendarOverlayEnabled = settings.calendarOverlayEnabled
+        self.screenCapturePaused = settings.screenCapturePaused
         refreshMenu()
         // refreshMenu() just seeded rangeCache with a "today" snapshot taken
         // before any caller-visible dataChanged() boundary; drop it so the
@@ -565,5 +572,12 @@ public final class AppModel {
         let body = "专注 \(Format.duration(focus))，生产力分 \(pulse)\(deltaClause)。"
             + "最高峰在 \(peak.start) – \(peak.end) 时。"
         return ("今日小结", body)
+    }
+
+    public func setScreenCapturePaused(_ paused: Bool) {
+        screenCapturePaused = paused
+        settings.setScreenCapturePaused(paused)
+        guard let screenCollector else { return }
+        Task { await screenCollector.setPaused(paused) }
     }
 }

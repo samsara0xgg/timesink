@@ -6,10 +6,14 @@ public struct Sample: Equatable, Sendable {
     public var appName: String
     public var windowTitle: String?
     public var url: String?
+    /// CGWindowID of the focused window (process + window identity for the
+    /// screen collector); nil when it could not be resolved.
+    public var windowID: UInt32?
     public init(timestamp: Date, appBundleID: String, appName: String,
-                windowTitle: String?, url: String?) {
+                windowTitle: String?, url: String?, windowID: UInt32? = nil) {
         self.timestamp = timestamp; self.appBundleID = appBundleID
         self.appName = appName; self.windowTitle = windowTitle; self.url = url
+        self.windowID = windowID
     }
 }
 

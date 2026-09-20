@@ -160,3 +160,53 @@ struct BudgetAlertRow: Codable, FetchableRecord, PersistableRecord {
     var day: String
     var kind: String
 }
+
+// MARK: - StateEvent
+
+public struct StateEvent: Codable, Equatable, Sendable, FetchableRecord, MutablePersistableRecord {
+    public static let databaseTableName = "stateEvent"
+    public var id: Int64?
+    public var at: Date
+    public var kind: String
+
+    public init(id: Int64? = nil, at: Date, kind: String) {
+        self.id = id
+        self.at = at
+        self.kind = kind
+    }
+
+    public mutating func didInsert(_ inserted: InsertionSuccess) { id = inserted.rowID }
+}
+
+// MARK: - Capture
+
+public struct Capture: Codable, Equatable, Sendable, FetchableRecord, MutablePersistableRecord {
+    public static let databaseTableName = "capture"
+    public var id: Int64?
+    public var at: Date
+    public var lastSeenAt: Date
+    public var appBundleID: String
+    public var appName: String
+    public var windowID: Int64
+    public var title: String?
+    public var spanID: Int64?
+    public var text: String
+    /// Path relative to the captures directory; nil once pruned.
+    public var imagePath: String?
+
+    public init(id: Int64? = nil, at: Date, lastSeenAt: Date, appBundleID: String, appName: String,
+                windowID: Int64, title: String?, spanID: Int64?, text: String, imagePath: String?) {
+        self.id = id
+        self.at = at
+        self.lastSeenAt = lastSeenAt
+        self.appBundleID = appBundleID
+        self.appName = appName
+        self.windowID = windowID
+        self.title = title
+        self.spanID = spanID
+        self.text = text
+        self.imagePath = imagePath
+    }
+
+    public mutating func didInsert(_ inserted: InsertionSuccess) { id = inserted.rowID }
+}

@@ -16,6 +16,8 @@ let package = Package(
                 .linkedFramework("ScriptingBridge"),
                 .linkedFramework("ApplicationServices"),
                 .linkedFramework("EventKit"),
+                .linkedFramework("ScreenCaptureKit"),
+                .linkedFramework("Vision"),
             ]
         ),
         .executableTarget(name: "TimeSink", dependencies: ["TimeSinkKit"]),

@@ -50,6 +50,11 @@ extension Permissions {
         }
     }
 
+    /// Screen Recording, read without prompting; `ScreenCollector` asks once.
+    public nonisolated static func screenRecordingState() -> PermissionState {
+        CGPreflightScreenCaptureAccess() ? .granted : .denied
+    }
+
     @MainActor public static func accessibilityState(prompt: Bool) -> PermissionState {
         accessibilityGranted(prompt: prompt) ? .granted : .denied
     }

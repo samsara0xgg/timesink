@@ -650,6 +650,9 @@ struct MenuBarDashboardView: View {
             }
 
             Divider()
+            ScreenCaptureRow(model: model)
+
+            Divider()
             HStack {
                 Button("打开 TimeSink") { openWindow(id: "main") }
                     .buttonStyle(.plain).foregroundStyle(.secondary)
@@ -964,5 +967,40 @@ struct MenuBarDashboardView: View {
             .chartYAxis(.hidden)
             .frame(height: 40)
         }
+    }
+}
+
+/// Screen capture status and its only control: a pause toggle. Counts are
+/// read from the store when the popover opens, not observed live.
+struct ScreenCaptureRow: View {
+    let model: AppModel
+    @State private var summary = ObservationStore.Summary(count: 0, latestAt: nil)
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("屏幕采集").font(.callout)
+                Text(statusLine).font(.caption2).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Toggle("", isOn: Binding(
+                get: { !model.screenCapturePaused },
+                set: { model.setScreenCapturePaused(!$0) }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .labelsHidden()
+        }
+        .onAppear {
+            let today = Calendar.current.startOfDay(for: Date())
+            summary = model.observationStore?.summary(since: today) ?? summary
+        }
+    }
+
+    private var statusLine: String {
+        if model.screenCapturePaused { return "已暂停" }
+        if Permissions.screenRecordingState() != .granted { return "缺少屏幕录制权限" }
+        guard let latest = summary.latestAt else { return "今日 0 张" }
+        return "今日 \(summary.count) 张 · 最近 \(latest.formatted(date: .omitted, time: .shortened))"
     }
 }
