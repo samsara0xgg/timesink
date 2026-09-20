@@ -340,6 +340,13 @@ public final class TrackerEngine {
             persist(closed)
         }
         observations?.logState("stop")
+        interruptCollector()
+    }
+
+    /// The collector paces itself; it only needs to know the observation broke.
+    private func interruptCollector() {
+        guard let screenCollector else { return }
+        Task { await screenCollector.interrupt() }
     }
 
     /// The one state-machine entry point -- production and tests both drive
@@ -588,6 +595,7 @@ public final class TrackerEngine {
             persist(closed)
         }
         observations?.logState(source == .sleep ? "sleep" : "lock", at: date)
+        interruptCollector()
     }
 
     /// `.unlock` (from `com.apple.screenIsUnlocked`) always resumes.

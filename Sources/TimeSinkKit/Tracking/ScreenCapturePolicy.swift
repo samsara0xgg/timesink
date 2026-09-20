@@ -18,10 +18,10 @@ public struct WindowKey: Hashable, Sendable {
 /// `ScreenSignature.changed` afterwards, not here.
 ///
 /// `segment` numbers one continuous observation of one window. It advances
-/// when the front window changes (including to nil: paused, excluded app)
-/// and when ticks stop arriving for longer than `maxTickGap` -- the engine
-/// does not tick while locked, asleep or stopped -- so a capture row may only
-/// be extended inside the segment that created it.
+/// when the front window changes (including to nil: excluded app), on an
+/// explicit `interrupt()` (lock, sleep, stop, pause, resume), and as a
+/// backstop when ticks stop arriving for longer than `maxTickGap`, so a
+/// capture row may only be extended inside the segment that created it.
 public struct ScreenCapturePolicy: Equatable, Sendable {
     public var settleSeconds: TimeInterval
     public var checkInterval: TimeInterval
@@ -41,6 +41,15 @@ public struct ScreenCapturePolicy: Equatable, Sendable {
         self.settleSeconds = settleSeconds
         self.checkInterval = checkInterval
         self.maxTickGap = maxTickGap
+    }
+
+    /// The tracker stopped looking (lock, sleep, stop, pause) or started
+    /// again: whatever is in front next is a new observation, even if the
+    /// break was shorter than a tick.
+    public mutating func interrupt() {
+        candidate = nil
+        lastCheck = .distantPast
+        segment += 1
     }
 
     /// Returns true when the front window should be inspected now.

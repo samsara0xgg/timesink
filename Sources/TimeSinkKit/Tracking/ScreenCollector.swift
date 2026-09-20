@@ -50,7 +50,14 @@ public actor ScreenCollector {
     public func setPaused(_ value: Bool) {
         guard value != paused else { return }
         paused = value
+        policy.interrupt()
         store.logState(value ? "pause" : "resume")
+    }
+
+    /// Lock, sleep or stop: the current observation segment ends now, not
+    /// when the tick gap is noticed.
+    public func interrupt() {
+        policy.interrupt()
     }
 
     func install(frameProvider: @escaping FrameProvider) {
