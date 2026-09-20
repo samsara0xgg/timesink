@@ -24,11 +24,9 @@ final class ScreenCapturePolicyTests: XCTestCase {
 
     func testSameWindowRechecksEveryInterval() {
         var p = ScreenCapturePolicy(settleSeconds: 3, checkInterval: 30)
-        _ = p.tick(now: ts(0), window: a)
-        XCTAssertTrue(p.tick(now: ts(3), window: a))
-        XCTAssertFalse(p.tick(now: ts(20), window: a))
-        XCTAssertFalse(p.tick(now: ts(32), window: a))
-        XCTAssertTrue(p.tick(now: ts(33), window: a))
+        var checks: [Int] = []
+        for t in 0...70 where p.tick(now: ts(TimeInterval(t)), window: a) { checks.append(t) }
+        XCTAssertEqual(checks, [3, 33, 63])
     }
 
     func testNilWindowNeverChecksAndResets() {
@@ -45,6 +43,99 @@ final class ScreenCapturePolicyTests: XCTestCase {
         _ = p.tick(now: ts(10), window: a)
         XCTAssertFalse(p.tick(now: ts(5), window: a))
         XCTAssertTrue(p.tick(now: ts(13), window: a))
+    }
+
+    func testSegmentAdvancesOnWindowChangeAndTickGap() {
+        var p = ScreenCapturePolicy(settleSeconds: 3, checkInterval: 30, maxTickGap: 3)
+        _ = p.tick(now: ts(0), window: a)
+        let first = p.segment
+        for t in 1...3 { _ = p.tick(now: ts(TimeInterval(t)), window: a) }
+        XCTAssertEqual(p.segment, first)                     // steady ticks: same segment
+        _ = p.tick(now: ts(4), window: nil)                  // paused / excluded app
+        _ = p.tick(now: ts(5), window: a)
+        XCTAssertEqual(p.segment, first + 2)
+        for t in 6...8 { _ = p.tick(now: ts(TimeInterval(t)), window: a) }
+        XCTAssertEqual(p.segment, first + 2)
+        XCTAssertFalse(p.tick(now: ts(60), window: a))       // no ticks while locked: new segment, settle restarts
+        XCTAssertEqual(p.segment, first + 3)
+        XCTAssertFalse(p.tick(now: ts(62), window: a))
+        XCTAssertTrue(p.tick(now: ts(63), window: a))
+        XCTAssertEqual(p.segment, first + 3)
+    }
+}
+
+/// Content dedupe is separate from the observation segment: the same frame
+/// seen again after leaving the window, pausing, or a lock gap is a new row.
+final class ScreenCollectorSegmentTests: XCTestCase {
+    let a = WindowKey(bundleID: "app.a", windowID: 1)
+    let b = WindowKey(bundleID: "app.b", windowID: 2)
+
+    static func frame(gray: UInt8) -> CGImage {
+        let context = CGContext(data: nil, width: 8, height: 8, bitsPerComponent: 8, bytesPerRow: 8,
+                                space: CGColorSpaceCreateDeviceGray(),
+                                bitmapInfo: CGImageAlphaInfo.none.rawValue)!
+        context.setFillColor(gray: CGFloat(gray) / 255, alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+        return context.makeImage()!
+    }
+
+    func makeCollector() throws -> (ScreenCollector, ObservationStore) {
+        let store = ObservationStore(try AppDatabase.openInMemory())
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        return (ScreenCollector(store: store, imagesRoot: root, paused: false), store)
+    }
+
+    /// Every window always shows the same unchanging frame, so any new row
+    /// comes from the segment logic, never from a content change.
+    func install(_ collector: ScreenCollector) async {
+        let frame = Self.frame(gray: 100)
+        await collector.install { key in (image: frame, text: key.bundleID) }
+    }
+
+    func tick(_ collector: ScreenCollector, _ key: WindowKey, _ seconds: ClosedRange<Int>) async {
+        for t in seconds {
+            let sample = Sample(timestamp: ts(TimeInterval(t)), appBundleID: key.bundleID, appName: key.bundleID,
+                                windowTitle: nil, url: nil, windowID: key.windowID)
+            await collector.tick(now: ts(TimeInterval(t)), sample: sample, spanID: nil)
+        }
+    }
+
+    func rows(_ store: ObservationStore) throws -> [(String, TimeInterval, TimeInterval)] {
+        try store.captures(overlapping: DateInterval(start: ts(-1), end: ts(10_000))).map {
+            ($0.appBundleID, $0.at.timeIntervalSince(ts(0)), $0.lastSeenAt.timeIntervalSince(ts(0)))
+        }
+    }
+
+    func testReturningToAWindowStartsANewRow() async throws {
+        let (collector, store) = try makeCollector()
+        await install(collector)
+        await tick(collector, a, 0...3)      // A settles at 3: row 1
+        await tick(collector, b, 4...7)      // B settles at 7: row 2
+        await tick(collector, a, 8...40)     // back on A: settles at 11: row 3, re-check at 41 extends it
+        await tick(collector, a, 41...41)
+        XCTAssertEqual(try rows(store).map { "\($0.0) \(Int($0.1))-\(Int($0.2))" },
+                       ["app.a 3-3", "app.b 7-7", "app.a 11-41"])
+    }
+
+    func testPauseAndResumeStartsANewRow() async throws {
+        let (collector, store) = try makeCollector()
+        await install(collector)
+        await tick(collector, a, 0...3)
+        await collector.setPaused(true)
+        await tick(collector, a, 4...20)
+        await collector.setPaused(false)
+        await tick(collector, a, 21...24)
+        XCTAssertEqual(try rows(store).map { "\(Int($0.1))-\(Int($0.2))" }, ["3-3", "24-24"])
+        let events = try store.stateEvents(in: DateInterval(start: ts(-1), end: Date().addingTimeInterval(60)))
+        XCTAssertEqual(events.map(\.kind), ["pause", "resume"])
+    }
+
+    func testTickGapAsWhileLockedStartsANewRow() async throws {
+        let (collector, store) = try makeCollector()
+        await install(collector)
+        await tick(collector, a, 0...33)     // row 1 at 3, extended by the 33 s re-check
+        await tick(collector, a, 300...303)  // the engine did not tick while locked
+        XCTAssertEqual(try rows(store).map { "\(Int($0.1))-\(Int($0.2))" }, ["3-33", "303-303"])
     }
 }
 

@@ -16,18 +16,31 @@ public struct WindowKey: Hashable, Sendable {
 /// and the same window is re-checked every `checkInterval` after that.
 /// Whether a check turns into a stored capture is decided by
 /// `ScreenSignature.changed` afterwards, not here.
+///
+/// `segment` numbers one continuous observation of one window. It advances
+/// when the front window changes (including to nil: paused, excluded app)
+/// and when ticks stop arriving for longer than `maxTickGap` -- the engine
+/// does not tick while locked, asleep or stopped -- so a capture row may only
+/// be extended inside the segment that created it.
 public struct ScreenCapturePolicy: Equatable, Sendable {
     public var settleSeconds: TimeInterval
     public var checkInterval: TimeInterval
+    /// Ticks come every second; a longer silence means the tracker was not
+    /// looking, whatever the reason. Wide enough that one stalled tick (a
+    /// slow AX or Chrome round-trip) does not split a row.
+    public var maxTickGap: TimeInterval
+    public private(set) var segment = 0
 
     private var candidate: WindowKey?
     private var candidateSince = Date.distantPast
     private var lastCheck = Date.distantPast
     private var lastTick = Date.distantPast
 
-    public init(settleSeconds: TimeInterval = 3, checkInterval: TimeInterval = 30) {
+    public init(settleSeconds: TimeInterval = 3, checkInterval: TimeInterval = 30,
+                maxTickGap: TimeInterval = 5) {
         self.settleSeconds = settleSeconds
         self.checkInterval = checkInterval
+        self.maxTickGap = maxTickGap
     }
 
     /// Returns true when the front window should be inspected now.
@@ -35,11 +48,13 @@ public struct ScreenCapturePolicy: Equatable, Sendable {
     /// settle timer. Out-of-order ticks are ignored.
     public mutating func tick(now: Date, window: WindowKey?) -> Bool {
         guard now >= lastTick else { return false }
+        let gap = now.timeIntervalSince(lastTick) > maxTickGap
         lastTick = now
-        if window != candidate {
+        if window != candidate || gap {
             candidate = window
             candidateSince = now
             lastCheck = .distantPast
+            segment += 1
             return false
         }
         guard window != nil else { return false }

@@ -22,10 +22,15 @@ public actor ScreenCollector {
     private let store: ObservationStore
     private let imagesRoot: URL
     private var policy = ScreenCapturePolicy()
-    /// Last stored capture per window, so re-checks of unchanged content
-    /// extend that row instead of inserting a duplicate.
-    private var last: [WindowKey: (rowID: Int64, signature: [UInt8])] = [:]
+    /// The row of the current observation segment, so re-checks of unchanged
+    /// content extend it instead of inserting a duplicate. Same content seen
+    /// again in a later segment (came back to the window, unlocked, resumed)
+    /// is a new row: the stretch in between was not observed.
+    private var current: (segment: Int, rowID: Int64, signature: [UInt8])?
     private var inFlight = false
+    /// Test seam replacing the screenshot, the front-window recheck and OCR.
+    typealias FrameProvider = @Sendable (WindowKey) async -> (image: CGImage, text: String)?
+    private var frameProvider: FrameProvider?
     private var permissionLogged = false
     private var lastPrune = Date.distantPast
     public private(set) var paused: Bool
@@ -48,6 +53,10 @@ public actor ScreenCollector {
         store.logState(value ? "pause" : "resume")
     }
 
+    func install(frameProvider: @escaping FrameProvider) {
+        self.frameProvider = frameProvider
+    }
+
     /// One tracker tick. `spanID` is the open span's row, nil while idle.
     public func tick(now: Date, sample: Sample, spanID: Int64?) async {
         if now.timeIntervalSince(lastPrune) > 3600 {
@@ -59,7 +68,7 @@ public actor ScreenCollector {
             key = WindowKey(bundleID: sample.appBundleID, windowID: id)
         }
         guard policy.tick(now: now, window: key), let key, !inFlight else { return }
-        guard hasPermission() else { return }
+        guard frameProvider != nil || hasPermission() else { return }
         inFlight = true
         defer { inFlight = false }
         await capture(key: key, sample: sample, spanID: spanID, at: now)
@@ -76,30 +85,45 @@ public actor ScreenCollector {
     }
 
     private func capture(key: WindowKey, sample: Sample, spanID: Int64?, at now: Date) async {
-        guard let image = await screenshot(windowID: key.windowID) else { return }
-        // The window may have changed while the screenshot was in flight;
-        // a sample of A must never be filed under B.
-        guard await Self.frontWindowKey() == key else { return }
-        let signature = Self.signature(of: image)
-        if let previous = last[key], !ScreenSignature.changed(previous.signature, signature) {
-            try? store.extend(id: previous.rowID, lastSeenAt: now)
+        // Read before the awaits: ticks keep flowing through the actor while
+        // the screenshot is in flight and may start a new segment meanwhile.
+        let segment = policy.segment
+        let frame: (image: CGImage, text: String?)?
+        if let frameProvider {
+            frame = await frameProvider(key).map { ($0.image, $0.text) }
+        } else {
+            frame = await look(at: key).map { ($0, nil) }
+        }
+        guard let frame else { return }
+        let signature = Self.signature(of: frame.image)
+        if let current, current.segment == segment,
+           !ScreenSignature.changed(current.signature, signature) {
+            try? store.extend(id: current.rowID, lastSeenAt: now)
             return
         }
         // First OCR in a process takes ~20s of model warm-up, then ~0.5s.
-        let text = Self.recognizeText(in: image)
-        let imagePath = writeJPEG(image, at: now)
+        let text = frame.text ?? Self.recognizeText(in: frame.image)
+        let imagePath = writeJPEG(frame.image, at: now)
         let capture = Capture(at: now, lastSeenAt: now, appBundleID: sample.appBundleID,
                               appName: sample.appName, windowID: Int64(key.windowID),
                               title: sample.windowTitle, spanID: spanID, text: text, imagePath: imagePath)
         do {
             let inserted = try store.insert(capture)
-            if let id = inserted.id { last[key] = (id, signature) }
+            if let id = inserted.id { current = (segment, id, signature) }
         } catch {
             logger.error("capture insert failed: \(String(describing: error))")
         }
     }
 
     // MARK: - OS calls
+
+    private func look(at key: WindowKey) async -> CGImage? {
+        guard let image = await screenshot(windowID: key.windowID) else { return nil }
+        // The window may have changed while the screenshot was in flight;
+        // a sample of A must never be filed under B.
+        guard await Self.frontWindowKey() == key else { return nil }
+        return image
+    }
 
     private func screenshot(windowID: UInt32) async -> CGImage? {
         do {
