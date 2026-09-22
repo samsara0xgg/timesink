@@ -18,7 +18,9 @@ import os
 /// chat line moves few cells but changes the text); above `changedFraction`
 /// it is a new row whatever the text says. Unchanged content is still
 /// re-read every `refreshInterval`, so a small change the signature cannot
-/// see is caught within that bound.
+/// see is caught within that bound. A window whose title changed is new
+/// content whatever the picture and the text say: the title is part of
+/// what was on screen.
 public actor ScreenCollector {
     /// Never captured, whatever is in front.
     public static let excludedBundleIDs: Set<String> = [
@@ -39,7 +41,7 @@ public actor ScreenCollector {
     /// content extend it instead of inserting a duplicate. Same content seen
     /// again in a later segment (came back to the window, unlocked, resumed)
     /// is a new row: the stretch in between was not observed.
-    private var current: (segment: Int, rowID: Int64, signature: [UInt8], text: String, readAt: Date)?
+    private var current: (segment: Int, rowID: Int64, signature: [UInt8], title: String?, text: String, readAt: Date)?
     private var inFlight = false
     /// Test seam replacing the screenshot, the front-window recheck and OCR.
     typealias FrameProvider = @Sendable (WindowKey) async -> (image: CGImage, text: String)?
@@ -137,7 +139,7 @@ public actor ScreenCollector {
         guard let frame else { return }
         let signature = Self.signature(of: frame.image)
         var text: String?
-        if let current, current.segment == segment {
+        if let current, current.segment == segment, current.title == sample.windowTitle {
             let moved = ScreenSignature.fraction(current.signature, signature)
             let stale = now.timeIntervalSince(current.readAt) >= refreshInterval
             if moved < ocrFraction && !stale {
@@ -149,6 +151,9 @@ public actor ScreenCollector {
             guard let read = text else { return }
             if moved < ScreenSignature.changedFraction && read == current.text {
                 health.textSame += 1
+                // This frame is the row's content now: compare the next one
+                // against it, or every later check would re-run OCR.
+                self.current?.signature = signature
                 self.current?.readAt = now
                 extend(current.rowID, at: now)
                 return
@@ -164,7 +169,7 @@ public actor ScreenCollector {
         do {
             let inserted = try store.insert(capture)
             health.inserted += 1
-            if let id = inserted.id { current = (segment, id, signature, text, now) }
+            if let id = inserted.id { current = (segment, id, signature, sample.windowTitle, text, now) }
         } catch {
             logger.error("capture insert failed: \(String(describing: error))")
         }

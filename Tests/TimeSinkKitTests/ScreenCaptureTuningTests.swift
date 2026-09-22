@@ -149,12 +149,24 @@ final class ScreenCollectorDedupeTests: XCTestCase {
         await install(collector, scene)
         await tick(collector, 0...3)
         scene.lit = 20                               // cursor moved, clock ticked: same text
-        await tick(collector, 4...13)
-        XCTAssertEqual(try rows(store).map { "\($0.at)-\($0.seen)" }, ["3-13"])
+        await tick(collector, 4...13)                // re-check at 13: OCR, same text → extend
+        await tick(collector, 14...23)               // re-check at 23: the moved frame is the baseline now, no OCR
+        XCTAssertEqual(try rows(store).map { "\($0.at)-\($0.seen)" }, ["3-23"])
         let health = await collector.health
         XCTAssertEqual(health.textSame, 1)
+        XCTAssertEqual(health.unchanged, 1)
         XCTAssertEqual(health.inserted, 1)
-        XCTAssertEqual(health.extended, 1)
+        XCTAssertEqual(health.extended, 2)
+    }
+
+    func testTitleChangeWithSameContentIsANewRow() async throws {
+        let (collector, store, scene) = try makeCollector()
+        await install(collector, scene)
+        await tick(collector, 0...4, title: "Old document")
+        await tick(collector, 5...16, title: "New document")   // same pixels, same text; checked at 6, again at 16
+        let stored = try store.captures(overlapping: DateInterval(start: ts(-1), end: ts(10_000)))
+        XCTAssertEqual(stored.map { "\($0.title ?? "") \(Int($0.at.timeIntervalSince(ts(0))))-\(Int($0.lastSeenAt.timeIntervalSince(ts(0))))" },
+                       ["Old document 3-3", "New document 6-16"])
     }
 
     func testBigVisualChangeIsANewRowEvenWithSameText() async throws {
