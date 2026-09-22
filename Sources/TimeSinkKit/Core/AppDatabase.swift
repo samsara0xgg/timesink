@@ -220,6 +220,27 @@ public enum AppDatabase {
             }
         }
 
+        migrator.registerMigration("v7") { db in
+            // What the front window is on: a terminal's working directory,
+            // an editor's file, an AI chat app's conversation name. A new
+            // column rather than a reuse of `title`/`url` on purpose --
+            // those two are read by name by another process (Jarvis), so
+            // changing what they mean would break it silently.
+            try db.alter(table: "span") { t in t.add(column: "document", .text) }
+
+            // `builtinApps` is only ever seeded by v1, and SeedImporter's
+            // version gate covers the domain CSVs, not appCategory -- so an
+            // existing database never sees a later addition to that list
+            // unless a migration inserts it. OR IGNORE keeps any row the
+            // user has since set for the same bundle ID.
+            for app in Taxonomy.v7Apps {
+                try db.execute(
+                    sql: "INSERT OR IGNORE INTO appCategory (bundleID, categoryID, source) VALUES (?, ?, 'builtin')",
+                    arguments: [app.bundleID, app.categoryID]
+                )
+            }
+        }
+
         return migrator
     }
 }

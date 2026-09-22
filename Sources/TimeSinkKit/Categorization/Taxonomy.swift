@@ -41,6 +41,23 @@ public enum Taxonomy {
         ("com.apple.finder", "utilities"),
         ("com.apple.systempreferences", "utilities"),
         ("com.google.Chrome", "misc"), // Chrome fallback when no URL is available
+    ] + v7Apps
+
+    /// Added with migration v7 -- the AI coding/chat tools that were missing
+    /// from the v1 list. Kept as its own array because v7 inserts exactly
+    /// these into databases that already ran v1; appended to `builtinApps`
+    /// so a fresh database still seeds them in one place.
+    ///
+    /// Both chat apps are `softwareDev`, not `learning`: the ChatGPT desktop
+    /// app in use here is the Codex-bearing one (`com.openai.codex`), and on
+    /// the measured 14 days both sit alongside the editor rather than apart
+    /// from it.
+    public static let v7Apps: [(bundleID: String, categoryID: String)] = [
+        ("dev.warp.Warp", "softwareDev"),
+        ("com.exafunction.windsurf", "softwareDev"),
+        ("com.anthropic.claudefordesktop", "softwareDev"),
+        ("com.openai.codex", "softwareDev"),
+        ("com.openai.chat", "softwareDev"),
     ]
 
     /// Builtin urlRule seed rows (pattern, categoryID, priority), source = "builtin".

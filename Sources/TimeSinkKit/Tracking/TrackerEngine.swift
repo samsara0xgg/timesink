@@ -134,6 +134,15 @@ public struct SuspensionState: Equatable {
 @MainActor
 public final class TrackerEngine {
     private static let chromeBundleID = "com.google.Chrome"
+    /// Apps whose window title is a constant and whose real identity is the
+    /// conversation inside the web view -- see `ChatSessionSampler`.
+    static let chatBundleIDs: Set<String> = [
+        "com.openai.codex", "com.openai.chat", "com.anthropic.claudefordesktop",
+    ]
+    /// The conversation is re-read at most this often. Unlike Chrome there
+    /// is no cheap change signal to gate on: the window title these apps
+    /// publish never changes, so the interval is the whole gate.
+    private static let chatFetchInterval: TimeInterval = 5
     private static let minWriteDuration: TimeInterval = 1
     private static let heartbeatInterval: TimeInterval = 30
 
@@ -148,6 +157,7 @@ public final class TrackerEngine {
     private let builder = SpanBuilder()
     private let windowSampler = WindowSampler()
     private let chromeSampler = ChromeSampler()
+    private let chatSampler = ChatSessionSampler()
     private let idleMonitor = IdleMonitor()
     private let systemMonitor = SystemMonitor()
     private var throttle = ChromeThrottle()
@@ -172,6 +182,14 @@ public final class TrackerEngine {
     private var chromeTabState: ChromeTabState = .none
     private var chromeBackoff = ChromeFetchBackoff()
 
+    /// Last conversation read, and which app it was read from. Keyed by
+    /// bundle ID so a switch between ChatGPT and Claude can never file one
+    /// app's conversation under the other -- the same stale-value failure
+    /// the Chrome tab cache was fixed for, where a cached value outlived
+    /// what it described.
+    private var chatSession: (bundleID: String, title: String?)?
+    private var lastChatFetch = Date.distantPast
+
     /// Chrome Automation authorization, refreshed at most once per fetch
     /// attempt -- inside the same `chromeBackoff.shouldAttempt` gate that
     /// spaces out attempts -- rather than on every tick.
@@ -191,6 +209,7 @@ public final class TrackerEngine {
     /// throttle+backoff gate already keeps it to at most once per 5s.
     var windowSampleProvider: (@Sendable (Date) -> Sample?)?
     var chromeTabProvider: (@Sendable () -> ChromeSampler.TabInfo?)?
+    var chatSessionProvider: (@Sendable () -> String?)?
     var chromeAutomationAuthorizedProvider: (() -> Bool)?
     var idleSecondsProvider: (() -> TimeInterval)?
     /// True while the user is currently in a calendar meeting -- when set,
@@ -397,6 +416,19 @@ public final class TrackerEngine {
                 noteChromeFetch(fetched, title: sample.windowTitle, at: now)
             }
             applyChromeTabState(to: &sample)
+        } else if Self.chatBundleIDs.contains(sample.appBundleID) {
+            // Refetch when the cached answer belongs to a different app, or
+            // when it has simply aged out; otherwise reuse it, exactly as
+            // the Chrome branch reuses `chromeTabState` between fetches.
+            if chatSession?.bundleID != sample.appBundleID
+                || now.timeIntervalSince(lastChatFetch) >= Self.chatFetchInterval {
+                lastChatFetch = now
+                let epochBeforeChat = suspensionEpoch
+                let fetched = await offActorChatSession(provider: chatSessionProvider, app: frontmost)
+                guard suspensionEpoch == epochBeforeChat else { return }
+                chatSession = (sample.appBundleID, fetched)
+            }
+            sample.document = chatSession?.title
         }
 
         finishTick(sample, now: now)
@@ -427,6 +459,19 @@ public final class TrackerEngine {
         if let provider { return provider(now) }
         guard let app else { return nil }
         return windowSampler.sample(at: now, app: app)
+    }
+
+    /// Off-actor counterpart for the chat app's AX walk. Same reasoning as
+    /// `offActorWindowSample`: it is blocking Mach IPC and must not run on
+    /// the main actor. Measured 2026-09-22 at 2.8ms (ChatGPT) and 6.6ms
+    /// (Claude) for the whole walk, and it runs at most once per
+    /// `chatFetchInterval`.
+    nonisolated private func offActorChatSession(
+        provider: (@Sendable () -> String?)?, app: WindowSampler.FrontmostApp?
+    ) async -> String? {
+        if let provider { return provider() }
+        guard let app else { return nil }
+        return chatSampler.session(pid: app.pid, appName: app.name)
     }
 
     /// Off-actor counterpart for the Chrome Apple Event -- likewise bounded to
