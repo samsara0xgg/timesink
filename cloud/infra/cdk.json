@@ -1,0 +1,7 @@
+{
+  "app": "npx ts-node --prefer-ts-exts bin/timesink.ts",
+  "watch": {
+    "include": ["**"],
+    "exclude": ["node_modules", "cdk.out", "outputs.json"]
+  }
+}

@@ -1,0 +1,20 @@
+[tools]
+python = "3.12"
+
+[env]
+_.python.venv = { path = ".venv", create = true }
+
+# ─── mise tasks ──────────────────────────────────────
+# Uncomment, edit, then run with `mise <name>`, e.g. `mise dev`:
+#
+# [tasks.dev]
+# run = "python main.py"
+#
+# [tasks.test]
+# run = "pytest"
+#
+# [tasks.format]
+# run = "ruff format . && ruff check --fix ."
+#
+# [tasks.lab]
+# run = "jupyter lab"

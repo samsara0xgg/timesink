@@ -1,0 +1,9 @@
+[project]
+name = "timesink-api"
+version = "0.1.0"
+description = "TimeSink cloud API Lambda (runtime deps: boto3, provided by AWS)"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = ["boto3", "moto[dynamodb,cognitoidp]", "pytest"]
