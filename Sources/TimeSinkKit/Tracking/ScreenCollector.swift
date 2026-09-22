@@ -20,7 +20,11 @@ import os
 /// re-read every `refreshInterval`, so a small change the signature cannot
 /// see is caught within that bound. A window whose title changed is new
 /// content whatever the picture and the text say: the title is part of
-/// what was on screen.
+/// what was on screen. Text that reads the same moves the comparison
+/// baseline to the new frame (no OCR every check for a picture that
+/// merely shifted), but the picture is also compared with the frame whose
+/// image was saved: small steps that add up to `changedFraction` store a
+/// new row and a new image, so a slowly changing chart is not lost.
 public actor ScreenCollector {
     /// Never captured, whatever is in front.
     public static let excludedBundleIDs: Set<String> = [
@@ -41,7 +45,8 @@ public actor ScreenCollector {
     /// content extend it instead of inserting a duplicate. Same content seen
     /// again in a later segment (came back to the window, unlocked, resumed)
     /// is a new row: the stretch in between was not observed.
-    private var current: (segment: Int, rowID: Int64, signature: [UInt8], title: String?, text: String, readAt: Date)?
+    private var current: (segment: Int, rowID: Int64, signature: [UInt8], saved: [UInt8], title: String?,
+                          text: String, readAt: Date)?
     private var inFlight = false
     /// Test seam replacing the screenshot, the front-window recheck and OCR.
     typealias FrameProvider = @Sendable (WindowKey) async -> (image: CGImage, text: String)?
@@ -141,15 +146,19 @@ public actor ScreenCollector {
         var text: String?
         if let current, current.segment == segment, current.title == sample.windowTitle {
             let moved = ScreenSignature.fraction(current.signature, signature)
+            // Against the saved image, not the last compared frame: small
+            // steps that add up to a different picture are stored.
+            let drifted = ScreenSignature.fraction(current.saved, signature)
             let stale = now.timeIntervalSince(current.readAt) >= refreshInterval
-            if moved < ocrFraction && !stale {
+            if moved < ocrFraction && drifted < ScreenSignature.changedFraction && !stale {
                 health.unchanged += 1
                 extend(current.rowID, at: now)
                 return
             }
             text = await read(frame)
             guard let read = text else { return }
-            if moved < ScreenSignature.changedFraction && read == current.text {
+            if moved < ScreenSignature.changedFraction && drifted < ScreenSignature.changedFraction
+                && read == current.text {
                 health.textSame += 1
                 // This frame is the row's content now: compare the next one
                 // against it, or every later check would re-run OCR.
@@ -169,7 +178,7 @@ public actor ScreenCollector {
         do {
             let inserted = try store.insert(capture)
             health.inserted += 1
-            if let id = inserted.id { current = (segment, id, signature, sample.windowTitle, text, now) }
+            if let id = inserted.id { current = (segment, id, signature, signature, sample.windowTitle, text, now) }
         } catch {
             logger.error("capture insert failed: \(String(describing: error))")
         }

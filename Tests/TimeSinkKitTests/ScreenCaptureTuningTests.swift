@@ -159,6 +159,22 @@ final class ScreenCollectorDedupeTests: XCTestCase {
         XCTAssertEqual(health.extended, 2)
     }
 
+    func testGradualVisualChangeWithSameTextIsANewRowOnceItAddsUp() async throws {
+        let (collector, store, scene) = try makeCollector()
+        await install(collector, scene)
+        await tick(collector, 0...3)                 // row 1 at 3, image = frame(lit: 0)
+        for step in 1...4 {                          // +3.1% per check: 3.1, 6.2, 9.4, 12.5% from the saved image
+            scene.lit = 20 * step
+            await tick(collector, (step * 10 - 6)...(step * 10 + 3))
+        }
+        XCTAssertEqual(try rows(store).map { "\($0.at)-\($0.seen)" }, ["3-33", "43-43"])
+        let stored = try store.captures(overlapping: DateInterval(start: ts(-1), end: ts(10_000)))
+        XCTAssertEqual(stored.compactMap(\.imagePath).count, 2, "the drifted picture has its own image")
+        let health = await collector.health
+        XCTAssertEqual(health.textSame, 3)           // 13, 23, 33: same text, picture still near the saved one
+        XCTAssertEqual(health.inserted, 2)
+    }
+
     func testTitleChangeWithSameContentIsANewRow() async throws {
         let (collector, store, scene) = try makeCollector()
         await install(collector, scene)
