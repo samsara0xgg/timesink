@@ -182,6 +182,65 @@ public enum AppDatabase {
             }
         }
 
+        migrator.registerMigration("v5") { db in
+            // Why the tracker stopped or resumed (idle/lock/sleep/pause/
+            // start/stop) -- so an empty stretch of spans is explainable.
+            try db.create(table: "stateEvent") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("at", .datetime).notNull().indexed()
+                t.column("kind", .text).notNull()
+            }
+            // One row per distinct front-window content; `lastSeenAt` is
+            // extended while a re-check finds the content unchanged.
+            try db.create(table: "capture") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("at", .datetime).notNull().indexed()
+                t.column("lastSeenAt", .datetime).notNull()
+                t.column("appBundleID", .text).notNull()
+                t.column("appName", .text).notNull()
+                t.column("windowID", .integer).notNull()
+                t.column("title", .text)
+                t.column("spanID", .integer)
+                t.column("text", .text).notNull()
+                t.column("imagePath", .text)
+            }
+        }
+
+        migrator.registerMigration("v6") { db in
+            // Screen collector health, one row per bounded window: checks
+            // and how each ended, so a gap in captures has a stated reason.
+            try db.create(table: "captureHealth") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("windowStart", .datetime).notNull().indexed()
+                t.column("windowEnd", .datetime).notNull()
+                for name in ["checks", "unchanged", "textSame", "inserted", "extended", "ocrRuns",
+                             "ocrFailed", "screenshotFailed", "notFront", "permissionDenied", "skippedBusy"] {
+                    t.column(name, .integer).notNull().defaults(to: 0)
+                }
+            }
+        }
+
+        migrator.registerMigration("v7") { db in
+            // What the front window is on: a terminal's working directory,
+            // an editor's file, an AI chat app's conversation name. A new
+            // column rather than a reuse of `title`/`url` on purpose --
+            // those two are read by name by another process (Jarvis), so
+            // changing what they mean would break it silently.
+            try db.alter(table: "span") { t in t.add(column: "document", .text) }
+
+            // `builtinApps` is only ever seeded by v1, and SeedImporter's
+            // version gate covers the domain CSVs, not appCategory -- so an
+            // existing database never sees a later addition to that list
+            // unless a migration inserts it. OR IGNORE keeps any row the
+            // user has since set for the same bundle ID.
+            for app in Taxonomy.v7Apps {
+                try db.execute(
+                    sql: "INSERT OR IGNORE INTO appCategory (bundleID, categoryID, source) VALUES (?, ?, 'builtin')",
+                    arguments: [app.bundleID, app.categoryID]
+                )
+            }
+        }
+
         return migrator
     }
 }

@@ -19,6 +19,7 @@ public final class SettingsStore: Sendable {
     private static let focusBlockedAppsKey = "focusBlockedApps"
     private static let focusBlockedCategoriesKey = "focusBlockedCategories"
     private static let calendarOverlayEnabledKey = "calendarOverlayEnabled"
+    private static let screenCapturePausedKey = "screenCapturePaused"
 
     private static let defaultIdleThreshold: TimeInterval = 180
     private static let defaultLLMEnabled = false
@@ -178,5 +179,13 @@ public final class SettingsStore: Sendable {
 
     public func setCalendarOverlayEnabled(_ v: Bool) {
         set(Self.calendarOverlayEnabledKey, v ? "true" : "false")
+    }
+
+    public var screenCapturePaused: Bool {
+        self.get(Self.screenCapturePausedKey) == "true"
+    }
+
+    public func setScreenCapturePaused(_ v: Bool) {
+        set(Self.screenCapturePausedKey, v ? "true" : "false")
     }
 }

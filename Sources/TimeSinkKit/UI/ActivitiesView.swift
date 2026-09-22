@@ -439,12 +439,16 @@ final class ActivitiesModel {
     /// not `private`, members) without needing a `@MainActor` hop — same
     /// convention as `timelineBlocks` below.
     ///
-    /// Groups by `EntityParser.entity(...)?.key ?? span.domain ??
-    /// span.appBundleID` — a finer display-level key than plain
-    /// domain-or-app when the span's URL resolves to a recognized entity
-    /// (github/gitlab owner-repo, youtube channel). `reassignKey` always
-    /// stays at the domain/bundleID level regardless, since that's the only
-    /// granularity `CategoryStore` understands.
+    /// Groups by `span.document ?? EntityParser.entity(...)?.key ??
+    /// span.domain ?? span.appBundleID` — a finer display-level key than
+    /// plain domain-or-app whenever the span carries one: a working
+    /// directory, an open file, an AI chat conversation (migration v7), or a
+    /// URL entity (github/gitlab owner-repo, youtube channel). The document
+    /// outranks the URL entity because the two never coexist — a document
+    /// comes from a native window, a URL entity from a browser tab — and
+    /// because it is the more specific of the two where they could.
+    /// `reassignKey` always stays at the domain/bundleID level regardless,
+    /// since that's the only granularity `CategoryStore` understands.
     nonisolated static func rows(for items: [CategorizedSpan], meetingSpanIDs: Set<Int64> = []) -> [ActivityRow] {
         struct Accum {
             var seconds: TimeInterval = 0
@@ -462,15 +466,22 @@ final class ActivitiesModel {
             let entity = span.domain.flatMap { domain in
                 span.url.flatMap { EntityParser.entity(urlString: $0, domain: domain) }
             }
-            let key = entity?.key ?? span.domain ?? span.appBundleID
+            // Namespaced by bundle ID: two apps can legitimately be on the
+            // same document (an editor and a terminal in one repo) and must
+            // not merge into a row that claims to be one activity.
+            let documentKey = span.document.map { "\(span.appBundleID)/\($0)" }
+            let key = documentKey ?? entity?.key ?? span.domain ?? span.appBundleID
 
             var accum = byKey[key] ?? Accum()
             accum.seconds += span.duration
             if accum.label == nil {
-                accum.label = entity?.label ?? span.domain ?? span.appName
+                accum.label = span.document.map { "\(span.appName) / \(DocumentIdentity.label(for: $0))" }
+                    ?? entity?.label ?? span.domain ?? span.appName
                 accum.reassignKey = span.domain ?? span.appBundleID
                 accum.isDomain = span.domain != nil
-                accum.isEntity = entity != nil
+                // Both kinds of row are finer than what they reassign at, and
+                // the context menu says so.
+                accum.isEntity = entity != nil || span.document != nil
             }
             if let id = span.id, meetingSpanIDs.contains(id) {
                 accum.hasMeeting = true

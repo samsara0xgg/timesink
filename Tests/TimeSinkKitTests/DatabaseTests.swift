@@ -149,8 +149,16 @@ final class DatabaseTests: XCTestCase {
         try AppDatabase.migrator.migrate(db, upTo: "v3")
         let spanStore = SpanStore(db)
         let catStore = CategoryStore(db)
-        _ = try spanStore.insert(Span(start: ts(0), end: ts(100), appBundleID: "a",
-                                      appName: "A", title: "t", url: nil, domain: nil))
+        // Written as a v3-era binary would have: raw SQL over the v3 column
+        // set. Inserting a `Span` record here would encode whatever columns
+        // the CURRENT struct has (v7's `document`, and whatever comes next)
+        // into a v3 table, which is not what this test is about.
+        try db.write { db in
+            try db.execute(
+                sql: "INSERT INTO span (start, \"end\", appBundleID, appName, title, url, domain) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                arguments: [ts(0), ts(100), "a", "A", "t", nil, nil]
+            )
+        }
         try catStore.addUserURLRule(pattern: "mysite.com", categoryID: "news", priority: 1000)
         try AppDatabase.migrator.migrate(db)  // v3 → v4
         XCTAssertEqual(try spanStore.spans(overlapping: DateInterval(start: ts(0), end: ts(200))).count, 1)

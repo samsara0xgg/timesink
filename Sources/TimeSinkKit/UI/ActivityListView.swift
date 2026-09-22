@@ -179,17 +179,18 @@ private struct ActivityRowView: View {
         }
         .contextMenu {
             ForEach(sortedCategories, id: \.id) { category in
-                Button(row.isEntity ? "\(category.name)（整站）" : category.name) {
+                Button(row.isEntity ? "\(category.name)\(row.isDomain ? "（整站）" : "（整个应用）")" : category.name) {
                     reassign(to: category.id)
                 }
             }
         }
     }
 
-    /// Always writes at `row.reassignKey` (domain or bundleID) — an entity
-    /// row's finer-grained `row.id` (e.g. a specific github repo) is
-    /// display-only; `CategoryStore` only understands domain/app-level
-    /// overrides, hence the「（整站）」menu hint on entity rows.
+    /// Always writes at `row.reassignKey` (domain or bundleID) — a finer
+    /// `row.id` (a specific github repo, a working directory, an AI chat
+    /// conversation) is display-only; `CategoryStore` only understands
+    /// domain/app-level overrides, hence the「（整站）」/「（整个应用）」
+    /// menu hint on those rows.
     private func reassign(to categoryID: String) {
         do {
             if row.isDomain {

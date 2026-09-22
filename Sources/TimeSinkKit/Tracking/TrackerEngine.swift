@@ -134,15 +134,30 @@ public struct SuspensionState: Equatable {
 @MainActor
 public final class TrackerEngine {
     private static let chromeBundleID = "com.google.Chrome"
+    /// Apps whose window title is a constant and whose real identity is the
+    /// conversation inside the web view -- see `ChatSessionSampler`.
+    static let chatBundleIDs: Set<String> = [
+        "com.openai.codex", "com.openai.chat", "com.anthropic.claudefordesktop",
+    ]
+    /// The conversation is re-read at most this often. Unlike Chrome there
+    /// is no cheap change signal to gate on: the window title these apps
+    /// publish never changes, so the interval is the whole gate.
+    private static let chatFetchInterval: TimeInterval = 5
     private static let minWriteDuration: TimeInterval = 1
     private static let heartbeatInterval: TimeInterval = 30
 
     private let spanStore: SpanStore
     private let settings: SettingsStore
+    /// Where state reasons land (migration v5); nil keeps tests store-free.
+    private let observations: ObservationStore?
+    /// Fed one sample per tick, including idle ticks: reading without
+    /// touching the keyboard is still activity worth seeing.
+    public var screenCollector: ScreenCollector?
 
     private let builder = SpanBuilder()
     private let windowSampler = WindowSampler()
     private let chromeSampler = ChromeSampler()
+    private let chatSampler = ChatSessionSampler()
     private let idleMonitor = IdleMonitor()
     private let systemMonitor = SystemMonitor()
     private var throttle = ChromeThrottle()
@@ -167,6 +182,14 @@ public final class TrackerEngine {
     private var chromeTabState: ChromeTabState = .none
     private var chromeBackoff = ChromeFetchBackoff()
 
+    /// Last conversation read, and which app it was read from. Keyed by
+    /// bundle ID so a switch between ChatGPT and Claude can never file one
+    /// app's conversation under the other -- the same stale-value failure
+    /// the Chrome tab cache was fixed for, where a cached value outlived
+    /// what it described.
+    private var chatSession: (bundleID: String, title: String?)?
+    private var lastChatFetch = Date.distantPast
+
     /// Chrome Automation authorization, refreshed at most once per fetch
     /// attempt -- inside the same `chromeBackoff.shouldAttempt` gate that
     /// spaces out attempts -- rather than on every tick.
@@ -186,6 +209,7 @@ public final class TrackerEngine {
     /// throttle+backoff gate already keeps it to at most once per 5s.
     var windowSampleProvider: (@Sendable (Date) -> Sample?)?
     var chromeTabProvider: (@Sendable () -> ChromeSampler.TabInfo?)?
+    var chatSessionProvider: (@Sendable () -> String?)?
     var chromeAutomationAuthorizedProvider: (() -> Bool)?
     var idleSecondsProvider: (() -> TimeInterval)?
     /// True while the user is currently in a calendar meeting -- when set,
@@ -295,13 +319,15 @@ public final class TrackerEngine {
 
     private let logger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "tracker")
 
-    public init(spanStore: SpanStore, settings: SettingsStore) {
+    public init(spanStore: SpanStore, settings: SettingsStore, observations: ObservationStore? = nil) {
         self.spanStore = spanStore
         self.settings = settings
+        self.observations = observations
     }
 
     public func start() {
-        systemMonitor.onSuspend = { [weak self] date in self?.suspend(at: date) }
+        observations?.logState("start")
+        systemMonitor.onSuspend = { [weak self] date, source in self?.suspend(at: date, source: source) }
         systemMonitor.onResume = { [weak self] _, source in self?.resume(source: source) }
         systemMonitor.start()
 
@@ -332,6 +358,14 @@ public final class TrackerEngine {
         if let closed = builder.close(at: Date()) {
             persist(closed)
         }
+        observations?.logState("stop")
+        interruptCollector()
+    }
+
+    /// The collector paces itself; it only needs to know the observation broke.
+    private func interruptCollector() {
+        guard let screenCollector else { return }
+        Task { await screenCollector.interrupt() }
     }
 
     /// The one state-machine entry point -- production and tests both drive
@@ -351,7 +385,8 @@ public final class TrackerEngine {
         tickInFlight = true
         defer { tickInFlight = false }
 
-        guard beginTick(now: now) else { return }
+        let phase = beginTick(now: now)
+        guard phase != .suspended else { return }
 
         // AppKit on the actor (see `WindowSampler.frontmostApp`). Skipped
         // entirely when a seam is installed, so tests never depend on whichever
@@ -362,6 +397,12 @@ public final class TrackerEngine {
             now: now, provider: windowSampleProvider, app: frontmost
         ) else { return }
         guard suspensionEpoch == epochBeforeSample else { return }
+
+        // Idle: no span, but the screen collector still gets its look.
+        if phase == .idle {
+            offerToCollector(sample, now: now, spanID: nil)
+            return
+        }
 
         if sample.appBundleID == Self.chromeBundleID {
             if shouldFetchChromeTab(title: sample.windowTitle, at: now) {
@@ -375,9 +416,30 @@ public final class TrackerEngine {
                 noteChromeFetch(fetched, title: sample.windowTitle, at: now)
             }
             applyChromeTabState(to: &sample)
+        } else if Self.chatBundleIDs.contains(sample.appBundleID) {
+            // Refetch when the cached answer belongs to a different app, or
+            // when it has simply aged out; otherwise reuse it, exactly as
+            // the Chrome branch reuses `chromeTabState` between fetches.
+            if chatSession?.bundleID != sample.appBundleID
+                || now.timeIntervalSince(lastChatFetch) >= Self.chatFetchInterval {
+                lastChatFetch = now
+                let epochBeforeChat = suspensionEpoch
+                let fetched = await offActorChatSession(provider: chatSessionProvider, app: frontmost)
+                guard suspensionEpoch == epochBeforeChat else { return }
+                chatSession = (sample.appBundleID, fetched)
+            }
+            sample.document = chatSession?.title
         }
 
         finishTick(sample, now: now)
+        offerToCollector(sample, now: now, spanID: currentRowID)
+    }
+
+    /// Fire-and-forget: the collector paces and dedupes itself, and a tick
+    /// must never wait on a screenshot or OCR.
+    private func offerToCollector(_ sample: Sample, now: Date, spanID: Int64?) {
+        guard let screenCollector else { return }
+        Task { await screenCollector.tick(now: now, sample: sample, spanID: spanID) }
     }
 
     /// Runs on the cooperative pool: a `nonisolated async` function does not
@@ -399,6 +461,19 @@ public final class TrackerEngine {
         return windowSampler.sample(at: now, app: app)
     }
 
+    /// Off-actor counterpart for the chat app's AX walk. Same reasoning as
+    /// `offActorWindowSample`: it is blocking Mach IPC and must not run on
+    /// the main actor. Measured 2026-09-22 at 2.8ms (ChatGPT) and 6.6ms
+    /// (Claude) for the whole walk, and it runs at most once per
+    /// `chatFetchInterval`.
+    nonisolated private func offActorChatSession(
+        provider: (@Sendable () -> String?)?, app: WindowSampler.FrontmostApp?
+    ) async -> String? {
+        if let provider { return provider() }
+        guard let app else { return nil }
+        return chatSampler.session(pid: app.pid, appName: app.name)
+    }
+
     /// Off-actor counterpart for the Chrome Apple Event -- likewise bounded to
     /// one cooperative-pool thread by `tickInFlight`. See
     /// `offActorWindowSample`.
@@ -408,10 +483,12 @@ public final class TrackerEngine {
         provider.map { $0() } ?? chromeSampler.activeTab()
     }
 
+    enum TickPhase { case suspended, idle, active }
+
     /// Tick phase 1 (main actor, no IPC): meeting idle-exemption and the
-    /// idle/lock/sleep suspension state machine. Returns `true` when the
-    /// caller should go on to sample.
-    private func beginTick(now: Date) -> Bool {
+    /// idle/lock/sleep suspension state machine. `.active` samples as
+    /// normal, `.idle` samples for the screen collector only.
+    private func beginTick(now: Date) -> TickPhase {
         let rawIdle = idleSecondsProvider?() ?? idleMonitor.idleSeconds()
         let isInMeetingNow = isInMeetingProvider?() == true
         if wasInMeeting, !isInMeetingNow {
@@ -420,9 +497,12 @@ public final class TrackerEngine {
         wasInMeeting = isInMeetingNow
         let idleSeconds = isInMeetingNow ? 0 : rawIdle
 
+        let wasIdle = suspensionState.idleSuspended
         switch suspensionState.tick(idleSeconds: idleSeconds, threshold: settings.idleThreshold) {
-        case .systemSuspended, .stillIdle:
-            return false
+        case .systemSuspended:
+            return .suspended
+        case .stillIdle:
+            return .idle
         case .becameIdle:
             let backdated = now.addingTimeInterval(-idleSeconds)
             let closeAt = exemptionEndedAt.map { max(backdated, $0) } ?? backdated
@@ -430,9 +510,11 @@ public final class TrackerEngine {
             if let closed = builder.close(at: closeAt) {
                 persist(closed)
             }
-            return false
+            observations?.logState("idle", at: closeAt)
+            return .idle
         case .active:
-            return true
+            if wasIdle { observations?.logState("active", at: now) }
+            return .active
         }
     }
 
@@ -548,7 +630,7 @@ public final class TrackerEngine {
     /// Internal rather than private so a test can simulate the screen
     /// locking mid-tick, which is what `SystemMonitor.onSuspend` does in
     /// production (see `testSampleArrivingAfterLockIsDropped`).
-    func suspend(at date: Date) {
+    func suspend(at date: Date, source: SystemMonitor.SuspendSource = .lock) {
         // Bumped before the idempotence guard: the epoch only has to be a
         // superset of "the suspension context moved", and a redundant signal
         // costs at most one dropped 1s sample.
@@ -557,6 +639,8 @@ public final class TrackerEngine {
         if let closed = builder.close(at: date) {
             persist(closed)
         }
+        observations?.logState(source == .sleep ? "sleep" : "lock", at: date)
+        interruptCollector()
     }
 
     /// `.unlock` (from `com.apple.screenIsUnlocked`) always resumes.
@@ -574,8 +658,10 @@ public final class TrackerEngine {
         switch source {
         case .unlock:
             suspensionState.unlock()
+            observations?.logState("unlock")
         case .wake:
             suspensionState.wake(screenStillLocked: isScreenLocked())
+            observations?.logState("wake")
         }
     }
 

@@ -13,7 +13,12 @@ public final class SystemMonitor {
         case unlock
     }
 
-    public var onSuspend: ((Date) -> Void)?
+    public enum SuspendSource {
+        case sleep
+        case lock
+    }
+
+    public var onSuspend: ((Date, SuspendSource) -> Void)?
     public var onResume: ((Date, ResumeSource) -> Void)?
     private var lastLockEvent = Date.distantPast
     public init() {}
@@ -21,7 +26,7 @@ public final class SystemMonitor {
     public func start() {
         let wc = NSWorkspace.shared.notificationCenter
         wc.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.onSuspend?(Date()) }
+            MainActor.assumeIsolated { self?.onSuspend?(Date(), .sleep) }
         }
         wc.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.onResume?(Date(), .wake) }
@@ -39,6 +44,6 @@ public final class SystemMonitor {
         let now = Date()
         guard now.timeIntervalSince(lastLockEvent) > 1 else { return }
         lastLockEvent = now
-        if suspend { onSuspend?(now) } else { onResume?(now, .unlock) }
+        if suspend { onSuspend?(now, .lock) } else { onResume?(now, .unlock) }
     }
 }

@@ -49,7 +49,12 @@ public struct TimeSinkApp: App {
         SeedImporter.importIfNeeded(categoryStore: categoryStore, settings: settingsStore)
 
         let resolver = CategoryResolver(categoryStore: categoryStore)
-        let engine = TrackerEngine(spanStore: spanStore, settings: settingsStore)
+        let observationStore = ObservationStore(db)
+        let engine = TrackerEngine(spanStore: spanStore, settings: settingsStore, observations: observationStore)
+        if let imagesRoot = try? ScreenCollector.defaultImagesRoot() {
+            engine.screenCollector = ScreenCollector(store: observationStore, imagesRoot: imagesRoot,
+                                                     paused: settingsStore.screenCapturePaused)
+        }
         engine.llmCoordinator = LLMCoordinator(
             categoryStore: categoryStore, settings: settingsStore, resolver: resolver, service: nil
         )
@@ -62,6 +67,8 @@ public struct TimeSinkApp: App {
             engine: engine
         )
         self.model = model
+        model.observationStore = observationStore
+        model.screenCollector = engine.screenCollector
 
         let calendarStore = CalendarStore()
         model.calendarStore = calendarStore
