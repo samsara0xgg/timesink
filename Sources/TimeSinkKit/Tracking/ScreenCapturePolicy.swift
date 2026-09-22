@@ -13,9 +13,11 @@ public struct WindowKey: Hashable, Sendable {
 
 /// When to look at the front window. Pure and clock-free so it is testable:
 /// a window has to stay in front for `settleSeconds` before its first check,
-/// and the same window is re-checked every `checkInterval` after that.
+/// and the same window is re-checked every `checkInterval` after that. A
+/// title change inside the same window (a new tab, a new file, a new chat)
+/// is checked `titleSettleSeconds` after it instead of at the next interval.
 /// Whether a check turns into a stored capture is decided by
-/// `ScreenSignature.changed` afterwards, not here.
+/// `ScreenSignature` and the OCR text afterwards, not here.
 ///
 /// `segment` numbers one continuous observation of one window. It advances
 /// when the front window changes (including to nil: excluded app), on an
@@ -25,6 +27,7 @@ public struct WindowKey: Hashable, Sendable {
 public struct ScreenCapturePolicy: Equatable, Sendable {
     public var settleSeconds: TimeInterval
     public var checkInterval: TimeInterval
+    public var titleSettleSeconds: TimeInterval
     /// Ticks come every second; a longer silence means the tracker was not
     /// looking, whatever the reason. Wide enough that one stalled tick (a
     /// slow AX or Chrome round-trip) does not split a row.
@@ -35,11 +38,18 @@ public struct ScreenCapturePolicy: Equatable, Sendable {
     private var candidateSince = Date.distantPast
     private var lastCheck = Date.distantPast
     private var lastTick = Date.distantPast
+    private var title: String?
+    private var titleChangedAt: Date?
 
-    public init(settleSeconds: TimeInterval = 3, checkInterval: TimeInterval = 30,
-                maxTickGap: TimeInterval = 5) {
+    /// Measured 2026-09-21 (docs/screen-capture-tuning-2026-09-21.md): a
+    /// check is one window screenshot plus a 32x20 signature, so ten-second
+    /// checks are cheap; OCR only runs when the signature or the refresh
+    /// clock says so.
+    public init(settleSeconds: TimeInterval = 3, checkInterval: TimeInterval = 10,
+                titleSettleSeconds: TimeInterval = 1, maxTickGap: TimeInterval = 5) {
         self.settleSeconds = settleSeconds
         self.checkInterval = checkInterval
+        self.titleSettleSeconds = titleSettleSeconds
         self.maxTickGap = maxTickGap
     }
 
@@ -49,13 +59,15 @@ public struct ScreenCapturePolicy: Equatable, Sendable {
     public mutating func interrupt() {
         candidate = nil
         lastCheck = .distantPast
+        title = nil
+        titleChangedAt = nil
         segment += 1
     }
 
     /// Returns true when the front window should be inspected now.
     /// `window == nil` (no front window, or an excluded app) resets the
     /// settle timer. Out-of-order ticks are ignored.
-    public mutating func tick(now: Date, window: WindowKey?) -> Bool {
+    public mutating func tick(now: Date, window: WindowKey?, title: String? = nil) -> Bool {
         guard now >= lastTick else { return false }
         let gap = now.timeIntervalSince(lastTick) > maxTickGap
         lastTick = now
@@ -63,13 +75,21 @@ public struct ScreenCapturePolicy: Equatable, Sendable {
             candidate = window
             candidateSince = now
             lastCheck = .distantPast
+            self.title = title
+            titleChangedAt = nil
             segment += 1
             return false
         }
         guard window != nil else { return false }
+        if title != self.title {
+            self.title = title
+            titleChangedAt = now
+        }
         guard now.timeIntervalSince(candidateSince) >= settleSeconds else { return false }
-        guard now.timeIntervalSince(lastCheck) >= checkInterval else { return false }
+        let titleDue = titleChangedAt.map { now.timeIntervalSince($0) >= titleSettleSeconds } ?? false
+        guard titleDue || now.timeIntervalSince(lastCheck) >= checkInterval else { return false }
         lastCheck = now
+        titleChangedAt = nil
         return true
     }
 }
@@ -81,17 +101,28 @@ public enum ScreenSignature {
     public static let rows = 20
     /// Per-cell luminance delta (0...255) that counts the cell as changed.
     public static let cellDelta = 24
-    /// Fraction of changed cells that counts the frame as new content.
-    /// ponytail: starting guess; tune against real apps after a day of use.
+    /// Fraction of changed cells above which the frame is new content even
+    /// when the OCR text reads the same (an image changed, a page scrolled).
     public static let changedFraction = 0.10
+    /// Fraction of changed cells above which OCR runs to compare the text:
+    /// one new chat line or one new terminal line moves about 3% of the
+    /// cells, well under `changedFraction`, and only the text can tell a
+    /// new message from a moved cursor.
+    public static let ocrFraction = 0.02
 
-    public static func changed(_ a: [UInt8], _ b: [UInt8], fraction: Double = changedFraction) -> Bool {
-        guard a.count == b.count, !a.isEmpty else { return true }
+    /// Fraction of cells whose luminance moved by more than `cellDelta`;
+    /// 1.0 when the two signatures are not comparable.
+    public static func fraction(_ a: [UInt8], _ b: [UInt8]) -> Double {
+        guard a.count == b.count, !a.isEmpty else { return 1 }
         var differing = 0
         for (x, y) in zip(a, b) where abs(Int(x) - Int(y)) > cellDelta {
             differing += 1
         }
-        return Double(differing) / Double(a.count) >= fraction
+        return Double(differing) / Double(a.count)
+    }
+
+    public static func changed(_ a: [UInt8], _ b: [UInt8], fraction: Double = changedFraction) -> Bool {
+        self.fraction(a, b) >= fraction
     }
 }
 

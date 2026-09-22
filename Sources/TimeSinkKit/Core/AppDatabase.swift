@@ -206,6 +206,20 @@ public enum AppDatabase {
             }
         }
 
+        migrator.registerMigration("v6") { db in
+            // Screen collector health, one row per bounded window: checks
+            // and how each ended, so a gap in captures has a stated reason.
+            try db.create(table: "captureHealth") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("windowStart", .datetime).notNull().indexed()
+                t.column("windowEnd", .datetime).notNull()
+                for name in ["checks", "unchanged", "textSame", "inserted", "extended", "ocrRuns",
+                             "ocrFailed", "screenshotFailed", "notFront", "permissionDenied", "skippedBusy"] {
+                    t.column(name, .integer).notNull().defaults(to: 0)
+                }
+            }
+        }
+
         return migrator
     }
 }

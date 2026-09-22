@@ -161,6 +161,46 @@ struct BudgetAlertRow: Codable, FetchableRecord, PersistableRecord {
     var kind: String
 }
 
+// MARK: - CaptureHealth
+
+/// What the screen collector did in one bounded window (migration v6): how
+/// many checks it ran and how each ended, so an empty stretch of captures
+/// can be told apart from a denied permission, a failing screenshot, a
+/// failing OCR, or a collector too busy to look.
+public struct CaptureHealth: Codable, Equatable, Sendable, FetchableRecord, MutablePersistableRecord {
+    public static let databaseTableName = "captureHealth"
+    public var id: Int64?
+    public var windowStart: Date
+    public var windowEnd: Date
+    /// Checks the schedule asked for.
+    public var checks = 0
+    /// Signature under `ScreenSignature.ocrFraction`: extended, no OCR.
+    public var unchanged = 0
+    /// OCR ran (small visual change or refresh) and read the same text: extended.
+    public var textSame = 0
+    public var inserted = 0
+    public var extended = 0
+    public var ocrRuns = 0
+    public var ocrFailed = 0
+    public var screenshotFailed = 0
+    /// Screenshot taken, but another window was already in front: dropped.
+    public var notFront = 0
+    public var permissionDenied = 0
+    /// A check fell due while the previous one was still in flight.
+    public var skippedBusy = 0
+
+    public init(windowStart: Date, windowEnd: Date) {
+        self.windowStart = windowStart
+        self.windowEnd = windowEnd
+    }
+
+    public var hasActivity: Bool {
+        checks + permissionDenied + skippedBusy > 0
+    }
+
+    public mutating func didInsert(_ inserted: InsertionSuccess) { id = inserted.rowID }
+}
+
 // MARK: - StateEvent
 
 public struct StateEvent: Codable, Equatable, Sendable, FetchableRecord, MutablePersistableRecord {

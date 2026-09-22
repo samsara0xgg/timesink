@@ -49,6 +49,21 @@ public final class ObservationStore: Sendable {
         }
     }
 
+    /// One closed health window; a write failure is logged by the caller's
+    /// silence, never by dropping ticks.
+    public func record(_ health: CaptureHealth) {
+        var row = health
+        _ = try? writer.write { db in try row.insert(db) }
+    }
+
+    public func health(overlapping interval: DateInterval) throws -> [CaptureHealth] {
+        try writer.read { db in
+            try CaptureHealth.fetchAll(
+                db, sql: "SELECT * FROM captureHealth WHERE windowStart < ? AND windowEnd > ? ORDER BY windowStart",
+                arguments: [interval.end, interval.start])
+        }
+    }
+
     public struct Summary: Equatable, Sendable {
         public let count: Int
         public let latestAt: Date?
