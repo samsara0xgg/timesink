@@ -16,6 +16,22 @@ func processUsage() -> (cpu: Double, peakMiB: Double) {
     return (cpu, Double(usage.ru_maxrss) / 1_048_576)
 }
 
+/// `tsprobe ax <bundleID> [maxDepth]`: one-shot accessibility dump of an
+/// app's focused window -- see `AXProbe`. Runs from the command line without
+/// the target being frontmost, so it can be pointed at whatever is open.
+if CommandLine.arguments.dropFirst().first == "ax" {
+    let args = Array(CommandLine.arguments.dropFirst(2))
+    guard let bundleID = args.first else {
+        print("usage: tsprobe ax <bundleID> [maxDepth]")
+        exit(64)
+    }
+    print("AX granted:", Permissions.accessibilityGranted(prompt: true))
+    exit(AXProbe.run(bundleID: bundleID,
+                     maxDepth: args.count > 1 ? (Int(args[1]) ?? 12) : 12,
+                     manual: args.contains("manual"),
+                     all: args.contains("all")))
+}
+
 /// `tsprobe capture [seconds] [checkInterval] [legacy]`: drives the real
 /// collector against whatever is in front for `seconds` (default 40) with
 /// the given check interval (default: the shipped policy) and prints what it
