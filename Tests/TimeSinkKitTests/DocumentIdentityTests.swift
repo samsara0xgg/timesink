@@ -133,13 +133,16 @@ final class DocumentIdentityTests: XCTestCase {
         XCTAssertNil(DocumentIdentity.path(of: "cc | 9.22 gptlive"))
     }
 
-    /// Chrome answers `kAXURL` with the front tab's address; that must not
-    /// become a document, or the browser's domain rows shatter into pages.
-    func testWebPagesAreNotDocuments() {
-        XCTAssertTrue(DocumentIdentity.isWebPage("https://www.freecodecamp.org/"))
-        XCTAssertTrue(DocumentIdentity.isWebPage("http://localhost:8080/x"))
-        XCTAssertFalse(DocumentIdentity.isWebPage("file:///Users/a/Projects/jarvis/"))
-        XCTAssertFalse(DocumentIdentity.isWebPage("组织 Jarvis 全面审查提示"))
+    /// The sampler keeps a window document only when it names a path. Every
+    /// browser-shaped URL must fail that, including Chrome's internal pages,
+    /// which is what leaked on 2026-09-22 through an http-only guard.
+    func testOnlyPathsQualifyAsWindowDocuments() {
+        for url in ["https://www.freecodecamp.org/", "http://localhost:8080/x",
+                    "chrome://newtab/", "chrome://downloads/", "about:blank",
+                    "app://-/index.html"] {
+            XCTAssertNil(DocumentIdentity.path(of: url), url)
+        }
+        XCTAssertEqual(DocumentIdentity.path(of: "file:///Users/a/Projects/jarvis/"), "/Users/a/Projects/jarvis")
     }
 
     func testHomeDirectoryIsRecognizedInBothForms() {

@@ -27,16 +27,6 @@ public enum DocumentIdentity {
         return raw.count > 1 && raw.hasSuffix("/") ? String(raw.dropLast()) : raw
     }
 
-    /// True when the document is a web page. A browser publishes the page
-    /// URL as its window document -- measured on Chrome 2026-09-22, which
-    /// answers `kAXURL` with the front tab's address -- and that is already
-    /// what `Span.url`/`Span.domain` carry, grouped by domain and by URL
-    /// entity. Taking it as a document instead would replace one row per
-    /// site with one row per page, so a web page is never a document.
-    public static func isWebPage(_ document: String) -> Bool {
-        document.hasPrefix("http://") || document.hasPrefix("https://")
-    }
-
     /// True when the document says nothing more specific than the user's home
     /// directory -- what a terminal reports when the shell in front of it
     /// never emitted a working directory of its own.

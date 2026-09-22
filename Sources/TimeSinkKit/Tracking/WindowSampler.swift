@@ -62,13 +62,20 @@ public final class WindowSampler: Sendable {
 
     /// A document worth recording, or nil.
     ///
+    /// From the window itself only a filesystem path counts. A browser
+    /// publishes its front tab's address as `kAXURL` -- `https://…`, and
+    /// also `chrome://newtab/` and friends, which on 2026-09-22 leaked
+    /// through an http-only guard and lagged the real tab, filing google.com
+    /// spans under "chrome://newtab/". The tab is already `url`/`domain`, so
+    /// rather than enumerate schemes, anything that is not a path is dropped.
+    ///
     /// Suppressed entirely for the apps the screen collector refuses to look
     /// at (password managers): a document is window content like any other,
     /// and the two lists must not drift apart.
     private func document(for app: FrontmostApp, focused: FocusedWindow) -> String? {
         guard !ScreenCollector.excludedBundleIDs.contains(app.bundleID) else { return nil }
         if let document = focused.document,
-           !DocumentIdentity.isWebPage(document),
+           DocumentIdentity.path(of: document) != nil,
            !DocumentIdentity.isHome(document) {
             return document
         }
