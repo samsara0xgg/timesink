@@ -63,7 +63,13 @@ public final class AppModel {
     /// pre-edit numbers until midnight.
     public private(set) var dataEditVersion: Int = 0
 
-    /// Menu bar icon label: today's focus time, kept in sync by `refreshMenu()`.
+    /// Menu bar icon label: today's TOTAL tracked time, kept in sync by
+    /// `refreshMenu()`. Deliberately the total and not `Aggregator.focusTime`:
+    /// the label renders as a bare number with no caption, and focus time drops
+    /// every category scoring below 1 -- including `uncategorized`, which on
+    /// real data is the single largest bucket -- so it read as "time tracked
+    /// today" while under-reporting it ~3x. The focus figure is still shown,
+    /// captioned, in the popover (`MenuBarDashboard`).
     public var menuTitle: String = "0m"
     /// Today's total tracked duration, for the menu bar dropdown.
     public var todayTotalTitle: String = "0m"
@@ -213,9 +219,8 @@ public final class AppModel {
     public func refreshMenu() {
         let items = rangedSpans(for: .today())
         let byCategory = Aggregator.durationByCategory(items)
-        let focus = Aggregator.focusTime(durationByCategory: byCategory, categories: resolver.categoriesByID)
-        menuTitle = Format.duration(focus)
         todayTotalTitle = Format.duration(Aggregator.totalDuration(items.map(\.span)))
+        menuTitle = todayTotalTitle
         if let pulse = Aggregator.pulse(durationByCategory: byCategory, categories: resolver.categoriesByID) {
             todayPulseTitle = "\(pulse)"
         } else {

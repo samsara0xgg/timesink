@@ -18,9 +18,11 @@ cdab412  metadata edits stop wiping the memo         611ms -> 0.04ms
 65d1c6a  review round 1 fixes
 ```
 
-A signed build of this state is at `dist/TimeSink.app`. **It is not
-installed.** `/Applications/TimeSink.app` is still the `b6c7318` build.
-Installing replaces the user's running tracker, so it needs their say-so:
+A signed build of this state is at `dist/TimeSink.app`, and it **is now
+installed** — `/Applications/TimeSink.app`'s binary hashes identical to it
+(installed 2026-09-14 19:00, shortly after this doc was first written, which
+still said otherwise). The user is running this build. Reinstalling replaces
+their running tracker, so it needs their say-so:
 
 ```sh
 make install CERT="TimeSink Dev"      # quits nothing -- kill the running app first
@@ -256,5 +258,6 @@ None of the SwiftUI lifecycle changes (sidebar hoist, settings tab gating,
 permission probe, title-rule debounce) have test coverage — they are view
 lifecycle behaviour, not logic the suite can drive. They were verified by
 build + the full suite staying green and by adversarial code review, **not by
-running the app**. `dist/TimeSink.app` is built and signed and waiting for
-someone to install it and click around.
+running the app**. The build is installed and running since 2026-09-14 19:00,
+so the remaining gap is only whether the user has actually clicked through
+statistics, the sidebar, and settings and found the lag gone.

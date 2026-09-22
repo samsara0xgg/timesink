@@ -209,8 +209,8 @@ public struct TimeSinkApp: App {
     }
 }
 
-/// The menu bar's icon + optional text label. Text is today's focus time
-/// (`model.menuTitle` -- not `todayTotalTitle`), hidden entirely when
+/// The menu bar's icon + optional text label. Text is today's total tracked
+/// time (`model.menuTitle`, which mirrors `todayTotalTitle`), hidden entirely when
 /// `menuTextEnabled` is off so only the icon remains. The icon itself swaps
 /// to a badged variant while `model.chromeDegraded` is true, signaling that
 /// Chrome tab titles/URLs aren't being captured. Reads the `AppModel` mirror

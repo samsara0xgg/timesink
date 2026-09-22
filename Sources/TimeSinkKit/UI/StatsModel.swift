@@ -111,7 +111,14 @@ final class StatsModel {
         let categories = model.resolver.categoriesByID
 
         total = Aggregator.totalDuration(items.map(\.span))
-        let days = max(1, Int((model.range.interval.duration / 86400).rounded()))
+        // A still-running period has only elapsed as far as `now`; dividing a
+        // partial total by the FULL calendar window is biased by construction
+        // (Monday's `.week` divided 1 day of data by 7). Same `containsNow`
+        // clipping `recomputeDeltas` already applies to its duration deltas.
+        let elapsed = model.range.containsNow
+            ? Date().timeIntervalSince(model.range.interval.start)
+            : model.range.interval.duration
+        let days = max(1, Int((elapsed / 86400).rounded()))
         avgPerDay = total / Double(days)
 
         let byCategory = Aggregator.durationByCategory(items)
