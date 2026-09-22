@@ -162,7 +162,7 @@ public final class TrackerEngine {
     private let systemMonitor = SystemMonitor()
     private var throttle = ChromeThrottle()
 
-    private var currentRowID: Int64?
+    public private(set) var currentRowID: Int64?
     private var lastHeartbeat = Date.distantPast
 
     /// Chrome tab capture state. `.none` (fetch failed / never fetched) never

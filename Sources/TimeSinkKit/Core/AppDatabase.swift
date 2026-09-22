@@ -241,6 +241,32 @@ public enum AppDatabase {
             }
         }
 
+        migrator.registerMigration("v8") { db in
+            // Cloud sync (docs/superpowers/specs/2026-09-22-timesink-cloud-design.md
+            // §4). This device's own rows keep deviceID/originID NULL -- their
+            // identity is `id`; rows pulled from another device carry that
+            // device's id and row number. remoteSeq is the server's sequence
+            // once a row is acknowledged, NULL while it still has to go up.
+            // `Span`'s Codable shape is untouched: `SELECT *` ignores the
+            // extra columns and `insert` leaves them NULL, so the other
+            // reader of this table (Jarvis) sees no change.
+            try db.alter(table: "span") { t in
+                t.add(column: "deviceID", .text)
+                t.add(column: "originID", .integer)
+                t.add(column: "remoteSeq", .text)
+            }
+            // A re-pull of a row already here is a no-op, not a duplicate.
+            try db.execute(sql: """
+                CREATE UNIQUE INDEX span_on_device_origin ON span(deviceID, originID) \
+                WHERE deviceID IS NOT NULL
+                """)
+            // "What still has to go up" without a scan of the whole history.
+            try db.execute(sql: """
+                CREATE INDEX span_unsynced ON span(id) \
+                WHERE remoteSeq IS NULL AND deviceID IS NULL
+                """)
+        }
+
         return migrator
     }
 }

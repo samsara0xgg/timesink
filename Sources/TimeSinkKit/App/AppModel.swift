@@ -11,7 +11,7 @@ public enum SidebarItem: Hashable {
 /// by `SettingsView`'s `TabView(selection:)` and written by notification
 /// routing (`.settingsBudget` → `.budget`).
 public enum SettingsTab: Hashable {
-    case general, categories, rules, uncategorized, llm, budget
+    case general, categories, rules, uncategorized, llm, budget, account
 }
 
 /// App-wide observable state: the shared stores/engine, the current date-range
@@ -127,6 +127,12 @@ public final class AppModel {
     public var budgetStore: BudgetStore?
     public var notifier: (any Notifying)?
     public var budgetMonitor: BudgetMonitor?
+
+    /// Cloud account and sync (design doc 2026-09-22) -- same post-init
+    /// injection convention. nil in tests and until `TimeSinkApp.init`
+    /// assigns them; the account pane treats nil as "not available".
+    public var cloudAuth: CloudAuth?
+    public var sync: SyncEngine?
 
     /// C4 focus sessions -- same post-init injection convention as
     /// `calendarStore`/`budgetStore`: `TimeSinkApp.init` assigns these after

@@ -142,4 +142,79 @@ public final class SpanStore: Sendable {
             return (totals, straddlers)
         }
     }
+
+    // MARK: - Cloud sync (migration v8)
+
+    /// A row that lives on another device, as the cloud hands it back.
+    public struct RemoteSpan: Sendable {
+        public let span: Span
+        public let deviceID: String
+        public let originID: Int64
+        public let seq: String
+
+        public init(span: Span, deviceID: String, originID: Int64, seq: String) {
+            self.span = span
+            self.deviceID = deviceID
+            self.originID = originID
+            self.seq = seq
+        }
+    }
+
+    /// This device's rows the cloud has not acknowledged, oldest first.
+    /// `openID` is the engine's current row: its `end` is still moving, so
+    /// it goes up once it has closed.
+    public func unsynced(excluding openID: Int64?, limit: Int) throws -> [Span] {
+        try writer.read { db in
+            try Span.fetchAll(
+                db,
+                sql: "SELECT * FROM span WHERE remoteSeq IS NULL AND deviceID IS NULL AND id != ? ORDER BY id LIMIT ?",
+                arguments: [openID ?? -1, limit]
+            )
+        }
+    }
+
+    public func unsyncedCount() throws -> Int {
+        try writer.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM span WHERE remoteSeq IS NULL AND deviceID IS NULL") ?? 0
+        }
+    }
+
+    public func markSynced(_ acks: [(id: Int64, seq: String)]) throws {
+        try writer.write { db in
+            for ack in acks {
+                try db.execute(sql: "UPDATE span SET remoteSeq = ? WHERE id = ?", arguments: [ack.seq, ack.id])
+            }
+        }
+    }
+
+    /// Other devices' rows. `span_on_device_origin` drops one already here,
+    /// so a re-pull is harmless. Returns how many were new.
+    @discardableResult
+    public func insertRemote(_ rows: [RemoteSpan]) throws -> Int {
+        try writer.write { db in
+            var inserted = 0
+            for row in rows {
+                try db.execute(
+                    sql: """
+                        INSERT OR IGNORE INTO span \
+                        (start, end, appBundleID, appName, title, url, domain, document, deviceID, originID, remoteSeq) \
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                    arguments: [row.span.start, row.span.end, row.span.appBundleID, row.span.appName,
+                                row.span.title, row.span.url, row.span.domain, row.span.document,
+                                row.deviceID, row.originID, row.seq]
+                )
+                inserted += db.changesCount
+            }
+            return inserted
+        }
+    }
+
+    /// Forgets that this device's rows were ever uploaded (account change,
+    /// account deletion). Other devices' rows are untouched.
+    public func clearSyncState() throws {
+        try writer.write { db in
+            try db.execute(sql: "UPDATE span SET remoteSeq = NULL WHERE deviceID IS NULL")
+        }
+    }
 }

@@ -188,4 +188,55 @@ public final class SettingsStore: Sendable {
     public func setScreenCapturePaused(_ v: Bool) {
         set(Self.screenCapturePausedKey, v ? "true" : "false")
     }
+
+    // MARK: - Cloud (docs/superpowers/specs/2026-09-22-timesink-cloud-design.md)
+
+    private static let cloudDeviceIDKey = "cloud.deviceID"
+    private static let cloudSyncEnabledKey = "cloud.syncEnabled"
+    private static let cloudPullCursorKey = "cloud.pullCursor"
+    private static let cloudEmailKey = "cloud.email"
+    private static let cloudUserSubKey = "cloud.userSub"
+    private static let cloudLastSyncAtKey = "cloud.lastSyncAt"
+
+    /// This database's identity towards the cloud, minted on first use. It
+    /// lives in the database on purpose: a fresh database is a new device,
+    /// and the old one's rows come back to it as another device's.
+    public var cloudDeviceID: String {
+        if let v = self.get(Self.cloudDeviceIDKey), !v.isEmpty { return v }
+        let v = UUID().uuidString.lowercased()
+        set(Self.cloudDeviceIDKey, v)
+        return v
+    }
+
+    /// Off by default: nothing leaves the machine until the user says so.
+    public var cloudSyncEnabled: Bool {
+        self.get(Self.cloudSyncEnabledKey) == "true"
+    }
+
+    public func setCloudSyncEnabled(_ v: Bool) {
+        set(Self.cloudSyncEnabledKey, v ? "true" : "false")
+    }
+
+    public var cloudPullCursor: String? { nonEmpty(Self.cloudPullCursorKey) }
+    public func setCloudPullCursor(_ v: String?) { set(Self.cloudPullCursorKey, v ?? "") }
+
+    public var cloudEmail: String? { nonEmpty(Self.cloudEmailKey) }
+    public func setCloudEmail(_ v: String?) { set(Self.cloudEmailKey, v ?? "") }
+
+    public var cloudUserSub: String? { nonEmpty(Self.cloudUserSubKey) }
+    public func setCloudUserSub(_ v: String?) { set(Self.cloudUserSubKey, v ?? "") }
+
+    public var cloudLastSyncAt: Date? {
+        nonEmpty(Self.cloudLastSyncAtKey).flatMap(Double.init).map(Date.init(timeIntervalSince1970:))
+    }
+
+    public func setCloudLastSyncAt(_ v: Date?) {
+        set(Self.cloudLastSyncAtKey, v.map { String($0.timeIntervalSince1970) } ?? "")
+    }
+
+    /// Same empty-means-nil round trip `lastSummaryDay` uses.
+    private func nonEmpty(_ key: String) -> String? {
+        let v = self.get(key)
+        return (v?.isEmpty ?? true) ? nil : v
+    }
 }

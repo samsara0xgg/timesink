@@ -33,6 +33,9 @@ struct SettingsView: View {
             BudgetSettingsPane(model: model)
                 .tabItem { Label("预算", systemImage: "chart.pie") }
                 .tag(SettingsTab.budget)
+            AccountSettingsPane(model: model)
+                .tabItem { Label("账号", systemImage: "person.crop.circle") }
+                .tag(SettingsTab.account)
         }
         .frame(width: 560, height: 420)
     }

@@ -165,6 +165,23 @@ public struct TimeSinkApp: App {
         self.needsOnboarding = needsOnboarding
         _showOnboarding = State(initialValue: needsOnboarding)
 
+        // Cloud account + sync -- post-init injection like the above. The
+        // loop only does work while the account pane's switch is on, and
+        // is not started at all until CloudConfig carries a deployment.
+        let cloudAuth = CloudAuth(settings: settingsStore)
+        model.cloudAuth = cloudAuth
+        let sync = SyncEngine(
+            spanStore: spanStore,
+            settings: settingsStore,
+            cloud: HTTPCloud(base: CloudConfig.apiBase) { [weak cloudAuth] in
+                try await cloudAuth?.validAccessToken()
+            },
+            openRowID: { [weak engine] in engine?.currentRowID },
+            onPulled: { [weak model] in model?.dataChanged() }
+        )
+        model.sync = sync
+        if CloudConfig.isConfigured { sync.start() }
+
         engine.start()
     }
 
