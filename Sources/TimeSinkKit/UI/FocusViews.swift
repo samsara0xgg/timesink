@@ -145,8 +145,8 @@ struct FocusConfigView: View {
 
             Button("编辑…") {
                 model.settingsTab = .budget
-                NSApp.activate(ignoringOtherApps: true)
                 openSettings()
+                AppWindow.settings.bringForward()
             }
             .buttonStyle(.plain)
             .font(.caption)

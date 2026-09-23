@@ -655,10 +655,16 @@ struct MenuBarDashboardView: View {
 
             Divider()
             HStack {
-                Button("打开 TimeSink") { openWindow(id: "main") }
+                Button("打开 TimeSink") {
+                    openWindow(id: "main")
+                    AppWindow.main.bringForward()
+                }
                     .buttonStyle(.plain).foregroundStyle(.secondary)
                 Spacer()
-                SettingsLink { Text("设置") }
+                Button("设置") {
+                    openSettings()
+                    AppWindow.settings.bringForward()
+                }
                     .buttonStyle(.plain).foregroundStyle(.secondary)
                 Spacer()
                 Button("退出") {
@@ -743,6 +749,7 @@ struct MenuBarDashboardView: View {
     private func openStatsToday() {
         model.openStats(range: .today())
         openWindow(id: "main")
+        AppWindow.main.bringForward()
     }
 
     /// 连续达标行 deepens to 统计 anchored on the same 30-day window its
@@ -750,11 +757,13 @@ struct MenuBarDashboardView: View {
     private func openStatsTrend() {
         model.openStats(range: DateRangeSelection(kind: .last30, anchor: Date()))
         openWindow(id: "main")
+        AppWindow.main.bringForward()
     }
 
     private func openActivities(category: String) {
         model.openActivities(category: category, range: .today())
         openWindow(id: "main")
+        AppWindow.main.bringForward()
     }
 
     /// R-T11g: activate-only, no `.setActivationPolicy(.regular)` -- same
@@ -763,8 +772,8 @@ struct MenuBarDashboardView: View {
     /// no matching restore-to-`.accessory` path for a policy flip here.
     private func openBudgetSettings() {
         model.settingsTab = .budget
-        NSApp.activate(ignoringOtherApps: true)
         openSettings()
+        AppWindow.settings.bringForward()
     }
 
     // MARK: - C1+ drill-down content builders

@@ -210,6 +210,7 @@ public struct TimeSinkApp: App {
                     appDelegate.blocker = chromeBlocker
                     if needsOnboarding {
                         openWindow(id: "main")
+                        AppWindow.main.bringForward()
                     }
                 }
         }
@@ -217,6 +218,7 @@ public struct TimeSinkApp: App {
 
         Window("TimeSink", id: "main") {
             MainWindowView(model: model)
+                .appWindow(.main)
                 .onAppear {
                     NSApp.setActivationPolicy(.regular)
                     NSApp.activate(ignoringOtherApps: true)
@@ -231,6 +233,7 @@ public struct TimeSinkApp: App {
 
         Settings {
             SettingsView(model: model)
+                .appWindow(.settings)
         }
     }
 }
@@ -285,6 +288,7 @@ struct MenuBarLabel: View {
                 // 路由共用" intent.
                 model.openStats(range: .today())
                 openWindow(id: "main")
+                AppWindow.main.bringForward()
             case .activitiesToday:
                 // `category: nil` clears any category filter left over from
                 // a previous Activities visit -- a notification-driven jump
@@ -294,12 +298,14 @@ struct MenuBarLabel: View {
                 // set semantics).
                 model.openActivities(category: nil, range: .today())
                 openWindow(id: "main")
+                AppWindow.main.bringForward()
             case .settingsBudget:
                 model.settingsTab = .budget
                 // R-T11c: `openSettings()` alone doesn't bring the app
                 // forward while running `.accessory` (no Dock icon, e.g. the
                 // main window isn't currently open) -- the Settings window
-                // could otherwise open behind whatever app was frontmost.
+                // could otherwise open behind whatever app was frontmost;
+                // `AppWindow.bringForward()` does that.
                 //
                 // R-T11g: activate ONLY -- do NOT flip
                 // `.setActivationPolicy(.regular)` here the way
@@ -309,8 +315,8 @@ struct MenuBarLabel: View {
                 // policy flip here would have no matching restore path and
                 // the Dock icon would linger indefinitely -- violating the
                 // app's menubar-first `.accessory` design.
-                NSApp.activate(ignoringOtherApps: true)
                 openSettings()
+                AppWindow.settings.bringForward()
             }
             model.pendingRoute = nil
         }
