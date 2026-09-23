@@ -316,6 +316,9 @@ public final class TrackerEngine {
     /// idle. Clamping the close to no earlier than this moment preserves
     /// the span's real extent. Consumed (cleared) the next time it's read.
     private var exemptionEndedAt: Date?
+    /// This tick's idle reading (0 in a meeting), handed to the screen
+    /// collector so an untouched window is checked less often.
+    private var idleSeconds: TimeInterval = 0
 
     private let logger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "tracker")
 
@@ -439,7 +442,8 @@ public final class TrackerEngine {
     /// must never wait on a screenshot or OCR.
     private func offerToCollector(_ sample: Sample, now: Date, spanID: Int64?) {
         guard let screenCollector else { return }
-        Task { await screenCollector.tick(now: now, sample: sample, spanID: spanID) }
+        let idleSeconds = idleSeconds
+        Task { await screenCollector.tick(now: now, sample: sample, spanID: spanID, idleSeconds: idleSeconds) }
     }
 
     /// Runs on the cooperative pool: a `nonisolated async` function does not
@@ -496,6 +500,7 @@ public final class TrackerEngine {
         }
         wasInMeeting = isInMeetingNow
         let idleSeconds = isInMeetingNow ? 0 : rawIdle
+        self.idleSeconds = idleSeconds
 
         let wasIdle = suspensionState.idleSuspended
         switch suspensionState.tick(idleSeconds: idleSeconds, threshold: settings.idleThreshold) {
