@@ -572,7 +572,7 @@ public final class AppModel {
             // Shared `Format.signedInt` (not a private copy): R-T11b made this
             // number deliberately identical to the popover's 较昨日 chip, and
             // the two must keep rendering it the same way.
-            deltaClause = "（较昨日 \(Format.signedInt(pulse - yesterdayPulse))）"
+            deltaClause = String(localized: "（较昨日 \(Format.signedInt(pulse - yesterdayPulse))）")
         } else {
             deltaClause = ""
         }
@@ -584,9 +584,9 @@ public final class AppModel {
         }
         let peak = BudgetEngine.peakTwoHourWindow(hourTotals)
 
-        let body = "专注 \(Format.duration(focus))，生产力分 \(pulse)\(deltaClause)。"
-            + "最高峰在 \(peak.start) – \(peak.end) 时。"
-        return ("今日小结", body)
+        let body = String(localized: "专注 \(Format.duration(focus))，生产力分 \(pulse)\(deltaClause)。")
+            + String(localized: "最高峰在 \(peak.start) – \(peak.end) 时。")
+        return (String(localized: "今日小结"), body)
     }
 
     public func setScreenCapturePaused(_ paused: Bool) {

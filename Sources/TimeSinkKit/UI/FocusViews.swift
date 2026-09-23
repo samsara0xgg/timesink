@@ -11,7 +11,7 @@ public enum FocusBlockPage {
     /// `FocusSessionController.intercept(sample:at:)` uses as a
     /// redirect-independent signal that a sample IS the block page itself
     /// (decision 2).
-    public static let pageMarkerTitle = "TimeSink 拦截页"
+    public static let pageMarkerTitle = String(localized: "TimeSink 拦截页")
 
     private static let logger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "focusBlockPage")
 
@@ -55,7 +55,7 @@ public enum FocusBlockPage {
 
     private static let html = """
     <!DOCTYPE html>
-    <html lang="zh-CN">
+    <html lang="\(Bundle.main.preferredLocalizations.first ?? "zh-Hans")">
     <head>
     <meta charset="UTF-8">
     <title>\(pageMarkerTitle)</title>
@@ -76,18 +76,18 @@ public enum FocusBlockPage {
     </head>
     <body>
       <div class="card">
-        <h1>专注中，此站点已被拦截</h1>
+        <h1>\(String(localized: "专注中，此站点已被拦截"))</h1>
         <p id="sub"></p>
         <div class="buttons">
-          <a class="btn back" href="timesink://focus/back">返回工作</a>
-          <a class="btn allow" id="allowLink" href="#">放行 5 分钟</a>
+          <a class="btn back" href="timesink://focus/back">\(String(localized: "返回工作"))</a>
+          <a class="btn allow" id="allowLink" href="#">\(String(localized: "放行 5 分钟"))</a>
         </div>
       </div>
       <script>
         const params = new URLSearchParams(location.search);
         const domain = params.get('domain') || '';
         const remaining = params.get('remaining') || '';
-        document.getElementById('sub').textContent = domain + (remaining ? (' · 剩余 ' + remaining) : '');
+        document.getElementById('sub').textContent = domain + (remaining ? (' · \(String(localized: "剩余")) ' + remaining) : '');
         document.getElementById('allowLink').href = 'timesink://focus/allow?domain=' + encodeURIComponent(domain);
       </script>
     </body>
@@ -288,8 +288,8 @@ public final class FocusHUDController {
     public func show(remaining: TimeInterval, appName: String, hideCount: Int,
                       keepFocusAppKey: String, controller: FocusSessionController) {
         let message = hideCount == 0
-            ? "专注中 \(Format.mmss(remaining)) · \(appName)"
-            : "专注中 \(Format.mmss(remaining)) · \(appName) 已被隐藏（第 \(hideCount) 次）"
+            ? String(localized: "专注中 \(Format.mmss(remaining)) · \(appName)")
+            : String(localized: "专注中 \(Format.mmss(remaining)) · \(appName) 已被隐藏（第 \(hideCount) 次）")
         let content = FocusHUDContentView(
             message: message,
             onKeepFocus: { [weak self, weak controller] in

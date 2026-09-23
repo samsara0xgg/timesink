@@ -143,28 +143,28 @@ public struct DateRangeSelection: Equatable {
         let now = Date()
         switch kind {
         case .day:
-            if cal.isDateInToday(anchor) { return "今天" }
-            if cal.isDateInYesterday(anchor) { return "昨天" }
+            if cal.isDateInToday(anchor) { return String(localized: "今天") }
+            if cal.isDateInYesterday(anchor) { return String(localized: "昨天") }
             return Self.monthDay(anchor, calendar: cal)
         case .last7:
-            if cal.isDateInToday(anchor) { return "近 7 天" }
-            return "至 \(Self.monthDay(anchor, calendar: cal)) 的 7 天"
+            if cal.isDateInToday(anchor) { return String(localized: "近 7 天") }
+            return String(localized: "至 \(Self.monthDay(anchor, calendar: cal)) 的 7 天")
         case .last30:
-            if cal.isDateInToday(anchor) { return "近 30 天" }
-            return "至 \(Self.monthDay(anchor, calendar: cal)) 的 30 天"
+            if cal.isDateInToday(anchor) { return String(localized: "近 30 天") }
+            return String(localized: "至 \(Self.monthDay(anchor, calendar: cal)) 的 30 天")
         case .week:
             let mcal = mondayCalendar
-            if mcal.isDate(anchor, equalTo: now, toGranularity: .weekOfYear) { return "本周" }
+            if mcal.isDate(anchor, equalTo: now, toGranularity: .weekOfYear) { return String(localized: "本周") }
             if let nextWeekAnchor = mcal.date(byAdding: .weekOfYear, value: 1, to: anchor),
                mcal.isDate(nextWeekAnchor, equalTo: now, toGranularity: .weekOfYear) {
-                return "上周"
+                return String(localized: "上周")
             }
-            return "\(Self.monthDay(anchor, calendar: cal)) 那周"
+            return String(localized: "\(Self.monthDay(anchor, calendar: cal)) 那周")
         case .month:
-            if cal.isDate(anchor, equalTo: now, toGranularity: .month) { return "本月" }
-            return "\(cal.component(.month, from: anchor))月"
+            if cal.isDate(anchor, equalTo: now, toGranularity: .month) { return String(localized: "本月") }
+            return anchor.formatted(.dateTime.month())
         case .custom:
-            guard let start = customStart, let end = customEnd else { return "自定义" }
+            guard let start = customStart, let end = customEnd else { return String(localized: "自定义") }
             return "\(Self.monthDay(start, calendar: cal)) – \(Self.monthDay(end, calendar: cal))"
         }
     }
@@ -212,9 +212,10 @@ public struct DateRangeSelection: Equatable {
         return max(1, days + 1)
     }
 
+    /// "9月23日" / "Sep 23", in the app's language.
     private static func monthDay(_ date: Date, calendar: Calendar) -> String {
-        let month = calendar.component(.month, from: date)
-        let day = calendar.component(.day, from: date)
-        return "\(month)月\(day)日"
+        var style = Date.FormatStyle.dateTime.month().day()
+        style.calendar = calendar
+        return date.formatted(style)
     }
 }

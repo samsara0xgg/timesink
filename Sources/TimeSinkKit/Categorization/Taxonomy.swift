@@ -2,19 +2,43 @@ import Foundation
 
 public enum Taxonomy {
     public static let categories: [Category] = [
-        Category(id: "softwareDev", name: "软件开发", colorHex: "#3478F6", productivity: 2, sortOrder: 0),
-        Category(id: "learning", name: "学习参考", colorHex: "#34C759", productivity: 2, sortOrder: 1),
-        Category(id: "writing", name: "写作创作", colorHex: "#30B0C7", productivity: 2, sortOrder: 2),
-        Category(id: "business", name: "事务", colorHex: "#5E5CE6", productivity: 1, sortOrder: 3),
-        Category(id: "utilities", name: "工具", colorHex: "#8E8E93", productivity: 1, sortOrder: 4),
-        Category(id: "communication", name: "沟通", colorHex: "#FF9F0A", productivity: 0, sortOrder: 5),
-        Category(id: "news", name: "新闻", colorHex: "#AF52DE", productivity: -1, sortOrder: 6),
-        Category(id: "shopping", name: "购物", colorHex: "#FF6482", productivity: -1, sortOrder: 7),
-        Category(id: "socialMedia", name: "社交媒体", colorHex: "#FF3B30", productivity: -2, sortOrder: 8),
-        Category(id: "entertainment", name: "娱乐", colorHex: "#FFD60A", productivity: -2, sortOrder: 9),
-        Category(id: "misc", name: "其他", colorHex: "#98989D", productivity: 0, sortOrder: 10),
-        Category(id: "uncategorized", name: "未分类", colorHex: "#C7C7CC", productivity: 0, sortOrder: 11),
+        Category(id: "softwareDev", name: "软件开发", colorHex: "#3478F6", productivity: 2, sortOrder: 0),  // l10n: data
+        Category(id: "learning", name: "学习参考", colorHex: "#34C759", productivity: 2, sortOrder: 1),  // l10n: data
+        Category(id: "writing", name: "写作创作", colorHex: "#30B0C7", productivity: 2, sortOrder: 2),  // l10n: data
+        Category(id: "business", name: "事务", colorHex: "#5E5CE6", productivity: 1, sortOrder: 3),  // l10n: data
+        Category(id: "utilities", name: "工具", colorHex: "#8E8E93", productivity: 1, sortOrder: 4),  // l10n: data
+        Category(id: "communication", name: "沟通", colorHex: "#FF9F0A", productivity: 0, sortOrder: 5),  // l10n: data
+        Category(id: "news", name: "新闻", colorHex: "#AF52DE", productivity: -1, sortOrder: 6),  // l10n: data
+        Category(id: "shopping", name: "购物", colorHex: "#FF6482", productivity: -1, sortOrder: 7),  // l10n: data
+        Category(id: "socialMedia", name: "社交媒体", colorHex: "#FF3B30", productivity: -2, sortOrder: 8),  // l10n: data
+        Category(id: "entertainment", name: "娱乐", colorHex: "#FFD60A", productivity: -2, sortOrder: 9),  // l10n: data
+        Category(id: "misc", name: "其他", colorHex: "#98989D", productivity: 0, sortOrder: 10),  // l10n: data
+        Category(id: "uncategorized", name: "未分类", colorHex: "#C7C7CC", productivity: 0, sortOrder: 11),  // l10n: data
     ]
+
+    static func seedName(_ id: String) -> String? {
+        categories.first { $0.id == id }?.name
+    }
+
+    /// A built-in category's name in the app's language; see
+    /// `CategoryStore.allCategories()`.
+    static func localizedName(_ id: String) -> String? {
+        switch id {
+        case "softwareDev": String(localized: "软件开发")
+        case "learning": String(localized: "学习参考")
+        case "writing": String(localized: "写作创作")
+        case "business": String(localized: "事务")
+        case "utilities": String(localized: "工具")
+        case "communication": String(localized: "沟通")
+        case "news": String(localized: "新闻")
+        case "shopping": String(localized: "购物")
+        case "socialMedia": String(localized: "社交媒体")
+        case "entertainment": String(localized: "娱乐")
+        case "misc": String(localized: "其他")
+        case "uncategorized": String(localized: "未分类")
+        default: nil
+        }
+    }
 
     /// Builtin appCategory seed rows (bundleID -> categoryID), source = "builtin".
     public static let builtinApps: [(bundleID: String, categoryID: String)] = [
@@ -142,7 +166,7 @@ public enum Taxonomy {
     /// "lecture" has no such ambiguity and stays. Course-based titles simply
     /// lose builtin coverage; a user can add their own scoped titleRule.
     public static let builtinTitleRules: [(pattern: String, categoryID: String)] = [
-        ("lecture|教程|课程|讲座", "learning"),
+        ("lecture|教程|课程|讲座", "learning"),  // l10n: data
         ("pull request|merge request|PR #", "softwareDev"),
     ]
 }

@@ -254,7 +254,7 @@ public final class FocusSessionController {
             if !shownDegradedFor.contains(sample.appBundleID) {
                 shownDegradedFor.insert(sample.appBundleID)
                 lastHiddenAppKey = sample.appBundleID
-                showHUD?(sample.appName + "（无法拦截该浏览器的网站）", 0)
+                showHUD?(String(localized: "\(sample.appName)（无法拦截该浏览器的网站）"), 0)
             }
             return false
         }

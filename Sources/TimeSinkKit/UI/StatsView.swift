@@ -162,14 +162,14 @@ struct StatsView: View {
                 Grid(horizontalSpacing: spacing, verticalSpacing: spacing) {
                     GridRow {
                         ProfileBarCard(
-                            title: "最活跃的星期",
+                            title: String(localized: "最活跃的星期"),
                             points: stats.weekdayProfile,
                             tickLabels: nil,
                             diverging: false
                         )
                         .frame(maxWidth: .infinity, minHeight: miniCardHeight, maxHeight: miniCardHeight)
                         ProfileBarCard(
-                            title: "最活跃的时段",
+                            title: String(localized: "最活跃的时段"),
                             points: stats.hourProfile,
                             tickLabels: ["0", "6", "12", "18"],
                             diverging: false
@@ -178,14 +178,14 @@ struct StatsView: View {
                     }
                     GridRow {
                         ProfileBarCard(
-                            title: "最高效的星期",
+                            title: String(localized: "最高效的星期"),
                             points: stats.prodWeekdayProfile,
                             tickLabels: nil,
                             diverging: true
                         )
                         .frame(maxWidth: .infinity, minHeight: miniCardHeight, maxHeight: miniCardHeight)
                         ProfileBarCard(
-                            title: "最高效的时段",
+                            title: String(localized: "最高效的时段"),
                             points: stats.prodHourProfile,
                             tickLabels: ["0", "6", "12", "18"],
                             diverging: true
@@ -209,8 +209,8 @@ struct StatsView: View {
 
     private var bottomRow: some View {
         HStack(alignment: .top, spacing: spacing) {
-            DonutRankingCard(title: "应用", rows: stats.appRows)
-            DonutRankingCard(title: "分类", rows: stats.categoryRows)
+            DonutRankingCard(title: String(localized: "应用"), rows: stats.appRows)
+            DonutRankingCard(title: String(localized: "分类"), rows: stats.categoryRows)
         }
     }
 }

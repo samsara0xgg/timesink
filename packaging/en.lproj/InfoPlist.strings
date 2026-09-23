@@ -1,0 +1,3 @@
+/* English for the Info.plist permission prompts; Info.plist itself holds the Chinese. */
+"NSAppleEventsUsageDescription" = "TimeSink reads the URL of Chrome's current tab to categorize your time by website.";
+"NSCalendarsFullAccessUsageDescription" = "TimeSink reads your calendar to show events on the timeline and mark meeting time. The data never leaves this Mac.";

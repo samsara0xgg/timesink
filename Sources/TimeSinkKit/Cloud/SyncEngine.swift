@@ -11,8 +11,8 @@ enum SyncError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .nothingAcked: "服务器没有确认任何记录"
-        case .busy: "正在同步，请稍后再试"
+        case .nothingAcked: String(localized: "服务器没有确认任何记录")
+        case .busy: String(localized: "正在同步，请稍后再试")
         }
     }
 }

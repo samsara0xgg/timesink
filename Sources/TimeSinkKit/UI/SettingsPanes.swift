@@ -77,7 +77,7 @@ struct GeneralSettingsPane: View {
 
             Section("权限") {
                 PermissionRow(
-                    title: "辅助功能",
+                    title: String(localized: "辅助功能"),
                     state: axState,
                     action: {
                         _ = Permissions.accessibilityGranted(prompt: true)
@@ -88,14 +88,14 @@ struct GeneralSettingsPane: View {
                     }
                 )
                 PermissionRow(
-                    title: "Chrome 自动化",
+                    title: String(localized: "Chrome 自动化"),
                     state: chromeState,
                     action: {
                         chromeState = Permissions.chromeAutomationState(ask: true)
                     }
                 )
                 PermissionRow(
-                    title: "日历",
+                    title: String(localized: "日历"),
                     state: calendarState,
                     action: {
                         if calendarState == .denied {
@@ -116,7 +116,7 @@ struct GeneralSettingsPane: View {
                 // recovery path, and the only place the app admits that
                 // budget alerts / 每日小结 / 专注结束提醒 are being dropped.
                 PermissionRow(
-                    title: "通知",
+                    title: String(localized: "通知"),
                     state: notificationState,
                     action: {
                         if notificationState == .denied {
@@ -176,7 +176,9 @@ struct GeneralSettingsPane: View {
                         try SMAppService.mainApp.unregister()
                     }
                 } catch {
-                    loginItemAlertMessage = "无法\(newValue ? "启用" : "关闭")登录时启动：\(error.localizedDescription)"
+                    loginItemAlertMessage = newValue
+                        ? String(localized: "无法启用登录时启动：\(error.localizedDescription)")
+                        : String(localized: "无法关闭登录时启动：\(error.localizedDescription)")
                 }
                 loginItemEnabled = SMAppService.mainApp.status == .enabled
             }
@@ -398,11 +400,11 @@ private struct CategoryEditRow: View {
 
     private static func productivityLabel(_ level: Int) -> String {
         switch level {
-        case -2: return "非常分心"
-        case -1: return "分心"
-        case 0: return "中性"
-        case 1: return "生产"
-        default: return "非常生产"
+        case -2: return String(localized: "非常分心")
+        case -1: return String(localized: "分心")
+        case 0: return String(localized: "中性")
+        case 1: return String(localized: "生产")
+        default: return String(localized: "非常生产")
         }
     }
 }
@@ -416,8 +418,8 @@ enum RuleMode: String, CaseIterable {
 
     var label: String {
         switch self {
-        case .url: return "URL 规则"
-        case .title: return "标题规则"
+        case .url: return String(localized: "URL 规则")
+        case .title: return String(localized: "标题规则")
         }
     }
 }
@@ -624,7 +626,7 @@ struct RulesSettingsPane: View {
                         .background(Capsule().fill(Color.secondary.opacity(0.15)))
                 }
             }
-            Text(rule.scopeKey.isEmpty ? "全局" : rule.scopeKey)
+            Text(rule.scopeKey.isEmpty ? String(localized: "全局") : rule.scopeKey)
                 .foregroundStyle(.secondary)
             Spacer()
             Text(model.resolver.categoriesByID[rule.categoryID]?.name ?? rule.categoryID)
@@ -907,9 +909,9 @@ struct LLMSettingsPane: View {
         do {
             try Keychain.set(apiKeyInput, account: LLMCoordinator.apiKeyAccount)
             model.engine.llmCoordinator?.invalidateService()
-            apiKeyStatus = "已保存"
+            apiKeyStatus = String(localized: "已保存")
         } catch {
-            apiKeyStatus = "保存失败：\(String(describing: error))"
+            apiKeyStatus = String(localized: "保存失败：\(String(describing: error))")
         }
     }
 
@@ -919,12 +921,12 @@ struct LLMSettingsPane: View {
     /// without retyping it), and shows the resulting category id or error.
     private func runTest() {
         guard let url = URL(string: endpoint) else {
-            testStatus = "Endpoint 无效"
+            testStatus = String(localized: "Endpoint 无效")
             return
         }
         let key = apiKeyInput.isEmpty ? (Keychain.get(account: LLMCoordinator.apiKeyAccount) ?? "") : apiKeyInput
         guard !key.isEmpty else {
-            testStatus = "请先填写 API Key"
+            testStatus = String(localized: "请先填写 API Key")
             return
         }
         isTesting = true
@@ -933,9 +935,9 @@ struct LLMSettingsPane: View {
         Task { @MainActor in
             do {
                 let categoryID = try await classifier.classify(domain: "example-blog.net", title: nil)
-                testStatus = "分类结果：\(categoryID)"
+                testStatus = String(localized: "分类结果：\(categoryID)")
             } catch {
-                testStatus = "测试失败：\(String(describing: error))"
+                testStatus = String(localized: "测试失败：\(String(describing: error))")
             }
             isTesting = false
         }

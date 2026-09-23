@@ -35,7 +35,7 @@ final class StatsModel {
         let seconds: TimeInterval
     }
 
-    private static let weekdayLabels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+    private static let weekdayLabels = [String(localized: "周一"), String(localized: "周二"), String(localized: "周三"), String(localized: "周四"), String(localized: "周五"), String(localized: "周六"), String(localized: "周日")]
     static let streakThreshold = 70
 
     var total: TimeInterval = 0

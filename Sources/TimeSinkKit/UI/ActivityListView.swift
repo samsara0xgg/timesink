@@ -85,12 +85,12 @@ struct ActivityListView: View {
     /// "the search matched nothing at all" and must not claim the latter.
     private var emptyStateText: String {
         guard matchCount != nil else {
-            return model.activityFilter == nil ? "当前范围内没有活动记录" : "该分类在当前范围内没有活动记录"
+            return model.activityFilter == nil ? String(localized: "当前范围内没有活动记录") : String(localized: "该分类在当前范围内没有活动记录")
         }
         if model.activityFilter != nil && !groups.isEmpty {
-            return "该分类下没有命中的活动（其他分类还有命中，可清除分类筛选查看）"
+            return String(localized: "该分类下没有命中的活动（其他分类还有命中，可清除分类筛选查看）")
         }
-        return "没有命中的活动（隐身窗口与未授权时段无记录）"
+        return String(localized: "没有命中的活动（隐身窗口与未授权时段无记录）")
     }
 }
 
@@ -179,7 +179,9 @@ private struct ActivityRowView: View {
         }
         .contextMenu {
             ForEach(sortedCategories, id: \.id) { category in
-                Button(row.isEntity ? "\(category.name)\(row.isDomain ? "（整站）" : "（整个应用）")" : category.name) {
+                Button(!row.isEntity ? category.name
+                       : row.isDomain ? String(localized: "\(category.name)（整站）")
+                       : String(localized: "\(category.name)（整个应用）")) {
                     reassign(to: category.id)
                 }
             }
@@ -244,7 +246,7 @@ private struct TitleRowView: View {
                 // repo-level scope it can't honor -- same honesty as the
                 // 「（整站）」 reassignment-menu suffix.
                 pendingTitleRule = PendingTitleRule(
-                    prefill: title.title == "(无标题)" ? "" : title.title,
+                    prefill: title.title == String(localized: "(无标题)") ? "" : title.title,
                     scopeKey: parent.reassignKey,
                     scopeLabel: parent.isEntity ? parent.reassignKey : parent.label,
                     categoryID: sortedCategories.first?.id ?? ""

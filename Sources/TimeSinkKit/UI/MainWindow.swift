@@ -74,7 +74,7 @@ struct MainWindowView: View {
                        in: ...min(customRangeEnd, Date()), displayedComponents: .date)
             DatePicker("结束", selection: $customRangeEnd,
                        in: customRangeStart...Date(), displayedComponents: .date)
-            Button("应用") {
+            Button("确定") {
                 model.range = DateRangeSelection(
                     kind: .custom, anchor: customRangeEnd,
                     customStart: customRangeStart, customEnd: customRangeEnd)
@@ -87,12 +87,12 @@ struct MainWindowView: View {
 
     private func label(for kind: DateRangeSelection.Kind) -> String {
         switch kind {
-        case .day: return "今天"
-        case .week: return "本周"
-        case .month: return "本月"
-        case .last7: return "近 7 天"
-        case .last30: return "近 30 天"
-        case .custom: return "自定义…"
+        case .day: return String(localized: "今天")
+        case .week: return String(localized: "本周")
+        case .month: return String(localized: "本月")
+        case .last7: return String(localized: "近 7 天")
+        case .last30: return String(localized: "近 30 天")
+        case .custom: return String(localized: "自定义…")
         }
     }
 }

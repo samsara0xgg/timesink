@@ -41,10 +41,10 @@ struct OnboardingView: View {
             }
 
             PermissionRow(
-                title: "辅助功能",
-                explanation: "用于读取当前活跃窗口所属的应用与标题，据此统计你在各应用上花费的时间。",
+                title: String(localized: "辅助功能"),
+                explanation: String(localized: "用于读取当前活跃窗口所属的应用与标题，据此统计你在各应用上花费的时间。"),
                 state: axState,
-                actionTitle: "授权",
+                actionTitle: String(localized: "授权"),
                 action: {
                     axState = Permissions.accessibilityState(prompt: true)
                 },
@@ -52,10 +52,10 @@ struct OnboardingView: View {
             )
 
             PermissionRow(
-                title: "Chrome 自动化",
-                explanation: "用于读取 Chrome 当前标签页的网址，以便按网站对浏览时间分类。",
+                title: String(localized: "Chrome 自动化"),
+                explanation: String(localized: "用于读取 Chrome 当前标签页的网址，以便按网站对浏览时间分类。"),
                 state: chromeState,
-                actionTitle: "授权",
+                actionTitle: String(localized: "授权"),
                 action: {
                     chromeState = Permissions.chromeAutomationState(ask: true)
                 },

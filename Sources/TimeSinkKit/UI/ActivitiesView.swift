@@ -109,16 +109,16 @@ struct ActivitiesView: View {
     private var calendarBand: some View {
         if !model.calendarOverlayEnabled || calendarPermissionState == .notDetermined {
             CalendarBandCard(
-                title: "日历叠加",
-                message: "在时间轴上叠加你的日历日程，自动标注会议时间；会议期间空闲不会触发挂起。",
-                actionTitle: "启用",
+                title: String(localized: "日历叠加"),
+                message: String(localized: "在时间轴上叠加你的日历日程，自动标注会议时间；会议期间空闲不会触发挂起。"),
+                actionTitle: String(localized: "启用"),
                 action: enableCalendarOverlay
             )
         } else if calendarPermissionState != .granted {
             CalendarBandCard(
-                title: "日历访问被拒绝",
-                message: "无法叠加日程或自动标注会议。前往系统设置重新授权日历访问后即可生效。",
-                actionTitle: "打开系统设置",
+                title: String(localized: "日历访问被拒绝"),
+                message: String(localized: "无法叠加日程或自动标注会议。前往系统设置重新授权日历访问后即可生效。"),
+                actionTitle: String(localized: "打开系统设置"),
                 action: openCalendarSystemSettings
             )
         }
@@ -486,7 +486,7 @@ final class ActivitiesModel {
             if let id = span.id, meetingSpanIDs.contains(id) {
                 accum.hasMeeting = true
             }
-            let title = (span.title?.isEmpty == false) ? span.title! : "(无标题)"
+            let title = (span.title?.isEmpty == false) ? span.title! : String(localized: "(无标题)")
             accum.titles[title, default: 0] += span.duration
             byKey[key] = accum
         }
@@ -649,9 +649,9 @@ final class ActivitiesModel {
             let byCategory = Aggregator.durationByCategory(clipped)
             let pulse = Aggregator.pulse(durationByCategory: byCategory, categories: categories)
             let distractions = session.appBlocks + session.siteBlocks
-            let tooltip = "专注 \(Format.duration(elapsed)) · 拦下 \(distractions) 次分心 · 期间分 \(pulse.map(String.init) ?? "--")"
+            let tooltip = String(localized: "专注 \(Format.duration(elapsed)) · 拦下 \(distractions) 次分心 · 期间分 \(pulse.map(String.init) ?? "--")")
             return TimelineBlock(start: clip.start, end: clip.end, color: .accentColor,
-                                  label: "专注", tooltip: tooltip)
+                                  label: String(localized: "专注"), tooltip: tooltip)
         }
     }
 

@@ -533,7 +533,7 @@ struct MenuBarDashboardView: View {
                         }
                     VStack(alignment: .leading, spacing: 4) {
                         Button(action: openStatsToday) {
-                            kpiLine(value: Format.duration(dashboard.focus), label: "专注",
+                            kpiLine(value: Format.duration(dashboard.focus), label: String(localized: "专注"),
                                     delta: dashboard.focusDelta.map(Format.durationDelta))
                         }
                         .buttonStyle(.plain)
@@ -542,7 +542,7 @@ struct MenuBarDashboardView: View {
                             compareBaseContent(focus: true)
                         }
                         Button(action: openStatsToday) {
-                            kpiLine(value: Format.duration(dashboard.total), label: "总计",
+                            kpiLine(value: Format.duration(dashboard.total), label: String(localized: "总计"),
                                     delta: dashboard.totalDelta.map(Format.durationDelta))
                         }
                         .buttonStyle(.plain)
@@ -792,8 +792,8 @@ struct MenuBarDashboardView: View {
     private func compareBaseContent(focus: Bool, compact: Bool = false) -> CompareBaseView {
         let width = compact ? DrillWidths.compact : DrillWidths.compare
         return focus
-            ? CompareBaseView(label: "专注时长比较", todayValue: dashboard.focus, delta: dashboard.focusDelta, width: width)
-            : CompareBaseView(label: "总计时长比较", todayValue: dashboard.total, delta: dashboard.totalDelta, width: width)
+            ? CompareBaseView(label: String(localized: "专注时长比较"), todayValue: dashboard.focus, delta: dashboard.focusDelta, width: width)
+            : CompareBaseView(label: String(localized: "总计时长比较"), todayValue: dashboard.total, delta: dashboard.totalDelta, width: width)
     }
 
     private func streakDotsContent(compact: Bool = false) -> StreakDotsView {
@@ -863,7 +863,7 @@ struct MenuBarDashboardView: View {
         VStack(spacing: 4) {
             scoreGauge
             if let pulseDelta = dashboard.pulseDelta {
-                Text(Format.signedInt(pulseDelta) + " 分")
+                Text("\(Format.signedInt(pulseDelta)) 分")
                     .font(.caption2.weight(.bold)).monospacedDigit()
                     .foregroundStyle(pulseDelta < 0 ? Color.red : Color.green)
             }
@@ -999,10 +999,10 @@ struct ScreenCaptureRow: View {
     }
 
     private var statusLine: String {
-        if model.screenCapturePaused { return "已暂停" }
-        if Permissions.screenRecordingState() != .granted { return "缺少屏幕录制权限" }
-        guard let latest = summary.latestAt else { return "今日 0 张" }
-        return "今日 \(summary.count) 张 · 最近 \(latest.formatted(date: .omitted, time: .shortened))"
+        if model.screenCapturePaused { return String(localized: "已暂停") }
+        if Permissions.screenRecordingState() != .granted { return String(localized: "缺少屏幕录制权限") }
+        guard let latest = summary.latestAt else { return String(localized: "今日 0 张") }
+        return String(localized: "今日 \(summary.count) 张 · 最近 \(latest.formatted(date: .omitted, time: .shortened))")
     }
 }
 
@@ -1034,10 +1034,10 @@ struct CloudSyncRow: View {
     }
 
     private func statusLine(_ sync: SyncEngine) -> String {
-        if !model.settings.cloudSyncEnabled { return "未开启" }
-        if sync.isSyncing { return "正在同步 · 已上传 \(sync.passPushed) 条" }
-        if sync.lastError != nil { return "上次同步失败" }
-        guard let last = sync.lastSyncAt else { return "还没有同步过" }
-        return "上次 \(last.formatted(date: .omitted, time: .shortened)) · 待上传 \(sync.pending) 条"
+        if !model.settings.cloudSyncEnabled { return String(localized: "未开启") }
+        if sync.isSyncing { return String(localized: "正在同步 · 已上传 \(sync.passPushed) 条") }
+        if sync.lastError != nil { return String(localized: "上次同步失败") }
+        guard let last = sync.lastSyncAt else { return String(localized: "还没有同步过") }
+        return String(localized: "上次 \(last.formatted(date: .omitted, time: .shortened)) · 待上传 \(sync.pending) 条")
     }
 }

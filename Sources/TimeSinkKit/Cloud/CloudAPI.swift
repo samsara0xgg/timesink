@@ -6,8 +6,8 @@ public enum CloudError: LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .signedOut: "需要重新登录"
-        case .http(let status, _): "服务器返回 \(status)"
+        case .signedOut: String(localized: "需要重新登录")
+        case .http(let status, _): String(localized: "服务器返回 \(status)")
         }
     }
 }

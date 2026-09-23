@@ -33,7 +33,7 @@ public struct CalendarEvent: Sendable, Equatable, Identifiable {
     /// with a single (or unknown) attendee -- covers 1:1s and recurring
     /// team syncs that EventKit sometimes reports with a stale/empty
     /// attendee list.
-    static let meetingKeywords = ["sync", "1:1", "standup", "组会", "例会", "meeting"]
+    static let meetingKeywords = ["sync", "1:1", "standup", "组会", "例会", "meeting"]  // l10n: data
 
     /// 纯谓词：非全天 && 未拒绝 && (2 人以上 || 标题命中会议词)。
     public var isMeeting: Bool {

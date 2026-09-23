@@ -8,13 +8,24 @@ public final class CategoryStore: Sendable {
         self.writer = writer
     }
 
+    /// The database keeps a built-in category's seed (Chinese) name. It is
+    /// swapped for the app's language on the way out and back on the way in,
+    /// so a name the user never edited follows the language, one they did
+    /// edit is left alone, and saving a colour change never stores a
+    /// translation.
     public func allCategories() throws -> [Category] {
         try writer.read { db in
             try Category.fetchAll(db, sql: "SELECT * FROM category ORDER BY sortOrder ASC")
+        }.map { c in
+            var c = c
+            if c.name == Taxonomy.seedName(c.id), let local = Taxonomy.localizedName(c.id) { c.name = local }
+            return c
         }
     }
 
     public func updateCategory(_ c: Category) throws {
+        var c = c
+        if c.name == Taxonomy.localizedName(c.id), let seed = Taxonomy.seedName(c.id) { c.name = seed }
         try writer.write { db in
             try c.update(db)
         }

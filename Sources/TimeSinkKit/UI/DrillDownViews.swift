@@ -252,7 +252,10 @@ struct HourlyBigView: View {
         var id: String { "\(hour)_\(categoryID)" }
     }
 
-    private enum Mode: String, CaseIterable { case today = "今天", last7 = "近 7 天" }
+    private enum Mode: CaseIterable {
+        case today, last7
+        var label: String { self == .today ? String(localized: "今天") : String(localized: "近 7 天") }
+    }
 
     let categories: [String: Category]
     let todayBars: [Bar]
@@ -287,7 +290,7 @@ struct HourlyBigView: View {
                 Text("24 小时分布").font(.headline)
                 Spacer()
                 Picker("", selection: $mode) {
-                    ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    ForEach(Mode.allCases, id: \.self) { Text($0.label).tag($0) }
                 }
                 .labelsHidden()
                 .pickerStyle(.segmented)

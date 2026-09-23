@@ -44,7 +44,7 @@ extension Permissions {
     public nonisolated static func chromeState(from status: OSStatus) -> PermissionState {
         switch status {
         case noErr: return .granted
-        case -600: return .unavailable("Chrome 未运行")
+        case -600: return .unavailable(String(localized: "Chrome 未运行"))
         case -1744: return .notDetermined
         default: return .denied
         }
@@ -70,7 +70,7 @@ extension Permissions {
         case .fullAccess: return .granted
         case .denied, .restricted, .writeOnly: return .denied
         case .notDetermined: return .notDetermined
-        @unknown default: return .unavailable("未知日历权限状态")
+        @unknown default: return .unavailable(String(localized: "未知日历权限状态"))
         }
     }
 

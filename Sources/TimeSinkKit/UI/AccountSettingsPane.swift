@@ -92,13 +92,13 @@ struct AccountSettingsPane: View {
 
     private func syncLine(_ sync: SyncEngine) -> String {
         if sync.isSyncing {
-            return "正在同步：已上传 \(sync.passPushed) 条，已下载 \(sync.passPulled) 条"
+            return String(localized: "正在同步：已上传 \(sync.passPushed) 条，已下载 \(sync.passPulled) 条")
         }
-        if let error = sync.lastError { return "上次同步失败：\(error)" }
+        if let error = sync.lastError { return String(localized: "上次同步失败：\(error)") }
         if let last = sync.lastSyncAt {
-            return "上次同步 \(last.formatted(date: .abbreviated, time: .shortened))：上传 \(sync.passPushed) 条，下载 \(sync.passPulled) 条"
+            return String(localized: "上次同步 \(last.formatted(date: .abbreviated, time: .shortened))：上传 \(sync.passPushed) 条，下载 \(sync.passPulled) 条")
         }
-        return syncEnabled ? "还没有同步过" : "同步已关闭"
+        return syncEnabled ? String(localized: "还没有同步过") : String(localized: "同步已关闭")
     }
 
     private func signIn() {
@@ -110,7 +110,7 @@ struct AccountSettingsPane: View {
     }
 
     private func load() {
-        email = model.cloudAuth?.isSignedIn == true ? (model.settings.cloudEmail ?? "已登录") : nil
+        email = model.cloudAuth?.isSignedIn == true ? (model.settings.cloudEmail ?? String(localized: "已登录")) : nil
         syncEnabled = model.settings.cloudSyncEnabled
     }
 

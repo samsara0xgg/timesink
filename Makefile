@@ -21,6 +21,13 @@ bundle: build
 	cp packaging/Info.plist $(DIST)/Contents/Info.plist
 	cp -R .build/release/TimeSink_TimeSinkKit.bundle $(DIST)/Contents/Resources/
 	ditto .build/release/Sparkle.framework $(SPARKLE)
+	xcrun xcstringstool compile packaging/Localizable.xcstrings -o $(DIST)/Contents/Resources
+	cp packaging/en.lproj/InfoPlist.strings $(DIST)/Contents/Resources/en.lproj/
+	# Chinese is the source language, so the catalog compiles no zh-Hans
+	# table. Empty ones must exist: a zh-Hans.lproj without a table falls
+	# through to the English one, and Chinese users would see English.
+	mkdir -p $(DIST)/Contents/Resources/zh-Hans.lproj
+	touch $(DIST)/Contents/Resources/zh-Hans.lproj/Localizable.strings $(DIST)/Contents/Resources/zh-Hans.lproj/InfoPlist.strings
 	# Inside out, never --deep: Sparkle's own recipe for signing it outside Xcode.
 	$(SIGN) $(SPARKLE)/Versions/B/XPCServices/Installer.xpc
 	$(SIGN) --preserve-metadata=entitlements $(SPARKLE)/Versions/B/XPCServices/Downloader.xpc

@@ -52,7 +52,7 @@ struct TotalTimeCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            CardTitle(text: "总时长")
+            CardTitle(text: String(localized: "总时长"))
             Spacer(minLength: 0)
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(Format.duration(total))
@@ -79,7 +79,7 @@ struct FocusTimeCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            CardTitle(text: "专注时长")
+            CardTitle(text: String(localized: "专注时长"))
             Spacer(minLength: 0)
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(Format.duration(focus))
@@ -114,13 +114,13 @@ struct ProductivityScoreCard: View {
     private var color: Color { scoreColor(pulse) }
 
     private var subtitle: String {
-        guard let pulse else { return "暂无数据" }
-        return pulse >= 70 ? "继续保持" : "有点分心"
+        guard let pulse else { return String(localized: "暂无数据") }
+        return pulse >= 70 ? String(localized: "继续保持") : String(localized: "有点分心")
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            CardTitle(text: "生产力分")
+            CardTitle(text: String(localized: "生产力分"))
             Spacer(minLength: 0)
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(pulse.map { "\($0)%" } ?? "--")
@@ -187,7 +187,7 @@ struct StackedCategoryCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                CardTitle(text: "分类时长")
+                CardTitle(text: String(localized: "分类时长"))
                 Spacer()
                 Picker("", selection: $granularity) {
                     Text("按天").tag(StatsModel.Granularity.day)
@@ -285,10 +285,9 @@ struct ScoreTrendCard: View {
     }
 
     private func tooltipText(forIndex index: Int) -> String {
-        guard trend.indices.contains(index), let pulse = trend[index] else { return "无记录" }
-        let cal = Calendar.current
+        guard trend.indices.contains(index), let pulse = trend[index] else { return String(localized: "无记录") }
         let d = day(forIndex: index)
-        return "\(cal.component(.month, from: d))月\(cal.component(.day, from: d))日 · \(pulse) 分"
+        return String(localized: "\(d.formatted(.dateTime.month().day())) · \(pulse) 分")
     }
 
     /// Contiguous runs of tracked (non-nil) days, each `(index, pulse)`.
@@ -314,7 +313,7 @@ struct ScoreTrendCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                CardTitle(text: "生产力趋势")
+                CardTitle(text: String(localized: "生产力趋势"))
                 Spacer()
                 if streak >= 2 {
                     Text("连续 \(streak) 天 ≥ \(StatsModel.streakThreshold) 分")
@@ -416,7 +415,7 @@ struct HeatmapCard: View {
     /// 7 entries, Monday=0...Sunday=6 -- see `StatsModel.heatmapOccurrences`.
     let occurrences: [Int]
 
-    private static let weekdayLabels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+    private static let weekdayLabels = [String(localized: "周一"), String(localized: "周二"), String(localized: "周三"), String(localized: "周四"), String(localized: "周五"), String(localized: "周六"), String(localized: "周日")]
     private static let hourTickLabels: [Int: String] = [0: "0", 6: "6", 12: "12", 18: "18", 23: "23"]
     private static let lowSampleThreshold: TimeInterval = 900
     private static let secondsPerHour: TimeInterval = 3600
@@ -428,7 +427,7 @@ struct HeatmapCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                CardTitle(text: "生产力热力图")
+                CardTitle(text: String(localized: "生产力热力图"))
                 Spacer()
                 Text("近 30 天")
                     .font(.caption2)
@@ -487,8 +486,8 @@ struct HeatmapCard: View {
         let lowSample = e.seconds < Self.lowSampleThreshold
         let opacity = lowSample ? intensity * 0.35 : intensity
         let tooltip = lowSample
-            ? "\(Self.weekdayLabels[row]) \(hour) 时 · 样本不足"
-            : "\(Self.weekdayLabels[row]) \(hour) 时 · 平均分 \(e.pulse.map(String.init) ?? "--")"
+            ? String(localized: "\(Self.weekdayLabels[row]) \(hour) 时 · 样本不足")
+            : String(localized: "\(Self.weekdayLabels[row]) \(hour) 时 · 平均分 \(e.pulse.map(String.init) ?? "--")")
         return RoundedRectangle(cornerRadius: 2)
             .fill(scoreColor(e.pulse).opacity(opacity))
             .frame(width: side, height: side)

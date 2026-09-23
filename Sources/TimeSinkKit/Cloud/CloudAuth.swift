@@ -14,11 +14,11 @@ public enum CloudAuthError: LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .notConfigured: "云端尚未配置"
-        case .cancelled: "已取消登录"
-        case .badCallback: "登录回调无效，请重试"
-        case .noRefreshToken: "登录服务没有返回刷新令牌"
-        case .http(let status, _): "登录服务返回 \(status)"
+        case .notConfigured: String(localized: "云端尚未配置")
+        case .cancelled: String(localized: "已取消登录")
+        case .badCallback: String(localized: "登录回调无效，请重试")
+        case .noRefreshToken: String(localized: "登录服务没有返回刷新令牌")
+        case .http(let status, _): String(localized: "登录服务返回 \(status)")
         }
     }
 }

@@ -9,7 +9,7 @@ struct PermissionRow: View {
     let title: String
     var explanation: String? = nil
     let state: PermissionState
-    var actionTitle = "去授权"
+    var actionTitle = String(localized: "去授权")
     let action: () -> Void
     var compact = true
 
@@ -59,8 +59,8 @@ struct PermissionRow: View {
 
     private var statusText: String {
         switch state {
-        case .granted: return "已授权"
-        case .denied, .notDetermined: return "未授权"
+        case .granted: return String(localized: "已授权")
+        case .denied, .notDetermined: return String(localized: "未授权")
         case .unavailable(let message): return message
         }
     }

@@ -51,7 +51,7 @@ public final class SystemNotifier: Notifying {
         case .notDetermined:
             return .notDetermined
         @unknown default:
-            return .unavailable("未知通知权限状态")
+            return .unavailable(String(localized: "未知通知权限状态"))
         }
     }
 

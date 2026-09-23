@@ -1,5 +1,6 @@
-# Every push and pull request: the Swift package builds and its tests pass
-# on macOS; the Lambda's tests pass against moto; the CDK app synthesizes.
+# Every push and pull request: the Swift package builds, its tests pass and
+# every UI string has English on macOS; the Lambda's tests pass against
+# moto; the CDK app synthesizes.
 # None of the three needs AWS credentials.
 name: CI
 
@@ -21,6 +22,7 @@ jobs:
       - run: swift --version
       - run: swift build
       - run: swift test
+      - run: python3 scripts/check_strings.py
 
   lambda:
     runs-on: ubuntu-latest

@@ -129,12 +129,12 @@ public final class BudgetMonitor {
             switch level {
             case .warn:
                 id = "budget.warn.\(budget.categoryID)"
-                title = "\(name)还剩 \(Format.duration(limit - spent))"
-                body = "今天已用 \(Format.duration(spent)) / \(Format.duration(limit))。到达上限前会再提醒一次。"
+                title = String(localized: "\(name)还剩 \(Format.duration(limit - spent))")
+                body = String(localized: "今天已用 \(Format.duration(spent)) / \(Format.duration(limit))。到达上限前会再提醒一次。")
             case .limit:
                 id = "budget.limit.\(budget.categoryID)"
-                title = "\(name)已到今日上限"
-                body = "已用 \(Format.duration(limit)) / \(Format.duration(limit))。今天不会再提醒；上限可在设置中调整。"
+                title = String(localized: "\(name)已到今日上限")
+                body = String(localized: "已用 \(Format.duration(limit)) / \(Format.duration(limit))。今天不会再提醒；上限可在设置中调整。")
             case .none:
                 continue
             }

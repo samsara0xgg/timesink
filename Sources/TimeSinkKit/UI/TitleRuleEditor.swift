@@ -45,7 +45,7 @@ enum TitleRuleInput {
             return "re:\(body)"
         }
 
-        let separators = CharacterSet(charactersIn: ",，、|\n")
+        let separators = CharacterSet(charactersIn: ",，、|\n")  // l10n: data
         let pieces = trimmedRaw.components(separatedBy: separators)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
@@ -263,7 +263,7 @@ struct TitleRuleEditor: View {
         do {
             existingRules = try model.categoryStore.titleRules()
         } catch {
-            duplicateMessage = "无法校验是否与内置规则冲突，请重试"
+            duplicateMessage = String(localized: "无法校验是否与内置规则冲突，请重试")
             titleRuleEditorLogger.error("titleRules() failed before save: \(String(describing: error), privacy: .public)")
             return
         }
@@ -274,7 +274,7 @@ struct TitleRuleEditor: View {
                 && $0.pattern.caseInsensitiveCompare(pattern) == .orderedSame
         }
         guard !collidesWithBuiltin else {
-            duplicateMessage = "与内置规则重复，可在规则面板中启用/停用该内置规则"
+            duplicateMessage = String(localized: "与内置规则重复，可在规则面板中启用/停用该内置规则")
             return
         }
 
@@ -284,7 +284,7 @@ struct TitleRuleEditor: View {
             model.dataChanged()
             dismiss()
         } catch {
-            duplicateMessage = "保存失败，请重试"
+            duplicateMessage = String(localized: "保存失败，请重试")
             titleRuleEditorLogger.error("upsertUserTitleRule failed for \(pattern, privacy: .public): \(String(describing: error), privacy: .public)")
         }
     }
