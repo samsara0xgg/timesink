@@ -17,15 +17,17 @@ TimeSink 是一个 macOS 菜单栏时间追踪应用：自动记录你在各个�
 
 ## 安装
 
+下载 <https://d2e75eb005kjod.cloudfront.net/TimeSink.dmg>，把 TimeSink 拖进「应用程序」。之后的新版本由应用内的自动更新安装（设置 › 通用 › 检查更新…）。
+
+从源码安装到本机（试改动用）：
+
 ```bash
-bash scripts/make_cert.sh && make install
+make install
 ```
 
-首次运行 `scripts/make_cert.sh` 会在登录钥匙串中创建一个自签名代码签名证书「TimeSink Dev」，用于给应用签名，使 macOS 记住已授予的权限（Accessibility/自动化）在重新编译、重装后依然有效。**这个证书默认不受信任，首次安装必须手动信任它一次，这一步不可跳过**：打开「钥匙串访问」App，进入 登录 > 证书 > TimeSink Dev，在「信任」里把「代码签名」设为「始终信任」（会要求输入一次登录密码）。
+`make install` 构建 Release 版本，用与发布版相同的 Developer ID 证书签名，复制到 `/Applications`。签名身份不变，已授予的权限（辅助功能、屏幕录制、自动化、日历）重装后依然有效；本地构建不经公证，只在本机运行。发布流程见 `docs/RELEASING.md`。
 
-跳过这一步不会立刻报错——`make bundle`/`make install` 会卡在 `codesign` 那一步长时间无响应（这是它在等待一个系统钥匙串授权弹窗，但该弹窗在某些环境下不会正常显示，看起来像卡死）。如果安装命令卡住不动，请先按上面的步骤完成信任设置，再重新执行一次。
-
-`make install` 会构建 Release 版本、签名，并把 `TimeSink.app` 复制到 `/Applications`。首次启动会弹出权限引导窗口，请按提示依次授权。
+没有这张证书的机器：先运行 `bash scripts/make_cert.sh` 创建自签名证书「TimeSink Dev」，在「钥匙串访问」里把它的「代码签名」设为「始终信任」（不设的话 `codesign` 会卡住不动），再 `make install CERT="TimeSink Dev"`。在两种证书之间切换会让已授予的权限失效，需要重新授权。
 
 ## 权限说明
 

@@ -1,4 +1,7 @@
-CERT ?= TimeSink Dev
+# The release identity, so a local install keeps the permissions granted to
+# the published app. Without this certificate: scripts/make_cert.sh, then
+# CERT="TimeSink Dev" (switching identities means granting them again).
+CERT ?= Developer ID Application: yilun shi (3MEBVQ3N3U)
 APP = TimeSink
 DIST = dist/$(APP).app
 SPARKLE = $(DIST)/Contents/Frameworks/Sparkle.framework
