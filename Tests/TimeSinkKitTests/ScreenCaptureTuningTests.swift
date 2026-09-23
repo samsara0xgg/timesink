@@ -41,11 +41,28 @@ final class ScreenCapturePolicyTitleTests: XCTestCase {
         XCTAssertEqual(p.settleSeconds, 3)
         XCTAssertEqual(p.checkInterval, 10)
         XCTAssertEqual(p.titleSettleSeconds, 1)
+        XCTAssertEqual(p.quietInterval, 120)
+    }
+
+    func testNoInputSinceLastCheckWaitsForTheQuietInterval() {
+        var p = ScreenCapturePolicy(settleSeconds: 3, checkInterval: 10, titleSettleSeconds: 1, quietInterval: 60)
+        var checks: [Int] = []
+        for t in 0...95 {
+            // Typing until 5, hands off, a title change at 80, typing again from 90.
+            let idle = t <= 5 || t >= 90 ? 0 : TimeInterval(t - 5)
+            let title = t < 80 ? "doc" : "doc — edited"
+            if p.tick(now: ts(TimeInterval(t)), window: a, title: title, idleSeconds: idle) { checks.append(t) }
+        }
+        // 13: the input at 5 came after the check at 3. 73: no input, quiet
+        // interval. 81: title change, checked without input. 91: typing again,
+        // back to the 10 s interval counted from 81.
+        XCTAssertEqual(checks, [3, 13, 73, 81, 91])
     }
 }
 
 /// Idle is not absence: the engine keeps handing idle ticks to the collector,
-/// so a page being read without input stays observed (and its row extends).
+/// so a page being read without input stays observed (and its row extends),
+/// at the quiet interval rather than the typing one.
 @MainActor
 final class TrackerEngineIdleCaptureTests: XCTestCase {
     func testCollectorKeepsLookingWhileIdle() async throws {
@@ -56,7 +73,7 @@ final class TrackerEngineIdleCaptureTests: XCTestCase {
         let engine = TrackerEngine(spanStore: SpanStore(db), settings: settings, observations: store)
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let collector = ScreenCollector(store: store, imagesRoot: root, paused: false,
-                                        policy: ScreenCapturePolicy(settleSeconds: 3, checkInterval: 10))
+                                        policy: ScreenCapturePolicy(settleSeconds: 3, checkInterval: 10, quietInterval: 30))
         let frame = ScreenCollectorDedupeTests.frame(lit: 0)
         await collector.install { _ in (image: frame, text: "a page being read") }
         engine.screenCollector = collector
@@ -69,17 +86,17 @@ final class TrackerEngineIdleCaptureTests: XCTestCase {
         idle = 100                                  // hands off the keyboard, keeps reading
         for t in 4...73 { await engine.tickAsync(now: ts(TimeInterval(t))) }
         // The engine offers ticks fire-and-forget; wait for the actor to drain them.
-        for _ in 0..<200 where await collector.health.checks < 8 {
+        for _ in 0..<200 where await collector.health.checks < 3 {
             try await Task.sleep(nanoseconds: 10_000_000)
         }
         // The idle event is backdated by the idle reading (here 100 s before the tick).
         let events = try store.stateEvents(in: DateInterval(start: ts(-1000), end: ts(1000)))
         XCTAssertEqual(events.map(\.kind), ["idle"])
         let rows = try store.captures(overlapping: DateInterval(start: ts(-1), end: ts(1000)))
-        XCTAssertEqual(rows.map { "\(Int($0.at.timeIntervalSince(ts(0))))-\(Int($0.lastSeenAt.timeIntervalSince(ts(0))))" }, ["3-73"])
+        XCTAssertEqual(rows.map { "\(Int($0.at.timeIntervalSince(ts(0))))-\(Int($0.lastSeenAt.timeIntervalSince(ts(0))))" }, ["3-63"])   // checks at 3, 33, 63
         let health = await collector.health
-        XCTAssertEqual(health.checks, 8)
-        XCTAssertEqual(health.unchanged, 7)
+        XCTAssertEqual(health.checks, 3)
+        XCTAssertEqual(health.unchanged, 2)
     }
 }
 

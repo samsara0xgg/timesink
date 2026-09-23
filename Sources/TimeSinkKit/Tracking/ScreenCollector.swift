@@ -97,7 +97,8 @@ public actor ScreenCollector {
     }
 
     /// One tracker tick. `spanID` is the open span's row, nil while idle.
-    public func tick(now: Date, sample: Sample, spanID: Int64?) async {
+    /// `idleSeconds` is the time since the last keyboard or mouse input.
+    public func tick(now: Date, sample: Sample, spanID: Int64?, idleSeconds: TimeInterval = 0) async {
         if now.timeIntervalSince(lastPrune) > 3600 {
             lastPrune = now
             prune(now: now)
@@ -111,7 +112,8 @@ public actor ScreenCollector {
         if !paused, !Self.excludedBundleIDs.contains(sample.appBundleID), let id = sample.windowID {
             key = WindowKey(bundleID: sample.appBundleID, windowID: id)
         }
-        guard policy.tick(now: now, window: key, title: sample.windowTitle), let key else { return }
+        guard policy.tick(now: now, window: key, title: sample.windowTitle, idleSeconds: idleSeconds),
+              let key else { return }
         health.checks += 1
         guard !inFlight else { health.skippedBusy += 1; return }
         guard frameProvider != nil || hasPermission() else { health.permissionDenied += 1; return }

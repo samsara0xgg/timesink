@@ -16,6 +16,9 @@ public struct WindowKey: Hashable, Sendable {
 /// and the same window is re-checked every `checkInterval` after that. A
 /// title change inside the same window (a new tab, a new file, a new chat)
 /// is checked `titleSettleSeconds` after it instead of at the next interval.
+/// With no keyboard or mouse input since the last check the interval
+/// stretches to `quietInterval`: an untouched window rarely changes, and
+/// input or a title change brings the next check back at once.
 /// Whether a check turns into a stored capture is decided by
 /// `ScreenSignature` and the OCR text afterwards, not here.
 ///
@@ -28,6 +31,10 @@ public struct ScreenCapturePolicy: Equatable, Sendable {
     public var settleSeconds: TimeInterval
     public var checkInterval: TimeInterval
     public var titleSettleSeconds: TimeInterval
+    /// Matches `ScreenCollector.refreshInterval`, so a quiet check is also
+    /// the refresh read: what changes without input (an incoming message, a
+    /// finished build) is caught within it.
+    public var quietInterval: TimeInterval
     /// Ticks come every second; a longer silence means the tracker was not
     /// looking, whatever the reason. Wide enough that one stalled tick (a
     /// slow AX or Chrome round-trip) does not split a row.
@@ -46,10 +53,12 @@ public struct ScreenCapturePolicy: Equatable, Sendable {
     /// checks are cheap; OCR only runs when the signature or the refresh
     /// clock says so.
     public init(settleSeconds: TimeInterval = 3, checkInterval: TimeInterval = 10,
-                titleSettleSeconds: TimeInterval = 1, maxTickGap: TimeInterval = 5) {
+                titleSettleSeconds: TimeInterval = 1, quietInterval: TimeInterval = 120,
+                maxTickGap: TimeInterval = 5) {
         self.settleSeconds = settleSeconds
         self.checkInterval = checkInterval
         self.titleSettleSeconds = titleSettleSeconds
+        self.quietInterval = quietInterval
         self.maxTickGap = maxTickGap
     }
 
@@ -66,8 +75,10 @@ public struct ScreenCapturePolicy: Equatable, Sendable {
 
     /// Returns true when the front window should be inspected now.
     /// `window == nil` (no front window, or an excluded app) resets the
-    /// settle timer. Out-of-order ticks are ignored.
-    public mutating func tick(now: Date, window: WindowKey?, title: String? = nil) -> Bool {
+    /// settle timer. Out-of-order ticks are ignored. `idleSeconds` is the time
+    /// since the last keyboard or mouse input.
+    public mutating func tick(now: Date, window: WindowKey?, title: String? = nil,
+                              idleSeconds: TimeInterval = 0) -> Bool {
         guard now >= lastTick else { return false }
         let gap = now.timeIntervalSince(lastTick) > maxTickGap
         lastTick = now
@@ -87,7 +98,9 @@ public struct ScreenCapturePolicy: Equatable, Sendable {
         }
         guard now.timeIntervalSince(candidateSince) >= settleSeconds else { return false }
         let titleDue = titleChangedAt.map { now.timeIntervalSince($0) >= titleSettleSeconds } ?? false
-        guard titleDue || now.timeIntervalSince(lastCheck) >= checkInterval else { return false }
+        let sinceCheck = now.timeIntervalSince(lastCheck)
+        let interval = idleSeconds >= sinceCheck ? quietInterval : checkInterval
+        guard titleDue || sinceCheck >= interval else { return false }
         lastCheck = now
         titleChangedAt = nil
         return true

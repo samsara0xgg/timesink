@@ -46,7 +46,7 @@ if CommandLine.arguments.dropFirst().first == "capture" {
     let legacy = args.contains("legacy")
     let policy: ScreenCapturePolicy = {
         var p = ScreenCapturePolicy()
-        if legacy { p.checkInterval = 30; p.titleSettleSeconds = .infinity }
+        if legacy { p.checkInterval = 30; p.titleSettleSeconds = .infinity; p.quietInterval = 30 }
         if args.count > 1, let interval = Double(args[1]) { p.checkInterval = interval }
         return p
     }()
@@ -63,7 +63,7 @@ if CommandLine.arguments.dropFirst().first == "capture" {
         print("not granted; refusing to prompt from a bench")
         exit(3)
     }
-    print("sampling the front window for \(Int(seconds))s, check every \(policy.checkInterval)s, refresh \(collector.refreshInterval)s, legacy=\(legacy) (first OCR warms up for ~20s)...")
+    print("sampling the front window for \(Int(seconds))s, check every \(policy.checkInterval)s (\(policy.quietInterval)s with no input), refresh \(collector.refreshInterval)s, legacy=\(legacy) (first OCR warms up for ~20s)...")
     let start = Date()
     let usageAtStart = processUsage()
     var transitions = 0
@@ -77,7 +77,8 @@ if CommandLine.arguments.dropFirst().first == "capture" {
                 let key = WindowKey(bundleID: s.appBundleID, windowID: id)
                 if key != lastKey { transitions += 1; lastKey = key }
             }
-            Task { await collector.tick(now: now, sample: s, spanID: nil) }
+            let idleSeconds = idle.idleSeconds()
+            Task { await collector.tick(now: now, sample: s, spanID: nil, idleSeconds: idleSeconds) }
             if now.timeIntervalSince(start) >= seconds {
                 let transitions = transitions
                 Task {
