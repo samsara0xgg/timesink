@@ -24,6 +24,7 @@ struct GeneralSettingsPane: View {
     /// because the underlying read is async/callback-based -- refreshed on
     /// `onAppear` and after the row's own action, never polled.
     @State private var notificationState: PermissionState = .notDetermined
+    @State private var autoCheckUpdates = false
 
     /// Whether the four permission probes have run since the app last became
     /// active -- see `refreshPermissionsIfNeeded()`.
@@ -58,6 +59,20 @@ struct GeneralSettingsPane: View {
 
                 Toggle("菜单栏显示今日专注时长", isOn: menuTextBinding)
                 Toggle("日历叠加", isOn: calendarOverlayBinding)
+            }
+
+            if let updates = model.updates {
+                Section("更新") {
+                    Toggle("自动检查更新", isOn: Binding(
+                        get: { autoCheckUpdates },
+                        set: { updates.automaticallyChecks = $0; autoCheckUpdates = $0 }
+                    ))
+                    HStack {
+                        Text("当前版本 \(Updates.version)")
+                        Spacer()
+                        Button("检查更新…") { updates.checkForUpdates() }
+                    }
+                }
             }
 
             Section("权限") {
@@ -122,6 +137,7 @@ struct GeneralSettingsPane: View {
         .onAppear {
             idleThreshold = model.settings.idleThreshold
             loginItemEnabled = SMAppService.mainApp.status == .enabled
+            autoCheckUpdates = model.updates?.automaticallyChecks ?? false
             refreshPermissionsIfNeeded()
         }
         // The user grants or revokes a permission in System Settings, which

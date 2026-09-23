@@ -134,6 +134,10 @@ public final class AppModel {
     public var cloudAuth: CloudAuth?
     public var sync: SyncEngine?
 
+    /// Sparkle -- same post-init injection convention; nil in tests and in a
+    /// `swift run` build, and the 通用 pane hides its 更新 section then.
+    public var updates: Updates?
+
     /// C4 focus sessions -- same post-init injection convention as
     /// `calendarStore`/`budgetStore`: `TimeSinkApp.init` assigns these after
     /// constructing `AppModel`. `focus` is `nil` throughout `init()`'s

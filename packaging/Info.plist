@@ -13,6 +13,9 @@
 	<key>LSMinimumSystemVersion</key><string>14.0</string>
 	<key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
 	<key>NSPrincipalClass</key><string>NSApplication</string>
+	<key>SUFeedURL</key><string>https://d2e75eb005kjod.cloudfront.net/appcast.xml</string>
+	<key>SUPublicEDKey</key><string>TGZyzRKvBTpDceg8mCYDizUC9hajG0eBMdqzVvWw/sM=</string>
+	<key>SUEnableAutomaticChecks</key><true/>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>TimeSink 需要读取 Chrome 当前标签页的网址，以便按网站分类你的时间。</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>

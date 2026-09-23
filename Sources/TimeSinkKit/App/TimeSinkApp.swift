@@ -70,6 +70,8 @@ public struct TimeSinkApp: App {
         model.observationStore = observationStore
         model.screenCollector = engine.screenCollector
 
+        model.updates = Updates.startIfConfigured()
+
         let calendarStore = CalendarStore()
         model.calendarStore = calendarStore
         engine.isInMeetingProvider = { [weak model] in model?.isNowInMeeting ?? false }
