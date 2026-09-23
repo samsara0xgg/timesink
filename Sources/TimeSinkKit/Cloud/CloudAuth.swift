@@ -30,7 +30,12 @@ public enum CloudAuthError: LocalizedError {
 /// refresh token exists.
 @MainActor
 public final class CloudAuth {
-    public static let refreshTokenAccount = "cloud.refreshToken"
+    /// Keyed like `AppDatabase.databaseFileName`: a `swift run` build gets
+    /// its own item, so it never starts out signed in as the installed
+    /// app's account (and pushing its own database into it), and its
+    /// sign-out never revokes the installed app's token.
+    public static let refreshTokenAccount = Bundle.main.bundleIdentifier == "com.alllllenshi.TimeSink"
+        ? "cloud.refreshToken" : "cloud.refreshToken.dev"
 
     private let settings: SettingsStore
     private let logger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "cloud.auth")
