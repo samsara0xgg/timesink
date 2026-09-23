@@ -4,12 +4,23 @@ import CryptoKit
 import Foundation
 import os
 
-public enum CloudAuthError: Error {
+public enum CloudAuthError: LocalizedError {
     case notConfigured
+    /// The user closed the sign-in window; not something to show in red.
     case cancelled
     case badCallback
     case noRefreshToken
     case http(Int, String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .notConfigured: "云端尚未配置"
+        case .cancelled: "已取消登录"
+        case .badCallback: "登录回调无效，请重试"
+        case .noRefreshToken: "登录服务没有返回刷新令牌"
+        case .http(let status, _): "登录服务返回 \(status)"
+        }
+    }
 }
 
 /// Cognito Hosted UI sign-in (OAuth 2 authorization code + PKCE, through
@@ -159,8 +170,10 @@ public final class CloudAuth {
             let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "timesink") { url, error in
                 if let url {
                     continuation.resume(returning: url)
+                } else if let error, (error as? ASWebAuthenticationSessionError)?.code != .canceledLogin {
+                    continuation.resume(throwing: error)
                 } else {
-                    continuation.resume(throwing: error ?? CloudAuthError.cancelled)
+                    continuation.resume(throwing: CloudAuthError.cancelled)
                 }
             }
             session.presentationContextProvider = anchor

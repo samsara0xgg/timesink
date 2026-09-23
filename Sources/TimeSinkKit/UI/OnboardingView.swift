@@ -7,10 +7,14 @@ import SwiftUI
 /// Settings, without needing to click back into TimeSink. Once both are
 /// green, the footer shows "完成" and a button to dismiss the sheet.
 struct OnboardingView: View {
+    let model: AppModel
     @Environment(\.dismiss) private var dismiss
 
     @State private var axState: PermissionState = .denied
     @State private var chromeState: PermissionState = .notDetermined
+    @State private var cloudSignedIn = false
+    @State private var signingIn = false
+    @State private var cloudStatus: String?
 
     private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
 
@@ -31,7 +35,7 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("欢迎使用 TimeSink")
                     .font(.title2).bold()
-                Text("需要以下两项系统权限才能自动追踪你的时间，且数据始终只保存在本机。")
+                Text("需要以下两项系统权限才能自动追踪你的时间。数据默认只保存在本机；登录账号后可以选择备份到云端。")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -58,6 +62,32 @@ struct OnboardingView: View {
                 compact: false
             )
 
+            // Optional, and only once a deployment exists: the account is a
+            // convenience, never a gate on finishing onboarding.
+            if CloudConfig.isConfigured {
+                Divider()
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("云端备份（可选）").font(.headline)
+                        Text(cloudSignedIn
+                             ? "已登录 \(model.settings.cloudEmail ?? "")。同步开关在 设置 › 账号。"
+                             : "登录后可以在多台 Mac 之间合并记录，换机时恢复历史。也可以稍后在 设置 › 账号 里登录。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if let cloudStatus {
+                            Text(cloudStatus).font(.caption).foregroundStyle(.red)
+                        }
+                    }
+                    Spacer()
+                    if !cloudSignedIn {
+                        HStack {
+                            if signingIn { ProgressView().controlSize(.small) }
+                            Button("登录") { signIn() }.disabled(signingIn)
+                        }
+                    }
+                }
+            }
+
             HStack {
                 Spacer()
                 if canFinish {
@@ -81,5 +111,24 @@ struct OnboardingView: View {
     private func refresh() {
         axState = Permissions.accessibilityState(prompt: false)
         chromeState = Permissions.chromeAutomationState(ask: false)
+        cloudSignedIn = model.cloudAuth?.isSignedIn == true
+    }
+
+    private func signIn() {
+        signingIn = true
+        cloudStatus = nil
+        Task { @MainActor in
+            do {
+                if let sub = try await model.cloudAuth?.signIn() {
+                    try model.sync?.accountChanged(to: sub)
+                }
+            } catch CloudAuthError.cancelled {
+                // Closing the sign-in window is not a failure.
+            } catch {
+                cloudStatus = error.localizedDescription
+            }
+            signingIn = false
+            refresh()
+        }
     }
 }

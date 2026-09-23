@@ -651,6 +651,7 @@ struct MenuBarDashboardView: View {
 
             Divider()
             ScreenCaptureRow(model: model)
+            CloudSyncRow(model: model)
 
             Divider()
             HStack {
@@ -1002,5 +1003,41 @@ struct ScreenCaptureRow: View {
         if Permissions.screenRecordingState() != .granted { return "缺少屏幕录制权限" }
         guard let latest = summary.latestAt else { return "今日 0 张" }
         return "今日 \(summary.count) 张 · 最近 \(latest.formatted(date: .omitted, time: .shortened))"
+    }
+}
+
+/// Cloud sync at a glance, only once an account is signed in. `SyncEngine`
+/// is `@Observable`, so the line follows a running pass; the signed-in
+/// check is a Keychain read, taken when the popover opens.
+struct CloudSyncRow: View {
+    let model: AppModel
+    @State private var signedIn = false
+
+    var body: some View {
+        Group {
+            if signedIn, let sync = model.sync {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("云端同步").font(.callout)
+                        Text(statusLine(sync)).font(.caption2)
+                            .foregroundStyle(sync.lastError == nil ? Color.secondary : Color.orange)
+                    }
+                    Spacer()
+                    if sync.isSyncing { ProgressView().controlSize(.mini) }
+                }
+            }
+        }
+        .onAppear {
+            signedIn = CloudConfig.isConfigured && model.cloudAuth?.isSignedIn == true
+            model.sync?.refreshPending()
+        }
+    }
+
+    private func statusLine(_ sync: SyncEngine) -> String {
+        if !model.settings.cloudSyncEnabled { return "未开启" }
+        if sync.isSyncing { return "正在同步 · 已上传 \(sync.passPushed) 条" }
+        if sync.lastError != nil { return "上次同步失败" }
+        guard let last = sync.lastSyncAt else { return "还没有同步过" }
+        return "上次 \(last.formatted(date: .omitted, time: .shortened)) · 待上传 \(sync.pending) 条"
     }
 }

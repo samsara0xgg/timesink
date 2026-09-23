@@ -1,34 +1,54 @@
 import Foundation
+import Observation
 import os
 
-enum SyncError: Error {
+enum SyncError: LocalizedError {
     /// The server accepted a push but acknowledged none of it; stop rather
     /// than resend the same batch forever.
     case nothingAcked
+    /// An account-level action was asked for while a pass was running.
+    case busy
+
+    var errorDescription: String? {
+        switch self {
+        case .nothingAcked: "服务器没有确认任何记录"
+        case .busy: "正在同步，请稍后再试"
+        }
+    }
 }
 
 /// Moves closed spans between this database and the account's cloud copy:
 /// this device's unsynced rows up, other devices' rows down. Spans never
 /// change once closed, so there is nothing to merge -- see the design doc
 /// §5. Runs a pass every `interval` while the account pane's switch is on.
+///
+/// `@Observable` so the account pane and the menu bar row follow a pass as
+/// it runs (the first upload of a year of history is ~100 requests).
 @MainActor
+@Observable
 public final class SyncEngine {
     public static let interval: Duration = .seconds(60)
     public static let pushBatch = 500
 
-    private let spanStore: SpanStore
-    private let settings: SettingsStore
-    private let cloud: any SpanCloud
+    @ObservationIgnored private let spanStore: SpanStore
+    @ObservationIgnored private let settings: SettingsStore
+    @ObservationIgnored private let cloud: any SpanCloud
     /// The engine's open row, whose `end` is still being extended.
-    private let openRowID: @MainActor () -> Int64?
+    @ObservationIgnored private let openRowID: @MainActor () -> Int64?
     /// Fired after a pass that inserted rows, so views re-query.
-    private let onPulled: @MainActor () -> Void
-    private let logger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "cloud.sync")
-    private var loop: Task<Void, Never>?
+    @ObservationIgnored private let onPulled: @MainActor () -> Void
+    @ObservationIgnored private let logger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "cloud.sync")
+    @ObservationIgnored private var loop: Task<Void, Never>?
 
     public private(set) var isSyncing = false
+    /// User-readable; nil after a clean pass.
     public private(set) var lastError: String?
     public private(set) var lastSyncAt: Date?
+    /// Progress of the pass in flight (kept after it ends, until the next).
+    public private(set) var passPushed = 0
+    public private(set) var passPulled = 0
+    /// This device's rows still to go up, as of the last `refreshPending()`.
+    public private(set) var pending = 0
 
     public init(spanStore: SpanStore, settings: SettingsStore, cloud: any SpanCloud,
                 openRowID: @escaping @MainActor () -> Int64?,
@@ -56,12 +76,22 @@ public final class SyncEngine {
         loop = nil
     }
 
+    public func refreshPending() {
+        pending = (try? spanStore.unsyncedCount()) ?? pending
+    }
+
     /// One pass: push, then pull. nil when a pass was already running.
     @discardableResult
     public func syncNow() async -> (pushed: Int, pulled: Int)? {
         guard !isSyncing else { return nil }
         isSyncing = true
-        defer { isSyncing = false }
+        passPushed = 0
+        passPulled = 0
+        refreshPending()
+        defer {
+            isSyncing = false
+            refreshPending()
+        }
         do {
             let device = settings.cloudDeviceID
             let pushed = try await push(device: device)
@@ -72,7 +102,7 @@ public final class SyncEngine {
             if pulled > 0 { onPulled() }
             return (pushed, pulled)
         } catch {
-            lastError = String(describing: error)
+            lastError = error.localizedDescription
             logger.error("sync failed: \(String(describing: error), privacy: .public)")
             return nil
         }
@@ -86,10 +116,12 @@ public final class SyncEngine {
         try spanStore.clearSyncState()
         settings.setCloudPullCursor(nil)
         settings.setCloudUserSub(sub)
+        refreshPending()
     }
 
     /// Wipes the cloud copy and the account, then the local sync state.
     public func deleteAccount() async throws {
+        guard !isSyncing else { throw SyncError.busy }
         try await cloud.deleteAccount()
         settings.setCloudSyncEnabled(false)
         try spanStore.clearSyncState()
@@ -97,32 +129,33 @@ public final class SyncEngine {
         settings.setCloudUserSub(nil)
         settings.setCloudLastSyncAt(nil)
         lastSyncAt = nil
+        lastError = nil
+        refreshPending()
     }
 
     private func push(device: String) async throws -> Int {
-        var total = 0
         while true {
             let batch = try spanStore.unsynced(excluding: openRowID(), limit: Self.pushBatch)
-            if batch.isEmpty { return total }
+            if batch.isEmpty { return passPushed }
             let acks = try await cloud.push(deviceID: device, spans: batch)
             guard !acks.isEmpty else { throw SyncError.nothingAcked }
             try spanStore.markSynced(acks.map { (id: $0.originID, seq: $0.seq) })
-            total += acks.count
+            passPushed += acks.count
+            pending = max(0, pending - acks.count)
         }
     }
 
     private func pull(device: String) async throws -> Int {
-        var total = 0
         var after: String?
         repeat {
             let page = try await cloud.pull(since: settings.cloudPullCursor, after: after, excludingDevice: device)
-            total += try spanStore.insertRemote(page.spans)
+            passPulled += try spanStore.insertRemote(page.spans)
             if let cursor = page.cursor {
                 settings.setCloudPullCursor(cursor)
                 after = cursor
             }
             guard page.more, after != nil else { break }
         } while true
-        return total
+        return passPulled
     }
 }

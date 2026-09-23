@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Settings › 账号: sign in / out, the sync switch, a manual sync, last
-/// result, delete account. Deliberately plain -- the layout is the user's
-/// to refine; this pane exists so the cloud path is reachable.
+/// Settings › 账号: sign in / out, the sync switch, a manual sync with live
+/// progress, last result, delete account. Plain on purpose -- the layout is
+/// the user's to refine; this pane exists so the cloud path is reachable.
 struct AccountSettingsPane: View {
     let model: AppModel
 
@@ -22,7 +22,13 @@ struct AccountSettingsPane: View {
             } else if let email {
                 Section("账号") {
                     LabeledContent("邮箱", value: email)
-                    Button("退出登录") { run { await model.cloudAuth?.signOut(); model.settings.setCloudSyncEnabled(false) } }
+                    Button("退出登录") {
+                        run {
+                            await model.cloudAuth?.signOut()
+                            model.settings.setCloudSyncEnabled(false)
+                        }
+                    }
+                    .disabled(busy)
                 }
                 Section("同步") {
                     Toggle("同步到云端", isOn: $syncEnabled)
@@ -33,24 +39,24 @@ struct AccountSettingsPane: View {
                     Text("上传每段活动的应用、窗口标题、网址和起止时间。截图和识别出的文字只留在本机。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    HStack {
-                        Button("立即同步") { run { await model.sync?.syncNow() } }
-                            .disabled(busy || !syncEnabled)
-                        if busy { ProgressView().controlSize(.small) }
-                    }
-                    if let last = model.sync?.lastSyncAt {
-                        Text("上次同步：\(last.formatted(date: .abbreviated, time: .shortened))")
+                    if let sync = model.sync {
+                        HStack {
+                            Button("立即同步") { run { await sync.syncNow() } }
+                                .disabled(sync.isSyncing || !syncEnabled)
+                            if sync.isSyncing { ProgressView().controlSize(.small) }
+                            Spacer()
+                            Text("待上传 \(sync.pending) 条")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(syncLine(sync))
                             .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    if let error = model.sync?.lastError {
-                        Text("上次失败：\(error)")
-                            .font(.caption)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(sync.lastError == nil ? Color.secondary : Color.red)
                     }
                 }
                 Section {
                     Button("删除账号…", role: .destructive) { confirmDelete = true }
+                        .disabled(busy)
                         .confirmationDialog("删除账号会清空云端的全部记录，且不可恢复。本机数据保留。",
                                             isPresented: $confirmDelete, titleVisibility: .visible) {
                             Button("删除账号", role: .destructive) {
@@ -63,15 +69,12 @@ struct AccountSettingsPane: View {
                 }
             } else {
                 Section {
-                    Button("登录 / 注册") {
-                        run {
-                            if let sub = try await model.cloudAuth?.signIn() {
-                                try model.sync?.accountChanged(to: sub)
-                            }
-                        }
+                    HStack {
+                        Button("登录 / 注册") { signIn() }
+                            .disabled(busy)
+                        if busy { ProgressView().controlSize(.small) }
                     }
-                    .disabled(busy)
-                    Text("登录后可以把活动记录备份到云端，并在多台 Mac 之间合并。默认不上传。")
+                    Text("登录后可以把活动记录备份到云端，并在多台 Mac 之间合并。默认不上传，登录后仍需打开同步开关。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -81,7 +84,29 @@ struct AccountSettingsPane: View {
             }
         }
         .formStyle(.grouped)
-        .onAppear(perform: load)
+        .onAppear {
+            load()
+            model.sync?.refreshPending()
+        }
+    }
+
+    private func syncLine(_ sync: SyncEngine) -> String {
+        if sync.isSyncing {
+            return "正在同步：已上传 \(sync.passPushed) 条，已下载 \(sync.passPulled) 条"
+        }
+        if let error = sync.lastError { return "上次同步失败：\(error)" }
+        if let last = sync.lastSyncAt {
+            return "上次同步 \(last.formatted(date: .abbreviated, time: .shortened))：上传 \(sync.passPushed) 条，下载 \(sync.passPulled) 条"
+        }
+        return syncEnabled ? "还没有同步过" : "同步已关闭"
+    }
+
+    private func signIn() {
+        run {
+            if let sub = try await model.cloudAuth?.signIn() {
+                try model.sync?.accountChanged(to: sub)
+            }
+        }
     }
 
     private func load() {
@@ -93,7 +118,13 @@ struct AccountSettingsPane: View {
         busy = true
         status = nil
         Task { @MainActor in
-            do { try await work() } catch { status = String(describing: error) }
+            do {
+                try await work()
+            } catch CloudAuthError.cancelled {
+                // Closing the sign-in window is not a failure.
+            } catch {
+                status = error.localizedDescription
+            }
             busy = false
             load()
         }

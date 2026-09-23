@@ -223,7 +223,7 @@ public struct TimeSinkApp: App {
                     NSApp.setActivationPolicy(.accessory)
                 }
                 .sheet(isPresented: $showOnboarding) {
-                    OnboardingView()
+                    OnboardingView(model: model)
                 }
         }
 

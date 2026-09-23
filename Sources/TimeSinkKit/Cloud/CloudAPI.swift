@@ -1,8 +1,15 @@
 import Foundation
 
-public enum CloudError: Error {
+public enum CloudError: LocalizedError {
     case signedOut
     case http(Int, String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .signedOut: "需要重新登录"
+        case .http(let status, _): "服务器返回 \(status)"
+        }
+    }
 }
 
 /// The server's receipt for one pushed row.
