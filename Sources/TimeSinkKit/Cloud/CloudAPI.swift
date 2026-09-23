@@ -76,15 +76,29 @@ public struct HTTPCloud: SpanCloud {
 
     static let iso = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
 
+    /// The server's per-field limit (handler.py MAX_LEN), in Unicode
+    /// scalars as Python's len() counts them. A longer value -- the first
+    /// was a 4.7k-character ad URL -- has the whole batch rejected, and a
+    /// batch that is rejected on every retry stalls sync forever. The local
+    /// row keeps its full value; only the wire copy is cut.
+    static let maxFieldLength = 4096
+
+    static func wire(_ span: Span) -> WireSpan? {
+        guard let id = span.id else { return nil }
+        func cut(_ s: String) -> String {
+            let scalars = s.unicodeScalars
+            guard scalars.count > maxFieldLength else { return s }
+            return String(String.UnicodeScalarView(scalars.prefix(maxFieldLength)))
+        }
+        return WireSpan(originId: id, start: iso.format(span.start), end: iso.format(span.end),
+                        appBundleID: cut(span.appBundleID), appName: cut(span.appName), title: span.title.map(cut),
+                        url: span.url.map(cut), domain: span.domain.map(cut), document: span.document.map(cut))
+    }
+
     public func push(deviceID: String, spans: [Span]) async throws -> [SpanAck] {
         struct Body: Encodable { var deviceId: String; var spans: [WireSpan] }
         struct Reply: Decodable { struct Ack: Decodable { var originId: Int64; var seq: String }; var acked: [Ack] }
-        let wire = spans.compactMap { span -> WireSpan? in
-            guard let id = span.id else { return nil }
-            return WireSpan(originId: id, start: Self.iso.format(span.start), end: Self.iso.format(span.end),
-                            appBundleID: span.appBundleID, appName: span.appName, title: span.title,
-                            url: span.url, domain: span.domain, document: span.document)
-        }
+        let wire = spans.compactMap(Self.wire)
         let data = try await send("POST", path: "spans", body: try JSONEncoder().encode(Body(deviceId: deviceID, spans: wire)))
         return try JSONDecoder().decode(Reply.self, from: data).acked.map { SpanAck(originID: $0.originId, seq: $0.seq) }
     }
