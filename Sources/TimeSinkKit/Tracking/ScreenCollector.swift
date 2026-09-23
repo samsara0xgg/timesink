@@ -188,8 +188,12 @@ public actor ScreenCollector {
     private func read(_ frame: (image: CGImage, text: String?)) async -> String? {
         if let text = frame.text { return text }
         health.ocrRuns += 1
-        // First OCR in a process takes ~20s of model warm-up, then ~0.5s.
-        guard let text = Self.recognizeText(in: frame.image) else {
+        // First OCR in a process warms the model up (see `ocrQueue`), then ~1 s.
+        let image = frame.image
+        let recognized = await withCheckedContinuation { continuation in
+            Self.ocrQueue.async { continuation.resume(returning: Self.recognizeText(in: image)) }
+        }
+        guard let text = recognized else {
             health.ocrFailed += 1
             return nil
         }
@@ -265,6 +269,15 @@ public actor ScreenCollector {
         }
         return cells
     }
+
+    /// OCR is never urgent, and on Apple silicon background QoS runs on the
+    /// efficiency cores. A GCD queue, not a Task: awaiting a lower-priority
+    /// Task from this actor would escalate it back to the caller's priority.
+    /// Measured 2026-09-23 (tsprobe, same desktop, both builds at once): 6.3 J
+    /// instead of 22.2 J over three steady minutes, no capture lost. Known
+    /// gap: one cold model load took ~100 s here instead of ~20 s, and checks
+    /// are skipped while it runs; give the first OCR default QoS if that matters.
+    private static let ocrQueue = DispatchQueue(label: "com.alllllenshi.TimeSink.ocr", qos: .background)
 
     /// Recognized text top to bottom; nil when the request itself failed.
     static func recognizeText(in image: CGImage) -> String? {
