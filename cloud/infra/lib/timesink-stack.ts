@@ -3,9 +3,12 @@ import * as cdk from 'aws-cdk-lib';
 import * as apigw from 'aws-cdk-lib/aws-apigatewayv2';
 import { HttpUserPoolAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
+import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
+import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
 
 /**
@@ -77,6 +80,24 @@ export class TimeSinkStack extends cdk.Stack {
     const integration = new HttpLambdaIntegration('Lambda', api);
     httpApi.addRoutes({ path: '/spans', methods: [apigw.HttpMethod.POST, apigw.HttpMethod.GET], integration });
     httpApi.addRoutes({ path: '/account', methods: [apigw.HttpMethod.DELETE], integration });
+
+    // Where the app downloads from: disk images and the Sparkle appcast,
+    // uploaded by scripts/release.sh. Private bucket, served through
+    // CloudFront only. The appcast is uploaded with a short max-age, so
+    // no invalidation is needed after a release.
+    const releases = new s3.Bucket(this, 'Releases', {
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      enforceSSL: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+    const downloads = new cloudfront.Distribution(this, 'Downloads', {
+      defaultBehavior: {
+        origin: origins.S3BucketOrigin.withOriginAccessControl(releases),
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+      },
+    });
+    new cdk.CfnOutput(this, 'ReleasesBucket', { value: releases.bucketName });
+    new cdk.CfnOutput(this, 'DownloadsUrl', { value: `https://${downloads.distributionDomainName}` });
 
     // The three values CloudConfig.swift carries.
     new cdk.CfnOutput(this, 'AuthDomain', { value: domain.baseUrl() });
