@@ -1,0 +1,52 @@
+# Every push and pull request: the Swift package builds and its tests pass
+# on macOS; the Lambda's tests pass against moto; the CDK app synthesizes.
+# None of the three needs AWS credentials.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  swift:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+      - run: swift --version
+      - run: swift build
+      - run: swift test
+
+  lambda:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloud/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v6
+      - run: uv pip install --system boto3 'moto[dynamodb,cognitoidp]' pytest
+      - run: python -m pytest -q
+
+  infra:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloud/infra
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: cloud/infra/package-lock.json
+      - run: npm ci
+      - run: npx cdk synth --quiet

@@ -1,0 +1,42 @@
+# A change under cloud/ that reaches main is deployed. GitHub proves who it
+# is with a short-lived OIDC token; AWS_DEPLOY_ROLE_ARN (a repository
+# variable) names the role in cloud/infra/lib/github-stack.ts that trusts
+# exactly this repository's main branch. No AWS keys are stored anywhere.
+#
+# Only the TimeSink stack is deployed here. The GitHub stack that grants
+# this access is deployed by hand on purpose: a pipeline must not be able to
+# widen its own trust.
+name: Deploy cloud
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cloud/**'
+      - '.github/workflows/deploy.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency: deploy-cloud
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloud/infra
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: cloud/infra/package-lock.json
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-west-2
+      - run: npm ci
+      - run: npx cdk deploy TimeSink --require-approval never
