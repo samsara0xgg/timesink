@@ -39,4 +39,6 @@ jobs:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: us-west-2
       - run: npm ci
-      - run: npx cdk deploy TimeSink --require-approval never
+      # The budget alert's address is a secret so it never enters the
+      # repository or the logs.
+      - run: npx cdk deploy TimeSink --require-approval never --parameters AlertEmail=${{ secrets.ALERT_EMAIL }}

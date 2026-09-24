@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as cdk from 'aws-cdk-lib';
 import * as apigw from 'aws-cdk-lib/aws-apigatewayv2';
+import * as budgets from 'aws-cdk-lib/aws-budgets';
 import { HttpUserPoolAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
@@ -98,6 +99,32 @@ export class TimeSinkStack extends cdk.Stack {
     });
     new cdk.CfnOutput(this, 'ReleasesBucket', { value: releases.bucketName });
     new cdk.CfnOutput(this, 'DownloadsUrl', { value: `https://${downloads.distributionDomainName}` });
+
+    // A monthly cost alarm for the whole account, emailed at $5 spent and
+    // when $10 is forecast. Credits are excluded: the promotional credit
+    // pays the bill for now, and an alarm on the net would never fire.
+    // The address stays out of the repository: deploy.yml passes it from
+    // the ALERT_EMAIL secret, and a deploy without it keeps the last one.
+    const alertEmail = new cdk.CfnParameter(this, 'AlertEmail', { type: 'String', noEcho: true });
+    const alert = [{ subscriptionType: 'EMAIL', address: alertEmail.valueAsString }];
+    new budgets.CfnBudget(this, 'MonthlyCost', {
+      budget: {
+        budgetType: 'COST',
+        timeUnit: 'MONTHLY',
+        budgetLimit: { amount: 10, unit: 'USD' },
+        costTypes: { includeCredit: false, includeRefund: false },
+      },
+      notificationsWithSubscribers: [
+        {
+          notification: { notificationType: 'ACTUAL', comparisonOperator: 'GREATER_THAN', threshold: 50, thresholdType: 'PERCENTAGE' },
+          subscribers: alert,
+        },
+        {
+          notification: { notificationType: 'FORECASTED', comparisonOperator: 'GREATER_THAN', threshold: 100, thresholdType: 'PERCENTAGE' },
+          subscribers: alert,
+        },
+      ],
+    });
 
     // The three values CloudConfig.swift carries.
     new cdk.CfnOutput(this, 'AuthDomain', { value: domain.baseUrl() });
