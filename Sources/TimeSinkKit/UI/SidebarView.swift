@@ -31,7 +31,7 @@ struct SidebarView: View {
                             Circle()
                                 .fill(Color(hex: row.colorHex))
                                 .frame(width: 8, height: 8)
-                            Text(row.name)
+                            MarqueeText(row.name)
                             Spacer()
                             Text(Format.duration(row.seconds))
                                 .foregroundStyle(.secondary)

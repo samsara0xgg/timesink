@@ -60,7 +60,7 @@ struct ScoreBreakdownView: View {
             ForEach(rows) { row in
                 HStack(spacing: 8) {
                     Circle().fill(Color(hex: row.colorHex)).frame(width: 8, height: 8)
-                    Text(row.name).font(.caption).frame(width: 56, alignment: .leading)
+                    MarqueeText(row.name).font(.caption).frame(width: 56, alignment: .leading)
                     GeometryReader { geo in
                         Capsule().fill(Color(hex: row.colorHex))
                             .frame(width: max(4, geo.size.width * row.share))
@@ -363,7 +363,7 @@ struct BudgetProgressView: View {
             ForEach(rows) { row in
                 HStack(spacing: 8) {
                     Circle().fill(Color(hex: row.colorHex)).frame(width: 8, height: 8)
-                    Text(row.name).font(.caption).frame(width: 56, alignment: .leading)
+                    MarqueeText(row.name).font(.caption).frame(width: 56, alignment: .leading)
                     GeometryReader { geo in
                         let ratio = row.limit > 0 ? min(1, row.spent / row.limit) : 0
                         Capsule().fill(Color(hex: row.colorHex))

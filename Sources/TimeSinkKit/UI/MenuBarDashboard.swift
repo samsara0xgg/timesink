@@ -911,7 +911,7 @@ struct MenuBarDashboardView: View {
     private func categoryRow(_ entry: (id: String, name: String, colorHex: String, seconds: TimeInterval)) -> some View {
         HStack(spacing: 8) {
             Circle().fill(Color(hex: entry.colorHex)).frame(width: 8, height: 8)
-            Text(entry.name).font(.caption).frame(width: 60, alignment: .leading)
+            MarqueeText(entry.name).font(.caption).frame(width: 60, alignment: .leading)
             GeometryReader { geo in
                 let ratio = dashboard.maxCategorySeconds > 0
                     ? entry.seconds / dashboard.maxCategorySeconds : 0
@@ -946,7 +946,7 @@ struct MenuBarDashboardView: View {
     ) -> some View {
         HStack(spacing: 8) {
             Circle().fill(Color(hex: row.colorHex)).frame(width: 8, height: 8)
-            Text(row.name).font(.caption).frame(width: 60, alignment: .leading)
+            MarqueeText(row.name).font(.caption).frame(width: 60, alignment: .leading)
             GeometryReader { geo in
                 let ratio = row.limit > 0 ? min(1, row.spent / row.limit) : 0
                 Capsule().fill(Color(hex: row.colorHex))

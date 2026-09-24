@@ -82,7 +82,7 @@ struct BudgetSettingsPane: View {
         let category = model.resolver.categoriesByID[budget.categoryID]
         HStack(spacing: 8) {
             Circle().fill(Color(hex: category?.colorHex ?? "#8E8E93")).frame(width: 8, height: 8)
-            Text(category?.name ?? budget.categoryID)
+            MarqueeText(category?.name ?? budget.categoryID)
                 .frame(width: 80, alignment: .leading)
             Toggle("", isOn: enabledBinding(budget))
                 .labelsHidden()
