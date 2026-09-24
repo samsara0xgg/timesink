@@ -99,10 +99,14 @@ public final class SyncEngine {
             lastSyncAt = Date()
             settings.setCloudLastSyncAt(lastSyncAt)
             lastError = nil
+            try? spanStore.recordSyncPass(at: Date(), pushed: pushed, pulled: pulled, error: nil)
             if pulled > 0 { onPulled() }
             return (pushed, pulled)
         } catch {
             lastError = error.localizedDescription
+            // Batches acknowledged before the failure did go up.
+            try? spanStore.recordSyncPass(at: Date(), pushed: passPushed, pulled: passPulled,
+                                          error: lastError)
             logger.error("sync failed: \(String(describing: error), privacy: .public)")
             return nil
         }

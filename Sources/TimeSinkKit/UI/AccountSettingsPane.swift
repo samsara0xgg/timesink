@@ -11,6 +11,7 @@ struct AccountSettingsPane: View {
     @State private var busy = false
     @State private var status: String?
     @State private var confirmDelete = false
+    @State private var showingHistory = false
 
     var body: some View {
         Form {
@@ -43,6 +44,7 @@ struct AccountSettingsPane: View {
                         HStack {
                             Button("立即同步") { run { await sync.syncNow() } }
                                 .disabled(sync.isSyncing || !syncEnabled)
+                            Button("同步记录…") { showingHistory = true }
                             if sync.isSyncing { ProgressView().controlSize(.small) }
                             Spacer()
                             Text("待上传 \(sync.pending) 条")
@@ -52,6 +54,9 @@ struct AccountSettingsPane: View {
                         Text(syncLine(sync))
                             .font(.caption)
                             .foregroundStyle(sync.lastError == nil ? Color.secondary : Color.red)
+                            .sheet(isPresented: $showingHistory) {
+                                SyncHistorySheet(spanStore: model.spanStore, sync: sync)
+                            }
                     }
                 }
                 Section {
@@ -96,7 +101,7 @@ struct AccountSettingsPane: View {
         }
         if let error = sync.lastError { return String(localized: "上次同步失败：\(error)") }
         if let last = sync.lastSyncAt {
-            return String(localized: "上次同步 \(last.formatted(date: .abbreviated, time: .shortened))：上传 \(sync.passPushed) 条，下载 \(sync.passPulled) 条")
+            return String(localized: "最近一轮 \(last.formatted(date: .abbreviated, time: .shortened))：上传 \(sync.passPushed) 条，下载 \(sync.passPulled) 条")
         }
         return syncEnabled ? String(localized: "还没有同步过") : String(localized: "同步已关闭")
     }
@@ -128,5 +133,75 @@ struct AccountSettingsPane: View {
             busy = false
             load()
         }
+    }
+}
+
+/// Settings › 账号 › 同步记录: the totals the span table holds, then one line
+/// per hour that moved rows or failed, newest first.
+private struct SyncHistorySheet: View {
+    let spanStore: SpanStore
+    let sync: SyncEngine
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var hours: [SpanStore.SyncHour] = []
+    @State private var totals = (uploaded: 0, downloaded: 0)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("同步记录").font(.headline)
+            Text("本机已上传 \(totals.uploaded) 条，已从其他设备下载 \(totals.downloaded) 条")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            List {
+                if hours.isEmpty {
+                    Text("还没有记录").foregroundStyle(.secondary)
+                }
+                ForEach(days, id: \.0) { day, rows in
+                    Section(day.formatted(.dateTime.month().day().weekday())) {
+                        ForEach(rows, id: \.hour) { row in
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack {
+                                    Text(row.hour.formatted(date: .omitted, time: .shortened))
+                                    Spacer()
+                                    Text("上传 \(row.pushed) 条 · 下载 \(row.pulled) 条")
+                                        .monospacedDigit()
+                                        .foregroundStyle(.secondary)
+                                }
+                                if row.failures > 0 {
+                                    Text("失败 \(row.failures) 次：\(row.lastError ?? "")")
+                                        .font(.caption)
+                                        .foregroundStyle(.red)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Text("保留最近 \(SpanStore.syncLogDays) 天")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack {
+                Spacer()
+                Button("完成") { dismiss() }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding()
+        .frame(width: 440, height: 400)
+        .onAppear(perform: load)
+        .onChange(of: sync.isSyncing) { _, running in
+            if !running { load() }
+        }
+    }
+
+    private var days: [(Date, [SpanStore.SyncHour])] {
+        Dictionary(grouping: hours) { Calendar.current.startOfDay(for: $0.hour) }
+            .sorted { $0.key > $1.key }
+            .map { ($0.key, $0.value) }
+    }
+
+    private func load() {
+        hours = (try? spanStore.syncLog()) ?? []
+        totals = (try? spanStore.syncTotals()) ?? totals
     }
 }

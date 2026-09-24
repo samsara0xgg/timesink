@@ -101,9 +101,11 @@ final class SyncEngineTests: XCTestCase {
         XCTAssertNotNil(synced)
         XCTAssertEqual(try spans.unsynced(excluding: open.id, limit: 10).count, 0)
         XCTAssertEqual(try spans.unsyncedCount(), 1)  // the open row, still waiting
+        XCTAssertEqual(try spans.syncTotals().uploaded, 1)
 
         let second = await engine.syncNow()
         XCTAssertEqual(second?.pushed, 0)
+        XCTAssertEqual(try spans.syncLog().map(\.pushed), [1])  // the empty pass left no row
         let pushes = await cloud.pushes
         XCTAssertEqual(pushes, 1)
         XCTAssertNil(engine.lastError)
@@ -180,5 +182,23 @@ final class SyncEngineTests: XCTestCase {
         XCTAssertEqual(try spans.unsyncedCount(), 1)
         XCTAssertNil(settings.cloudUserSub)
         XCTAssertNil(engine.lastSyncAt)
+        XCTAssertEqual(try spans.syncLog(), [])
+    }
+
+    /// Settings › 账号 › 同步记录 reads one row per hour: passes in the same
+    /// hour add up, a pass that moved nothing leaves no row, a failed pass
+    /// keeps its error, and rows past the 30 days go.
+    func testSyncHistoryAddsPassesUpByHour() throws {
+        let spans = SpanStore(try AppDatabase.openInMemory())
+        let hour = Calendar.current.dateInterval(of: .hour, for: Date())!.start
+        try spans.recordSyncPass(at: hour.addingTimeInterval(-31 * 86_400), pushed: 9, pulled: 0, error: nil)
+        try spans.recordSyncPass(at: hour.addingTimeInterval(60), pushed: 3, pulled: 0, error: nil)
+        try spans.recordSyncPass(at: hour.addingTimeInterval(120), pushed: 0, pulled: 0, error: nil)
+        try spans.recordSyncPass(at: hour.addingTimeInterval(180), pushed: 2, pulled: 5, error: "offline")
+        try spans.recordSyncPass(at: hour.addingTimeInterval(3600), pushed: 1, pulled: 0, error: nil)
+        XCTAssertEqual(try spans.syncLog(), [
+            .init(hour: hour.addingTimeInterval(3600), pushed: 1, pulled: 0, failures: 0, lastError: nil),
+            .init(hour: hour, pushed: 5, pulled: 5, failures: 1, lastError: "offline"),
+        ])
     }
 }

@@ -267,6 +267,18 @@ public enum AppDatabase {
                 """)
         }
 
+        migrator.registerMigration("v9") { db in
+            // Settings › 账号 › 同步记录: one row per local hour in which a
+            // sync pass moved rows or failed. Local only, never synced.
+            try db.create(table: "syncLog") { t in
+                t.column("hour", .datetime).primaryKey()
+                t.column("pushed", .integer).notNull()
+                t.column("pulled", .integer).notNull()
+                t.column("failures", .integer).notNull()
+                t.column("lastError", .text)
+            }
+        }
+
         return migrator
     }
 }

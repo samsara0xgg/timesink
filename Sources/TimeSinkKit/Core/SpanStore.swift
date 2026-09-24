@@ -215,6 +215,60 @@ public final class SpanStore: Sendable {
     public func clearSyncState() throws {
         try writer.write { db in
             try db.execute(sql: "UPDATE span SET remoteSeq = NULL WHERE deviceID IS NULL")
+            try db.execute(sql: "DELETE FROM syncLog")
+        }
+    }
+
+    /// This device's rows the cloud has acknowledged, and rows pulled from
+    /// other devices.
+    public func syncTotals() throws -> (uploaded: Int, downloaded: Int) {
+        try writer.read { db in
+            let up = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM span WHERE deviceID IS NULL AND remoteSeq IS NOT NULL") ?? 0
+            let down = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM span WHERE deviceID IS NOT NULL") ?? 0
+            return (up, down)
+        }
+    }
+
+    // MARK: - Sync history (migration v9)
+
+    public struct SyncHour: Sendable, Equatable {
+        public let hour: Date
+        public let pushed: Int
+        public let pulled: Int
+        public let failures: Int
+        public let lastError: String?
+    }
+
+    public static let syncLogDays = 30
+
+    /// Adds one pass to its local hour. A clean pass that moved nothing
+    /// leaves no row: a pass runs every minute and nearly all of them
+    /// carry a few rows, so the hour, not the pass, is the unit worth reading.
+    public func recordSyncPass(at date: Date, pushed: Int, pulled: Int, error: String?) throws {
+        guard pushed > 0 || pulled > 0 || error != nil else { return }
+        let hour = Calendar.current.dateInterval(of: .hour, for: date)?.start ?? date
+        try writer.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO syncLog (hour, pushed, pulled, failures, lastError) VALUES (?, ?, ?, ?, ?) \
+                    ON CONFLICT(hour) DO UPDATE SET pushed = pushed + excluded.pushed, \
+                    pulled = pulled + excluded.pulled, failures = failures + excluded.failures, \
+                    lastError = COALESCE(excluded.lastError, lastError)
+                    """,
+                arguments: [hour, pushed, pulled, error == nil ? 0 : 1, error]
+            )
+            try db.execute(sql: "DELETE FROM syncLog WHERE hour < ?",
+                           arguments: [date.addingTimeInterval(-Double(Self.syncLogDays) * 86_400)])
+        }
+    }
+
+    /// Newest hour first.
+    public func syncLog() throws -> [SyncHour] {
+        try writer.read { db in
+            try Row.fetchAll(db, sql: "SELECT * FROM syncLog ORDER BY hour DESC").map {
+                SyncHour(hour: $0["hour"], pushed: $0["pushed"], pulled: $0["pulled"],
+                         failures: $0["failures"], lastError: $0["lastError"])
+            }
         }
     }
 }

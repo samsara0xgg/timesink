@@ -321,6 +321,16 @@
         }
       }
     },
+    "上传 %lld 条 · 下载 %lld 条": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld up · %lld down"
+          }
+        }
+      }
+    },
     "上传每段活动的应用、窗口标题、网址和起止时间。截图和识别出的文字只留在本机。": {
       "localizations": {
         "en": {
@@ -347,16 +357,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Last %@ · %lld pending"
-          }
-        }
-      }
-    },
-    "上次同步 %@：上传 %lld 条，下载 %lld 条": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Last sync %@: %lld up, %lld down"
           }
         }
       }
@@ -731,6 +731,16 @@
         }
       }
     },
+    "保留最近 %lld 天": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keeps the last %lld days"
+          }
+        }
+      }
+    },
     "全局": {
       "localizations": {
         "en": {
@@ -971,6 +981,26 @@
         }
       }
     },
+    "同步记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync History"
+          }
+        }
+      }
+    },
+    "同步记录…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync History…"
+          }
+        }
+      }
+    },
     "名称": {
       "localizations": {
         "en": {
@@ -1117,6 +1147,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Separate keywords with commas; prefix with `re:` for a regular expression"
+          }
+        }
+      }
+    },
+    "失败 %lld 次：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed passes: %lld. Last error: %@"
           }
         }
       }
@@ -1781,6 +1821,16 @@
         }
       }
     },
+    "最近一轮 %@：上传 %lld 条，下载 %lld 条": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Latest pass %@: %lld up, %lld down"
+          }
+        }
+      }
+    },
     "最高峰在 %lld – %lld 时。": {
       "localizations": {
         "en": {
@@ -1927,6 +1977,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "This Month"
+          }
+        }
+      }
+    },
+    "本机已上传 %lld 条，已从其他设备下载 %lld 条": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uploaded from this Mac: %lld · Downloaded from other devices: %lld"
           }
         }
       }
@@ -2657,6 +2717,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Not synced yet"
+          }
+        }
+      }
+    },
+    "还没有记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No records yet"
           }
         }
       }
