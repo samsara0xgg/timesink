@@ -1,71 +1,113 @@
 # TimeSink
 
-TimeSink 是一个 macOS 菜单栏时间追踪应用：自动记录你在各个应用与网站上花费的时间，按内置的 12 类分类法归类，并给出每日生产力分与可视化统计，数据完全保存在本机，不上传任何服务器。
+**Know where your day goes.** A native macOS menu bar app that automatically tracks apps and websites, helps you understand your habits, and protects time for focused work.
 
-## 功能
+[Download for macOS](https://d2e75eb005kjod.cloudfront.net/TimeSink.dmg) · [Features](#from-activity-to-understanding) · [Privacy](#your-data-your-choice) · [Build from source](#build-from-source)
 
-- 自动追踪当前活跃应用与窗口标题（含系统空闲/锁屏检测）
-- 读取 Chrome 当前标签页网址，按网站精细分类
-- 自动分类：内置应用/网址规则 + 可编辑的自定义规则
-- 标题规则：针对窗口标题的用户自定义分类例外（如「课程/讲座」类标题一律归为学习参考），支持限定作用域、关键词校验与生效前的影响预览
-- 生产力分：按分类的生产力权重实时计算今日得分
-- Stats 面板：总时长、生产力分、应用/分类排行、分类时长堆叠图；支持按天/周/月/自定义范围切换，含环比对照、近 30 天趋势线与按星期×小时的生产力热力图
-- Activities 面板：按时间轴查看并手动重新分类每一段活动；支持搜索，并可叠加日历事件标注会议时段
-- 预算：按分类设置每日时长预算，接近/超出上限时发系统通知，并支持每日小结通知
-- 专注会话：可设定时长的专注模式，对指定应用做软拦截（隐藏 + HUD 提示）、对指定分类的网站做硬拦截（本地拦截页）
-- 可选的 LLM 分类兜底（默认关闭，OpenAI 兼容接口，仅用于处理规则未覆盖的网址/应用）
+![TimeSink — automatic activity tracking, time analysis, and focus tools for macOS](docs/assets/readme/timesink-poster.png)
 
-## 安装
+**macOS 14+ · Swift 6 · SwiftUI · SQLite · English & Chinese**
 
-下载 <https://d2e75eb005kjod.cloudfront.net/TimeSink.dmg>，把 TimeSink 拖进「应用程序」。之后的新版本由应用内的自动更新安装（设置 › 通用 › 检查更新…）。
+## From activity to understanding
 
-从源码安装到本机（试改动用）：
+TimeSink lives in the menu bar and records the foreground app as you work. Open the dashboard to see where your time went, drill into the activity timeline, or start a focus session without maintaining a manual timesheet.
 
-```bash
-make install
-```
+| What you can do | How TimeSink helps |
+| --- | --- |
+| **Track automatically** | Records active apps and window titles, reads the current Chrome tab URL, and detects idle time, sleep, and screen lock. |
+| **Understand your day** | See app and category rankings, productivity scores, category breakdowns, period comparisons, a 30-day trend, and a weekday-by-hour heatmap. Choose daily, weekly, monthly, or custom ranges. |
+| **Review the details** | Search your activity history, inspect the timeline, reclassify activities, and optionally overlay calendar events. |
+| **Make categories yours** | Built-in app and domain rules, custom rules, and scoped title rules with an impact preview before applying them. |
+| **Protect your attention** | Set daily category budgets and receive reminders. Start a timed focus session that hides selected apps and redirects blocked website categories in Chrome to a local blocking page. |
+| **Recall the context** | Optional foreground-window captures and on-device OCR help you revisit what you were doing. Screenshot files expire after seven days. |
+| **Sync when you choose** | Optional account-based cloud sync exchanges activity records across devices. Local tracking works without signing in. |
 
-`make install` 构建 Release 版本，用与发布版相同的 Developer ID 证书签名，复制到 `/Applications`。签名身份不变，已授予的权限（辅助功能、屏幕录制、自动化、日历）重装后依然有效；本地构建不经公证，只在本机运行。发布流程见 `docs/RELEASING.md`。
+## Install
 
-没有这张证书的机器：先运行 `bash scripts/make_cert.sh` 创建自签名证书「TimeSink Dev」，在「钥匙串访问」里把它的「代码签名」设为「始终信任」（不设的话 `codesign` 会卡住不动），再 `make install CERT="TimeSink Dev"`。在两种证书之间切换会让已授予的权限失效，需要重新授权。
+1. [Download TimeSink.dmg](https://d2e75eb005kjod.cloudfront.net/TimeSink.dmg).
+2. Drag **TimeSink** into **Applications**, then open it.
+3. Grant Accessibility access to start tracking. Enable the other permissions only for the features you use.
 
-## 权限说明
+Updates are delivered through Sparkle. You can check manually in **Settings → General → Check for Updates…**.
 
-TimeSink 用到最多四项系统权限，均只用于本机追踪，不会以任何形式上传。前两项是核心追踪功能必需的，后两项是可选功能，不启用对应功能则不会请求：
+## Your data, your choice
 
-- **辅助功能（Accessibility，必需）**：读取当前最前台窗口所属的应用与窗口标题，用于统计各应用的使用时长。
-- **自动化（对 Chrome 的 Apple Events，推荐）**：读取 Chrome 当前标签页的网址，用于把浏览时间按网站分类。不会读取网页内容、表单或历史记录，仅读取当前标签的 URL。
-- **日历（可选）**：用于在 Activities 时间轴上叠加显示日历事件、自动标注会议时段，以及会议进行期间的空闲豁免（不因暂时不动键盘而误判为空闲）。仅读取事件的标题、时间与参会人数，不读取事件详情或备注。
-- **屏幕录制（可选）**：屏幕采集功能用它截取当前最前台窗口（只截这一个窗口，不截整屏）并本地识别文字，用于事后回看某段时间在做什么。密码管理器和钥匙串访问永不采集；锁屏、睡眠、菜单栏暂停期间不采集。截图保存 7 天后自动删除，识别出的文字保留在本机数据库。
-- **通知（可选）**：用于发送预算预警/超限提醒、每日小结与专注会话结束提醒。首次启用预算或开始专注会话时才会请求。
+Activity is stored in a local SQLite database. **Cloud sync and AI classification are optional and off by default.**
 
-以上数据以及分类结果、生产力分等全部只写入本机 SQLite 数据库，TimeSink 不包含任何网络上传逻辑（LLM 分类功能默认关闭，开启后也只会把域名/应用名发送给你自行配置的接口，详见设置里的「智能分类」面板）。
+| Feature | Data handling |
+| --- | --- |
+| **Local tracking** | Stores activity timestamps, app identity, window titles, and available URL, domain, and document information locally. No account is required. |
+| **Cloud sync — optional** | When enabled after sign-in, uploads completed activity records, including their titles, URLs, domains, and document fields, to the TimeSink cloud service. Downloads records from your other devices. |
+| **AI classification — optional** | Sends an unclassified website's domain and available page title to the OpenAI-compatible endpoint you configure. Requires your own provider configuration and API key. |
+| **Screen capture — optional** | Captures the foreground window and runs OCR locally. Images and OCR observations are not part of activity-record cloud sync. Images are retained for seven days; OCR text remains in the local database. Password managers and Keychain Access are excluded; capture pauses while locked, asleep, or manually paused. |
+| **Updates** | Contacts the release service to check for and download app updates. |
 
-## 数据位置与备份
+### macOS permissions
 
-数据库文件位于：
+- **Accessibility:** foreground app and window-title tracking.
+- **Automation for Chrome:** current-tab URL detection and website blocking during focus sessions.
+- **Calendar — optional:** event overlays, meeting detection, and meeting-aware idle handling.
+- **Screen Recording — optional:** foreground-window capture for local OCR and recall.
+- **Notifications — optional:** budget warnings, daily summaries, and focus-session reminders.
 
-```
+### Storage and backups
+
+```text
 ~/Library/Application Support/TimeSink/timesink.sqlite
 ```
 
-备份/迁移时直接复制这个 SQLite 文件即可（应用需处于关闭状态，避免与 WAL 文件不一致）。卸载 TimeSink 不会自动删除这个目录，如需彻底清除数据，手动删除 `~/Library/Application Support/TimeSink/` 即可。
+Quit TimeSink before copying the database for a consistent backup. A database backup does not include screenshot image files. Removing the app does not automatically remove its Application Support directory.
 
-## 开发
+## Build from source
+
+Requires macOS 14 or later and a Swift 6 toolchain. Swift Package Manager resolves [GRDB.swift](https://github.com/groue/GRDB.swift) and [Sparkle](https://github.com/sparkle-project/Sparkle).
 
 ```bash
-swift test          # 运行测试
-swift run TimeSink   # 以裸可执行文件方式运行（不弹首启引导，权限会授予当前终端 App）
-swift run tsprobe     # 命令行探针：逐秒打印前台窗口/Chrome 标签页/空闲时间，便于调试采集逻辑
+git clone https://github.com/samsara0xgg/timesink.git
+cd timesink
+swift build
+swift test
+swift run TimeSink
 ```
 
-开发模式下（`swift run`）弹出的权限授权对话框会把 Accessibility/自动化权限授予当前使用的终端应用（如 Terminal.app / iTerm2 / Ghostty），而不是 TimeSink 本身；这与安装到 `/Applications` 后独立签名的 `TimeSink.app` 权限是分开的两套授权。
+`swift run` uses a separate `timesink-dev.sqlite` database, so development does not duplicate tracking in your installed app's database. Accessibility and Automation permissions belong to the terminal hosting the development process. Calendar and notification permissions need the signed app bundle installed in `/Applications` to work correctly.
 
-开发模式（`swift run`）使用独立的数据库文件 `timesink-dev.sqlite`，与安装版的 `timesink.sqlite` 完全隔离，因此可以和安装版同时运行而不会重复计时。
+To install your own signed build:
 
-日历与通知权限只能在 `make install` 后验证：TCC 按 bundle 归因，`swift run` 下这两项权限会静默失效（不弹授权对话框、功能也不会真正生效），必须装到 `/Applications` 后用签名后的 `TimeSink.app` 触发。
+```bash
+bash scripts/make_cert.sh
+# In Keychain Access, set the TimeSink Dev certificate's Code Signing trust
+# to Always Trust before installing.
+make install CERT="TimeSink Dev"
+```
 
-## 致谢
+`make install` defaults to the maintainer's Developer ID certificate; override `CERT` for your own build. Changing the signing identity requires granting macOS permissions again. Local builds are not notarized. See [Releasing TimeSink](docs/RELEASING.md) for the distribution process.
 
-- Stats 面板布局参考了 [Timing](https://timingapp.com) 的总览界面设计
-- 内置网站分类种子数据来自 [WhoTracks.me](https://github.com/whotracksme/whotracks.me)（MIT License）
+### Under the hood
+
+```text
+Foreground app + Chrome + system state
+                  ↓
+          Activity spans → SQLite (GRDB)
+                  ↓
+       Rules and category resolution
+                  ↓
+       Stats · Timeline · Budgets · Focus
+```
+
+The macOS app uses SwiftUI, AppKit, Accessibility, EventKit, ScreenCaptureKit, and Vision. The optional cloud backend lives in [`cloud/`](cloud/), using Python, AWS Lambda, DynamoDB, Cognito, and TypeScript CDK infrastructure.
+
+Useful development checks:
+
+```bash
+swift test
+python3 scripts/check_strings.py
+swift run tsprobe  # Prints foreground-window, Chrome, and idle diagnostics
+```
+
+## Acknowledgments
+
+- The Stats overview layout was inspired by [Timing](https://timingapp.com).
+- Website classification seed data comes from [WhoTracks.me](https://github.com/whotracksme/whotracks.me) (MIT License).
+
+Built by [Yilun (Allen) Shi](https://github.com/samsara0xgg), builder of [Jarvis](https://github.com/samsara0xgg/Jarvis).
