@@ -28,10 +28,12 @@ actor StatsWorker {
         return pulses
     }
 
+    /// `writes` is `AppModel.writeLog`: windows ending before every write
+    /// since the last version survive it.
     func compute(store: SpanStore, classification seed: CategoryResolver.Snapshot,
                  categories: [String: Category], editVersion: Int, dataVersion: Int, range: DateRangeSelection,
-                 includeHeavy: Bool, now: Date, calendar: Calendar) throws -> Result {
-        try prepare(classification: seed, editVersion: editVersion, dataVersion: dataVersion)
+                 includeHeavy: Bool, now: Date, calendar: Calendar, writes: [(version: Int, from: Date)] = []) throws -> Result {
+        try prepare(classification: seed, editVersion: editVersion, dataVersion: dataVersion, writes: writes)
         let current = try items(store: store, in: range.interval)
         let previous = try items(store: store, in: range.previousInterval)
         try Task.checkCancellation()
@@ -60,8 +62,8 @@ actor StatsWorker {
 
     func categoryRows(store: SpanStore, classification seed: CategoryResolver.Snapshot,
                       categories: [String: Category], editVersion: Int, dataVersion: Int,
-                      interval: DateInterval) throws -> [StatsModel.RankingRow] {
-        try prepare(classification: seed, editVersion: editVersion, dataVersion: dataVersion)
+                      interval: DateInterval, writes: [(version: Int, from: Date)] = []) throws -> [StatsModel.RankingRow] {
+        try prepare(classification: seed, editVersion: editVersion, dataVersion: dataVersion, writes: writes)
         let totals = Aggregator.durationByCategory(try items(store: store, in: interval))
         try Task.checkCancellation()
         return totals.compactMap { id, seconds in
@@ -69,7 +71,8 @@ actor StatsWorker {
         }.sorted { $0.seconds == $1.seconds ? $0.id < $1.id : $0.seconds > $1.seconds }
     }
 
-    private func prepare(classification seed: CategoryResolver.Snapshot, editVersion: Int, dataVersion: Int) throws {
+    private func prepare(classification seed: CategoryResolver.Snapshot, editVersion: Int, dataVersion: Int,
+                         writes: [(version: Int, from: Date)] = []) throws {
         try Task.checkCancellation()
         if classification == nil || self.editVersion != editVersion {
             classification = seed
@@ -78,8 +81,13 @@ actor StatsWorker {
         }
         // Keep at most four windows; a tracking write invalidates rows without
         // throwing away the classification memo. Re-entering Stats reuses both.
+        // Only windows reaching past a write can have changed: during tracking
+        // yesterday and earlier periods stay cached. A version missing from
+        // the log could have touched any day.
         if self.dataVersion != dataVersion {
-            windows.removeAll()
+            let seen = writes.filter { $0.version > self.dataVersion && $0.version <= dataVersion }
+            let floor = seen.count == dataVersion - self.dataVersion ? seen.map(\.from).min() ?? .distantPast : .distantPast
+            windows = windows.filter { $0.key.end <= floor }
             self.dataVersion = dataVersion
         }
     }

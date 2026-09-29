@@ -21,7 +21,7 @@ struct RefinedRulesPane: View {
         let rank: Int
         let priority: Int
         let recordID: Int64?
-        let seconds: TimeInterval
+        var seconds: TimeInterval
         var enabled: Bool
         /// What a person reads: an app's name rather than its bundle ID.
         var scopeLabel = ""
@@ -38,6 +38,7 @@ struct RefinedRulesPane: View {
         }
         return pattern.count >= 3 ? pattern : nil
     }
+    private var chipWidth: CGFloat { RefinedStyle.chipWidth(for: model.resolver.categoriesByID) }
     private var visible: [RuleRow] { rows.filter { search.isEmpty || ($0.pattern + $0.scope + (model.resolver.categoriesByID[$0.category]?.name ?? "")).localizedCaseInsensitiveContains(search) } }
     var body: some View {
         VStack(spacing: 0) {
@@ -72,6 +73,7 @@ struct RefinedRulesPane: View {
             if let error { Text(error).font(.system(size: 12)).foregroundStyle(.red).padding(12) }
         }.workspacePanel().task { load() }
         .onChange(of: model.dataEditVersion) { _, _ in load() }
+        .onChange(of: model.dataVersion) { _, _ in refreshHits() }
         .sheet(item: $pendingTitle) { TitleRuleEditor(model: model, pending: $0) }
         .sheet(isPresented: $showURL) {
             VStack(alignment: .leading, spacing: 16) {
@@ -94,7 +96,7 @@ struct RefinedRulesPane: View {
             Color.clear.frame(width: 16, height: 1)
             Text("类型").frame(width: 56, alignment: .leading)
             Text("条件").frame(maxWidth: .infinity, alignment: .leading)
-            Text("归为").frame(width: 124, alignment: .leading)
+            Text("归为").frame(width: chipWidth, alignment: .leading)
             Text("今天命中").frame(width: 84, alignment: .trailing)
             Text("来源").frame(width: 48)
             Color.clear.frame(width: 30, height: 1)
@@ -110,7 +112,7 @@ struct RefinedRulesPane: View {
                 if !row.scopeLabel.isEmpty { Text(row.scopeLabel + " ·").foregroundStyle(.secondary) }
                 Text(row.displayPattern)
             }.font(.system(size: 13)).lineLimit(1).truncationMode(.middle).frame(maxWidth: .infinity, alignment: .leading).help(row.scopeLabel + " " + row.displayPattern)
-            CategoryChip(category: model.resolver.categoriesByID[row.category]).lineLimit(1).frame(width: 124, alignment: .leading)
+            CategoryChip(category: model.resolver.categoriesByID[row.category]).lineLimit(1).frame(width: chipWidth, alignment: .leading)
             Text(row.seconds == 0 ? "—" : Format.duration(row.seconds)).font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit().frame(width: 84, alignment: .trailing)
             Text(row.source == "user" ? "你" : "内置").font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).frame(width: 48)
             Toggle(String(localized: "启用规则：\(row.displayPattern)"), isOn: Binding(get: { row.enabled }, set: { setEnabled(row, $0) }))
@@ -128,13 +130,22 @@ struct RefinedRulesPane: View {
                 }
             }
     }
+    /// Today's time credited to each rule key.
+    private func todayHits() -> [String: TimeInterval] {
+        model.rangedSpans(for: .today()).reduce(into: [String: TimeInterval]()) { totals, item in
+            if let key = model.resolver.matchingRuleKey(for: item.span) { totals[key, default: 0] += item.span.duration }
+        }
+    }
+    /// Tracking only moves 今天命中; the rules themselves change with edits.
+    private func refreshHits() {
+        guard !rows.isEmpty else { return }
+        let hits = todayHits()
+        rows = rows.map { var row = $0; row.seconds = hits[row.id, default: 0]; return row }
+    }
     private func load() {
         do {
             let disabled = try model.categoryStore.disabledRules()
-            let today = model.rangedSpans(for: .today())
-            let hits = today.reduce(into: [String: TimeInterval]()) { totals, item in
-                if let key = model.resolver.matchingRuleKey(for: item.span) { totals[key, default: 0] += item.span.duration }
-            }
+            let hits = todayHits()
             var result: [RuleRow] = []
             for rule in try model.categoryStore.titleRules() {
                 let scopeLabel = rule.scopeKey.isEmpty || NSWorkspace.shared.urlForApplication(withBundleIdentifier: rule.scopeKey) == nil
@@ -189,7 +200,11 @@ struct RefinedRulesPane: View {
     /// down, above it when dragged up, so every position is reachable.
     private func reorder(_ id: String?, onto target: RuleRow) -> Bool {
         guard let id, id != target.id, let source = rows.first(where: { $0.id == id }),
-              isOrderable(source), isOrderable(target), source.scope == target.scope else { return false }
+              isOrderable(source), isOrderable(target) else { return false }
+        guard source.scope == target.scope else {
+            error = String(localized: "标题规则只能在同一个应用或网站的范围内调整顺序。")
+            return false
+        }
         var ordered = rows.filter { isOrderable($0) && $0.scope == target.scope }
         guard let from = ordered.firstIndex(where: { $0.id == id }), let to = ordered.firstIndex(where: { $0.id == target.id }) else { return false }
         ordered.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)

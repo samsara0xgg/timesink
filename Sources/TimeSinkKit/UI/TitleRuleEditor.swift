@@ -4,7 +4,7 @@ import os
 private let titleRuleEditorLogger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "titleRuleEditor")
 
 /// Input for `TitleRuleEditor`, shared by `ActivityListView`'s right-click
-/// path and `RulesSettingsPane`'s "+ 新建标题规则…" button.
+/// path and the rules pane's 新建规则 › 标题规则… item.
 struct PendingTitleRule: Identifiable {
     var id: String { "\(scopeKey)|\(prefill)" }
     /// 预填关键词文本（右键 = 完整标题；新建 = 空）。
@@ -59,32 +59,6 @@ enum TitleRuleInput {
             deduped.append(piece)
         }
         return deduped.joined(separator: "|")
-    }
-
-    /// Counts items whose scope (`span.domain ?? span.appBundleID`) matches
-    /// `scopeKey` (empty = global, matches everything) and whose title
-    /// matches `pattern` -- used for the editor's live "影响 N 项" preview
-    /// (recomputed on every keystroke) and the Rules pane's today-hit
-    /// column. Builds one `CompiledTitleRule` up front and reuses it across
-    /// every item instead of calling the uncompiled `Classifier.titleMatches`
-    /// per item, which re-splits `|`-keywords (and, for a `re:` pattern,
-    /// recompiles the `NSRegularExpression`) on every single call --
-    /// measured 302ms/50k for keywords and 114ms/50k for regex recompilation
-    /// alone (matches `ClassificationContext`'s own precompilation
-    /// rationale, see its doc comment).
-    nonisolated static func affected(items: [CategorizedSpan], pattern: String, scopeKey: String) -> (count: Int, seconds: TimeInterval) {
-        let compiled = CompiledTitleRule(TitleRule(pattern: pattern, scopeKey: scopeKey, categoryID: "", source: "user"))
-        var count = 0
-        var seconds: TimeInterval = 0
-        for item in items {
-            let itemScope = item.span.domain ?? item.span.appBundleID
-            guard Classifier.scopeMatches(ruleScopeKey: scopeKey, scopeKey: itemScope) else { continue }
-            guard let title = item.span.title else { continue }
-            guard compiled.matches(title: title, loweredTitle: title.lowercased()) else { continue }
-            count += 1
-            seconds += item.span.duration
-        }
-        return (count, seconds)
     }
 }
 

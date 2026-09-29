@@ -145,6 +145,16 @@
         }
       }
     },
+    "%@ · 用的是输入框里还没保存的密钥，按回车保存": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · This used the unsaved key in the field. Press Return to save it."
+          }
+        }
+      }
+    },
     "%@ 分钟": {
       "localizations": {
         "en": {
@@ -171,6 +181,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ is blocked during focus"
+          }
+        }
+      }
+    },
+    "%@ 平均 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ average %@"
           }
         }
       }
@@ -633,16 +653,6 @@
         }
       }
     },
-    "%lld:00 平均 %@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld:00 average %@"
-          }
-        }
-      }
-    },
     "%lld分": {
       "localizations": {
         "en": {
@@ -679,16 +689,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "0 minutes"
-          }
-        }
-      }
-    },
-    "00:00 至 24:00": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "00:00 to 24:00"
           }
         }
       }
@@ -1781,6 +1781,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Review what each feature does. Optional features can be changed later in Settings."
+          }
+        }
+      }
+    },
+    "全天 24 小时": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All 24 hours"
           }
         }
       }
@@ -5065,6 +5075,16 @@
         }
       }
     },
+    "标题规则只能在同一个应用或网站的范围内调整顺序。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Title rules can only be reordered within the same app or website."
+          }
+        }
+      }
+    },
     "样本不足": {
       "localizations": {
         "en": {
@@ -6588,9 +6608,21 @@
     "近 30 天有 %lld 项还没有分类，合计 %@": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld uncategorized items in the last 30 days, totaling %@"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld uncategorized item in the last 30 days, totaling %@"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld uncategorized items in the last 30 days, totaling %@"
+                }
+              }
+            }
           }
         }
       }

@@ -114,8 +114,8 @@ final class ActivitiesModelTests: XCTestCase {
     // MARK: - Fix round 1, CRITICAL 1: entity rows must scope title rules by
     // reassignKey, not the finer-grained display id
 
-    /// Pins the actual bug: `TitleRuleInput.affected`/`Classifier.scopeMatches`
-    /// compare a rule's scopeKey against `span.domain ?? span.appBundleID`.
+    /// Pins the actual bug: `Classifier.scopeMatches` compares a rule's
+    /// scopeKey against `span.domain ?? span.appBundleID`.
     /// An entity row's `id` (e.g. a specific github repo) never equals that,
     /// so a rule scoped to `id` silently affects zero items forever — while
     /// `reassignKey` (what the fixed `TitleRowView` now hands
@@ -129,12 +129,9 @@ final class ActivitiesModelTests: XCTestCase {
         XCTAssertEqual(rows.count, 1)
         let row = rows[0]
 
-        let viaEntityID = TitleRuleInput.affected(items: [item], pattern: "pull", scopeKey: row.id)
-        XCTAssertEqual(viaEntityID.count, 0)
-
-        let viaReassignKey = TitleRuleInput.affected(items: [item], pattern: "pull", scopeKey: row.reassignKey)
-        XCTAssertEqual(viaReassignKey.count, 1)
-        XCTAssertEqual(viaReassignKey.seconds, 600)
+        let itemScope = item.span.domain ?? item.span.appBundleID
+        XCTAssertFalse(Classifier.scopeMatches(ruleScopeKey: row.id, scopeKey: itemScope))
+        XCTAssertTrue(Classifier.scopeMatches(ruleScopeKey: row.reassignKey, scopeKey: itemScope))
     }
 
     // MARK: - Fix round 1, R-T9d: matches() url branch

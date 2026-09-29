@@ -7,8 +7,6 @@ struct HeatmapData: Sendable {
         let hour: Int
         var id: Int { weekday * 24 + hour }
         var weekdayLabel: String { [String(localized: "周一"), String(localized: "周二"), String(localized: "周三"), String(localized: "周四"), String(localized: "周五"), String(localized: "周六"), String(localized: "周日")][weekday] }
-        var timeLabel: String { String(format: "%02d:00–%02d:00", hour, hour + 1) }
-        var label: String { "\(weekdayLabel) · \(timeLabel)" }
         /// In the reader's clock (12- or 24-hour) rather than a fixed pattern.
         func timeLabel(_ locale: Locale) -> String {
             let start = Self.date(hour: hour), style = Date.FormatStyle.dateTime.hour().minute().locale(locale)
@@ -47,7 +45,6 @@ struct HeatmapData: Sendable {
         let categories: [Contribution]
         let apps: [Contribution]
         let days: [Day]
-        let label: String
         let availableDays: Int
         let recordedDays: Int
         let accessibilitySummary: String
@@ -58,7 +55,6 @@ struct HeatmapData: Sendable {
         }
         init(key: Key, seconds: TimeInterval, pulse: Int?, categories: [Contribution], apps: [Contribution], days: [Day]) {
             self.key = key
-            label = key.label
             self.seconds = seconds
             self.pulse = pulse
             self.categories = categories

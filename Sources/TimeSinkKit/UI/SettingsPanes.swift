@@ -176,13 +176,8 @@ struct UncategorizedSettingsPane: View {
     @State private var error: String?
     @State private var suggestions: [String: ClassificationSuggestion] = [:]
 
-    /// Set when `dataVersion` bumps while this pane is not the selected tab.
-    /// `TabView` keeps every visited pane mounted, so its `.onChange`
-    /// handlers keep firing for edits made on other tabs -- without this the
-    /// pane reloads itself while off screen, and an edit on one tab pays for
-    /// the work of every other tab the user has ever opened. Reloading on
-    /// becoming visible again is not enough on its own either: that would
-    /// put the cost back on every tab switch even when nothing changed.
+    /// Set by a user edit made elsewhere; the 30-day reload runs once, when
+    /// this pane is on screen, instead of once per edit.
     @State private var needsRecompute = true
     /// The edit version this pane's own assignment produced: its rows are
     /// already updated in place, so it skips the 30-day reload.
@@ -196,6 +191,7 @@ struct UncategorizedSettingsPane: View {
         let isDomain: Bool
     }
 
+    private var chipWidth: CGFloat { RefinedStyle.chipWidth(for: model.resolver.categoriesByID) }
     private var sortedCategories: [Category] {
         model.resolver.categoriesByID.values.sorted { $0.sortOrder < $1.sortOrder }
     }
@@ -272,14 +268,14 @@ struct UncategorizedSettingsPane: View {
                 ProgressView(value: row.seconds, total: max(1, rows.map(\.seconds).max() ?? 1)).tint(.secondary)
             }.frame(width: 110)
             if let category = accepted[row.id] {
-                CategoryChip(category: model.resolver.categoriesByID[category]).frame(width: 140)
+                CategoryChip(category: model.resolver.categoriesByID[category]).frame(width: max(140, chipWidth), alignment: .leading)
                 Label("已归类", systemImage: "checkmark").font(.system(size: 12)).foregroundStyle(.green).frame(width: 90)
             } else {
                 if let suggestion = suggestions[row.id] {
                     VStack(alignment: .leading, spacing: 3) {
                         CategoryChip(category: model.resolver.categoriesByID[suggestion.categoryID])
                         Text("模型建议").font(.system(size: 11)).foregroundStyle(.secondary)
-                    }.frame(width: 100, alignment: .leading)
+                    }.frame(width: chipWidth, alignment: .leading)
                     Button("接受") { assign(row: row, categoryID: suggestion.categoryID) }.controlSize(.small)
                 }
                 Picker("分类", selection: pickerBinding(for: row)) {
@@ -477,7 +473,8 @@ struct LLMSettingsPane: View {
             testStatus = String(localized: "Endpoint 无效")
             return
         }
-        let key = apiKeyInput.isEmpty ? (Keychain.get(account: LLMCoordinator.apiKeyAccount) ?? "") : apiKeyInput
+        let typed = !apiKeyInput.isEmpty
+        let key = typed ? apiKeyInput : (Keychain.get(account: LLMCoordinator.apiKeyAccount) ?? "")
         guard !key.isEmpty else {
             testStatus = String(localized: "请先填写 API Key")
             return
@@ -488,7 +485,9 @@ struct LLMSettingsPane: View {
         Task { @MainActor in
             do {
                 let categoryID = try await classifier.classify(domain: "example-blog.net", title: nil)
-                testStatus = "example-blog.net → \(model.resolver.categoriesByID[categoryID]?.name ?? categoryID)"
+                let result = "example-blog.net → \(model.resolver.categoriesByID[categoryID]?.name ?? categoryID)"
+                // A typed key proves itself, not the stored one.
+                testStatus = typed ? String(localized: "\(result) · 用的是输入框里还没保存的密钥，按回车保存") : result
             } catch {
                 testStatus = String(localized: "测试失败：\(error.localizedDescription)")
             }

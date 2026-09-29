@@ -24,8 +24,8 @@ private struct CardTitle: View {
     }
 }
 
-/// Pulse -> color mapping shared by the stats dashboard's score card and the
-/// menu-bar mini dashboard's gauge, so the two stay visually consistent.
+/// Pulse -> color mapping for the heatmap's score cells and preview, so a
+/// score reads the same colour wherever it appears.
 func scoreColor(_ pulse: Int?) -> Color {
     guard let pulse else { return .secondary }
     if pulse >= 70 { return .green }

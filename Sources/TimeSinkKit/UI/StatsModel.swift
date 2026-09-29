@@ -80,7 +80,7 @@ final class StatsModel {
     func sidebarRows(model: AppModel) async throws -> [RankingRow] {
         try await worker.categoryRows(store: model.spanStore, classification: model.resolver.snapshot(),
             categories: model.resolver.categoriesByID, editVersion: model.dataEditVersion,
-            dataVersion: model.dataVersion, interval: model.range.interval)
+            dataVersion: model.dataVersion, interval: model.range.interval, writes: model.writeLog)
     }
 
     func recompute(model: AppModel, forceHeavy: Bool = false) async {
@@ -102,7 +102,8 @@ final class StatsModel {
         do {
             let result = try await worker.compute(store: model.spanStore,
                 classification: model.resolver.snapshot(), categories: model.resolver.categoriesByID,
-                editVersion: editVersion, dataVersion: version, range: range, includeHeavy: needsHeavy, now: now, calendar: calendar)
+                editVersion: editVersion, dataVersion: version, range: range, includeHeavy: needsHeavy, now: now, calendar: calendar,
+                writes: model.writeLog)
             try Task.checkCancellation()
             // A newer route/edit must never be replaced by an older calculation.
             guard request == generation, model.range == range, model.dataEditVersion == editVersion else { return }

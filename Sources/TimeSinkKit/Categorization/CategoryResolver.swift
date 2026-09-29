@@ -105,8 +105,20 @@ public final class CategoryResolver {
         do {
             let disabled = try categoryStore.disabledRules()
             let categories = try categoryStore.allCategories()
-            let domainMap = try categoryStore.domainMap().filter { !disabled.contains("domain:" + $0.key) }
-            let appMap = try categoryStore.appMap().filter { !disabled.contains("app:" + $0.key) }
+            // Turning off your own correction brings back what shipped for
+            // that site or app; turning off a shipped mapping unmaps it.
+            let allDomains = try categoryStore.domainMap(), allApps = try categoryStore.appMap()
+            var domainMap = allDomains.filter { !disabled.contains("domain:" + $0.key) }
+            let offDomains = allDomains.filter { $0.value.source == "user" && disabled.contains("domain:" + $0.key) }
+            for (domain, shipped) in SeedImporter.shippedDomains(Set(offDomains.keys)) {
+                domainMap[domain] = DomainEntry(categoryID: shipped.categoryID, source: shipped.source)
+            }
+            var appMap = allApps.filter { !disabled.contains("app:" + $0.key) }
+            for (app, entry) in allApps where entry.source == "user" && disabled.contains("app:" + app) {
+                if let builtin = Taxonomy.builtinApps.first(where: { $0.bundleID == app }) {
+                    appMap[app] = DomainEntry(categoryID: builtin.categoryID, source: "builtin")
+                }
+            }
             let sortedRules = try categoryStore.urlRules().filter { !disabled.contains("url:" + String($0.id ?? 0)) }.sorted { lhs, rhs in
                 let lhsUser = lhs.source == "user"
                 let rhsUser = rhs.source == "user"

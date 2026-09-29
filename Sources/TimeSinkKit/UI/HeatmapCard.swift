@@ -77,7 +77,7 @@ struct HeatmapCard: View {
                             .frame(height: 22, alignment: .bottom)
                         Text(hour % 3 == 0 ? HeatmapData.Key.hourLabel(hour, locale: locale) : " ")
                             .font(.system(size: 11)).monospacedDigit().foregroundStyle(.secondary)
-                    }.frame(width: cellWidth).help("\(hour):00 平均 \(Format.chineseDuration(columns[hour]))")
+                    }.frame(width: cellWidth).help("\(HeatmapData.Key(weekday: 0, hour: hour).timeLabel(locale)) 平均 \(Format.chineseDuration(columns[hour]))")
                 }
                 Color.clear.frame(width: 12, height: 1)
                 Text("平均 / 日").font(.system(size: 11)).foregroundStyle(.tertiary).frame(width: 96)

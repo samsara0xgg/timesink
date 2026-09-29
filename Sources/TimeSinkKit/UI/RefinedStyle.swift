@@ -54,6 +54,12 @@ enum RefinedStyle {
         return min(cap, ceil(widest))
     }
 
+    /// A `CategoryChip` column wide enough for the longest name, English
+    /// included: dot, spacing and padding add 23 points to the text.
+    static func chipWidth(for categories: [String: Category]) -> CGFloat {
+        nameColumn(categories.values.map(\.name), font: .systemFont(ofSize: 11), cap: 180) + 23
+    }
+
     static func remaining(spent: TimeInterval, limit: TimeInterval) -> String {
         let remaining = limit - spent
         if spent == 0 { return String(localized: "0 / \(Int(limit / 60)) 分钟") }

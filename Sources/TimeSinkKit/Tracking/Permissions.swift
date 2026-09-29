@@ -97,8 +97,8 @@ extension Permissions {
         }
     }
 
-    /// The 通知 row's state read (spec §11's fourth permission), factored out
-    /// of `GeneralSettingsPane` so it's testable without a view.
+    /// The 通知 row's state read (spec §11's fourth permission), kept out of
+    /// the permissions pane so it's testable without a view.
     ///
     /// Async because `UNUserNotificationCenter.getNotificationSettings` is
     /// callback-based -- callers cache the result in `@State` from `onAppear`

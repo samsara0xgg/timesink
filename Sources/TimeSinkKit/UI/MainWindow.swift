@@ -12,6 +12,10 @@ struct MainWindowView: View {
     @State private var customRangeStart = Date()
     @State private var customRangeEnd = Date()
     @State private var focusError: String?
+    /// Today's focus sessions for the subtitle, read when the page or the
+    /// data changes rather than on every render.
+    @State private var focusToday: (count: Int, seconds: TimeInterval) = (0, 0)
+    private struct FocusSubtitleKey: Equatable { let page: SidebarItem; let version: Int }
 
     init(model: AppModel, activities: ActivitiesModel? = nil) {
         self.model = model
@@ -58,6 +62,11 @@ struct MainWindowView: View {
         .environment(\.locale, model.displayLocale)
         .environment(\.calendar, model.displayCalendar)
         .frame(minWidth: 800, minHeight: 580)
+        .task(id: FocusSubtitleKey(page: model.sidebarSelection, version: model.dataVersion)) {
+            guard model.sidebarSelection == .focus else { return }
+            let sessions = (try? model.focusStore?.sessions(overlapping: DateRangeSelection.today().interval)) ?? []
+            focusToday = (sessions.count, sessions.reduce(0) { $0 + $1.end.timeIntervalSince($1.start) })
+        }
         .alert("无法开始专注", isPresented: Binding(get: { focusError != nil }, set: { if !$0 { focusError = nil } })) {
             Button("好") { focusError = nil }
         } message: { Text(focusError ?? "") }
@@ -72,8 +81,7 @@ struct MainWindowView: View {
             return String(localized: "\(rangeLabel) · \(Format.duration(items.reduce(0) { $0 + $1.span.duration })) · \(items.count) 条记录")
         case .stats: return String(localized: "\(rangeLabel) · 与前一时段比较")
         case .focus:
-            let sessions = (try? model.focusStore?.sessions(overlapping: DateRangeSelection.today().interval)) ?? []
-            return String(localized: "今天 \(sessions.count) 次专注 · \(Format.duration(sessions.reduce(0) { $0 + $1.end.timeIntervalSince($1.start) }))")
+            return String(localized: "今天 \(focusToday.count) 次专注 · \(Format.duration(focusToday.seconds))")
         case .organization: return String(localized: "\(model.pendingClassificationCount) 项待分类")
         }
     }

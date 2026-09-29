@@ -249,7 +249,7 @@ struct DayTimelineView: View {
         VStack(spacing: 0) {
             ForEach(hours, id: \.self) { hour in
                 HStack(alignment: .top, spacing: 4) {
-                    Text(String(format: "%02d:00", Calendar.current.component(.hour, from: hour)))
+                    Text(hour, format: .dateTime.hour().minute())
                         .font(.caption2).monospacedDigit().foregroundStyle(.secondary)
                         .frame(width: labelWidth, alignment: .leading)
                     Rectangle().fill(Color(nsColor: .separatorColor)).frame(height: 1)

@@ -26,6 +26,47 @@ final class AppModelCacheTests: XCTestCase {
              appBundleID: "com.test", appName: "Test", title: nil, url: nil, domain: nil)
     }
 
+    /// A tracking write only touches spans from where it started, so a Stats
+    /// window that ends before it stays cached.
+    func testStatsWorkerKeepsWindowsThatEndBeforeATrackingWrite() async throws {
+        let (model, store) = try makeModel()
+        let today = DateRangeSelection.today()
+        let yesterday = DateRangeSelection(kind: .day, anchor: today.interval.start.addingTimeInterval(-3600))
+        func record(_ day: DateRangeSelection, hour: Double) -> Span {
+            let start = day.interval.start.addingTimeInterval(hour * 3600)
+            return Span(start: start, end: start.addingTimeInterval(300), appBundleID: "com.test", appName: "Test",
+                        title: nil, url: nil, domain: nil)
+        }
+        let worker = StatsWorker()
+        func seconds(_ day: DateRangeSelection) async throws -> TimeInterval {
+            try await worker.categoryRows(store: store, classification: model.resolver.snapshot(),
+                                          categories: model.resolver.categoriesByID, editVersion: model.dataEditVersion,
+                                          dataVersion: model.dataVersion, interval: day.interval,
+                                          writes: model.writeLog).reduce(0) { $0 + $1.seconds }
+        }
+        try store.insert(record(yesterday, hour: 10))
+        model.dataChanged()
+        let first = try await seconds(yesterday)
+        XCTAssertEqual(first, 300)
+        let emptyToday = try await seconds(today)
+        XCTAssertEqual(emptyToday, 0)
+
+        // Behind the worker's back: a record on each day, then a tracking
+        // write that starts at today's.
+        try store.insert(record(yesterday, hour: 11))
+        let written = record(today, hour: 12)
+        try store.insert(written)
+        model.engineDataChangedForTesting(writtenFrom: written.start)
+        let kept = try await seconds(yesterday)
+        XCTAssertEqual(kept, 300, "yesterday ends before the write: still cached")
+        let refetched = try await seconds(today)
+        XCTAssertEqual(refetched, 300, "today reaches past it: read again")
+
+        model.engineDataChangedForTesting()
+        let reread = try await seconds(yesterday)
+        XCTAssertEqual(reread, 600, "a write that could touch any day drops every window")
+    }
+
     func testRangedSpansIsCachedUntilDataChanged() throws {
         let (model, store) = try makeModel()
         try store.insert(span(hourOffset: 12))
@@ -100,6 +141,11 @@ final class AppModelCacheTests: XCTestCase {
         model.range = DateRangeSelection(kind: .day, anchor: older)
         model.dayChanged(now: now)
         XCTAssertTrue(Calendar.current.isDate(model.range.anchor, inSameDayAs: older))
+
+        model.range = DateRangeSelection(kind: .last7, anchor: yesterday)
+        model.dayChanged(now: now)
+        XCTAssertEqual(model.range.kind, .last7)
+        XCTAssertTrue(Calendar.current.isDate(model.range.anchor, inSameDayAs: now), "the last 7 days roll forward too")
     }
 
     func testRangeCacheEvictsOldestBeyondCap() throws {

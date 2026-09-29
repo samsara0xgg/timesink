@@ -91,7 +91,9 @@ final class TodayDashboardModel {
 
     /// Refresh today's small summary immediately; prepare the month-long streak
     /// on a background actor. Reopening within a minute reuses the snapshot.
-    func recompute(model: AppModel, forceStreak: Bool) async {
+    /// `headlineOnly` stops after the score, the same-time comparison and
+    /// the streak: the Today page shows nothing else from here.
+    func recompute(model: AppModel, forceStreak: Bool, headlineOnly: Bool = false) async {
         let calendar = Calendar.current
         let categories = model.resolver.categoriesByID
 
@@ -103,7 +105,7 @@ final class TodayDashboardModel {
         total = Aggregator.totalDuration(today.map(\.span))
 
         let now = Date()
-        overview = DayOverview(items: today, categories: categories, sessions: [], now: now)
+        if !headlineOnly { overview = DayOverview(items: today, categories: categories, sessions: [], now: now) }
         let yesterdayAnchor = calendar.date(byAdding: .day, value: -1, to: now) ?? now
         let yesterday = model.rangedSpans(for: DateRangeSelection(kind: .day, anchor: yesterdayAnchor))
         let yByCategory = Aggregator.durationByCategory(yesterday)
@@ -124,6 +126,10 @@ final class TodayDashboardModel {
         let clippedYTotal = Aggregator.totalDuration(clippedYesterday.map(\.span))
         focusDelta = yesterday.isEmpty ? nil : focus - clippedYFocus
         totalDelta = yesterday.isEmpty ? nil : total - clippedYTotal
+        if headlineOnly {
+            await refreshStreakIfDayChanged(model: model, calendar: calendar, force: forceStreak)
+            return
+        }
 
         topCategories = byCategory
             .compactMap { id, seconds -> (String, String, String, TimeInterval)? in
@@ -880,9 +886,9 @@ struct MenuBarDashboardView: View {
     }
 
     /// R-T11g: activate-only, no `.setActivationPolicy(.regular)` -- same
-    /// convention as `BudgetSettingsPane`'s click route and the
-    /// `.settingsBudget` notification route (`TimeSinkApp.swift`); there's
-    /// no matching restore-to-`.accessory` path for a policy flip here.
+    /// convention as the `.settingsBudget` notification route
+    /// (`TimeSinkApp.swift`); there's no matching restore-to-`.accessory`
+    /// path for a policy flip here.
     private func openBudgetSettings() {
         model.sidebarSelection = .focus
         openWindow(id: "main"); AppWindow.main.bringForward()

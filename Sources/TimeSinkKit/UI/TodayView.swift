@@ -10,7 +10,7 @@ struct TodayView: View {
     @State private var events: [CalendarEvent] = []
     /// Moves at midnight, so the day's calendar events are fetched again.
     @State private var day = Calendar.current.startOfDay(for: Date())
-    private struct EventsKey: Equatable { let enabled: Bool; let day: Date }
+    private struct EventsKey: Equatable { let enabled: Bool; let day: Date; let calendars: Int }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -58,21 +58,23 @@ struct TodayView: View {
         }
         .background(WorkspaceBackground())
         .task(id: model.dataVersion) { await refresh() }
-        .task(id: EventsKey(enabled: model.calendarOverlayEnabled, day: day)) {
+        .task(id: EventsKey(enabled: model.calendarOverlayEnabled, day: day, calendars: model.calendarVersion)) {
             events = model.calendarOverlayEnabled ? await model.calendarStore?.events(on: day) ?? [] : []
         }
         .task {
+            // Keeps the ribbon's now line moving while nothing is written; the
+            // headline numbers only move with data or at midnight.
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(30)) } catch { return }
-                day = Calendar.current.startOfDay(for: Date())
-                await refresh()
+                let today = Calendar.current.startOfDay(for: Date())
+                if today != day { day = today; await refresh() } else { await dayModel.refresh(model: model) }
             }
         }
     }
 
     private func refresh() async {
         await dayModel.refresh(model: model)
-        await dashboard.recompute(model: model, forceStreak: false)
+        await dashboard.recompute(model: model, forceStreak: false, headlineOnly: true)
     }
 
     private func summary(_ overview: DayOverview) -> some View {

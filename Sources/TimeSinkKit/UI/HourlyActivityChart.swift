@@ -7,6 +7,7 @@ struct HourlyActivityChart: View {
     let bars: [HourlyBigView.Bar]
     var minimumScale: Double = 60
     @State private var selectedHour: Int?
+    @Environment(\.locale) private var locale
 
     struct Segment: Identifiable {
         let bar: HourlyBigView.Bar
@@ -37,7 +38,7 @@ struct HourlyActivityChart: View {
     }
 
     private func description(_ hour: Int) -> String {
-        String(format: "%02d:00–%02d:00", hour, hour + 1) + " · " + Format.duration(totals[hour] ?? 0)
+        HeatmapData.Key(weekday: 0, hour: hour).timeLabel(locale) + " · " + Format.duration(totals[hour] ?? 0)
     }
 
     var body: some View {
@@ -53,7 +54,7 @@ struct HourlyActivityChart: View {
                                   yEnd: .value("分钟", segment.endMinutes))
                         .cornerRadius(2)
                         .foregroundStyle(RefinedStyle.category(bar.categoryID, hex: bar.colorHex))
-                        .accessibilityLabel(String(format: "%02d:00–%02d:00", bar.hour, bar.hour + 1))
+                        .accessibilityLabel(HeatmapData.Key(weekday: 0, hour: bar.hour).timeLabel(locale))
                         .accessibilityValue(Format.duration(bar.seconds))
                 }
                 if let selectedHour {
@@ -113,7 +114,7 @@ struct HourlyActivityChart: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("24 小时活动分布，单位分钟")
-        .accessibilityValue(selectedHour.map(description) ?? String(localized: "00:00 至 24:00"))
+        .accessibilityValue(selectedHour.map(description) ?? String(localized: "全天 24 小时"))
         .accessibilityAdjustableAction { direction in
             let step = direction == .increment ? 1 : -1
             selectedHour = min(23, max(0, (selectedHour ?? 0) + step))

@@ -275,6 +275,10 @@ public final class AppModel {
     /// ending before it -- yesterday, last week -- read the same rows as
     /// before, so the engine path keeps them cached.
     @ObservationIgnored private var engineDirtyFrom: Date?
+    /// The earliest span start each recent `dataVersion` bump could have
+    /// changed, newest last: `.distantPast` unless it was a tracking write.
+    /// Lets the Stats worker keep past windows across tracking writes.
+    @ObservationIgnored private(set) var writeLog: [(version: Int, from: Date)] = []
     private static let rangeCacheCap = 8
 
     /// Trailing debounce for `scheduleEngineDataChanged()` -- see its doc
@@ -431,7 +435,7 @@ public final class AppModel {
             rangeCache.removeValue(forKey: interval)
             return true
         }
-        bump()
+        bump(from: from)
     }
 
     /// The engine path is private and only ever reached through a 1.5s
@@ -448,9 +452,11 @@ public final class AppModel {
         bump()
     }
 
-    private func bump() {
+    private func bump(from: Date = .distantPast) {
         refreshMenu()
         dataVersion += 1
+        writeLog.append((dataVersion, from))
+        if writeLog.count > 32 { writeLog.removeFirst() }
         refreshPendingCount()
     }
 
@@ -688,9 +694,14 @@ public final class AppModel {
             Task { @MainActor in
                 await self.calendarStore?.invalidateCache()
                 await self.refreshCalendarWindows()
+                self.calendarVersion += 1
             }
         }
     }
+
+    /// Bumped when the user's calendars change, so views showing events
+    /// fetch them again.
+    public private(set) var calendarVersion = 0
 
     /// Budgets and the daily summary only ever notify; without asking here
     /// the first alert would be dropped silently. The system prompts once.
@@ -708,9 +719,11 @@ public final class AppModel {
 
     func dayChanged(now: Date = Date()) {
         let calendar = Calendar.current
-        if range.kind == .day, let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
+        // Any range that ended on "today" rolls forward: the last 7 and 30
+        // days, this week and this month as well as the day itself.
+        if range.kind != .custom, let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
            calendar.isDate(range.anchor, inSameDayAs: yesterday) {
-            range = .today()
+            range = DateRangeSelection(kind: range.kind, anchor: now)
         }
         invalidateAndBump()
     }

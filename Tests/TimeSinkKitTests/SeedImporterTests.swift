@@ -53,6 +53,22 @@ final class SeedImporterTests: XCTestCase {
         XCTAssertTrue(try store.disabledRules().isEmpty)
     }
 
+    func testTurningOffAUserCorrectionFallsBackToWhatShipped() throws {
+        let db = try AppDatabase.openInMemory()
+        let store = CategoryStore(db)
+        try store.setUserDomain("figma.com", categoryID: "learning")
+        try store.setUserApp("com.apple.dt.Xcode", categoryID: "entertainment")
+        try store.setRuleEnabled(key: "domain:figma.com", enabled: false)
+        try store.setRuleEnabled(key: "app:com.apple.dt.Xcode", enabled: false)
+        let resolver = CategoryResolver(categoryStore: store)
+        let page = Span(start: Date(), end: Date().addingTimeInterval(60), appBundleID: "com.google.Chrome", appName: "Chrome",
+                        title: "Board", url: "https://figma.com/file/1", domain: "figma.com")
+        let editor = Span(start: Date(), end: Date().addingTimeInterval(60), appBundleID: "com.apple.dt.Xcode", appName: "Xcode",
+                          title: nil, url: nil, domain: nil)
+        XCTAssertEqual(resolver.categoryID(for: page), "writing", "the curated mapping comes back, not uncategorized")
+        XCTAssertEqual(resolver.categoryID(for: editor), "softwareDev")
+    }
+
     func testOverlayImportsIndependentlyOfMainSeedVersion() throws {
         // Regression: the overlay import must not be nested inside the main
         // seed's early return -- an install that's already at the bundled

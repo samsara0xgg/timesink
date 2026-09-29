@@ -232,15 +232,9 @@ extension TitleRuleTests {
         XCTAssertEqual(TitleRuleInput.normalizedPattern("lecture, Lecture"), "lecture")
     }
 
-    func testAffectedCount() {
-        let items = [
-            CategorizedSpan(span: Span(start: ts(0), end: ts(600), appBundleID: "c", appName: "C",
-                title: "MIT Lecture 3", url: "https://youtube.com/watch", domain: "youtube.com"), categoryID: "entertainment"),
-            CategorizedSpan(span: Span(start: ts(600), end: ts(900), appBundleID: "c", appName: "C",
-                title: "Cat video", url: "https://youtube.com/watch", domain: "youtube.com"), categoryID: "entertainment"),
-        ]
-        let (count, seconds) = TitleRuleInput.affected(items: items, pattern: "lecture", scopeKey: "youtube.com")
-        XCTAssertEqual(count, 1)
-        XCTAssertEqual(seconds, 600)
+    func testCompiledKeywordMatchesTitlesCaseInsensitively() {
+        let rule = CompiledTitleRule(TitleRule(pattern: "lecture", scopeKey: "youtube.com", categoryID: "", source: "user"))
+        XCTAssertTrue(rule.matches(title: "MIT Lecture 3", loweredTitle: "mit lecture 3"))
+        XCTAssertFalse(rule.matches(title: "Cat video", loweredTitle: "cat video"))
     }
 }
