@@ -95,6 +95,7 @@ public final class FocusSessionController {
     private let store: FocusSessionStore
     private let settings: SettingsStore
     private var policy = FocusBlockPolicy()
+    private var blockedDestinations: [String: String] = [:]
     private var timer: Timer?
     private var lastHeartbeat: Date = .distantPast
     /// Degraded-notice-shown flags for non-Chrome browsers (decision 5),
@@ -138,6 +139,7 @@ public final class FocusSessionController {
         siteBlocks = 0
         policy = FocusBlockPolicy()
         shownDegradedFor = []
+        blockedDestinations = [:]
         lastHeartbeat = now
         lastKeepFocusTap = nil
 
@@ -236,8 +238,9 @@ public final class FocusSessionController {
            running.blockedCategories.contains(category),
            !policy.isAllowed(domain, at: now),
            policy.shouldHide(domain, at: now) {
-            let target = Self.blockPageURL(domain: domain, remaining: remaining)
+            let target = Self.blockPageURL(domain: domain, remaining: remaining, endsAt: running.start.addingTimeInterval(Double(running.plannedSeconds)))
             if redirectChrome?(target) == true {
+                blockedDestinations[domain] = url
                 siteBlocks += 1
             }
             return false
@@ -265,6 +268,28 @@ public final class FocusSessionController {
     /// "放行 5 分钟" from the block page's own button.
     public func allowDomain(_ domain: String) {
         policy.allow(domain, at: Date())
+    }
+
+    /// Exact destination is retained in this process, never taken from an external URL.
+    public func allowedDestination(for domain: String) -> String? {
+        guard let destination = blockedDestinations[domain],
+              let url = URL(string: destination), ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+              DomainParser.domain(from: destination) == domain else { return nil }
+        allowDomain(domain)
+        return destination
+    }
+
+    public func allowApp(_ bundleID: String, at now: Date = Date()) {
+        guard running != nil else { return }
+        policy.allow(bundleID, at: now)
+    }
+
+    public func extend(minutes: Int = 10) throws {
+        guard var active = running, minutes > 0 else { return }
+        active.plannedSeconds += minutes * 60
+        try store.updatePlannedSeconds(id: active.id, seconds: active.plannedSeconds)
+        running = active
+        remaining = max(0, Self.remainingSeconds(start: active.start, planned: active.plannedSeconds, now: Date()))
     }
 
     /// What a `keepFocusTapped` call decided, so the HUD can respond visibly
@@ -340,12 +365,13 @@ public final class FocusSessionController {
     /// this path) never performs the actual file write. `ensureWritten()`
     /// is called exactly once, in the PRODUCTION `redirectChrome` closure
     /// (`TimeSinkApp` assembly), immediately before the real redirect.
-    private static func blockPageURL(domain: String, remaining: TimeInterval) -> String {
+    private static func blockPageURL(domain: String, remaining: TimeInterval, endsAt: Date) -> String {
         let pageURL = FocusBlockPage.location
         var components = URLComponents(url: pageURL, resolvingAgainstBaseURL: false)
         components?.queryItems = [
             URLQueryItem(name: "domain", value: domain),
             URLQueryItem(name: "remaining", value: Format.mmss(remaining)),
+            URLQueryItem(name: "endsAt", value: String(endsAt.timeIntervalSince1970)),
         ]
         return components?.url?.absoluteString ?? pageURL.absoluteString
     }

@@ -2,6 +2,13 @@ import Foundation
 
 /// Human-readable formatting helpers for stats display.
 public enum Format {
+    public static func chineseDuration(_ seconds: TimeInterval) -> String {
+        guard seconds > 0 else { return String(localized: "0 分钟") }
+        guard seconds >= 60 else { return String(localized: "不到 1 分钟") }
+        let minutes = Int(seconds / 60)
+        if minutes < 60 { return String(localized: "\(minutes) 分钟") }
+        return minutes % 60 == 0 ? String(localized: "\(minutes / 60) 小时") : String(localized: "\(minutes / 60) 小时 \(minutes % 60) 分钟")
+    }
     /// Formats a duration in seconds as e.g. "1h 1m", "9m", "<1m" (0 < t < 60s), "0m" (t <= 0).
     public static func duration(_ t: TimeInterval) -> String {
         guard t > 0 else { return "0m" }

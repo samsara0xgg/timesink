@@ -19,6 +19,12 @@ public final class FocusSessionStore: Sendable {
         return session
     }
 
+    public func updatePlannedSeconds(id: Int64, seconds: Int) throws {
+        try writer.write { db in
+            try db.execute(sql: "UPDATE focusSession SET plannedSeconds = ? WHERE id = ?", arguments: [seconds, id])
+        }
+    }
+
     public func heartbeat(id: Int64, end: Date) throws {
         try writer.write { db in
             try db.execute(sql: "UPDATE focusSession SET end = ? WHERE id = ?", arguments: [end, id])
