@@ -45,14 +45,31 @@ final class DayOverviewTests: XCTestCase {
         XCTAssertEqual(overview.displayInterval.start, date(0))
     }
 
-    func testMergeOnlyContiguousIdenticalActivity() {
+    func testTitlesOfOneRowFoldButRealGapsStay() {
         let overview = DayOverview(items: [item(date(9), date(9, minute: 30)), item(date(9, minute: 30), date(10)),
                                           item(date(10, minute: 1), date(10, minute: 2)), item(date(10, minute: 2), date(11), title: "别的项目")],
             categories: categories, sessions: [], now: date(12), calendar: calendar)
-        XCTAssertEqual(overview.pieces.count, 4)
+        XCTAssertEqual(overview.pieces.count, 3)
         XCTAssertEqual(overview.pieces[0].seconds, 3600)
         XCTAssertNil(overview.pieces[1].item)
         XCTAssertEqual(overview.gapSeconds, 60)
+        XCTAssertEqual(overview.pieces[2].seconds, 3540)
+        XCTAssertEqual(overview.pieces[2].segment?.firstStarts.count, 2)
+    }
+
+    /// A window switch every 20 seconds is one row per stretch, not one per
+    /// switch, and every recorded second is still accounted for.
+    func testHighChurnFoldsWithoutLosingTime() {
+        let items = (0..<90).map { index -> CategorizedSpan in
+            let start = date(9).addingTimeInterval(Double(index) * 20)
+            return .init(span: Span(start: start, end: start.addingTimeInterval(20),
+                                    appBundleID: index % 3 == 0 ? "chat" : "editor", appName: index % 3 == 0 ? "Chat" : "Editor",
+                                    title: "t\(index % 5)", url: nil, domain: nil), categoryID: index % 3 == 0 ? "other" : "work")
+        }
+        let overview = DayOverview(items: items, categories: categories, sessions: [], now: date(12), calendar: calendar)
+        XCTAssertLessThanOrEqual(overview.pieces.count, 6)
+        XCTAssertEqual(overview.pieces.compactMap(\.segment).reduce(0) { $0 + $1.recorded }, overview.total)
+        XCTAssertEqual(overview.pieces.first?.segment?.dominant.appName, "Editor")
     }
 
     func testDSTDayAndLongDayVesselNeverClipRecordedTime() {

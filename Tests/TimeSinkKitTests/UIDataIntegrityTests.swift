@@ -17,16 +17,20 @@ final class UIDataIntegrityTests: XCTestCase {
         XCTAssertTrue(StatsModel.distributionRows([]).isEmpty)
     }
 
-    func testTimelinePreservesAppAndTitleWithinSameCategory() {
+    /// Apps split blocks, titles don't; every title stays findable inside.
+    func testTimelineKeepsEveryAppAndTitleFindable() {
         let items = [
             item(start: 0, end: 600, app: "editor", title: "A"),
             item(start: 600, end: 1200, app: "browser", title: "A"),
             item(start: 1200, end: 1800, app: "browser", title: "B")
         ]
         let blocks = ActivitiesModel.timelineBlocks(items, categories: [:])
-        XCTAssertEqual(blocks.count, 3)
-        XCTAssertEqual(blocks.map { $0.activity?.rowID }, ["editor", "browser", "browser"])
-        XCTAssertEqual(blocks.map { $0.activity?.title }, ["A", "A", "B"])
+        XCTAssertEqual(blocks.map { $0.activity?.rowID }, ["editor", "browser"])
+        let browserA = ActivitiesModel.selection(for: items[1]), browserB = ActivitiesModel.selection(for: items[2])
+        XCTAssertTrue(blocks[1].contains(browserA))
+        XCTAssertTrue(blocks[1].contains(browserB))
+        XCTAssertFalse(blocks[0].contains(browserB))
+        XCTAssertEqual(blocks[1].start(of: browserB), items[2].span.start)
         XCTAssertEqual(blocks.map(\.id), ActivitiesModel.timelineBlocks(items, categories: [:]).map(\.id))
     }
 
@@ -34,11 +38,15 @@ final class UIDataIntegrityTests: XCTestCase {
         let first = item(start: 0, end: 600, app: "editor", title: "A")
         let blocks = ActivitiesModel.timelineBlocks([
             first, item(start: 600, end: 900, app: "editor", title: "A"),
-            item(start: 920, end: 1200, app: "editor", title: "A")
+            item(start: 960, end: 1200, app: "editor", title: "A")
         ], categories: [:])
         XCTAssertEqual(blocks.count, 2)
         XCTAssertEqual(blocks[0].duration, 900)
         XCTAssertEqual(blocks[0].id, ActivitiesModel.timelineBlocks([first], categories: [:])[0].id)
+        // Tick jitter under the bridge is not a gap, and not recorded time either.
+        let jitter = ActivitiesModel.timelineBlocks([first, item(start: 620, end: 900, app: "editor", title: "A")], categories: [:])
+        XCTAssertEqual(jitter.count, 1)
+        XCTAssertEqual(jitter[0].segment?.recorded, 880)
     }
 
     func testFilterDoesNotHighlightOtherURLWithSameTitle() {
@@ -47,8 +55,10 @@ final class UIDataIntegrityTests: XCTestCase {
         let blocks = ActivitiesModel.timelineBlocks([first, second], categories: [:]) {
             ActivitiesModel.matches($0, query: "/one")
         }
-        XCTAssertEqual(blocks.count, 2)
-        XCTAssertEqual(blocks.map(\.matchesFilter), [true, false])
+        let hits = blocks.filter(\.isHighlight)
+        XCTAssertEqual(hits.map(\.start), [first.span.start])
+        XCTAssertEqual(hits.map(\.end), [first.span.end])
+        XCTAssertTrue(blocks.filter { !$0.isHighlight }.allSatisfy { !$0.matchesFilter })
     }
 
     func testDocumentAndEntitySelectionsMatchListKeys() {

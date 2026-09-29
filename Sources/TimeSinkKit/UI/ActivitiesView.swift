@@ -377,32 +377,54 @@ final class ActivitiesModel {
     var matchSeconds: TimeInterval?
 
     var selectedActivity: ActivitySelection?
+    /// The start of the exact raw span being inspected. The timeline's current
+    /// block is whichever folded block covers it.
     var selectedStart: Date?
-    var timelineHourHeight: CGFloat = 64
+    /// Continuous while pinching; the timeline refolds only when this crosses
+    /// a `TimelineZoom` stop.
+    var timelineHourHeight: CGFloat = 64 {
+        didSet {
+            if TimelineZoom.stop(for: oldValue) != TimelineZoom.stop(for: timelineHourHeight) { rebuildTimeline() }
+        }
+    }
     var expandedRows: Set<ActivitySelection> = []
     var collapsedCategories: Set<String> = []
     @ObservationIgnored private var selectionRange: DateInterval?
     @ObservationIgnored private var selectionTimeInterval: DateInterval?
+    @ObservationIgnored private var timelineItems: [CategorizedSpan] = []
+    @ObservationIgnored private var timelineCategories: [String: Category] = [:]
+    @ObservationIgnored private var timelineMatching: ((CategorizedSpan) -> Bool)?
+
+    /// The folded block holding the inspected span.
+    var selectedBlock: TimelineBlock? {
+        guard let selectedActivity else { return nil }
+        return timelineBlocks.first { $0.matchesFilter && $0.covers(selectedStart) && $0.contains(selectedActivity) }
+    }
 
     func select(_ activity: ActivitySelection, start: Date? = nil) {
         selectedActivity = activity
         expandedRows.insert(activity.row)
         collapsedCategories.remove(activity.categoryID)
-        let matching = timelineBlocks.filter { $0.matchesFilter && ($0.activity.map(activity.matches) ?? false) }
-        selectedStart = start.flatMap { date in
-            matching.first { $0.start <= date && date < $0.end }?.start
-        } ?? matching.first?.start
+        let matching = timelineBlocks.filter { $0.matchesFilter && $0.contains(activity) }
+        if let start, matching.contains(where: { $0.covers(start) }) {
+            // A list row or search hit already names the exact span.
+            selectedStart = matching.first { $0.covers(start) }.flatMap { block in
+                block.start == start ? block.start(of: activity) ?? start : start
+            }
+        } else {
+            selectedStart = matching.first.flatMap { $0.start(of: activity) } ?? start
+        }
     }
 
     nonisolated static func selection(for item: CategorizedSpan) -> ActivitySelection {
-        let span = item.span
-        let entity = span.domain.flatMap { domain in
-            span.url.flatMap { EntityParser.entity(urlString: $0, domain: domain) }
-        }
-        let rowID = span.document.map { "\(span.appBundleID)/\($0)" }
-            ?? entity?.key ?? span.domain ?? span.appBundleID
-        return ActivitySelection(categoryID: item.categoryID, rowID: rowID,
-                                 title: span.title?.isEmpty == false ? span.title! : String(localized: "(无标题)"))
+        ActivityIdentity(item).selection
+    }
+
+    /// Refolds the day for the current zoom without re-reading or re-filtering.
+    func rebuildTimeline() {
+        timelineBlocks = Self.timelineBlocks(timelineItems, categories: timelineCategories,
+                                             resolution: TimelineZoom.resolution(for: timelineHourHeight),
+                                             matching: timelineMatching)
     }
 
     /// `events` (C3): the current range's calendar events, fetched
@@ -499,18 +521,20 @@ final class ActivitiesModel {
         segmentCounts = Dictionary(matchedSelections.map { ($0.row, 1) }, uniquingKeysWith: +)
         let filterCategory = model.activityFilter
         let timeInterval = model.activityTimeInterval
-        let timelineItems = Self.splitAtTimeFilter(all, interval: timeInterval)
-        timelineBlocks = showsTimeline ? Self.timelineBlocks(timelineItems, categories: categories) { item in
+        timelineItems = showsTimeline ? Self.splitAtTimeFilter(all, interval: timeInterval) : []
+        timelineCategories = categories
+        timelineMatching = filterCategory == nil && query == nil && timeInterval == nil ? nil : { item in
             (filterCategory == nil || item.categoryID == filterCategory)
                 && (query.map { Self.matches(item, query: $0) } ?? true)
                 && (timeInterval.map { item.span.start < $0.end && item.span.end > $0.start } ?? true)
-        } : []
+        }
+        rebuildTimeline()
         if let selectedActivity {
             if !visibleSelections.contains(where: selectedActivity.matches) {
                 self.selectedActivity = nil
                 selectedStart = nil
-            } else if !timelineBlocks.contains(where: { $0.matchesFilter && $0.start == selectedStart && ($0.activity.map(selectedActivity.matches) ?? false) }) {
-                selectedStart = timelineBlocks.first { $0.matchesFilter && ($0.activity.map(selectedActivity.matches) ?? false) }?.start
+            } else if !timelineBlocks.contains(where: { $0.matchesFilter && $0.covers(selectedStart) && $0.contains(selectedActivity) }) {
+                selectedStart = timelineBlocks.first { $0.matchesFilter && $0.contains(selectedActivity) }?.start(of: selectedActivity)
             }
         }
         if selectedActivity == nil, timeInterval != nil,
@@ -667,29 +691,38 @@ final class ActivitiesModel {
 
     // MARK: - Timeline blocks
 
-    /// Keep app/title identity and short activities intact so a selected
-    /// interval always maps back to the row it describes. Only truly adjoining
-    /// intervals of the same activity can share a visual block.
+    /// Folds the day at `resolution` (see `TimelineSegmenter`): a block per
+    /// legible stretch, each knowing every row and title it holds, so a
+    /// selection still maps back to its list row. With a filter, the whole day
+    /// stays as a dimmed base and the matching spans are folded separately into
+    /// a highlight layer, so a short hit is never swallowed by its neighbours.
     nonisolated static func timelineBlocks(_ items: [CategorizedSpan], categories: [String: Category],
-                                          matching: (CategorizedSpan) -> Bool = { _ in true }) -> [TimelineBlock] {
-        var merged: [(item: CategorizedSpan, end: Date)] = []
-        for item in items.sorted(by: { $0.span.start < $1.span.start }) where item.span.duration > 0 {
-            if let last = merged.last,
-               selection(for: last.item) == selection(for: item),
-               matching(last.item) == matching(item),
-               item.span.start == last.end {
-                merged[merged.count - 1].end = item.span.end
-            } else {
-                merged.append((item, item.span.end))
+                                          resolution: TimeInterval = 0,
+                                          matching: ((CategorizedSpan) -> Bool)? = nil) -> [TimelineBlock] {
+        func blocks(_ segments: [TimelineSegment], highlight: Bool, live: Bool) -> [TimelineBlock] {
+            segments.map { segment in
+                let categoryID = segment.dominant.categoryID
+                var mix: [TimelineBlock.Share] = []
+                if segment.isMixed {
+                    var seconds: [String: TimeInterval] = [:]
+                    for part in segment.parts { seconds[part.categoryID, default: 0] += part.seconds }
+                    mix = seconds.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }.map {
+                        .init(id: $0.key, color: RefinedStyle.category($0.key, hex: categories[$0.key]?.colorHex ?? "#98989D"),
+                              fraction: $0.value / max(1, segment.recorded))
+                    }
+                }
+                return TimelineBlock(start: segment.start, end: segment.end,
+                                     color: RefinedStyle.category(categoryID, hex: categories[categoryID]?.colorHex ?? "#98989D"),
+                                     label: segment.dominant.label, tooltip: tooltip(segment),
+                                     activity: segment.dominant.selection, matchesFilter: live,
+                                     segment: segment, mix: mix, isHighlight: highlight)
             }
         }
-        return merged.map { item, end in
-            TimelineBlock(start: item.span.start, end: end,
-                          color: Color(hex: categories[item.categoryID]?.colorHex ?? "#98989D"),
-                          label: item.span.domain ?? item.span.appName,
-                          tooltip: tooltip(repSpan: item.span, start: item.span.start, end: end),
-                          activity: selection(for: item), matchesFilter: matching(item))
-        }
+        let base = blocks(TimelineSegmenter.segments(items, resolution: resolution), highlight: false, live: matching == nil)
+        guard let matching else { return base }
+        let hits = TimelineSegmenter.segments(items.filter(matching), resolution: resolution,
+                                              bridge: max(TimelineSegmenter.defaultBridge, resolution))
+        return base + blocks(hits, highlight: true, live: true)
     }
 
     /// Zero-padded 24-hour "HH:mm", built from raw calendar components
@@ -701,17 +734,16 @@ final class ActivitiesModel {
         return String(format: "%02d:%02d", comps.hour ?? 0, comps.minute ?? 0)
     }
 
-    private nonisolated static func tooltip(repSpan: Span, start: Date, end: Date) -> String {
-        var lines: [String] = []
-        if let title = repSpan.title, !title.isEmpty {
-            lines.append("\(repSpan.appName) — \(title)")
+    private nonisolated static func tooltip(_ segment: TimelineSegment) -> String {
+        var lines = ["\(hhmm(segment.start))–\(hhmm(segment.end)) · \(Format.duration(segment.recorded))"]
+        if segment.parts.count == 1, let title = segment.dominant.longest.span.title, !title.isEmpty {
+            lines.append("\(segment.dominant.label) — \(title)")
+            if segment.switches > 0 || segment.spanCount > 1 {
+                lines.append(String(localized: "\(segment.spanCount) 条记录"))
+            }
         } else {
-            lines.append(repSpan.appName)
+            lines += TimelineSegmentText.composition(segment)
         }
-        if let url = repSpan.url, !url.isEmpty {
-            lines.append(url)
-        }
-        lines.append("\(hhmm(start))–\(hhmm(end)) (\(Format.duration(end.timeIntervalSince(start))))")
         return lines.joined(separator: "\n")
     }
 

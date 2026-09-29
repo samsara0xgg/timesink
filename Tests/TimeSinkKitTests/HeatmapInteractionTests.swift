@@ -119,8 +119,11 @@ final class HeatmapInteractionTests: XCTestCase {
         activities.recompute(model: model)
         XCTAssertEqual(activities.groups.reduce(0) { $0 + $1.seconds }, 3600)
         XCTAssertEqual(activities.matchSeconds, 3600)
-        XCTAssertEqual(activities.timelineBlocks.map(\.matchesFilter), [false, true, false])
-        XCTAssertEqual(activities.timelineBlocks.map(\.duration), [1800, 3600, 1800])
+        // The whole day stays as a dimmed base; the hour is a highlight over it.
+        XCTAssertEqual(activities.timelineBlocks.map(\.matchesFilter), [false, true])
+        XCTAssertEqual(activities.timelineBlocks.map(\.isHighlight), [false, true])
+        XCTAssertEqual(activities.timelineBlocks.map(\.duration), [7200, 3600])
+        XCTAssertEqual(activities.timelineBlocks.last?.start, hour)
         XCTAssertEqual(activities.selectedStart, hour)
         model.returnToHeatmap()
         XCTAssertEqual(model.range, original)

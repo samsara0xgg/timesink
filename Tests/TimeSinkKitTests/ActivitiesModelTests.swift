@@ -43,9 +43,26 @@ final class ActivitiesModelTests: XCTestCase {
         ]
         let blocks = ActivitiesModel.timelineBlocks(items, categories: categories)
         XCTAssertEqual(blocks.count, 2)
-        XCTAssertEqual(blocks[0].end, items[0].span.end)
+        // Sub-bridge jitter is tiled over, but never counted as recorded time.
+        XCTAssertEqual(blocks[0].end, blocks[1].start)
+        XCTAssertEqual(blocks[0].segment?.recorded, 1800)
         XCTAssertEqual(blocks[1].activity?.rowID, "com.example.Chat")
         XCTAssertEqual(blocks[1].duration, 15)
+    }
+
+    /// Zoomed out, the same sliver folds into its neighbour but stays findable.
+    func testFoldedShortActivityStaysFindable() {
+        let items = [
+            CategorizedSpan(span: mkSpan("2026-08-23T09:00:00Z", "2026-08-23T09:30:00Z"), categoryID: "work"),
+            CategorizedSpan(span: mkSpan("2026-08-23T09:30:05Z", "2026-08-23T09:30:20Z", app: "Chat"), categoryID: "chat"),
+        ]
+        let blocks = ActivitiesModel.timelineBlocks(items, categories: categories, resolution: 450)
+        XCTAssertEqual(blocks.count, 1)
+        XCTAssertEqual(blocks[0].activity?.categoryID, "work")
+        let chat = ActivitiesModel.selection(for: items[1])
+        XCTAssertTrue(blocks[0].contains(chat))
+        XCTAssertEqual(blocks[0].start(of: chat), items[1].span.start)
+        XCTAssertEqual(blocks[0].segment?.recorded, 1815)
     }
 
     func testDistantShortActivityIsNotDropped() {

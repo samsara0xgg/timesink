@@ -92,7 +92,7 @@ struct MainWindowView: View {
         model.activitySearch = ""
         model.openActivities(category: nil, range: .today())
         activities.recompute(model: model, events: [])
-        activities.select(ActivitiesModel.selection(for: item), start: piece.start)
+        activities.select(ActivitiesModel.selection(for: item), start: item.span.start)
     }
 
     @ViewBuilder

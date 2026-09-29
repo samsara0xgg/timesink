@@ -153,20 +153,21 @@ struct TodayView: View {
                 Text(piece.start, format: .dateTime.hour().minute())
                 Text(piece.end, format: .dateTime.hour().minute()).foregroundStyle(.tertiary)
             }.font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary).frame(width: 60, alignment: .leading)
-            if let item = piece.item {
-                AppIcon(bundleID: item.span.appBundleID)
-                VStack(alignment: .leading, spacing: 2) {
+            if let segment = piece.segment, let item = piece.item {
+                AppIcon(bundleID: segment.dominant.appBundleID)
+                VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 5) {
-                        Text(item.span.domain ?? item.span.appName).font(.system(size: 13)).lineLimit(1)
+                        Text(segment.dominant.label).font(.system(size: 13)).lineLimit(1)
                         if let session = overview.sessions.first(where: { $0.start < piece.end && $0.end > piece.start }) {
                             Label("专注 \(session.plannedSeconds / 60) 分钟", systemImage: "scope")
                                 .font(.system(size: 11)).foregroundStyle(.tint).lineLimit(1)
                         }
                     }
-                    Text(item.span.document ?? item.span.title ?? categoryName(item.categoryID))
+                    Text(pieceDetail(segment, item: item))
                         .font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                    if segment.isMixed { CompositionBar(segment: segment) { categoryColor($0) }.frame(height: 3) }
                 }.frame(maxWidth: .infinity, alignment: .leading)
-                CategoryChip(category: model.resolver.categoriesByID[item.categoryID])
+                CategoryChip(category: model.resolver.categoriesByID[segment.leadingCategoryID])
                 Text(Format.duration(piece.seconds)).font(.system(size: 13)).monospacedDigit().frame(minWidth: 45, alignment: .trailing)
                 Image(systemName: "chevron.right").font(.system(size: 11)).foregroundStyle(.tertiary)
             } else {
@@ -216,6 +217,18 @@ struct TodayView: View {
                 }.padding(18).frame(maxWidth: .infinity, alignment: .leading).workspacePanel()
             }
         }
+    }
+
+    /// What else happened in the stretch; a single-row stretch shows its
+    /// longest title instead.
+    private func pieceDetail(_ segment: TimelineSegment, item: CategorizedSpan) -> String {
+        guard segment.parts.count > 1 else {
+            return item.span.title ?? categoryName(item.categoryID)
+        }
+        let others = segment.parts.dropFirst().prefix(2).map { "\($0.label) \(Format.duration($0.seconds))" }
+        let rest = segment.parts.count - 1 - others.count
+        return String(localized: "另有 \(others.joined(separator: String(localized: "、")))") + (rest > 0 ? String(localized: " 等 \(rest + others.count) 项") : "")
+            + String(localized: " · 切换 \(segment.switches) 次")
     }
 
     private func openActivities() { model.activitySearch = ""; model.openActivities(category: nil, range: .today()) }
@@ -278,18 +291,18 @@ struct DayRibbonView: View {
                     }
                     ZStack(alignment: .topLeading) {
                         RoundedRectangle(cornerRadius: 5).fill(.quaternary.opacity(0.5))
-                        ForEach(overview.pieces) { piece in
+                        ForEach(ribbonPieces(width: geometry.size.width)) { piece in
                             let rect = bounds(start: piece.start, end: piece.end, width: geometry.size.width)
                             Group {
-                                if let item = piece.item {
-                                    let category = overview.categories.first { $0.id == item.categoryID }
-                                    Rectangle().fill(RefinedStyle.category(item.categoryID, hex: category?.colorHex ?? "#C7C7CC"))
-                                        .overlay { if item.categoryID == "uncategorized" { HatchFill() } }
+                                if let segment = piece.segment {
+                                    let categoryID = segment.leadingCategoryID
+                                    Rectangle().fill(RefinedStyle.category(categoryID, hex: categoryHex(categoryID)))
+                                        .overlay { if categoryID == "uncategorized" { HatchFill() } }
                                 } else { HatchFill() }
                             }
                             .frame(width: rect.width)
                             .offset(x: rect.minX)
-                            .help("\(piece.item?.span.domain ?? piece.item?.span.appName ?? String(localized: "未记录")) · \(piece.start.formatted(date: .omitted, time: .shortened))–\(piece.end.formatted(date: .omitted, time: .shortened)) · \(Format.duration(piece.seconds))")
+                            .help(tooltip(piece))
                             .onTapGesture { if piece.item != nil { onSelect?(piece) } }
                             .accessibilityHidden(true)
                         }
@@ -329,6 +342,74 @@ struct DayRibbonView: View {
         let left = max(0, min(1, start.timeIntervalSince(interval.start) / interval.duration))
         let right = max(left, min(1, end.timeIntervalSince(interval.start) / interval.duration))
         return CGRect(x: width * left, y: 0, width: width * (right - left), height: 26)
+    }
+
+    /// Folded at the band's own scale: nothing narrower than a few points,
+    /// so a day of window switching reads as stretches, not stripes.
+    private func ribbonPieces(width: CGFloat) -> [DayOverview.Piece] {
+        let hours = max(interval.duration / 3600, 1)
+        let resolution = TimelineSegmenter.resolution(points: compact ? 3 : 4, pointsPerHour: width / hours)
+        return DayOverview.pieces(overview.items, resolution: resolution, grouping: .category)
+    }
+
+    private func categoryHex(_ id: String) -> String {
+        overview.categories.first { $0.id == id }?.colorHex ?? "#C7C7CC"
+    }
+
+    private func tooltip(_ piece: DayOverview.Piece) -> String {
+        let time = "\(piece.start.formatted(date: .omitted, time: .shortened))–\(piece.end.formatted(date: .omitted, time: .shortened))"
+        guard let segment = piece.segment else {
+            return String(localized: "未记录 · \(time) · \(Format.duration(piece.seconds))")
+        }
+        let name = overview.categories.first { $0.id == segment.leadingCategoryID }?.name ?? String(localized: "未分类")
+        return ([String(localized: "\(name) · \(time) · \(Format.duration(segment.recorded))")]
+            + TimelineSegmentText.composition(segment)).joined(separator: "\n")
+    }
+}
+
+/// A folded segment's mix as one proportional bar, a colour per category.
+struct CompositionBar: View {
+    let segment: TimelineSegment
+    var axis: Axis = .horizontal
+    let color: (String) -> Color
+
+    private var shares: [(id: String, seconds: TimeInterval)] {
+        var seconds: [String: TimeInterval] = [:]
+        for part in segment.parts { seconds[part.categoryID, default: 0] += part.seconds }
+        return seconds.map { ($0.key, $0.value) }.sorted { $0.seconds == $1.seconds ? $0.id < $1.id : $0.seconds > $1.seconds }
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let length = axis == .horizontal ? geometry.size.width : geometry.size.height
+            let total = max(1, segment.recorded)
+            let layout = axis == .horizontal ? AnyLayout(HStackLayout(spacing: 1)) : AnyLayout(VStackLayout(spacing: 1))
+            layout {
+                ForEach(shares, id: \.id) { share in
+                    let size = max(1, (length - CGFloat(shares.count - 1)) * share.seconds / total)
+                    Rectangle().fill(color(share.id))
+                        .frame(width: axis == .horizontal ? size : nil, height: axis == .vertical ? size : nil)
+                }
+            }
+        }
+        .clipShape(Capsule())
+        .accessibilityHidden(true)
+    }
+}
+
+/// Shared wording for a folded segment's contents.
+enum TimelineSegmentText {
+    /// Up to `limit` rows by time, then what was left out and how choppy it was.
+    static func composition(_ segment: TimelineSegment, limit: Int = 4) -> [String] {
+        var lines = segment.parts.prefix(limit).map { "\($0.label) \(Format.duration($0.seconds))" }
+        if segment.parts.count > limit {
+            let rest = segment.parts.dropFirst(limit)
+            lines.append(String(localized: "另有 \(rest.count) 项 · \(Format.duration(rest.reduce(0) { $0 + $1.seconds }))"))
+        }
+        if segment.switches > 0 {
+            lines.append(String(localized: "\(segment.spanCount) 条记录 · 切换 \(segment.switches) 次"))
+        }
+        return lines
     }
 }
 

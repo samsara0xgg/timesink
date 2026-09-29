@@ -4,12 +4,17 @@ import Observation
 /// One day's persisted evidence. Recording gaps and focus sessions are separate
 /// from category-derived engagement; none is inferred from another.
 struct DayOverview: Sendable {
+    /// A folded stretch of activity (`segment`) or of unrecorded time.
     struct Piece: Identifiable, Sendable {
         let start: Date
         var end: Date
-        let item: CategorizedSpan?
-        var id: String { "\(start.timeIntervalSince1970)|\(item?.span.id.map(String.init) ?? item?.span.appBundleID ?? "gap")|\(item?.span.title ?? "")" }
-        var seconds: TimeInterval { end.timeIntervalSince(start) }
+        var segment: TimelineSegment?
+        /// The segment's representative raw span: the longest one of its
+        /// leading row. Opening a piece selects this in Activities.
+        var item: CategorizedSpan? { segment?.dominant.longest }
+        var id: String { "\(start.timeIntervalSince1970)|\(segment == nil ? "gap" : "activity")" }
+        /// Recorded time for activity, elapsed time for a gap.
+        var seconds: TimeInterval { segment?.recorded ?? end.timeIntervalSince(start) }
     }
     struct CategoryTotal: Identifiable, Sendable {
         let id: String
@@ -18,8 +23,14 @@ struct DayOverview: Sendable {
         let seconds: TimeInterval
     }
 
+    /// The resolution the day's list of pieces is folded at: a row per stretch
+    /// of at least five minutes, not one per window switch.
+    static let listResolution: TimeInterval = 300
+
     let day: DateInterval
     let displayInterval: DateInterval
+    /// The day's raw spans, clipped and sorted, for re-folding at other scales.
+    let items: [CategorizedSpan]
     let pieces: [Piece]
     let categories: [CategoryTotal]
     let sessions: [FocusSession]
@@ -60,26 +71,9 @@ struct DayOverview: Sendable {
         }
         sessionSeconds = self.sessions.reduce(0) { $0 + $1.end.timeIntervalSince($1.start) }
 
-        var result: [Piece] = []
-        var coveredUntil: Date?
-        var gaps: TimeInterval = 0
-        for entry in clipped {
-            if let coveredUntil, entry.span.start > coveredUntil {
-                result.append(Piece(start: coveredUntil, end: entry.span.start, item: nil))
-                gaps += entry.span.start.timeIntervalSince(coveredUntil)
-            }
-            if let last = result.last, let prior = last.item,
-               last.end == entry.span.start, prior.categoryID == entry.categoryID,
-               prior.span.appBundleID == entry.span.appBundleID, prior.span.title == entry.span.title,
-               prior.span.url == entry.span.url, prior.span.document == entry.span.document {
-                result[result.count - 1].end = entry.span.end
-            } else {
-                result.append(Piece(start: entry.span.start, end: entry.span.end, item: entry))
-            }
-            coveredUntil = max(coveredUntil ?? entry.span.end, entry.span.end)
-        }
-        pieces = result
-        gapSeconds = gaps
+        self.items = clipped
+        pieces = Self.pieces(clipped, resolution: Self.listResolution, grouping: .activity)
+        gapSeconds = pieces.filter { $0.segment == nil }.reduce(0) { $0 + $1.seconds }
         // Use real local-day boundaries, including 23/25-hour DST days. Always
         // include early/late records and the current time rather than hiding them.
         let defaultStart = calendar.date(bySettingHour: 8, minute: 0, second: 0, of: now) ?? day.start
@@ -90,6 +84,19 @@ struct DayOverview: Sendable {
         let lastHour = calendar.dateInterval(of: .hour, for: last)
         let end = min(day.end, lastHour?.start == last ? last : lastHour?.end ?? day.end)
         displayInterval = DateInterval(start: max(day.start, start), end: max(start.addingTimeInterval(1), end))
+    }
+
+    /// Folded activity with the unrecorded stretches between it, in time order.
+    static func pieces(_ items: [CategorizedSpan], resolution: TimeInterval,
+                       grouping: TimelineSegmenter.Grouping) -> [Piece] {
+        var result: [Piece] = []
+        for segment in TimelineSegmenter.segments(items, resolution: resolution, grouping: grouping) {
+            if let previous = result.last, segment.start > previous.end {
+                result.append(Piece(start: previous.end, end: segment.start, segment: nil))
+            }
+            result.append(Piece(start: segment.start, end: segment.end, segment: segment))
+        }
+        return result
     }
 }
 
