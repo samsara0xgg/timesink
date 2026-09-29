@@ -268,7 +268,7 @@ private struct ActivityRowView: View {
                         .foregroundStyle(Color.accentColor)
                         .help("由日历事件自动标注")
                 }
-                let count = activities.displayedItems.filter { ActivitiesModel.selection(for: $0).row == ActivitySelection(categoryID: categoryID, rowID: row.id) }.count
+                let count = activities.segmentCounts[ActivitySelection(categoryID: categoryID, rowID: row.id)] ?? 0
                 if count > 1 { Text("\(count) 段").font(.system(size: 11)).foregroundStyle(.tertiary) }
                 Text(Format.duration(row.seconds))
                     .foregroundStyle(.secondary)

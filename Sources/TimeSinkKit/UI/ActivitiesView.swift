@@ -350,6 +350,10 @@ final class ActivitiesModel {
 
     var groups: [CategoryGroup] = []
     var displayedItems: [CategorizedSpan] = []
+    /// `displayedItems` counted per row (`ActivitySelection.row`), built once
+    /// in `recompute` -- each `ActivityRowView` reads its "N 段" badge here
+    /// instead of re-parsing every item's URL on every body evaluation.
+    var segmentCounts: [ActivitySelection: Int] = [:]
     var timelineBlocks: [TimelineBlock] = []
     /// C4 focus sessions overlapping the visible range (single-day-ish
     /// ranges only, same gate as `timelineBlocks`) -- `DayTimelineView`
@@ -490,7 +494,9 @@ final class ActivitiesModel {
         // Timeline keeps the unfiltered `all` so a narrowed list still shows
         // the full day's context (spec §7) rather than collapsing around
         // just the search hits.
-        let visibleSelections = Set(matchedItems.map(Self.selection))
+        let matchedSelections = matchedItems.map(Self.selection)
+        let visibleSelections = Set(matchedSelections)
+        segmentCounts = Dictionary(matchedSelections.map { ($0.row, 1) }, uniquingKeysWith: +)
         let filterCategory = model.activityFilter
         let timeInterval = model.activityTimeInterval
         let timelineItems = Self.splitAtTimeFilter(all, interval: timeInterval)
