@@ -21,10 +21,12 @@ struct StatsView: View {
                                 metric(String(localized: "评分"), stats.pulse.map(String.init) ?? "—", String(localized: "连续 \(stats.trendStreak) 天达标"))
                             }
                             if geometry.size.width >= 850 {
+                                // Side by side the chart grows to the ranking's height
+                                // instead of leaving a blank block under it.
                                 HStack(alignment: .top, spacing: 16) {
                                     categoryHistory.frame(maxWidth: .infinity)
                                     ranking.frame(maxWidth: .infinity)
-                                }
+                                }.fixedSize(horizontal: false, vertical: true)
                             } else { categoryHistory; ranking }
                             if let heatmap = stats.heatmapData {
                                 HeatmapCard(data: heatmap, interaction: $stats.heatmapInteraction) { model.openHeatmapActivities(in: $0) }.id("heatmap")
@@ -81,8 +83,8 @@ struct StatsView: View {
                     .accessibilityValue(Format.duration(point.hours * 3600))
             }
             .chartYAxis { AxisMarks(position: .leading) { value in AxisGridLine(); AxisValueLabel { if let hours = value.as(Double.self) { Text("\(hours.formatted())h").font(.system(size: 11)) } } } }
-            .frame(height: 200)
-        }.padding(18).workspacePanel()
+            .frame(minHeight: 200, maxHeight: .infinity)
+        }.frame(maxHeight: .infinity, alignment: .top).padding(18).workspacePanel()
     }
     private var ranking: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -108,7 +110,7 @@ struct StatsView: View {
                     }.font(.system(size: 12)).frame(height: 26).contentShape(Rectangle())
                 }.buttonStyle(RefinedRowButtonStyle())
             }
-        }.frame(maxWidth: .infinity, minHeight: 235, alignment: .topLeading).padding(18).workspacePanel()
+        }.frame(maxWidth: .infinity, minHeight: 235, maxHeight: .infinity, alignment: .topLeading).padding(18).workspacePanel()
     }
     private var appRanking: some View {
         VStack(alignment: .leading, spacing: 12) {

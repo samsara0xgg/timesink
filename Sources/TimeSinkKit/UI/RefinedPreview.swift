@@ -30,10 +30,14 @@ public enum RefinedPreview {
             let suffix = dark ? "dark" : "light"
             for (name, page) in [("today", SidebarItem.today), ("activities", .activities), ("trends", .stats), ("focus", .focus), ("organization", .organization)] {
                 model.sidebarSelection = page
-                model.range = DateRangeSelection(kind: page == .stats ? .last7 : .day, anchor: Date())
+                // Activities shows yesterday: a whole synthetic day, not a morning.
+                let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date())!
+                model.range = DateRangeSelection(kind: page == .stats ? .last7 : .day, anchor: page == .activities ? yesterday : Date())
                 let selectedActivities = ActivitiesModel()
                 selectedActivities.recompute(model: model, events: [])
-                if page == .activities, let item = model.rangedSpans().last {
+                // Mid-morning deep work: a folded stretch of editor, terminal and doc hops.
+                let midMorning = Calendar.current.startOfDay(for: yesterday).addingTimeInterval(10.6 * 3600)
+                if page == .activities, let item = model.rangedSpans().first(where: { $0.span.start >= midMorning }) {
                     selectedActivities.select(ActivitiesModel.selection(for: item), start: item.span.start)
                 }
                 try await render(MainWindowView(model: model, activities: selectedActivities), size: .init(width: 1200, height: 820), dark: dark, to: output.appendingPathComponent("\(name)-\(suffix).png"))
@@ -45,7 +49,7 @@ public enum RefinedPreview {
                 activityModel.select(ActivitiesModel.selection(for: item), start: item.span.start)
                 try await render(ActivityInspector(model: model, activities: activityModel), size: .init(width: 272, height: 760), dark: dark, to: output.appendingPathComponent("inspector-\(suffix).png"))
             }
-            try await render(TitleRuleEditor(model: model, pending: .init(prefill: "SwiftUI", scopeKey: "com.apple.Safari", scopeLabel: "Safari", categoryID: "learning")), size: .init(width: 460, height: 380), dark: dark, to: output.appendingPathComponent("title-rule-\(suffix).png"))
+            try await render(TitleRuleEditor(model: model, pending: .init(prefill: "SwiftUI", scopeKey: "stackoverflow.com", scopeLabel: "stackoverflow.com", categoryID: "learning")), size: .init(width: 460, height: 380), dark: dark, to: output.appendingPathComponent("title-rule-\(suffix).png"))
             for step in 0..<5 {
                 try await render(OnboardingView(model: model, initialStep: step, checksPermissions: false), size: .init(width: 500, height: 470), dark: dark, to: output.appendingPathComponent("onboarding-\(step + 1)-\(suffix).png"))
             }
@@ -91,6 +95,8 @@ public enum RefinedPreview {
         try await Task.sleep(for: .milliseconds(650))
         guard let window = stage.window else { throw CocoaError(.fileWriteUnknown) }
         window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        // Wherever the pointer rests must not hover rows open mid-capture.
+        window.ignoresMouseEvents = true
         window.setContentSize(size)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -155,22 +161,20 @@ public enum RefinedPreview {
     @MainActor private static func fixture() throws -> AppModel {
         let db = try AppDatabase.openInMemory()
         let categories = CategoryStore(db), spans = SpanStore(db), settings = SettingsStore(db)
-        let apps = [("com.apple.dt.Xcode", "Xcode", "softwareDev", "TimeSink · TimelineView.swift"),
-                    ("com.apple.Safari", "Safari", "learning", "SwiftUI · Layout fundamentals"),
-                    ("com.apple.iWork.Pages", "Pages", "writing", "产品设计与本周计划"), // l10n: data
-                    ("com.apple.Terminal", "Terminal", "softwareDev", "timesink — swift build"),
-                    ("com.apple.MobileSMS", "信息", "communication", "产品团队讨论"), // l10n: data
-                    ("com.apple.Music", "音乐", "entertainment", "播放列表"), // l10n: data
-                    ("com.apple.systempreferences", "系统设置", "utilities", "系统设置"), // l10n: data
-                    ("app.unknown", "Excalidraw", "uncategorized", "新的设计想法")] // l10n: data
-        for app in apps where app.2 != "uncategorized" { try categories.setUserApp(app.0, categoryID: app.2) }
-        for offset in 0..<30 {
-            let day = Calendar.current.date(byAdding: .day, value: -offset, to: Calendar.current.startOfDay(for: Date()))!
-            for index in 0..<18 {
-                let app = apps[(index + offset % 3) % apps.count]
-                let start = day.addingTimeInterval(Double(8 * 3600 + index * 1680))
-                guard start < Date() else { continue }
-                try spans.insert(Span(start: start, end: min(Date(), start.addingTimeInterval(Double([1440, 960, 1500, 1200][index % 4]))), appBundleID: app.0, appName: app.1, title: app.3, url: nil, domain: nil))
+        SeedImporter.importIfNeeded(categoryStore: categories, settings: settings)
+        // Corrections a person would have made: the seed files GitHub under
+        // learning, and WWDC videos are study, not entertainment.
+        try categories.setUserDomain("github.com", categoryID: "softwareDev")
+        try categories.upsertUserTitleRule(pattern: "WWDC", scopeKey: "youtube.com", categoryID: "learning")
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        try db.write { db in
+            for offset in 0..<30 {
+                let day = calendar.date(byAdding: .day, value: -offset, to: today)!
+                for var span in SyntheticDay.spans(for: day, seed: UInt64(offset), calendar: calendar) where span.start < Date() {
+                    span.end = min(span.end, Date())
+                    try span.insert(db)
+                }
             }
         }
         let engine = TrackerEngine(spanStore: spans, settings: settings)
@@ -185,12 +189,116 @@ public enum RefinedPreview {
         settings.setFocusBlockedApps(["com.apple.MobileSMS", "com.apple.Music"])
         settings.setFocusBlockedCategories(["socialMedia", "entertainment", "shopping"])
         for offset in 0..<4 {
-            let start = Calendar.current.startOfDay(for: Date()).addingTimeInterval(Double(-offset * 86400 + 10 * 3600))
+            let start = today.addingTimeInterval(Double(-offset * 86400 + 10 * 3600))
             let session = try sessions.start(at: start, plannedSeconds: 2700)
             try sessions.finish(id: session.id!, end: start.addingTimeInterval(2700), appBlocks: offset % 2, siteBlocks: 1, completed: true)
         }
         model.dataChanged()
         return model
+    }
+}
+
+/// A made-up developer's day with real-world churn: every file, tab or
+/// thread change starts a new record, and short hops interrupt longer runs,
+/// so a weekday lands near 2,000 records -- the fragmentation the timeline
+/// has to fold. Seeded per day, so every render is identical. No real data.
+private enum SyntheticDay {
+    struct Source {
+        let bundle: String, app: String, titles: [String], url: String?
+    }
+    private static let zh = Locale.preferredLanguages.first?.hasPrefix("zh") ?? true
+    private static func app(_ bundle: String, _ en: String, _ cn: String, _ titles: [String]) -> Source {
+        Source(bundle: bundle, app: zh ? cn : en, titles: titles, url: nil)
+    }
+    private static func web(_ url: String, _ titles: [String]) -> Source {
+        Source(bundle: "com.apple.Safari", app: "Safari", titles: titles, url: url)
+    }
+    // l10n: data -- everything below is fixture content, not UI text.
+    static let xcode = app("com.apple.dt.Xcode", "Xcode", "Xcode", ["Aurora — TimelineView.swift", "Aurora — SessionStore.swift", "Aurora — FoldingTests.swift", "Aurora — Package.swift"])
+    static let terminal = app("com.apple.Terminal", "Terminal", "终端", ["aurora — swift test", "aurora — git rebase", "aurora — zsh"]) // l10n: data
+    static let mail = app("com.apple.mail", "Mail", "邮件", ["Inbox", "Re: Timeline review notes", "Weekly sync agenda"]) // l10n: data
+    static let messages = app("com.apple.MobileSMS", "Messages", "信息", ["Design crew", "Mia", "Aurora launch"]) // l10n: data
+    static let zoom = app("us.zoom.xos", "zoom.us", "zoom.us", ["Zoom Meeting"])
+    static let notes = app("com.apple.Notes", "Notes", "备忘录", ["Timeline ideas", "Standup notes"]) // l10n: data
+    static let music = app("com.apple.Music", "Music", "音乐", ["Focus Flow"]) // l10n: data
+    static let sketchpad = app("app.sketchpad.mac", "Sketchpad", "Sketchpad", ["Untitled board"])
+    static let github = web("https://github.com/aurora-app/aurora/pull/128", ["Fold timeline slivers · Pull Request #128 · aurora-app/aurora", "Issues · aurora-app/aurora", "Actions · aurora-app/aurora"])
+    static let docs = web("https://developer.apple.com/documentation/swiftui", ["Layout | Apple Developer Documentation", "TimelineView | Apple Developer Documentation"])
+    static let stack = web("https://stackoverflow.com/questions/74223423", ["SwiftUI list with thousands of rows is slow - Stack Overflow"])
+    static let linear = web("https://linear.app/aurora/issue/AUR-212", ["AUR-212 Fold short switches on the timeline"])
+    static let figma = web("https://www.figma.com/file/aurora", ["Aurora — Timeline v2 – Figma"])
+    static let gdocs = web("https://docs.google.com/document/d/aurora", ["Aurora design doc - Google Docs"])
+    static let youtube = web("https://www.youtube.com/watch?v=demo", ["WWDC23: Demystify SwiftUI performance - YouTube", "Lo-fi beats to code to - YouTube"])
+    static let reddit = web("https://www.reddit.com/r/swift", ["r/swift"])
+    static let news = web("https://www.nytimes.com", ["The New York Times - Breaking News"])
+    static let shop = web("https://www.amazon.com/dp/demo", ["Amazon.com: USB-C hub"])
+
+    /// A stretch of the day: long runs from `main`, hops to `hops`.
+    struct Phase {
+        let from: Double, to: Double
+        let main: [Source], hops: [Source]
+        let run: ClosedRange<Double>, hopChance: Double
+    }
+    static let weekday: [Phase] = [
+        Phase(from: 8.7, to: 9.3, main: [mail, messages, news], hops: [github, linear], run: 30...240, hopChance: 0.5),
+        Phase(from: 9.3, to: 11.7, main: [xcode, xcode, terminal], hops: [docs, stack, messages, github, terminal], run: 60...900, hopChance: 0.7),
+        Phase(from: 11.7, to: 12.25, main: [zoom], hops: [notes], run: 1500...2100, hopChance: 0.3),
+        Phase(from: 13.1, to: 14.8, main: [figma, figma, gdocs], hops: [messages, notes, youtube, sketchpad], run: 60...600, hopChance: 0.55),
+        Phase(from: 14.8, to: 15.25, main: [youtube, reddit], hops: [messages, shop], run: 20...300, hopChance: 0.6),
+        Phase(from: 15.25, to: 17.7, main: [github, github, xcode, terminal], hops: [linear, messages, mail, stack], run: 30...600, hopChance: 0.65),
+        Phase(from: 17.7, to: 18.2, main: [notes, mail], hops: [music, sketchpad], run: 60...400, hopChance: 0.4),
+    ]
+    static let weekend: [Phase] = [
+        Phase(from: 10.5, to: 11.4, main: [youtube, reddit, news], hops: [messages, shop], run: 60...600, hopChance: 0.5),
+        Phase(from: 15.0, to: 16.2, main: [xcode, github], hops: [docs, messages], run: 120...900, hopChance: 0.5),
+    ]
+
+    static func spans(for day: Date, seed: UInt64, calendar: Calendar) -> [Span] {
+        var rng = SplitMix64(state: seed &* 0x9E37_79B9 &+ 1)
+        let phases = calendar.isDateInWeekend(day) ? weekend : weekday
+        let shift = Double.random(in: -0.3...0.3, using: &rng) // hours
+        var result: [Span] = []
+        func add(_ source: Source, _ start: Date, _ seconds: Double) -> Date {
+            let end = start.addingTimeInterval(seconds)
+            let title = source.titles.randomElement(using: &rng)!
+            result.append(Span(start: start, end: end, appBundleID: source.bundle, appName: source.app, title: title,
+                               url: source.url, domain: source.url.flatMap(DomainParser.domain(from:))))
+            return end
+        }
+        for phase in phases {
+            var t = day.addingTimeInterval((phase.from + shift) * 3600)
+            let end = day.addingTimeInterval((phase.to + shift) * 3600)
+            while t < end {
+                // A run on one source, cut into records by file/tab changes.
+                let source = phase.main.randomElement(using: &rng)!
+                let runEnd = min(end, t.addingTimeInterval(Double.random(in: phase.run, using: &rng)))
+                while t < runEnd {
+                    t = add(source, t, min(runEnd.timeIntervalSince(t), Double.random(in: 4...45, using: &rng)))
+                }
+                // Hops: mostly a few seconds, sometimes a real detour.
+                if Double.random(in: 0..<1, using: &rng) < phase.hopChance {
+                    for _ in 0..<Int.random(in: 1...3, using: &rng) {
+                        let long = Double.random(in: 0..<1, using: &rng) < 0.15
+                        t = add(phase.hops.randomElement(using: &rng)!, t, long ? Double.random(in: 30...150, using: &rng) : Double.random(in: 2...20, using: &rng))
+                    }
+                }
+                // Tiny gaps fold away; a rare longer one is time away.
+                let away = Double.random(in: 0..<1, using: &rng)
+                t = t.addingTimeInterval(away < 0.04 ? Double.random(in: 180...600, using: &rng) : away < 0.3 ? Double.random(in: 1...8, using: &rng) : 0)
+            }
+        }
+        return result
+    }
+}
+
+private struct SplitMix64: RandomNumberGenerator {
+    var state: UInt64
+    mutating func next() -> UInt64 {
+        state &+= 0x9E37_79B9_7F4A_7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+        return z ^ (z >> 31)
     }
 }
 @MainActor @Observable fileprivate final class RefinedPreviewStage {

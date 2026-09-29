@@ -257,18 +257,32 @@ struct DayRibbonView: View {
         let x: CGFloat
     }
     private func ticks(width: CGFloat) -> [Tick] {
-        var candidates: [Date] = []
-        var time = interval.start
-        while time < interval.end {
-            candidates.append(time)
-            guard let next = Calendar.current.date(byAdding: .hour, value: compact ? 2 : 1, to: time) else { break }
-            time = next
-        }
-        candidates.append(interval.end)
-        var result: [Tick] = []
-        for date in candidates {
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        func label(_ date: Date) -> (text: String, width: CGFloat) {
             let text = date.formatted(.dateTime.hour().minute().locale(locale))
-            let labelWidth = min(width, ceil((text as NSString).size(withAttributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)]).width) + 2)
+            return (text, min(width, ceil((text as NSString).size(withAttributes: [.font: font]).width) + 2))
+        }
+        func hours(every step: Int) -> [Date] {
+            var result: [Date] = []
+            var time = interval.start
+            while time < interval.end {
+                result.append(time)
+                guard let next = Calendar.current.date(byAdding: .hour, value: step, to: time) else { break }
+                time = next
+            }
+            return result
+        }
+        // One even step that fits every label, edge-pinned ones included,
+        // rather than hourly labels with gaps where collisions dropped some.
+        let widest = hours(every: 1).map { label($0).width }.max() ?? 0
+        let perHour = width / max(1, interval.duration / 3600)
+        let step: Int = [1, 2, 3, 4, 6].first(where: { CGFloat($0) * perHour >= widest * 1.5 + 8 }) ?? 6
+        var result: [Tick] = []
+        // The right edge gets a label only on the step's grid; an off-grid
+        // edge label would crowd out the last even tick.
+        let alignedEnd = interval.duration.truncatingRemainder(dividingBy: Double(step) * 3600) == 0
+        for date in hours(every: step) + (alignedEnd ? [interval.end] : []) {
+            let (text, labelWidth) = label(date)
             let x = max(0, min(width - labelWidth, bounds(start: date, end: date, width: width).minX - labelWidth / 2))
             if date == interval.end {
                 while let last = result.last, x < last.x + last.width + 8 { result.removeLast() }

@@ -121,8 +121,10 @@ struct AppIcon: View {
         .frame(width: size, height: size)
         .accessibilityHidden(true)
         .task(id: bundleID) {
-            guard Self.icons[bundleID] == nil,
-                  let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return }
+            // Rows drawn before the first load finished read nothing from the
+            // cache; the static dictionary can't redraw them on its own.
+            if let cached = Self.icons[bundleID] { icon = cached; return }
+            guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return }
             let loaded = NSWorkspace.shared.icon(forFile: url.path)
             Self.icons[bundleID] = loaded
             icon = loaded
