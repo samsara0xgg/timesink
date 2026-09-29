@@ -35,6 +35,24 @@ final class SeedImporterTests: XCTestCase {
         XCTAssertEqual(map["d.com"], DomainEntry(categoryID: "softwareDev", source: "curated"))
     }
 
+    func testRemovingUserMappingRestoresShippedDefault() throws {
+        let db = try AppDatabase.openInMemory()
+        let store = CategoryStore(db)
+        for domain in ["figma.com", "youtube.com", "nothing-shipped.invalid"] { try store.setUserDomain(domain, categoryID: "learning") }
+        try store.setUserApp("com.apple.dt.Xcode", categoryID: "entertainment")
+        try store.setRuleEnabled(key: "app:com.apple.dt.Xcode", enabled: false)
+
+        for key in ["domain:figma.com", "domain:youtube.com", "domain:nothing-shipped.invalid", "app:com.apple.dt.Xcode"] {
+            try store.removeUserMapping(key: key)
+        }
+        let domains = try store.domainMap()
+        XCTAssertEqual(domains["figma.com"], DomainEntry(categoryID: "writing", source: "curated"))
+        XCTAssertEqual(domains["youtube.com"], DomainEntry(categoryID: "entertainment", source: "seed"))
+        XCTAssertNil(domains["nothing-shipped.invalid"])
+        XCTAssertEqual(try store.appMap()["com.apple.dt.Xcode"], DomainEntry(categoryID: "softwareDev", source: "builtin"))
+        XCTAssertTrue(try store.disabledRules().isEmpty)
+    }
+
     func testOverlayImportsIndependentlyOfMainSeedVersion() throws {
         // Regression: the overlay import must not be nested inside the main
         // seed's early return -- an install that's already at the bundled

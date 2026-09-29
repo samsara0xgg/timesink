@@ -32,6 +32,29 @@ extension CategoryStore {
             else { try db.execute(sql: "INSERT OR IGNORE INTO disabledClassificationRule(ruleKey) VALUES (?)", arguments: [key]) }
         }
     }
+    /// Deletes a user website ("domain:…") or app ("app:…") mapping and puts
+    /// back what shipped for it. The user row overwrote the default in
+    /// place, so deleting alone would leave the site or app unmapped.
+    func removeUserMapping(key: String) throws {
+        try writer.write { db in
+            try db.execute(sql: "DELETE FROM disabledClassificationRule WHERE ruleKey = ?", arguments: [key])
+            if key.hasPrefix("domain:") {
+                let domain = String(key.dropFirst("domain:".count))
+                try db.execute(sql: "DELETE FROM domainCategory WHERE domain = ? AND source = 'user'", arguments: [domain])
+                if let shipped = SeedImporter.shippedDomain(domain) {
+                    try db.execute(sql: "INSERT OR IGNORE INTO domainCategory (domain, categoryID, source, updatedAt) VALUES (?, ?, ?, ?)",
+                                   arguments: [domain, shipped.categoryID, shipped.source, Date()])
+                }
+            } else if key.hasPrefix("app:") {
+                let app = String(key.dropFirst("app:".count))
+                try db.execute(sql: "DELETE FROM appCategory WHERE bundleID = ? AND source = 'user'", arguments: [app])
+                if let builtin = Taxonomy.builtinApps.first(where: { $0.bundleID == app }) {
+                    try db.execute(sql: "INSERT OR IGNORE INTO appCategory (bundleID, categoryID, source) VALUES (?, ?, 'builtin')",
+                                   arguments: [app, builtin.categoryID])
+                }
+            }
+        }
+    }
     func orderTitleRules(_ ids: [Int64]) throws {
         try writer.write { db in
             for (index, id) in ids.enumerated() {

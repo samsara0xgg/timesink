@@ -106,12 +106,13 @@ struct TitleRuleEditor: View {
     @State private var scopeKey: String
     @State private var categoryID: String
     @State private var duplicateMessage: String?
+    /// The draft failed validation on Return (or arrived invalid as a
+    /// prefill); tints the hint that says why until the draft changes.
+    @State private var rejected: Bool
 
-    /// "影响 N 项", recomputed behind `pendingPreview` rather than read
-    /// straight out of `body`. As a computed property this scanned every span
-    /// in the current range on every keystroke, since each character
-    /// re-evaluates `body` -- measured at 53-62 ms per pass, which is exactly
-    /// the visible per-character stutter when the range is 本月 or 近30天.
+    /// "会影响 N 条记录" over the last 30 days, recomputed behind
+    /// `pendingPreview` rather than in `body`, which re-evaluates on every
+    /// keystroke.
     @State private var affectedPreview: (count: Int, seconds: TimeInterval) = (0, 0)
     @State private var pendingPreview: Task<Void, Never>?
 
@@ -124,7 +125,12 @@ struct TitleRuleEditor: View {
     init(model: AppModel, pending: PendingTitleRule) {
         self.model = model
         self.pending = pending
-        _keywordText = State(initialValue: pending.prefill)
+        // A prefill that would not save (a piece under 2 characters) stays
+        // visible and editable in the field instead of hiding as chips.
+        let valid = TitleRuleInput.normalizedPattern(pending.prefill) != nil
+        _keywordText = State(initialValue: valid ? pending.prefill : "")
+        _keywordDraft = State(initialValue: valid ? "" : pending.prefill)
+        _rejected = State(initialValue: !valid && !pending.prefill.isEmpty)
         _scopeKey = State(initialValue: pending.scopeKey)
         _categoryID = State(initialValue: pending.categoryID)
     }
@@ -193,14 +199,19 @@ struct TitleRuleEditor: View {
                             }
                         }.fixedSize(horizontal: false, vertical: true)
                     }
+                    // Return in the field never reaches the default button:
+                    // it adds the draft as keywords, and on an empty field saves.
                     TextField("输入后按回车…", text: $keywordDraft).textFieldStyle(.plain)
                         .onSubmit {
-                            if let normalized = normalizedPattern { keywordText = normalized; keywordDraft = "" }
+                            if keywordDraft.isEmpty { save() }
+                            else if let normalized = normalizedPattern { keywordText = normalized; keywordDraft = "" }
+                            else { rejected = true }
                         }
                 }.padding(7).background(RefinedStyle.panel, in: RoundedRectangle(cornerRadius: 7))
                     .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(.quaternary, lineWidth: 1))
                 Text("每个词至少 2 个字。以 re: 开头按正则匹配。")
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .font(.system(size: 11))
+                    .foregroundStyle(rejected ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
             }
             Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 10) {
                 GridRow {
@@ -245,7 +256,7 @@ struct TitleRuleEditor: View {
         }.padding(20).frame(width: 460).fixedSize(horizontal: false, vertical: true)
         .background(WorkspaceBackground())
         .onChange(of: keywordText) { _, _ in duplicateMessage = nil; schedulePreview() }
-        .onChange(of: keywordDraft) { _, _ in duplicateMessage = nil; schedulePreview() }
+        .onChange(of: keywordDraft) { _, _ in duplicateMessage = nil; rejected = false; schedulePreview() }
         .onChange(of: scopeKey) { _, _ in duplicateMessage = nil; pendingPreview?.cancel(); recomputePreview() }
         .onChange(of: categoryID) { _, _ in duplicateMessage = nil; recomputePreview() }
         .onAppear { recomputePreview() }

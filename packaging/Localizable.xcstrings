@@ -86,9 +86,21 @@
     "%@ · %@ · %lld 条记录": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ · %@ · %lld records"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@ · %@ · %lld record"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@ · %@ · %lld records"
+                }
+              }
+            }
           }
         }
       }
@@ -216,9 +228,21 @@
     "%@会影响 %lld 条记录 · %@": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@Affects %lld records · %@"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@Affects %lld record · %@"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@Affects %lld records · %@"
+                }
+              }
+            }
           }
         }
       }
@@ -486,9 +510,21 @@
     "%lld 条": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld rules"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld rule"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld rules"
+                }
+              }
+            }
           }
         }
       }
@@ -578,9 +614,21 @@
     "%lld 项待分类": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld items to categorize"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld item to categorize"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld items to categorize"
+                }
+              }
+            }
           }
         }
       }
@@ -691,6 +739,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "24-hour activity distribution, in minutes"
+          }
+        }
+      }
+    },
+    "API Key 无效或没有权限（HTTP %lld）。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The API key is invalid or lacks permission (HTTP %lld)."
           }
         }
       }
@@ -931,6 +989,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Last %@ · %lld pending"
+          }
+        }
+      }
+    },
+    "上次同步 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last sync %@"
           }
         }
       }
@@ -1458,9 +1526,21 @@
     "会影响 %lld 条记录 · %@": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Affects %lld records · %@"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Affects %lld record · %@"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Affects %lld records · %@"
+                }
+              }
+            }
           }
         }
       }
@@ -2001,6 +2081,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Delete today's screenshots…"
+          }
+        }
+      }
+    },
+    "删除并恢复默认": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete and Restore Default"
           }
         }
       }
@@ -3250,7 +3340,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Apps"
+            "value": "App"
           }
         }
       }
@@ -3281,6 +3371,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Apps and window titles"
+          }
+        }
+      }
+    },
+    "应用此范围": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apply Range"
           }
         }
       }
@@ -4515,6 +4615,16 @@
         }
       }
     },
+    "更改分类": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Change Category"
+          }
+        }
+      }
+    },
     "更新于 %@": {
       "localizations": {
         "en": {
@@ -4571,6 +4681,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "The server returned %lld"
+          }
+        }
+      }
+    },
+    "服务没有返回分类。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service returned no category."
+          }
+        }
+      }
+    },
+    "服务返回 HTTP %lld，请检查 Endpoint 和模型名。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service returned HTTP %lld. Check the endpoint and model name."
+          }
+        }
+      }
+    },
+    "服务返回了不认识的分类：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service returned an unknown category: %@"
           }
         }
       }

@@ -122,8 +122,9 @@ struct RefinedRulesPane: View {
                     Button("下移") { move(row, by: 1) }
                     Divider()
                 }
-                if row.source == "user", row.type == String(localized: "标题") || row.type == String(localized: "网址") {
-                    Button("删除规则", role: .destructive) { delete(row) }
+                if row.source == "user" {
+                    if row.recordID != nil { Button("删除规则", role: .destructive) { delete(row) } }
+                    else { Button("删除并恢复默认", role: .destructive) { perform { try model.categoryStore.removeUserMapping(key: row.id) } } }
                 }
             }
     }
@@ -159,6 +160,7 @@ struct RefinedRulesPane: View {
                 if $0.type == String(localized: "标题") { return ($0.recordID ?? 0) > ($1.recordID ?? 0) }
                 return $0.pattern.localizedStandardCompare($1.pattern) == .orderedAscending
             }
+            error = nil
         } catch { self.error = String(localized: "规则暂时无法读取。") }
     }
     private func setEnabled(_ row: RuleRow, _ enabled: Bool) {

@@ -2,10 +2,8 @@ import Foundation
 
 /// Immutable result assembled on StatsWorker, then published once on the main actor.
 struct StatsSummary: Sendable {
-    typealias ProfilePoint = StatsModel.ProfilePoint
     typealias StackedPoint = StatsModel.StackedPoint
     typealias RankingRow = StatsModel.RankingRow
-    private static let weekdayLabels = [String(localized: "周一"), String(localized: "周二"), String(localized: "周三"), String(localized: "周四"), String(localized: "周五"), String(localized: "周六"), String(localized: "周日")]
     var total: TimeInterval = 0
     var avgPerDay: TimeInterval = 0
     var pulse: Int?
@@ -18,11 +16,6 @@ struct StatsSummary: Sendable {
     /// Whole-period ratio comparison (unclipped, unlike `totalDelta`/
     /// `focusDelta`) -- see `recomputeDeltas`.
     var pulseDelta: Int?
-
-    var hourProfile: [ProfilePoint] = []
-    var weekdayProfile: [ProfilePoint] = []
-    var prodHourProfile: [ProfilePoint] = []
-    var prodWeekdayProfile: [ProfilePoint] = []
 
     var stackedByDay: [StackedPoint] = []
     var stackedByWeek: [StackedPoint] = []
@@ -50,15 +43,6 @@ struct StatsSummary: Sendable {
         let byCategory = Aggregator.durationByCategory(items)
         pulse = Aggregator.pulse(durationByCategory: byCategory, categories: categories)
         focus = Aggregator.focusTime(durationByCategory: byCategory, categories: categories)
-
-        hourProfile = Self.densifyHours(Aggregator.profileByHourOfDay(items, calendar: calendar))
-        weekdayProfile = Self.densifyWeekdays(Aggregator.profileByWeekday(items, calendar: calendar))
-        prodHourProfile = Self.densifyHours(
-            Aggregator.productivityProfileByHourOfDay(items, categories: categories, calendar: calendar)
-        )
-        prodWeekdayProfile = Self.densifyWeekdays(
-            Aggregator.productivityProfileByWeekday(items, categories: categories, calendar: calendar)
-        )
 
         let dayStacks = Aggregator.stackedSeries(items, bucket: .day, calendar: calendar)
         let weekStacks = Aggregator.stackedSeries(items, bucket: .weekOfYear, calendar: calendar)
@@ -124,18 +108,6 @@ struct StatsSummary: Sendable {
         let prevDurationByCategory = Aggregator.durationByCategory(durationPrevItems)
         focusDelta = focus - Aggregator.focusTime(durationByCategory: prevDurationByCategory, categories: categories)
         categoryDeltas = Dictionary(uniqueKeysWithValues: categoryRows.map { ($0.id, $0.seconds - (prevDurationByCategory[$0.id] ?? 0)) })
-    }
-
-    private static func densifyHours(_ profile: [Int: TimeInterval]) -> [ProfilePoint] {
-        (0..<24).map { hour in
-            ProfilePoint(label: "\(hour)", hours: (profile[hour] ?? 0) / 3600.0)
-        }
-    }
-
-    private static func densifyWeekdays(_ profile: [Int: TimeInterval]) -> [ProfilePoint] {
-        (0..<7).map { day in
-            ProfilePoint(label: weekdayLabels[day], hours: (profile[day] ?? 0) / 3600.0)
-        }
     }
 
     private static func stackedPoints(

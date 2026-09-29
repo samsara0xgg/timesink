@@ -224,7 +224,8 @@ public final class CategoryResolver {
             }
         case .title:
             guard let pattern = TitleRuleInput.normalizedPattern(pattern) else { return [] }
-            reachable = { $0.title.map { Classifier.titleMatches(pattern: pattern, title: $0) } ?? false }
+            let rule = CompiledTitleRule(TitleRule(pattern: pattern, scopeKey: "", categoryID: "", source: "user"))
+            reachable = { $0.title.map { rule.matches(title: $0, loweredTitle: $0.lowercased()) } ?? false }
             let key = titleScope ?? span.domain ?? span.appBundleID
             let old = (try? categoryStore.titleRules())?.first { $0.pattern == pattern && $0.scopeKey == key }
             guard old?.source != "builtin" else { return [] }

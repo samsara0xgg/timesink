@@ -10,12 +10,6 @@ final class StatsModel {
         case day, week
     }
 
-    struct ProfilePoint: Identifiable, Hashable, Sendable {
-        var id: String { label }
-        let label: String
-        let hours: Double
-    }
-
     struct StackedPoint: Identifiable, Sendable {
         var id: String { "\(bucketStart.timeIntervalSince1970)_\(categoryID)" }
         let bucketStart: Date
@@ -57,10 +51,6 @@ final class StatsModel {
     var totalDelta: TimeInterval? { summary.totalDelta }
     var focusDelta: TimeInterval? { summary.focusDelta }
     var pulseDelta: Int? { summary.pulseDelta }
-    var hourProfile: [ProfilePoint] { summary.hourProfile }
-    var weekdayProfile: [ProfilePoint] { summary.weekdayProfile }
-    var prodHourProfile: [ProfilePoint] { summary.prodHourProfile }
-    var prodWeekdayProfile: [ProfilePoint] { summary.prodWeekdayProfile }
     var stackedByDay: [StackedPoint] { summary.stackedByDay }
     var stackedByWeek: [StackedPoint] { summary.stackedByWeek }
     var stackedDomainNames: [String] { summary.stackedDomainNames }

@@ -8,10 +8,21 @@ public protocol DomainClassifying: Sendable {
     func classify(domain: String, title: String?) async throws -> String
 }
 
-/// Errors thrown while parsing an OpenAI-compatible chat completion response.
-enum LLMClassifierError: Error {
+/// Errors thrown while calling or parsing an OpenAI-compatible chat
+/// completion; the settings pane's connection test shows their text.
+enum LLMClassifierError: LocalizedError {
     case emptyChoices
     case invalidCategory(String)
+    case http(Int)
+
+    var errorDescription: String? {
+        switch self {
+        case .emptyChoices: String(localized: "服务没有返回分类。")
+        case .invalidCategory(let value): String(localized: "服务返回了不认识的分类：\(value)")
+        case .http(let code) where code == 401 || code == 403: String(localized: "API Key 无效或没有权限（HTTP \(code)）。")
+        case .http(let code): String(localized: "服务返回 HTTP \(code)，请检查 Endpoint 和模型名。")
+        }
+    }
 }
 
 /// Calls an OpenAI-compatible `/chat/completions` endpoint with a fixed
@@ -55,7 +66,11 @@ public struct OpenAIDomainClassifier: DomainClassifying {
             ],
         ])
 
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        // An error body would otherwise surface as a JSON decoding failure.
+        if let status = (response as? HTTPURLResponse)?.statusCode, !(200..<300).contains(status) {
+            throw LLMClassifierError.http(status)
+        }
         return try Self.parse(response: data)
     }
 

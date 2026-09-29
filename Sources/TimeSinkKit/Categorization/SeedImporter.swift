@@ -29,6 +29,18 @@ public enum SeedImporter {
         return pairs
     }
 
+    /// What the bundled data maps `domain` to, the curated overlay first:
+    /// the default a removed user correction falls back to.
+    static func shippedDomain(_ domain: String) -> (categoryID: String, source: String)? {
+        for (resource, source) in [("seed_overlay", "curated"), ("seed_domains", "seed")] {
+            guard let url = Bundle.module.url(forResource: resource, withExtension: "csv"),
+                  let text = try? String(contentsOf: url, encoding: .utf8),
+                  let pair = parseCSV(text).first(where: { $0.domain == domain }) else { continue }
+            return (pair.categoryID, source)
+        }
+        return nil
+    }
+
     /// Reads `# version: N` from the first line of `text`. Returns `nil` if
     /// the line is missing or malformed.
     private static func parseVersion(_ text: String) -> Int? {

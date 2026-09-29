@@ -183,7 +183,7 @@ struct MainWindowView: View {
                 HStack {
                     Text("\(Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: customRangeStart), to: Calendar.current.startOfDay(for: customRangeEnd)).day! + 1) 天").font(.system(size: 12)).foregroundStyle(.secondary)
                     Spacer()
-                    Button("应用") {
+                    Button("应用此范围") {
                         model.range = DateRangeSelection(kind: .custom, anchor: customRangeEnd, customStart: customRangeStart, customEnd: customRangeEnd)
                         showingCustomRangePopover = false
                     }.buttonStyle(.borderedProminent)

@@ -5,6 +5,7 @@ struct ActivityInspector: View {
     let model: AppModel
     @Bindable var activities: ActivitiesModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.undoManager) private var undoManager
     @State private var selected: CategorizedSpan?
     @State private var scope: ReclassificationEdit.Scope = .segment
     @State private var categoryID = "writing"
@@ -65,7 +66,7 @@ struct ActivityInspector: View {
                         Text(toast).font(.system(size: 12)).lineLimit(2)
                         ProgressView(value: Double(toastSeconds), total: 6).tint(.white)
                     }
-                    Button("撤销", action: undo).keyboardShortcut("z").controlSize(.small)
+                    Button("撤销", action: undo).controlSize(.small)
                 }.padding(12).foregroundStyle(.white)
                     .background(.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 10))
                     .padding(10).onHover { toastHovered = $0 }
@@ -226,17 +227,27 @@ struct ActivityInspector: View {
             let edit = try model.categoryStore.reclassify(span: selected.span, scope: scope, categoryID: categoryID, pattern: pattern)
             let key = selected.span.domain ?? selected.span.appBundleID
             undoEdit = edit; undoKey = key
+            // ⌘Z reaches this through the window's undo stack (Edit ▸ Undo),
+            // so a focused text field keeps undoing its own typing first.
+            undoManager?.registerUndo(withTarget: model) { _ in MainActor.assumeIsolated { revert(edit, key: key) } }
+            undoManager?.setActionName(String(localized: "更改分类"))
             model.resolver.refresh(); model.dataChanged()
             error = nil
             withAnimation(RefinedStyle.motion(reduced: reduceMotion)) { toast = String(localized: "已归为「\(model.resolver.categoriesByID[categoryID]?.name ?? categoryID)」") }
         } catch { self.error = error.localizedDescription }
     }
+    /// The toast's button: reverts its own edit, whatever is on top of the
+    /// undo stack, and drops the category edits registered there.
     private func undo() {
         guard let undoEdit else { return }
+        undoManager?.removeAllActions(withTarget: model)
+        revert(undoEdit, key: undoKey)
+    }
+    private func revert(_ edit: ReclassificationEdit, key: String) {
         do {
-            try model.categoryStore.undoReclassification(undoEdit, activityKey: undoKey)
+            try model.categoryStore.undoReclassification(edit, activityKey: key)
             model.resolver.refresh(); model.dataChanged()
-            self.undoEdit = nil; toast = nil; error = nil
+            undoEdit = nil; toast = nil; error = nil
         } catch { self.error = error.localizedDescription }
     }
 }

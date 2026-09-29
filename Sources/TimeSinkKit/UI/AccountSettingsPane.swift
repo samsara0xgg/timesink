@@ -96,7 +96,10 @@ struct AccountSettingsPane: View {
         }
         if let error = sync.lastError { return String(localized: "上次同步失败：\(error)") }
         if let last = sync.lastSyncAt {
-            return String(localized: "上次同步 \(last.formatted(date: .abbreviated, time: .shortened))：上传 \(sync.passPushed) 条，下载 \(sync.passPulled) 条")
+            let time = last.formatted(date: .abbreviated, time: .shortened)
+            // The counts live only in memory and read 0/0 after a relaunch.
+            if sync.passPushed + sync.passPulled == 0 { return String(localized: "上次同步 \(time)") }
+            return String(localized: "上次同步 \(time)：上传 \(sync.passPushed) 条，下载 \(sync.passPulled) 条")
         }
         return syncEnabled ? String(localized: "还没有同步过") : String(localized: "同步已关闭")
     }
