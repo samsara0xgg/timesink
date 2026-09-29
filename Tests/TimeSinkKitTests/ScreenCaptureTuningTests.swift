@@ -82,13 +82,22 @@ final class TrackerEngineIdleCaptureTests: XCTestCase {
         engine.windowSampleProvider = { now in
             Sample(timestamp: now, appBundleID: "x", appName: "X", windowTitle: "Book", url: nil, windowID: 7)
         }
-        for t in 0...3 { await engine.tickAsync(now: ts(TimeInterval(t))) }
-        idle = 100                                  // hands off the keyboard, keeps reading
-        for t in 4...73 { await engine.tickAsync(now: ts(TimeInterval(t))) }
-        // The engine offers ticks fire-and-forget; wait for the actor to drain them.
-        for _ in 0..<200 where await collector.health.checks < 3 {
-            try await Task.sleep(nanoseconds: 10_000_000)
+        // The engine offers ticks fire-and-forget and here a minute of ticks
+        // takes microseconds, so let each check finish before the ticks that
+        // make the next one due, or it lands while the last is in flight.
+        func drain(until done: (CaptureHealth) -> Bool) async throws {
+            for _ in 0..<200 where await !done(collector.health) {
+                try await Task.sleep(nanoseconds: 10_000_000)
+            }
         }
+        for t in 0...3 { await engine.tickAsync(now: ts(TimeInterval(t))) }
+        try await drain { $0.inserted == 1 }
+        idle = 100                                  // hands off the keyboard, keeps reading
+        for t in 4...73 {
+            await engine.tickAsync(now: ts(TimeInterval(t)))
+            if t == 33 { try await drain { $0.unchanged == 1 } }
+        }
+        try await drain { $0.unchanged == 2 }
         // The idle event is backdated by the idle reading (here 100 s before the tick).
         let events = try store.stateEvents(in: DateInterval(start: ts(-1000), end: ts(1000)))
         XCTAssertEqual(events.map(\.kind), ["idle"])
