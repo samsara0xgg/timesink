@@ -1,0 +1,659 @@
+{
+  "frames": [
+    {
+      "elapsedSeconds": 0.044613500009290874,
+      "file": "000.png",
+      "value": "5h 58m"
+    },
+    {
+      "elapsedSeconds": 0.08915208338294178,
+      "file": "001.png",
+      "value": "5h 58m"
+    },
+    {
+      "elapsedSeconds": 0.13353191665373743,
+      "file": "002.png",
+      "value": "5h 58m"
+    },
+    {
+      "elapsedSeconds": 0.1781141667161137,
+      "file": "003.png",
+      "value": "5h 58m"
+    },
+    {
+      "elapsedSeconds": 0.22239220840856433,
+      "file": "004.png",
+      "value": "5h 58m"
+    },
+    {
+      "elapsedSeconds": 0.26665929169394076,
+      "file": "005.png",
+      "value": "5h 58m"
+    },
+    {
+      "elapsedSeconds": 0.310127625009045,
+      "file": "006.png",
+      "value": "5h 58m"
+    },
+    {
+      "elapsedSeconds": 0.35374699998646975,
+      "file": "007.png",
+      "value": "5h 58m"
+    },
+    {
+      "elapsedSeconds": 0.39687391673214734,
+      "file": "008.png",
+      "value": "5h 58m"
+    },
+    {
+      "elapsedSeconds": 0.4410684166941792,
+      "file": "009.png",
+      "value": "5h 58m"
+    },
+    {
+      "elapsedSeconds": 0.4854595416691154,
+      "file": "010.png",
+      "value": "5h 58m"
+    },
+    {
+      "elapsedSeconds": 0.5303163334028795,
+      "file": "011.png",
+      "value": "5h 58m"
+    },
+    {
+      "elapsedSeconds": 0.5749312083935365,
+      "file": "012.png",
+      "value": "5h 58m"
+    },
+    {
+      "elapsedSeconds": 0.6190555000212044,
+      "file": "013.png",
+      "value": "5h 58m"
+    },
+    {
+      "elapsedSeconds": 0.6634539583465084,
+      "file": "014.png",
+      "value": "5h 58m"
+    },
+    {
+      "elapsedSeconds": 0.7084817084250972,
+      "file": "015.png",
+      "value": "5h 58m"
+    },
+    {
+      "elapsedSeconds": 0.7555540000321344,
+      "file": "016.png",
+      "value": "5h 58m"
+    },
+    {
+      "elapsedSeconds": 0.798793708323501,
+      "file": "017.png",
+      "value": "5h 58m"
+    },
+    {
+      "elapsedSeconds": 0.8432535834144801,
+      "file": "018.png",
+      "value": "5h 58m"
+    },
+    {
+      "elapsedSeconds": 0.885809125029482,
+      "file": "019.png",
+      "value": "5h 58m"
+    },
+    {
+      "elapsedSeconds": 0.9401080417446792,
+      "file": "020.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 0.9937598750693724,
+      "file": "021.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 1.0476158333476633,
+      "file": "022.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 1.0922899583820254,
+      "file": "023.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 1.1351180000929162,
+      "file": "024.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 1.1789633333683014,
+      "file": "025.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 1.223153708386235,
+      "file": "026.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 1.2681804166641086,
+      "file": "027.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 1.3141010000836104,
+      "file": "028.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 1.3589024583343416,
+      "file": "029.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 1.403247291687876,
+      "file": "030.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 1.4476065416820347,
+      "file": "031.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 1.4923193333670497,
+      "file": "032.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 1.53460958332289,
+      "file": "033.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 1.5769404583843425,
+      "file": "034.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 1.621421541669406,
+      "file": "035.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 1.6659353750292212,
+      "file": "036.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 1.7106587917078286,
+      "file": "037.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 1.753860833356157,
+      "file": "038.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 1.7985188333550468,
+      "file": "039.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 1.8429556250339374,
+      "file": "040.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 1.8875810833415017,
+      "file": "041.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 1.9320182499941438,
+      "file": "042.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 1.9766068750759587,
+      "file": "043.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 2.020642083371058,
+      "file": "044.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 2.0636442917166278,
+      "file": "045.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 2.106271416763775,
+      "file": "046.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 2.150921458378434,
+      "file": "047.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 2.1956082084216177,
+      "file": "048.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 2.240124541684054,
+      "file": "049.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 2.284489458426833,
+      "file": "050.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 2.327484583365731,
+      "file": "051.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 2.3715562917059287,
+      "file": "052.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 2.4158931666752324,
+      "file": "053.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 2.4599762917496264,
+      "file": "054.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 2.5050321250455454,
+      "file": "055.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 2.5532445000717416,
+      "file": "056.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 2.5996076667215675,
+      "file": "057.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 2.643724250025116,
+      "file": "058.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 2.6892613749951124,
+      "file": "059.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 2.734735583420843,
+      "file": "060.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 2.779802458360791,
+      "file": "061.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 2.823801958351396,
+      "file": "062.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 2.8687955416971818,
+      "file": "063.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 2.9138312083669007,
+      "file": "064.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 2.957888708333485,
+      "file": "065.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 3.0010132916504517,
+      "file": "066.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 3.0455507916631177,
+      "file": "067.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 3.0906566249905154,
+      "file": "068.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 3.135834624990821,
+      "file": "069.png",
+      "value": "5h 59m"
+    },
+    {
+      "elapsedSeconds": 3.1909832500386983,
+      "file": "070.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 3.2463310416787863,
+      "file": "071.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 3.30073429166805,
+      "file": "072.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 3.3454675000393763,
+      "file": "073.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 3.390139125054702,
+      "file": "074.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 3.4360082084313035,
+      "file": "075.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 3.480242250021547,
+      "file": "076.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 3.524796750047244,
+      "file": "077.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 3.5677584167569876,
+      "file": "078.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 3.611889083404094,
+      "file": "079.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 3.6557935416931286,
+      "file": "080.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 3.7002137083327398,
+      "file": "081.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 3.747880083392374,
+      "file": "082.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 3.7927817084128037,
+      "file": "083.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 3.837358208373189,
+      "file": "084.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 3.8812632916960865,
+      "file": "085.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 3.931612208369188,
+      "file": "086.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 3.9758444166509435,
+      "file": "087.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 4.021261166664772,
+      "file": "088.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 4.066658416762948,
+      "file": "089.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 4.110419750097208,
+      "file": "090.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 4.154759416705929,
+      "file": "091.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 4.199122833320871,
+      "file": "092.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 4.24224337504711,
+      "file": "093.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 4.284862416679971,
+      "file": "094.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 4.329188791685738,
+      "file": "095.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 4.37365608336404,
+      "file": "096.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 4.417458083364181,
+      "file": "097.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 4.460793583421037,
+      "file": "098.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 4.504954333417118,
+      "file": "099.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 4.548921208363026,
+      "file": "100.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 4.592858124990016,
+      "file": "101.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 4.639740125043318,
+      "file": "102.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 4.684313875040971,
+      "file": "103.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 4.729124666657299,
+      "file": "104.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 4.773816416738555,
+      "file": "105.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 4.8177649166900665,
+      "file": "106.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 4.862307750037871,
+      "file": "107.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 4.906829791725613,
+      "file": "108.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 4.951302833389491,
+      "file": "109.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 4.994956458336674,
+      "file": "110.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 5.039210708346218,
+      "file": "111.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 5.083686250029132,
+      "file": "112.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 5.1271526666823775,
+      "file": "113.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 5.17034887499176,
+      "file": "114.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 5.215636875014752,
+      "file": "115.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 5.259974375017919,
+      "file": "116.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 5.3037553750909865,
+      "file": "117.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 5.348233166732825,
+      "file": "118.png",
+      "value": "6h 00m"
+    },
+    {
+      "elapsedSeconds": 5.392656875075772,
+      "file": "119.png",
+      "value": "6h 00m"
+    }
+  ],
+  "origin": "Native SwiftUI frame recording; same RefinedNumberMotion modifier as Today and menu; synthetic values; left normal 280ms, right Reduce Motion 150ms",
+  "normalUniqueFrames": 41,
+  "normalChangeFrames": [
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    70,
+    71,
+    72,
+    73,
+    74,
+    75,
+    76,
+    77,
+    78,
+    79,
+    80,
+    81,
+    82,
+    83,
+    84,
+    85,
+    86,
+    87,
+    88,
+    89,
+    90,
+    91
+  ],
+  "reducedUniqueFrames": 9,
+  "reducedChangeFrames": [
+    20,
+    21,
+    22,
+    23,
+    70,
+    71,
+    72,
+    73
+  ]
+}

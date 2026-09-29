@@ -1,0 +1,450 @@
+[
+  {
+    "file": "docs/design-audit-images/refined/activities-dark.png",
+    "pixels": [
+      2400,
+      1744
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/activities-light.png",
+    "pixels": [
+      2400,
+      1744
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/blocked-dark.png",
+    "pixels": [
+      1800,
+      1200
+    ],
+    "origin": "Actual WKWebView snapshot of local FocusBlockPage HTML, synthetic domain/deadline, resolved macOS system accent, 2026-09-28"
+  },
+  {
+    "file": "docs/design-audit-images/refined/blocked-light.png",
+    "pixels": [
+      1800,
+      1200
+    ],
+    "origin": "Actual WKWebView snapshot of local FocusBlockPage HTML, synthetic domain/deadline, resolved macOS system accent, 2026-09-28"
+  },
+  {
+    "file": "docs/design-audit-images/refined/categories-dark.png",
+    "pixels": [
+      2400,
+      1744
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/categories-light.png",
+    "pixels": [
+      2400,
+      1744
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/focus-dark.png",
+    "pixels": [
+      2400,
+      1744
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/focus-hud-dark.png",
+    "pixels": [
+      624,
+      206
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/focus-hud-light.png",
+    "pixels": [
+      624,
+      206
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/focus-light.png",
+    "pixels": [
+      2400,
+      1744
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/inspector-dark.png",
+    "pixels": [
+      544,
+      1576
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/inspector-light.png",
+    "pixels": [
+      544,
+      1576
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/menu-24h.png",
+    "pixels": [
+      680,
+      1362
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/menu-dark.png",
+    "pixels": [
+      680,
+      1362
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/menu-focus-dark.png",
+    "pixels": [
+      680,
+      816
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/menu-focus-light.png",
+    "pixels": [
+      680,
+      816
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/menu-light.png",
+    "pixels": [
+      680,
+      1362
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/menu-paused-dark.png",
+    "pixels": [
+      680,
+      832
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/menu-paused-light.png",
+    "pixels": [
+      680,
+      832
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/menu-permission-dark.png",
+    "pixels": [
+      680,
+      868
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/menu-permission-light.png",
+    "pixels": [
+      680,
+      868
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/number-motion-start.png",
+    "pixels": [
+      1720,
+      576
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/onboarding-1-dark.png",
+    "pixels": [
+      1000,
+      940
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/onboarding-1-light.png",
+    "pixels": [
+      1000,
+      940
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/onboarding-2-dark.png",
+    "pixels": [
+      1000,
+      940
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/onboarding-2-light.png",
+    "pixels": [
+      1000,
+      940
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/onboarding-3-dark.png",
+    "pixels": [
+      1000,
+      940
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/onboarding-3-light.png",
+    "pixels": [
+      1000,
+      940
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/onboarding-4-dark.png",
+    "pixels": [
+      1000,
+      940
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/onboarding-4-light.png",
+    "pixels": [
+      1000,
+      940
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/onboarding-5-dark.png",
+    "pixels": [
+      1000,
+      940
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/onboarding-5-light.png",
+    "pixels": [
+      1000,
+      940
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/organization-dark.png",
+    "pixels": [
+      2400,
+      1744
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/organization-light.png",
+    "pixels": [
+      2400,
+      1744
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/rules-dark.png",
+    "pixels": [
+      2400,
+      1744
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/rules-light.png",
+    "pixels": [
+      2400,
+      1744
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/settings-about-dark.png",
+    "pixels": [
+      1280,
+      1176
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/settings-about-light.png",
+    "pixels": [
+      1280,
+      1176
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/settings-account-dark.png",
+    "pixels": [
+      1280,
+      1176
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/settings-account-light.png",
+    "pixels": [
+      1280,
+      1176
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/settings-ai-dark.png",
+    "pixels": [
+      1280,
+      1176
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/settings-ai-light.png",
+    "pixels": [
+      1280,
+      1176
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/settings-general-dark.png",
+    "pixels": [
+      1280,
+      1176
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/settings-general-light.png",
+    "pixels": [
+      1280,
+      1176
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/settings-notifications-dark.png",
+    "pixels": [
+      1280,
+      1176
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/settings-notifications-light.png",
+    "pixels": [
+      1280,
+      1176
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/settings-privacy-dark.png",
+    "pixels": [
+      1280,
+      1176
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/settings-privacy-light.png",
+    "pixels": [
+      1280,
+      1176
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/title-rule-dark.png",
+    "pixels": [
+      920,
+      640
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/title-rule-light.png",
+    "pixels": [
+      920,
+      640
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/today-compact-24h.png",
+    "pixels": [
+      1600,
+      1264
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/today-compact.png",
+    "pixels": [
+      1600,
+      1264
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/today-dark.png",
+    "pixels": [
+      2400,
+      1744
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/today-light.png",
+    "pixels": [
+      2400,
+      1744
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/trends-dark.png",
+    "pixels": [
+      2400,
+      1744
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  },
+  {
+    "file": "docs/design-audit-images/refined/trends-light.png",
+    "pixels": [
+      2400,
+      1744
+    ],
+    "origin": "Native SwiftUI code, isolated synthetic fixture, 2026-09-28; transparent outer padding removed only"
+  }
+]

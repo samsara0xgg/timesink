@@ -1,0 +1,2329 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>TimeSink 精修</title>
+<meta name="description" content="TimeSink 方案一：在现有原生结构上精修菜单栏、弹出层、主窗口、设置与首启。">
+<style>
+/* =====================================================================
+   TimeSink · 方案一 精修 (Refined)
+   Page tokens first, then the macOS mock tokens the prototypes use.
+   ===================================================================== */
+:root {
+  color-scheme: light;
+  --sys: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", sans-serif;
+  --sys-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Helvetica Neue", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  --page: #F3F3F5;
+  --page-2: #FFFFFF;
+  --ink: #1D1D1F;
+  --ink-2: #4E4E55;
+  --ink-3: #7A7A82;
+  --rule: rgba(20, 20, 30, .1);
+  --rule-2: rgba(20, 20, 30, .06);
+  --link: #0066CC;
+  --chip: rgba(20, 20, 30, .055);
+  --redline: #E8492A;
+  --redline-soft: rgba(232, 73, 42, .12);
+  --good: #1F8A4C;
+  --focus-ring: 0 0 0 3px rgba(0, 122, 255, .45);
+
+  /* macOS light appearance, as the prototypes draw it */
+  --m-wall: radial-gradient(120% 90% at 18% 12%, #C9D6E4 0%, rgba(201,214,228,0) 55%),
+            radial-gradient(90% 80% at 88% 20%, #E7D9C8 0%, rgba(231,217,200,0) 60%),
+            radial-gradient(120% 120% at 60% 100%, #9FB3C4 0%, rgba(159,179,196,0) 65%),
+            linear-gradient(160deg, #D9E0E6 0%, #BCC8D2 100%);
+  --m-menubar: rgba(246, 247, 249, .62);
+  --m-menubar-ink: rgba(0, 0, 0, .86);
+  --m-si-on: rgba(0, 0, 0, .12);
+  --m-win: #FFFFFF;
+  --m-work: #F6F6F7;
+  --m-panel: #FFFFFF;
+  --m-side: rgba(234, 234, 238, .86);
+  --m-pop: rgba(247, 247, 249, .9);
+  --m-fly: rgba(250, 250, 252, .94);
+  --m-sep: rgba(0, 0, 0, .12);
+  --m-sep-2: rgba(0, 0, 0, .07);
+  --m-text: rgba(0, 0, 0, .86);
+  --m-text-2: rgba(0, 0, 0, .56);
+  --m-text-3: rgba(0, 0, 0, .36);
+  --m-fill: rgba(0, 0, 0, .045);
+  --m-fill-2: rgba(0, 0, 0, .08);
+  --m-hover: rgba(0, 0, 0, .05);
+  --m-btn: #FFFFFF;
+  --m-btn-shadow: 0 0 0 .5px rgba(0, 0, 0, .16), 0 .5px 1.5px rgba(0, 0, 0, .12);
+  --m-accent: #007AFF;
+  --m-accent-soft: rgba(0, 122, 255, .12);
+  --m-accent-ink: #0061D5;
+  --m-green: #2A9D4E;
+  --m-amber: #C98300;
+  --m-amber-soft: rgba(214, 140, 0, .13);
+  --m-red: #D93A2E;
+  --m-red-soft: rgba(217, 58, 46, .1);
+  --m-shadow-pop: 0 0 0 .5px rgba(0, 0, 0, .2), 0 14px 40px rgba(0, 0, 0, .2), 0 2px 8px rgba(0, 0, 0, .08);
+  --m-shadow-win: 0 0 0 .5px rgba(0, 0, 0, .22), 0 24px 70px rgba(0, 0, 0, .22), 0 4px 14px rgba(0, 0, 0, .08);
+  --m-hatch: repeating-linear-gradient(135deg, rgba(0,0,0,.14) 0 1.5px, transparent 1.5px 4.5px);
+
+  /* Category palette, refined: hue families kept, lightness separated */
+  --c-softwareDev: #2F6BE4;
+  --c-learning: #2C9A55;
+  --c-writing: #0C8898;
+  --c-business: #6B50D6;
+  --c-utilities: #6C7581;
+  --c-communication: #E27F0C;
+  --c-news: #A043C4;
+  --c-shopping: #DB4F7B;
+  --c-socialMedia: #DA4338;
+  --c-entertainment: #C29406;
+  --c-misc: #978E82;
+  --c-uncategorized: #B4B4BB;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0E0E10;
+    --page-2: #18181B;
+    --ink: #F2F2F4;
+    --ink-2: #B4B4BC;
+    --ink-3: #85858E;
+    --rule: rgba(255, 255, 255, .12);
+    --rule-2: rgba(255, 255, 255, .07);
+    --link: #4DA3FF;
+    --chip: rgba(255, 255, 255, .08);
+    --redline: #FF6A45;
+    --redline-soft: rgba(255, 106, 69, .16);
+    --good: #4CC77A;
+
+    --m-wall: radial-gradient(120% 90% at 18% 12%, #2C3A4D 0%, rgba(44,58,77,0) 55%),
+              radial-gradient(90% 80% at 88% 20%, #3B3027 0%, rgba(59,48,39,0) 60%),
+              radial-gradient(120% 120% at 60% 100%, #1D2C3A 0%, rgba(29,44,58,0) 65%),
+              linear-gradient(160deg, #1C232B 0%, #10151B 100%);
+    --m-menubar: rgba(22, 24, 28, .5);
+    --m-menubar-ink: rgba(255, 255, 255, .9);
+    --m-si-on: rgba(255, 255, 255, .2);
+    --m-win: #1E1E20;
+    --m-work: #1B1B1D;
+    --m-panel: #252528;
+    --m-side: rgba(38, 38, 42, .86);
+    --m-pop: rgba(40, 40, 44, .88);
+    --m-fly: rgba(44, 44, 48, .94);
+    --m-sep: rgba(255, 255, 255, .13);
+    --m-sep-2: rgba(255, 255, 255, .075);
+    --m-text: rgba(255, 255, 255, .9);
+    --m-text-2: rgba(255, 255, 255, .58);
+    --m-text-3: rgba(255, 255, 255, .34);
+    --m-fill: rgba(255, 255, 255, .06);
+    --m-fill-2: rgba(255, 255, 255, .1);
+    --m-hover: rgba(255, 255, 255, .07);
+    --m-btn: rgba(255, 255, 255, .14);
+    --m-btn-shadow: 0 0 0 .5px rgba(255, 255, 255, .06), 0 .5px 1px rgba(0, 0, 0, .3);
+    --m-accent: #0A84FF;
+    --m-accent-soft: rgba(10, 132, 255, .2);
+    --m-accent-ink: #5AAEFF;
+    --m-green: #32C35F;
+    --m-amber: #F2AA2E;
+    --m-amber-soft: rgba(242, 170, 46, .16);
+    --m-red: #FF5A4E;
+    --m-red-soft: rgba(255, 90, 78, .14);
+    --m-shadow-pop: 0 0 0 .5px rgba(255, 255, 255, .1), 0 0 0 1px rgba(0, 0, 0, .5), 0 16px 44px rgba(0, 0, 0, .5);
+    --m-shadow-win: 0 0 0 .5px rgba(255, 255, 255, .1), 0 0 0 1px rgba(0, 0, 0, .55), 0 26px 70px rgba(0, 0, 0, .55);
+    --m-hatch: repeating-linear-gradient(135deg, rgba(255,255,255,.16) 0 1.5px, transparent 1.5px 4.5px);
+
+    --c-softwareDev: #4D8DFF;
+    --c-learning: #3CC46E;
+    --c-writing: #2BB8C8;
+    --c-business: #9580FF;
+    --c-utilities: #8D96A3;
+    --c-communication: #FFA23A;
+    --c-news: #C77AE8;
+    --c-shopping: #FF7BA2;
+    --c-socialMedia: #FF645A;
+    --c-entertainment: #F2C51C;
+    --c-misc: #A99F92;
+    --c-uncategorized: #6A6A72;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0E0E10;
+  --page-2: #18181B;
+  --ink: #F2F2F4;
+  --ink-2: #B4B4BC;
+  --ink-3: #85858E;
+  --rule: rgba(255, 255, 255, .12);
+  --rule-2: rgba(255, 255, 255, .07);
+  --link: #4DA3FF;
+  --chip: rgba(255, 255, 255, .08);
+  --redline: #FF6A45;
+  --redline-soft: rgba(255, 106, 69, .16);
+  --good: #4CC77A;
+
+  --m-wall: radial-gradient(120% 90% at 18% 12%, #2C3A4D 0%, rgba(44,58,77,0) 55%),
+            radial-gradient(90% 80% at 88% 20%, #3B3027 0%, rgba(59,48,39,0) 60%),
+            radial-gradient(120% 120% at 60% 100%, #1D2C3A 0%, rgba(29,44,58,0) 65%),
+            linear-gradient(160deg, #1C232B 0%, #10151B 100%);
+  --m-menubar: rgba(22, 24, 28, .5);
+  --m-menubar-ink: rgba(255, 255, 255, .9);
+  --m-si-on: rgba(255, 255, 255, .2);
+  --m-win: #1E1E20;
+  --m-work: #1B1B1D;
+  --m-panel: #252528;
+  --m-side: rgba(38, 38, 42, .86);
+  --m-pop: rgba(40, 40, 44, .88);
+  --m-fly: rgba(44, 44, 48, .94);
+  --m-sep: rgba(255, 255, 255, .13);
+  --m-sep-2: rgba(255, 255, 255, .075);
+  --m-text: rgba(255, 255, 255, .9);
+  --m-text-2: rgba(255, 255, 255, .58);
+  --m-text-3: rgba(255, 255, 255, .34);
+  --m-fill: rgba(255, 255, 255, .06);
+  --m-fill-2: rgba(255, 255, 255, .1);
+  --m-hover: rgba(255, 255, 255, .07);
+  --m-btn: rgba(255, 255, 255, .14);
+  --m-btn-shadow: 0 0 0 .5px rgba(255, 255, 255, .06), 0 .5px 1px rgba(0, 0, 0, .3);
+  --m-accent: #0A84FF;
+  --m-accent-soft: rgba(10, 132, 255, .2);
+  --m-accent-ink: #5AAEFF;
+  --m-green: #32C35F;
+  --m-amber: #F2AA2E;
+  --m-amber-soft: rgba(242, 170, 46, .16);
+  --m-red: #FF5A4E;
+  --m-red-soft: rgba(255, 90, 78, .14);
+  --m-shadow-pop: 0 0 0 .5px rgba(255, 255, 255, .1), 0 0 0 1px rgba(0, 0, 0, .5), 0 16px 44px rgba(0, 0, 0, .5);
+  --m-shadow-win: 0 0 0 .5px rgba(255, 255, 255, .1), 0 0 0 1px rgba(0, 0, 0, .55), 0 26px 70px rgba(0, 0, 0, .55);
+  --m-hatch: repeating-linear-gradient(135deg, rgba(255,255,255,.16) 0 1.5px, transparent 1.5px 4.5px);
+
+  --c-softwareDev: #4D8DFF;
+  --c-learning: #3CC46E;
+  --c-writing: #2BB8C8;
+  --c-business: #9580FF;
+  --c-utilities: #8D96A3;
+  --c-communication: #FFA23A;
+  --c-news: #C77AE8;
+  --c-shopping: #FF7BA2;
+  --c-socialMedia: #FF645A;
+  --c-entertainment: #F2C51C;
+  --c-misc: #A99F92;
+  --c-uncategorized: #6A6A72;
+}
+
+/* ============ Page ============ */
+* { box-sizing: border-box; }
+html { background: var(--page); }
+body {
+  margin: 0; background: var(--page); color: var(--ink);
+  font: 15px/1.6 var(--sys); -webkit-font-smoothing: antialiased;
+  padding-inline: 20px;
+}
+a { color: var(--link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: 6px; }
+.tab { font-variant-numeric: tabular-nums; }
+
+.topbar {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 50;
+  max-width: 1240px; margin: 0 auto; padding: 12px 0;
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  background: color-mix(in srgb, var(--page) 86%, transparent);
+  backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  border-bottom: 1px solid var(--rule-2);
+}
+.topbar .brand { font: 600 14px/1 var(--sys-display); letter-spacing: -.01em; display: flex; align-items: center; gap: 8px; }
+.topbar .brand svg { width: 16px; height: 16px; }
+.topbar nav { display: flex; gap: 4px; flex-wrap: wrap; }
+.topbar nav a { font-size: 13px; color: var(--ink-2); padding: 5px 10px; border-radius: 999px; }
+.topbar nav a:hover { background: var(--chip); text-decoration: none; }
+.topbar nav a[aria-current] { background: var(--ink); color: var(--page); }
+.topbar .spacer { flex: 1; }
+.theme-switch { display: inline-flex; background: var(--chip); border-radius: 999px; padding: 2px; }
+.theme-switch button { border: 0; background: transparent; font-size: 12px; padding: 4px 10px; border-radius: 999px; color: var(--ink-2); cursor: pointer; }
+.theme-switch button[aria-pressed="true"] { background: var(--page-2); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+
+main { max-width: 1240px; margin: 0 auto; padding-block: 8px 80px; }
+section.sec { padding-block: 56px 8px; border-top: 1px solid var(--rule-2); }
+section.sec:first-of-type { border-top: 0; }
+.eyebrow { font: 600 12px/1 var(--sys); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+h1, h2, h3 { font-family: var(--sys-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(34px, 5.2vw, 60px); line-height: 1.04; letter-spacing: -.03em; font-weight: 700; }
+h2 { font-size: clamp(24px, 3vw, 34px); line-height: 1.15; letter-spacing: -.02em; font-weight: 650; margin-top: 10px; }
+h3 { font-size: 17px; line-height: 1.3; font-weight: 600; letter-spacing: -.01em; }
+.lede { font-size: 18px; line-height: 1.6; color: var(--ink-2); max-width: 64ch; margin: 16px 0 0; text-wrap: pretty; }
+.sec-head { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; margin-bottom: 28px; max-width: 760px; }
+.sec-head p { margin: 10px 0 0; color: var(--ink-2); max-width: 66ch; text-wrap: pretty; }
+
+.hero { padding-block: 64px 24px; }
+.hero-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; }
+.hero .kicker { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--chip); color: var(--ink-2); }
+.pill b { color: var(--ink); font-weight: 600; }
+.hero-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 18px 28px; margin-top: 26px; max-width: 900px; }
+.hero-facts div { border-top: 1px solid var(--rule); padding-top: 10px; }
+.hero-facts dt { font-size: 12px; color: var(--ink-3); }
+.hero-facts dd { margin: 4px 0 0; font-size: 14px; color: var(--ink-2); }
+
+.note { font-size: 13px; color: var(--ink-3); }
+.cap { font-size: 12px; color: var(--ink-3); margin-top: 10px; }
+.hint-row { display: flex; gap: 10px 18px; flex-wrap: wrap; align-items: center; margin: 14px 0 0; font-size: 13px; color: var(--ink-3); }
+.kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 5px; border: 1px solid var(--rule); background: var(--page-2); font: 500 11px/1 var(--sys); color: var(--ink-2); }
+
+/* Stage: a fixed-size mock that scales down to fit */
+.stage { position: relative; width: 100%; }
+.stage > .canvas { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.stage.center > .canvas { left: 50%; }
+.frame-note { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 10px; font-size: 12px; color: var(--ink-3); }
+
+/* Segmented control used on the page itself */
+.seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--chip); flex-wrap: wrap; }
+.seg button { border: 0; background: transparent; padding: 6px 12px; border-radius: 7px; font-size: 13px; color: var(--ink-2); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--page-2); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.12); font-weight: 600; }
+.toolbar-row { display: flex; gap: 12px 16px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+.toggle { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: var(--ink-2); cursor: pointer; user-select: none; }
+.toggle input { accent-color: var(--redline); width: 15px; height: 15px; }
+
+/* Decision lists: problem -> treatment */
+.decisions { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0 32px; margin-top: 30px; }
+.decision { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 4px 10px; padding: 14px 0; border-top: 1px solid var(--rule-2); }
+.decision .n.ink { background: var(--ink); color: var(--page); }
+.decision .n { width: 20px; height: 20px; border-radius: 50%; background: var(--redline); color: #fff; font: 600 11px/20px var(--sys); text-align: center; margin-top: 2px; }
+.decision h4 { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.45; }
+.decision p { margin: 2px 0 0; font-size: 13px; line-height: 1.55; color: var(--ink-2); grid-column: 2; }
+.decision p b { color: var(--ink); font-weight: 600; }
+
+/* Compare: current vs refined */
+.compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 28px; align-items: start; }
+.compare figure { margin: 0; }
+.compare figcaption { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+.compare figcaption b { font-size: 14px; }
+.compare figcaption span { font-size: 12px; color: var(--ink-3); }
+
+/* Token tables */
+.tokens { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 28px; }
+.tok-card { background: var(--page-2); border-radius: 14px; padding: 18px 18px 14px; box-shadow: 0 0 0 1px var(--rule-2); }
+.tok-card h3 { font-size: 14px; margin-bottom: 12px; }
+.swatches { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; }
+.sw { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 2px 10px; align-items: center; font-size: 12px; }
+.sw i { grid-row: span 2; width: 28px; height: 28px; border-radius: 7px; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.18); }
+.sw b { font-weight: 600; font-size: 12px; color: var(--ink); }
+.sw span { color: var(--ink-3); font-family: var(--mono); font-size: 10.5px; }
+.type-row { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 12px; align-items: baseline; padding: 8px 0; border-top: 1px solid var(--rule-2); }
+.type-row:first-of-type { border-top: 0; }
+.type-row code { font: 11px/1.3 var(--mono); color: var(--ink-3); }
+.spec-list { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.spec-list li { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-top: 1px solid var(--rule-2); color: var(--ink-2); }
+.spec-list li:first-child { border-top: 0; }
+.spec-list code { font: 11.5px/1.4 var(--mono); color: var(--ink); }
+
+/* Menu-bar item state strip */
+.si-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; }
+.si-cell { border-radius: 14px; overflow: hidden; background: var(--page-2); box-shadow: 0 0 0 1px var(--rule-2); }
+.si-cell .bar { height: 58px; display: flex; align-items: center; justify-content: flex-end; padding: 0 14px; background: var(--m-wall); }
+.si-cell .bar .mbar { display: flex; align-items: center; gap: 12px; height: 30px; padding: 0 10px; border-radius: 8px; background: var(--m-menubar); backdrop-filter: blur(20px); color: var(--m-menubar-ink); font: 13px/1 var(--sys); }
+.si-cell .meta { padding: 10px 14px 12px; }
+.si-cell .meta b { font-size: 13px; display: block; }
+.si-cell .meta span { font-size: 12px; color: var(--ink-3); }
+
+/* Motion demos */
+.motion-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 18px; }
+.mo { background: var(--page-2); border-radius: 14px; box-shadow: 0 0 0 1px var(--rule-2); padding: 16px; display: grid; gap: 12px; align-content: start; }
+.mo .demo { height: 150px; border-radius: 10px; background: var(--m-work); position: relative; overflow: hidden; display: grid; place-items: center; box-shadow: inset 0 0 0 1px var(--rule-2); }
+.mo .spec { font: 11.5px/1.5 var(--mono); color: var(--ink-3); }
+.mo .spec b { color: var(--ink); font-weight: 600; }
+.mo button.play { justify-self: start; border: 0; border-radius: 999px; padding: 6px 14px; font-size: 12px; font-weight: 600; background: var(--ink); color: var(--page); cursor: pointer; }
+.curve { width: 100%; height: 64px; }
+.curve path { fill: none; stroke: var(--ink); stroke-width: 1.5; }
+.curve .axis { stroke: var(--rule); stroke-width: 1; }
+
+/* Keyboard + accessibility tables */
+.kb-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.kb-table th { text-align: left; font-weight: 600; color: var(--ink-3); font-size: 12px; padding: 8px 10px 8px 0; border-bottom: 1px solid var(--rule); }
+.kb-table td { padding: 9px 10px 9px 0; border-bottom: 1px solid var(--rule-2); vertical-align: top; color: var(--ink-2); }
+.kb-table td:first-child { white-space: nowrap; color: var(--ink); }
+.table-wrap { overflow-x: auto; }
+.two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 32px; }
+
+.footer-nav { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-top: 30px; }
+.footer-nav a { display: block; padding: 20px; border-radius: 14px; background: var(--page-2); box-shadow: 0 0 0 1px var(--rule-2); color: var(--ink); }
+.footer-nav a:hover { text-decoration: none; box-shadow: 0 0 0 1px var(--rule); }
+.footer-nav a span { display: block; font-size: 12px; color: var(--ink-3); margin-bottom: 6px; }
+.footer-nav a b { font-size: 17px; }
+
+/* =====================================================================
+   macOS mock primitives
+   ===================================================================== */
+.m { font: 13px/1.38 var(--sys); color: var(--m-text); -webkit-font-smoothing: antialiased; letter-spacing: 0; }
+.m * { box-sizing: border-box; }
+:where(.m) button { font: inherit; color: inherit; border: 0; background: none; padding: 0; cursor: default; }
+.m .tab { font-variant-numeric: tabular-nums; }
+.m .t2 { color: var(--m-text-2); }
+.m .t3 { color: var(--m-text-3); }
+.m .sb { font-weight: 600; }
+.m .f11 { font-size: 11px; line-height: 14px; }
+.m .f12 { font-size: 12px; line-height: 16px; }
+.m .f13 { font-size: 13px; line-height: 18px; }
+.m svg.i { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.m svg.i.s { width: 13px; height: 13px; }
+.m svg.i.xs { width: 11px; height: 11px; stroke-width: 1.8; }
+
+.desk { position: relative; overflow: hidden; border-radius: 16px; background: var(--m-wall); box-shadow: 0 0 0 1px var(--rule-2); }
+.menubar { position: absolute; left: 0; right: 0; top: 0; height: 26px; display: flex; align-items: center; gap: 18px; padding: 0 14px 0 16px; background: var(--m-menubar); backdrop-filter: blur(30px) saturate(1.8); -webkit-backdrop-filter: blur(30px) saturate(1.8); color: var(--m-menubar-ink); font-size: 13px; z-index: 5; }
+.menubar .app { font-weight: 700; }
+.menubar .right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.menubar svg.i { width: 15px; height: 15px; }
+.si { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 7px; border-radius: 5px; font-variant-numeric: tabular-nums; cursor: default; }
+.si.on { background: var(--m-si-on); }
+.si svg { width: 15px; height: 15px; }
+.si .dim { opacity: .45; }
+
+/* Popover (MenuBarExtra window) */
+.pop { position: absolute; width: 340px; border-radius: 12px; background: var(--m-pop); backdrop-filter: blur(50px) saturate(1.9); -webkit-backdrop-filter: blur(50px) saturate(1.9); box-shadow: var(--m-shadow-pop); overflow: hidden; z-index: 6; }
+.pop.static { position: relative; }
+.pop .sec { padding: 12px 14px; }
+.pop .sec + .sec { border-top: .5px solid var(--m-sep); }
+.pop .head { display: flex; align-items: center; gap: 8px; height: 22px; }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--m-green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--m-green) 22%, transparent); flex-shrink: 0; }
+.status-dot.idle { background: var(--m-text-3); box-shadow: none; }
+.status-dot.paused { background: var(--m-amber); box-shadow: 0 0 0 3px var(--m-amber-soft); }
+.status-dot.off { background: var(--m-red); box-shadow: 0 0 0 3px var(--m-red-soft); }
+.live-pulse { animation: livePulse 2.4s ease-in-out infinite; }
+@keyframes livePulse { 0%, 100% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--m-green) 26%, transparent); } 50% { box-shadow: 0 0 0 4.5px color-mix(in srgb, var(--m-green) 10%, transparent); } }
+
+.mbtn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 22px; padding: 0 9px; border-radius: 6px; background: var(--m-btn); box-shadow: var(--m-btn-shadow); font-size: 12px; white-space: nowrap; }
+.mbtn.lg { height: 28px; padding: 0 12px; font-size: 13px; border-radius: 7px; }
+.mbtn.primary { background: var(--m-accent); color: #fff; box-shadow: 0 0 0 .5px rgba(0,0,0,.12), 0 1px 2px rgba(0,80,200,.25); }
+.mbtn.ghost { background: transparent; box-shadow: none; color: var(--m-text-2); }
+.mbtn.ghost:hover { background: var(--m-hover); }
+.mbtn.icon { width: 24px; padding: 0; }
+.mbtn.warn { background: var(--m-amber); color: #fff; }
+.m [data-act]:hover { cursor: pointer; }
+.iconbtn { width: 24px; height: 24px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; color: var(--m-text-2); }
+.iconbtn:hover { background: var(--m-hover); color: var(--m-text); }
+
+.app-tile { width: 22px; height: 22px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; color: #fff; font: 700 10px/1 var(--sys); flex-shrink: 0; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.12), inset 0 1px 0 rgba(255,255,255,.18); letter-spacing: -.02em; }
+.app-tile.lg { width: 32px; height: 32px; border-radius: 8px; font-size: 13px; }
+.app-tile.sm { width: 16px; height: 16px; border-radius: 4px; font-size: 8px; }
+
+.dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+.dot.sq { border-radius: 2.5px; }
+.cat-chip { display: inline-flex; align-items: center; gap: 5px; height: 18px; padding: 0 7px 0 6px; border-radius: 5px; background: var(--m-fill); font-size: 11px; color: var(--m-text-2); white-space: nowrap; }
+.cat-chip .dot { width: 6px; height: 6px; }
+
+/* Ribbon */
+.ribbon { position: relative; border-radius: 5px; background: var(--m-fill); overflow: hidden; }
+.ribbon i { position: absolute; top: 0; bottom: 0; }
+.ribbon .gap { background: var(--m-hatch); }
+.ribbon .now { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--m-text); }
+.ribbon .future { position: absolute; top: 0; bottom: 0; right: 0; background: linear-gradient(90deg, transparent, var(--m-fill)); }
+.axis-row { display: flex; justify-content: space-between; font-size: 11px; color: var(--m-text-3); font-variant-numeric: tabular-nums; margin-top: 5px; }
+.axis-abs { position: relative; height: 14px; font-size: 11px; color: var(--m-text-3); font-variant-numeric: tabular-nums; margin-top: 5px; }
+.axis-abs span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.axis-abs span:first-child { transform: none; }
+.axis-abs span:last-child { transform: translateX(-100%); }
+
+/* Popover rows */
+.crow { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto auto 12px; align-items: center; gap: 0 8px; height: 30px; padding: 0 6px; margin: 0 -6px; border-radius: 6px; position: relative; }
+.crow:hover, .crow.hot { background: var(--m-hover); }
+.crow.hot { box-shadow: inset 0 0 0 1px var(--m-sep); }
+.crow .nm { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crow .bar { position: absolute; left: 24px; right: 104px; bottom: 3px; height: 3px; border-radius: 2px; background: var(--m-fill); overflow: hidden; }
+.crow .bar i { display: block; height: 100%; border-radius: 2px; }
+.crow .v { font-size: 12px; font-variant-numeric: tabular-nums; min-width: 48px; text-align: right; }
+.crow .p { font-size: 11px; color: var(--m-text-3); font-variant-numeric: tabular-nums; min-width: 30px; text-align: right; }
+.crow .chev { color: var(--m-text-3); opacity: 0; transition: opacity .12s; }
+.crow:hover .chev, .crow.hot .chev { opacity: 1; }
+.more-row { display: flex; align-items: center; gap: 6px; height: 26px; font-size: 12px; color: var(--m-text-2); border-radius: 6px; padding: 0 6px; margin: 2px -6px 0; }
+.more-row:hover { background: var(--m-hover); }
+
+.meter { height: 5px; border-radius: 3px; background: var(--m-fill-2); overflow: hidden; display: flex; }
+.meter i { display: block; height: 100%; border-radius: 3px; }
+.limit-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 10px; align-items: baseline; padding: 4px 6px; margin: 0 -6px; border-radius: 6px; }
+.limit-row:hover, .limit-row.hot { background: var(--m-hover); }
+.limit-row .meter { grid-column: 1 / -1; }
+
+.mseg { display: inline-flex; padding: 2px; gap: 2px; border-radius: 7px; background: var(--m-fill-2); }
+.mseg button { height: 22px; min-width: 38px; padding: 0 8px; border-radius: 5px; font-size: 12px; color: var(--m-text-2); font-variant-numeric: tabular-nums; }
+.mseg button.on { background: var(--m-btn); color: var(--m-text); box-shadow: var(--m-btn-shadow); font-weight: 600; }
+.mseg.lg button { height: 26px; min-width: 56px; font-size: 13px; }
+
+.status-foot { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.status-foot .item { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 11px; color: var(--m-text-2); padding: 5px 7px; border-radius: 6px; background: var(--m-fill); }
+.status-foot .item span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.status-foot .item:hover { background: var(--m-fill-2); }
+.foot { display: flex; align-items: center; gap: 6px; }
+
+/* Toast inside mocks */
+.m-toast { position: absolute; left: 50%; bottom: 16px; transform: translate(-50%, 12px); opacity: 0; display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 14px; border-radius: 10px; background: color-mix(in srgb, var(--m-text) 88%, transparent); color: var(--m-win); font-size: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.25); transition: transform .24s cubic-bezier(.2,.8,.2,1), opacity .2s; pointer-events: none; z-index: 20; white-space: nowrap; }
+.m-toast.show { transform: translate(-50%, 0); opacity: 1; pointer-events: auto; }
+.m-toast button { height: 22px; padding: 0 10px; border-radius: 6px; background: rgba(255,255,255,.18); font-weight: 600; font-size: 12px; cursor: pointer; }
+:root[data-theme="dark"] .m-toast button { background: rgba(0,0,0,.14); }
+
+/* Flyout (hover drill-down NSPanel) */
+.fly { position: absolute; width: 300px; border-radius: 12px; background: var(--m-fly); backdrop-filter: blur(40px) saturate(1.8); -webkit-backdrop-filter: blur(40px) saturate(1.8); box-shadow: var(--m-shadow-pop); padding: 14px; z-index: 7; opacity: 0; transform: translateX(6px); transition: opacity .16s ease-out, transform .2s cubic-bezier(.2,.8,.2,1); pointer-events: none; }
+.fly.show { opacity: 1; transform: none; pointer-events: auto; }
+.fly.static { position: relative; opacity: 1; transform: none; pointer-events: auto; }
+.fly .fh { display: flex; align-items: baseline; gap: 8px; }
+.fly .fh .ttl { font-weight: 600; font-size: 13px; }
+.fly .fh .val { margin-left: auto; font-size: 12px; color: var(--m-text-2); font-variant-numeric: tabular-nums; }
+.fly .sub { font-size: 11px; color: var(--m-text-2); margin-top: 2px; }
+.fly .div { height: .5px; background: var(--m-sep); margin: 10px 0; }
+.fly .kv { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; font-size: 12px; }
+.fly .kv span:nth-child(even) { text-align: right; font-variant-numeric: tabular-nums; color: var(--m-text-2); }
+.fly .foot-act { display: flex; align-items: center; gap: 6px; margin-top: 12px; font-size: 12px; color: var(--m-accent-ink); }
+.fly .foot-act .kbd-m { margin-left: auto; font-size: 11px; color: var(--m-text-3); }
+.brow { display: grid; grid-template-columns: 8px 64px minmax(0, 1fr) 34px 44px; gap: 8px; align-items: center; font-size: 12px; height: 22px; }
+.brow .b { height: 5px; border-radius: 3px; background: var(--m-fill); overflow: hidden; }
+.brow .b i { display: block; height: 100%; border-radius: 3px; }
+.brow .r { text-align: right; font-variant-numeric: tabular-nums; color: var(--m-text-2); font-size: 11px; }
+
+/* Charts inside mocks */
+.m svg.chart { display: block; overflow: visible; }
+.m svg.chart text { font: 10px var(--sys); fill: var(--m-text-3); font-variant-numeric: tabular-nums; }
+.m svg.chart .grid { stroke: var(--m-sep-2); stroke-width: 1; }
+.m svg.chart .base { stroke: var(--m-sep); stroke-width: 1; }
+.m svg.chart .nowl { stroke: var(--m-text); stroke-width: 1.5; }
+
+/* Window */
+.win { position: absolute; border-radius: 12px; overflow: hidden; background: var(--m-work); box-shadow: var(--m-shadow-win); display: grid; grid-template-columns: 212px minmax(0, 1fr); }
+.win.static { position: relative; }
+.win.nosb { grid-template-columns: minmax(0, 1fr); }
+.side { background: var(--m-side); backdrop-filter: blur(30px) saturate(1.6); -webkit-backdrop-filter: blur(30px) saturate(1.6); border-right: .5px solid var(--m-sep); display: flex; flex-direction: column; min-height: 0; }
+.lights { display: flex; gap: 8px; padding: 18px 0 0 18px; height: 52px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; background: #FF5F57; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.18); }
+.lights i:nth-child(2) { background: #FEBC2E; }
+.lights i:nth-child(3) { background: #28C840; }
+.win.inactive .lights i { background: var(--m-fill-2); }
+.side .grp { font-size: 11px; font-weight: 600; color: var(--m-text-3); padding: 14px 10px 5px; }
+.side nav { display: flex; flex-direction: column; gap: 1px; padding: 0 10px; }
+.side nav button { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; border-radius: 6px; font-size: 13px; text-align: left; color: var(--m-text); cursor: pointer; }
+.side nav button svg { color: var(--m-accent); }
+.side nav button:hover { background: var(--m-hover); }
+.side nav button.on { background: var(--m-fill-2); font-weight: 500; }
+.side nav button .badge { margin-left: auto; font-size: 11px; color: var(--m-text-2); font-variant-numeric: tabular-nums; }
+.side .side-foot { margin-top: auto; padding: 12px 14px 14px; display: grid; gap: 8px; border-top: .5px solid var(--m-sep-2); font-size: 12px; }
+.side .side-foot .row { display: flex; align-items: center; gap: 8px; }
+.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--m-work); position: relative; }
+.tb { height: 52px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 14px 0 20px; background: var(--m-win); border-bottom: .5px solid var(--m-sep-2); }
+.win.nosb .tb { padding-left: 88px; }
+.tb .ttl { display: flex; flex-direction: column; line-height: 1.15; }
+.tb .ttl b { font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
+.tb .ttl span { font-size: 11px; color: var(--m-text-2); }
+.tb .grow { flex: 1; }
+.tb .tgroup { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border-radius: 7px; }
+.tb .tbtn { height: 28px; min-width: 28px; padding: 0 8px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; color: var(--m-text-2); font-size: 13px; }
+.tb .tbtn:hover { background: var(--m-hover); color: var(--m-text); }
+.tb .tbtn.bordered { box-shadow: 0 0 0 .5px var(--m-sep); background: var(--m-btn); color: var(--m-text); }
+.tb .search { display: flex; align-items: center; gap: 6px; height: 28px; width: 200px; padding: 0 9px; border-radius: 7px; background: var(--m-fill-2); color: var(--m-text-3); font-size: 13px; }
+.content { flex: 1; min-height: 0; overflow: auto; padding: 22px 24px 28px; scrollbar-width: thin; }
+.content.flush { padding: 0; display: flex; }
+.panel { background: var(--m-panel); border-radius: 12px; box-shadow: 0 0 0 .5px var(--m-sep-2), 0 1px 2px rgba(0,0,0,.03); }
+.panel.pad { padding: 16px 18px; }
+.ph { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+.ph h4 { margin: 0; font-size: 13px; font-weight: 600; }
+.ph .aux { margin-left: auto; font-size: 12px; color: var(--m-text-2); }
+.ph a, .m .lnk { color: var(--m-accent-ink); font-size: 12px; cursor: pointer; }
+.metric .lbl { font-size: 12px; color: var(--m-text-2); }
+.metric .val { font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.metric .sub { font-size: 11px; color: var(--m-text-2); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.delta-up { color: var(--m-green); }
+.delta-neutral { color: var(--m-text-2); }
+
+.list-row { display: grid; align-items: center; gap: 10px; min-height: 40px; padding: 0 12px; border-top: .5px solid var(--m-sep-2); }
+.list-row:first-child { border-top: 0; }
+.list-row:hover { background: var(--m-hover); }
+.list-row.sel { background: var(--m-accent-soft); }
+.gap-row { color: var(--m-text-2); background: var(--m-hatch); background-size: auto; }
+
+.mini-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11px; color: var(--m-text-2); margin-top: 8px; }
+.mini-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.mini-legend i { display: inline-block; width: 12px; height: 6px; border-radius: 2px; }
+
+.switch { width: 26px; height: 15px; border-radius: 999px; background: var(--m-fill-2); position: relative; flex-shrink: 0; box-shadow: inset 0 0 0 .5px var(--m-sep); display: inline-block; }
+.switch::after { content: ""; position: absolute; top: 1.5px; left: 1.5px; width: 12px; height: 12px; border-radius: 50%; background: #fff; box-shadow: 0 .5px 2px rgba(0,0,0,.3); transition: left .16s; }
+.switch.on { background: var(--m-accent); box-shadow: none; }
+.switch.on::after { left: 12.5px; }
+.switch.lg { width: 32px; height: 19px; }
+.switch.lg::after { width: 16px; height: 16px; }
+.switch.lg.on::after { left: 14.5px; }
+.stepper { display: inline-flex; align-items: center; border-radius: 6px; box-shadow: 0 0 0 .5px var(--m-sep); background: var(--m-btn); height: 22px; }
+.stepper button { width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; color: var(--m-text-2); }
+.stepper span { min-width: 58px; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; border-inline: .5px solid var(--m-sep); line-height: 22px; }
+.popup { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 6px 0 9px; border-radius: 6px; background: var(--m-btn); box-shadow: var(--m-btn-shadow); font-size: 12px; white-space: nowrap; }
+.popup svg { width: 9px; height: 9px; color: var(--m-text-2); }
+.radio { display: flex; align-items: flex-start; gap: 8px; padding: 7px 9px; border-radius: 8px; font-size: 12px; cursor: pointer; }
+.radio .o { width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 .5px var(--m-sep), 0 .5px 1px rgba(0,0,0,.1); background: var(--m-btn); flex-shrink: 0; margin-top: 1px; position: relative; }
+.radio.on { background: var(--m-accent-soft); }
+.radio.on .o { background: var(--m-accent); box-shadow: none; }
+.radio.on .o::after { content: ""; position: absolute; inset: 4.5px; border-radius: 50%; background: #fff; }
+.form-grp { background: var(--m-panel); border-radius: 10px; box-shadow: 0 0 0 .5px var(--m-sep-2); }
+.form-grp .fr { display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 8px 14px; border-top: .5px solid var(--m-sep-2); font-size: 13px; }
+.form-grp .fr:first-child { border-top: 0; }
+.form-grp .fr .ctl { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.form-grp .fr .desc { display: block; font-size: 11px; color: var(--m-text-2); margin-top: 2px; }
+.form-h { font-size: 11px; font-weight: 600; color: var(--m-text-2); padding: 14px 4px 6px; }
+.form-foot { font-size: 11px; color: var(--m-text-2); padding: 6px 4px 0; line-height: 1.45; }
+.field { height: 22px; border-radius: 5px; background: var(--m-btn); box-shadow: inset 0 0 0 .5px var(--m-sep); padding: 0 7px; font-size: 12px; display: inline-flex; align-items: center; color: var(--m-text); min-width: 120px; }
+.field.ph { color: var(--m-text-3); }
+.segm { display: inline-flex; padding: 2px; gap: 1px; border-radius: 7px; background: var(--m-fill-2); }
+.segm button { height: 22px; padding: 0 10px; border-radius: 5px; font-size: 12px; color: var(--m-text-2); cursor: pointer; }
+.segm button.on { background: var(--m-btn); color: var(--m-text); box-shadow: var(--m-btn-shadow); }
+
+/* Settings window (toolbar tabs) */
+.settings-tabs { display: flex; justify-content: center; gap: 2px; padding: 6px 12px 8px; background: var(--m-win); border-bottom: .5px solid var(--m-sep-2); }
+.settings-tabs button { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 72px; padding: 5px 0 4px; border-radius: 7px; font-size: 11px; color: var(--m-text-2); cursor: pointer; }
+.settings-tabs button svg { width: 22px; height: 22px; stroke-width: 1.4; }
+.settings-tabs button:hover { background: var(--m-hover); }
+.settings-tabs button.on { background: var(--m-fill-2); color: var(--m-accent-ink); }
+
+/* Annotation / redline layer */
+.redlines { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .2s; z-index: 30; }
+.show-redlines .redlines { opacity: 1; }
+.rl { position: absolute; font: 600 10px/1 var(--sys); color: var(--redline); }
+.rl.h { height: 0; border-top: 1px solid var(--redline); }
+.rl.v { width: 0; border-left: 1px solid var(--redline); }
+.rl.h::before, .rl.h::after { content: ""; position: absolute; top: -4px; width: 1px; height: 7px; background: var(--redline); }
+.rl.h::before { left: 0; } .rl.h::after { right: 0; }
+.rl.v::before, .rl.v::after { content: ""; position: absolute; left: -4px; height: 1px; width: 7px; background: var(--redline); }
+.rl.v::before { top: 0; } .rl.v::after { bottom: 0; }
+.rl .t { position: absolute; background: var(--redline); color: #fff; padding: 2px 4px; border-radius: 3px; white-space: nowrap; }
+.rl.h .t { left: 50%; top: -9px; transform: translate(-50%, -50%); }
+.rl.v .t { top: 50%; left: 6px; transform: translateY(-50%); }
+.rl.box { border: 1px dashed var(--redline); background: var(--redline-soft); border-radius: 3px; }
+.rl.box .t { top: -8px; right: -2px; transform: translateY(-50%); }
+.pin { position: absolute; width: 20px; height: 20px; border-radius: 50%; background: var(--redline); color: #fff; font: 600 11px/20px var(--sys); text-align: center; box-shadow: 0 0 0 2px var(--page-2); z-index: 25; }
+
+/* Current-app reproduction (for the audit) keeps its own quieter look */
+.cur { font-size: 13px; }
+.cur .cap9 { font-size: 9px; color: var(--m-text-2); }
+
+/* HUD + block page + notifications */
+.hud { width: 300px; border-radius: 14px; padding: 14px; background: rgba(28, 28, 30, .78); color: rgba(255,255,255,.92); backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px); box-shadow: 0 0 0 .5px rgba(255,255,255,.12), 0 16px 40px rgba(0,0,0,.35); font: 12px/1.45 var(--sys); }
+.hud .t { font-size: 13px; font-weight: 600; }
+.hud .mbtn { background: rgba(255,255,255,.14); box-shadow: none; color: #fff; }
+.hud .mbtn.primary { background: #0A84FF; }
+.notif { width: 344px; border-radius: 16px; padding: 11px 12px; display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 2px 10px; background: var(--m-fly); backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px); box-shadow: var(--m-shadow-pop); font-size: 12.5px; line-height: 1.35; }
+.notif .ico { grid-row: span 3; width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center; background: linear-gradient(160deg, #3A3F4A, #15171C); color: #F5C451; }
+.notif .ttl { font-weight: 600; }
+.notif .when { font-size: 11px; color: var(--m-text-3); }
+.notif .body { grid-column: 2 / -1; color: var(--m-text-2); }
+.notif .acts { grid-column: 2 / -1; display: flex; gap: 6px; margin-top: 6px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+}
+@media (max-width: 640px) {
+  body { font-size: 14px; padding-inline: 16px; }
+  section.sec { padding-block: 40px 4px; }
+  .lede { font-size: 16px; }
+}
+
+</style>
+<header class="topbar">
+  <a class="brand" href="https://claude.ai/artifact/JbVGtTjy1iftzn9NXReW5A" data-link="cover" style="color:inherit;text-decoration:none"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 2.5h8M4 13.5h8"/><path d="M5 2.5c0 3.2 3 3.6 3 5.5s-3 2.3-3 5.5M11 2.5c0 3.2-3 3.6-3 5.5s3 2.3 3 5.5"/></svg>TimeSink · 三个方向</a>
+  <nav aria-label="方案">
+    <a href="#top" aria-current="page">一 · 精修</a>
+    <a href="https://claude.ai/artifact/G4NEohXs5i1K7KqKXDqpnQ" data-link="b">二 · 液态玻璃</a>
+    <a href="https://claude.ai/artifact/K2Tm4AHJpnYbCb7eVw9PxF" data-link="c">三 · 1440</a>
+  </nav>
+  <span class="spacer"></span>
+  <div class="theme-switch" role="group" aria-label="外观">
+    <button data-theme="system" aria-pressed="true">跟随系统</button><button data-theme="light" aria-pressed="false">浅色</button><button data-theme="dark" aria-pressed="false">深色</button>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="kicker"><span class="pill"><b>方案一</b> / 三</span><span class="pill">精修 · Refined</span><span class="pill">macOS 14+ · SwiftUI 原生控件</span><span class="pill">示例数据</span></div>
+    <h1>同一个 TimeSink，<br>打磨到可以交付。</h1>
+    <p class="lede">结构不动：菜单栏弹出层是主界面，悬停看细节，点按进入主窗口。改的是信息层级、可读性、状态、反馈和动效。每一处改动都能直接落回现有的 SwiftUI 代码，不需要换一套视觉语言。</p>
+    <dl class="hero-facts">
+      <div><dt>保留</dt><dd>MenuBarExtra 弹出层、悬停子窗、侧栏五页、时间带与「时间的去向」容器</dd></div>
+      <div><dt>修正</dt><dd>审查中 29 项主应用问题的界面部分，以及 10 处命名、单位与入口不一致</dd></div>
+      <div><dt>补齐</dt><dd>全局暂停、活动检查器与撤销、屏幕回看入口、缺权限与空白状态</dd></div>
+      <div><dt>不做</dt><dd>不新增页面，不改导航，不引入自定义字体和新材质</dd></div>
+    </dl>
+    <div style="margin-top:34px">
+      <div class="stage" data-w="1280" data-h="820"><div class="canvas" id="hero-desk"></div></div>
+      <div class="hint-row"><span>点按菜单栏里的沙漏开关弹出层</span><span>悬停分类行、时间带、限额，看细节子窗</span><span>点按任何一行进入主窗口对应页面</span><span>试试「开始专注」和「暂停」</span></div>
+    </div>
+  </section>
+
+  <section class="sec" id="audit">
+    <div class="sec-head"><span class="eyebrow">Audit · 现状与精修</span><h2>先把弹出层修好，它每天被打开几十次</h2>
+      <p>左边是当前工作区的弹出层，按 9 月 26 日的源码一比一复原，数据换成同一份示例。编号对应下面的问题与处理；右边是精修版，打开标注可以看到尺寸与字号。</p></div>
+    <div class="toolbar-row"><label class="toggle"><input type="checkbox" id="redline-toggle">显示精修版标注</label></div>
+    <div class="compare">
+      <figure><figcaption><b>现状</b><span>MenuBarDashboard.swift · 340pt 宽</span></figcaption><div id="audit-current"></div></figure>
+      <figure><figcaption><b>精修</b><span>同样 340pt，信息更多，扫读更快</span></figcaption><div id="audit-refined"></div></figure>
+    </div>
+    <div class="decisions" id="audit-list"></div>
+  </section>
+
+  <section class="sec" id="system">
+    <div class="sec-head"><span class="eyebrow">System · 设计规范</span><h2>继续用系统的一切，只把自己的部分定清楚</h2>
+      <p>字体、控件、材质、强调色全部跟随 macOS。TimeSink 自己要负责的只有三件事：分类色、数字排版、动效节奏。分类色保留原来的色相，拉开明度，在浅色和深色里各调一套，并实时计算与面板底色的对比度。</p></div>
+    <div class="tokens">
+      <div class="tok-card"><h3>分类色 · 当前外观</h3><div class="swatches" id="tok-cats"></div><p class="note" style="margin:12px 0 0">数值为与面板底色的对比度。图形元素至少 3:1；低于 3:1 的「工具」「其他」「未分类」一律与文字标签同时出现，未分类另加斜纹。</p></div>
+      <div class="tok-card"><h3>字体层级 · SF Pro / 苹方</h3>
+        <div class="type-row"><code>Big number</code><span class="tab" style="font-size:34px;font-weight:600;letter-spacing:-.025em;line-height:1">7h 10m</span></div>
+        <div class="type-row"><code>Number</code><span class="tab" style="font-size:22px;font-weight:600;letter-spacing:-.02em">4h 44m</span></div>
+        <div class="type-row"><code>Title · 22/700</code><span style="font-size:22px;font-weight:700;letter-spacing:-.02em">已经开始记录</span></div>
+        <div class="type-row"><code>Headline · 15/700</code><span style="font-size:15px;font-weight:700">今天</span></div>
+        <div class="type-row"><code>Body · 13</code><span style="font-size:13px">一天的片段，最近的在前</span></div>
+        <div class="type-row"><code>Callout · 12</code><span style="font-size:12px;color:var(--ink-2)">比昨天同时段 +1h 21m</span></div>
+        <div class="type-row"><code>Caption · 11</code><span style="font-size:11px;color:var(--ink-3)">全页最小字号，取代原来的 9pt 说明</span></div>
+      </div>
+      <div class="tok-card"><h3>间距、圆角与动效</h3>
+        <ul class="spec-list">
+          <li>弹出层宽 / 内边距<code>340 / 14</code></li><li>分组间隔 / 行高<code>12 / 30</code></li><li>圆角：弹出层 · 子窗 · 面板<code>12</code></li><li>圆角：控件 · 标签<code>6 · 5</code></li>
+          <li>悬停出现 / 离开宽限<code>150ms / 250ms</code></li><li>子窗淡入 + 平移<code>160ms · 6pt</code></li><li>状态切换（弹簧）<code>response .36 · damping .78</code></li><li>数字滚动<code>280ms · (.2,.8,.2,1)</code></li><li>减弱动态效果<code>全部改为交叉淡入</code></li>
+        </ul></div>
+    </div>
+  </section>
+
+  <section class="sec" id="menubar">
+    <div class="sec-head"><span class="eyebrow">Menu bar item · 菜单栏图标</span><h2>一眼看出：在记录吗，今天多久了</h2>
+      <p>原来的图标只区分「正常」与「Chrome 降级」，暂停、空闲、缺权限都看不出来；设置里的开关写着「显示今日专注时长」，实际显示的却是总时长。精修版用图形而不是颜色区分状态，因为菜单栏常被渲染成单色。</p></div>
+    <div class="si-strip" id="si-strip"></div>
+  </section>
+
+  <section class="sec" id="popover">
+    <div class="sec-head"><span class="eyebrow">Popover · 弹出层的六种状态</span><h2>每种状态只回答一个问题</h2>
+      <p>顺序固定：状态 → 正在做的事 → 今天 → 分类 → 限额 → 专注 → 系统状态。状态变化时只替换中间的内容，顶部和底部位置不动，手不用重新找按钮。</p></div>
+    <div class="toolbar-row"><div class="seg" id="pop-seg" role="group" aria-label="状态"></div></div>
+    <div style="display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start">
+      <div id="pop-gallery"></div>
+      <div style="flex:1 1 300px"><p id="pop-note" style="margin:0;color:var(--ink-2);max-width:48ch"></p>
+        <div class="decisions" style="grid-template-columns:1fr;margin-top:18px">
+          <div class="decision"><span class="n ink">A</span><h4>分类全部可见</h4><p>超过 5 个就地展开，条长按占今天总时长的比例，右侧写百分比。</p></div>
+          <div class="decision"><span class="n ink">B</span><h4>专注一步开始</h4><p>时长在弹出层里选，拦截名单写成一句话摘要，「编辑…」进入主窗口的专注页，不再跳设置窗口。</p></div>
+          <div class="decision"><span class="n ink">C</span><h4>暂停就是暂停全部</h4><p>应用、网站、标题、截图同时停，时间带留空不补记；原来的「屏幕采集」开关回到设置里。</p></div>
+        </div></div>
+    </div>
+  </section>
+
+  <section class="sec" id="flyouts">
+    <div class="sec-head"><span class="eyebrow">Hover drill-down · 悬停子窗</span><h2>悬停是看，点按是进入</h2>
+      <p>子窗是独立的 NSPanel，贴在弹出层左侧、与所指的行顶端对齐，原行保持高亮，让人知道它在解释哪一行。鼠标从行斜着移向子窗时会穿过其他行，所以用「安全三角」判断意图：指针落在三角内时不切换。打开下面的开关可以看到它。</p></div>
+    <div class="toolbar-row"><label class="toggle"><input type="checkbox" id="tri-toggle" checked>显示安全三角</label><span class="note">也可以用键盘：↑↓ 选行，→ 打开，← 关闭，⏎ 进入主窗口</span></div>
+    <div class="stage" data-w="1000" data-h="760"><div class="canvas" id="fly-desk"></div></div>
+    <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:30px;align-items:flex-start" id="fly-grid"></div>
+    <p class="cap">五种子窗共用一个结构：标题与数值、带时间轴和单位的图、明细行、底部动作。图表补上了 00/06/12/18/24 刻度和「分钟」单位；比较只看到此刻为止，并注明时长多少不评判好坏。</p>
+  </section>
+
+  <section class="sec" id="window">
+    <div class="sec-head"><span class="eyebrow">Main window · 主窗口</span><h2>需要深入时才打开的地方</h2>
+      <p>五页都可以点。工具栏只保留当前页需要的控件，日期控件只出现在「活动」和「趋势」；内容区不再重复写一遍页面标题。「活动」右侧新增检查器：解释为什么是这个分类，改分类前先选范围、看影响，保存后可以撤销。</p></div>
+    <div class="toolbar-row"><div class="seg" id="win-seg" role="group" aria-label="页面">
+      <button data-p="today" aria-pressed="true">今天</button><button data-p="activity" aria-pressed="false">活动</button><button data-p="trends" aria-pressed="false">趋势</button><button data-p="focus" aria-pressed="false">专注与限额</button><button data-p="rules" aria-pressed="false">分类与规则</button></div>
+      <span class="note">在「活动」里选中 excalidraw.com，点「保存并重新归类」，再试试撤销</span></div>
+    <div class="stage" data-w="1240" data-h="800"><div class="canvas" id="win-host"></div></div>
+    <div class="decisions">
+      <div class="decision"><span class="n ink">1</span><h4>今天：一个数字领头</h4><p>「已记录」最大；投入、专注会话、评分退为次级并写清口径。时间带补上日程、专注与空档三条线索。</p></div>
+      <div class="decision"><span class="n ink">2</span><h4>容器与列表联动</h4><p>悬停「时间的去向」里的任一层，右侧对应分类高亮，反之亦然；刻度改为 11pt，写明按 10 小时绘制。</p></div>
+      <div class="decision"><span class="n ink">3</span><h4>改分类有范围、有预览、能撤销</h4><p>原来右键菜单直接改整个网站。现在三选一：只这一段、整个网站、按标题，每项写出影响的段数与时长。</p></div>
+      <div class="decision"><span class="n ink">4</span><h4>趋势去掉十二片的圆环</h4><p>分类用排行条和与前 7 天的差；热力图只编码时长，评分改为切换项；四张「最活跃」小图并入热力图的边栏。</p></div>
+      <div class="decision"><span class="n ink">5</span><h4>专注与限额说清差别</h4><p>限额只提醒，专注才拦截，两边都写出来。名单用应用名和图标，不再显示 Bundle ID。</p></div>
+      <div class="decision"><span class="n ink">6</span><h4>待分类有建议，也有结果</h4><p>每行写出用时与建议来源，接受后原地显示「已归类」，不再无声消失。</p></div>
+    </div>
+  </section>
+
+  <section class="sec" id="sheets">
+    <div class="sec-head"><span class="eyebrow">Sheets & popovers · 表单与弹窗</span><h2>编辑之前先看到结果</h2>
+      <p>标题规则编辑器把关键词做成可删除的标签，实时列出会被改动的活动；拦截应用用图标和名字，不再让人手填 Bundle ID；自定义日期用常用范围加日历，一次选完。</p></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px;align-items:start">
+      <div class="stage" data-w="460" data-h="430"><div class="canvas" id="sheet-title"></div></div>
+      <div class="stage" data-w="380" data-h="470"><div class="canvas" id="sheet-apps"></div></div>
+      <div class="stage" data-w="300" data-h="340"><div class="canvas" id="sheet-range"></div></div>
+    </div>
+  </section>
+
+  <section class="sec" id="settings">
+    <div class="sec-head"><span class="eyebrow">Settings · 设置</span><h2>设置里只放偏好</h2>
+      <p>分类、规则、未分类、预算已经在主窗口里有家，原设置窗口的七个标签只留偏好：通用、记录与隐私、权限、通知、账号与同步、智能分类、关于。权限页补上一直缺席的「屏幕录制」；被拒绝的 Chrome 权限也给出可点的系统设置入口。</p></div>
+    <div class="stage" data-w="640" data-h="560" style="max-width:640px"><div class="canvas" id="set-host"></div></div>
+  </section>
+
+  <section class="sec" id="onboarding">
+    <div class="sec-head"><span class="eyebrow">Onboarding · 首次使用</span><h2>一次只要一个授权</h2>
+      <p>原来的首启把辅助功能和 Chrome 放在同一屏，Chrome 被拒绝就无法「完成」。现在分五步：说明、记录范围、辅助功能（必需）、Chrome（可跳过）、确认已经在记录并指出菜单栏的位置。</p></div>
+    <div class="stage" data-w="500" data-h="500" style="max-width:500px"><div class="canvas" id="ob-host"></div></div>
+  </section>
+
+  <section class="sec" id="focus-surfaces">
+    <div class="sec-head"><span class="eyebrow">Focus HUD · 拦截页 · 通知</span><h2>被拦住的那一刻，要知道还剩多久、怎么继续</h2>
+      <p>原来的提示会冻结在出现时的倒计时，放行要双击「坚持专注」这个隐藏手势。现在倒计时实时走，放行是一个明确的按钮；拦截页放行后回到原来的网址而不是首页；通知统一用中文单位，并带上下一步动作。</p></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px;align-items:start">
+      <div style="display:grid;gap:14px;justify-items:start"><div id="hud-host"></div><p class="cap" style="margin:0">专注 HUD · 右上角浮窗，4 秒后收起，不抢焦点</p></div>
+      <div style="display:grid;gap:12px" id="notif-host"></div>
+    </div>
+    <div style="margin-top:28px"><div class="stage" data-w="560" data-h="360" style="max-width:560px"><div class="canvas" id="block-host"></div></div><p class="cap">Chrome 拦截页 · 与系统深浅色一致</p></div>
+  </section>
+
+  <section class="sec" id="motion">
+    <div class="sec-head"><span class="eyebrow">Motion · 动效</span><h2>动效只用来说明「变了什么」</h2>
+      <p>四种动效覆盖全部场景，数值与 SwiftUI 的 <code>.snappy</code>、<code>.contentTransition(.numericText())</code> 对应。打开「减弱动态效果」后全部退化为 150ms 交叉淡入。</p></div>
+    <div class="motion-grid">
+      <div class="mo" id="mo-roll"><div class="demo"></div><h3>数字滚动</h3><div class="spec">只滚动变化的那一位 · <b>280ms</b> · cubic-bezier(.2,.8,.2,1)</div><div class="curve-host"></div><button class="play">播放</button></div>
+      <div class="mo" id="mo-fly"><div class="demo"></div><h3>子窗出现</h3><div class="spec">悬停 <b>150ms</b> 后出现 · 淡入 160ms · 向内平移 6pt · 离开宽限 250ms</div><div class="curve-host"></div><button class="play">播放</button></div>
+      <div class="mo" id="mo-morph"><div class="demo"></div><h3>状态切换</h3><div class="spec">高度用弹簧 <b>response .36 · damping .78</b> · 内容延迟 60ms 淡入</div><div class="curve-host"></div><button class="play">切换</button></div>
+      <div class="mo" id="mo-toast"><div class="demo"></div><h3>撤销提示</h3><div class="spec">上浮 <b>240ms</b> · 停留 6s 并显示剩余 · 鼠标悬停时暂停计时</div><div class="curve-host"></div><button class="play">播放</button></div>
+    </div>
+  </section>
+
+  <section class="sec" id="a11y">
+    <div class="sec-head"><span class="eyebrow">Keyboard & accessibility · 键盘与无障碍</span><h2>悬停能看到的，键盘和 VoiceOver 也要拿得到</h2></div>
+    <div class="two-col">
+      <div class="table-wrap"><table class="kb-table"><thead><tr><th>按键</th><th>作用</th></tr></thead><tbody>
+        <tr><td><span class="kbd">⌃</span> <span class="kbd">⌥</span> <span class="kbd">T</span></td><td>从任何地方打开弹出层（可在设置里改）</td></tr>
+        <tr><td><span class="kbd">↑</span> <span class="kbd">↓</span></td><td>在弹出层的行之间移动</td></tr>
+        <tr><td><span class="kbd">→</span> / <span class="kbd">←</span></td><td>打开 / 关闭当前行的子窗</td></tr>
+        <tr><td><span class="kbd">⏎</span></td><td>在主窗口中打开当前行</td></tr>
+        <tr><td><span class="kbd">空格</span></td><td>用选中的时长开始专注</td></tr>
+        <tr><td><span class="kbd">⌘</span> <span class="kbd">1</span>–<span class="kbd">5</span></td><td>主窗口切换页面</td></tr>
+        <tr><td><span class="kbd">⌘</span> <span class="kbd">[</span> / <span class="kbd">]</span></td><td>前一天 / 后一天</td></tr>
+        <tr><td><span class="kbd">⌘</span> <span class="kbd">Z</span></td><td>撤销刚才的改分类</td></tr>
+      </tbody></table></div>
+      <div><h3 style="margin-bottom:10px">VoiceOver 读出的内容</h3>
+        <ul class="spec-list">
+          <li><span>时间带</span><code style="white-space:normal;text-align:right;max-width:60%">08:42 到 16:40，已记录 7 小时 10 分钟，最长的一段是 Xcode 49 分钟</code></li>
+          <li><span>分类行</span><code style="white-space:normal;text-align:right;max-width:60%">软件开发，3 小时 37 分钟，占 50%，有详情</code></li>
+          <li><span>限额行</span><code style="white-space:normal;text-align:right;max-width:60%">娱乐，还剩 5 分钟，已接近上限</code></li>
+          <li><span>菜单栏</span><code style="white-space:normal;text-align:right;max-width:60%">TimeSink，正在记录，今天 7 小时 10 分钟</code></li>
+        </ul>
+        <p class="note" style="margin-top:12px">每个悬停子窗都有同样内容的「显示详情」操作；图表附带逐小时的数值列表。</p></div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head"><span class="eyebrow">Next</span><h2>另外两个方向</h2></div>
+    <div class="footer-nav">
+      <a href="https://claude.ai/artifact/G4NEohXs5i1K7KqKXDqpnQ" data-link="b"><span>方案二</span><b>液态玻璃：对齐 macOS 26</b></a>
+      <a href="https://claude.ai/artifact/K2Tm4AHJpnYbCb7eVw9PxF" data-link="c"><span>方案三</span><b>1440：一天的每一分钟</b></a>
+    </div>
+  </section>
+</main>
+<script>
+/* TimeSink design directions: shared sample data.
+   示例数据：一个虚构的周四与之前 29 天，只用来驱动设计稿，不是任何人的真实记录。
+   All three directions render from this one model so that the same day reads
+   three different ways. */
+(function (root) {
+  'use strict';
+
+  // ---- Categories: the 12-category taxonomy that ships in Taxonomy.swift ----
+  const CATEGORIES = [
+    { id: 'softwareDev',   name: '软件开发', en: 'Software dev',   prod: 2 },
+    { id: 'learning',      name: '学习参考', en: 'Learning',       prod: 2 },
+    { id: 'writing',       name: '写作创作', en: 'Writing',        prod: 2 },
+    { id: 'business',      name: '事务',     en: 'Business',       prod: 1 },
+    { id: 'utilities',     name: '工具',     en: 'Utilities',      prod: 1 },
+    { id: 'communication', name: '沟通',     en: 'Communication',  prod: 0 },
+    { id: 'news',          name: '新闻',     en: 'News',           prod: -1 },
+    { id: 'shopping',      name: '购物',     en: 'Shopping',       prod: -1 },
+    { id: 'socialMedia',   name: '社交媒体', en: 'Social media',   prod: -2 },
+    { id: 'entertainment', name: '娱乐',     en: 'Entertainment',  prod: -2 },
+    { id: 'misc',          name: '其他',     en: 'Other',          prod: 0 },
+    { id: 'uncategorized', name: '未分类',   en: 'Not sorted',     prod: 0 },
+  ];
+  const CAT = {};
+  CATEGORIES.forEach((c, i) => { c.index = i; CAT[c.id] = c; });
+  const points = (id) => Math.min(100, Math.max(0, 50 + CAT[id].prod * 25));
+  const engagedCat = (id) => CAT[id].prod >= 1;
+
+  // ---- Apps and sites (monogram tiles; no real app icons) ----
+  const APPS = {
+    mail:     { name: 'Mail',            mono: 'M',  tint: '#2F7CF6', kind: 'app', bundle: 'com.apple.mail' },
+    wechat:   { name: '微信',            mono: '微', tint: '#1FAE4B', kind: 'app', bundle: 'com.tencent.xinWeChat' },
+    chrome:   { name: 'Chrome',          mono: 'C',  tint: '#E0493E', kind: 'app', bundle: 'com.google.Chrome' },
+    xcode:    { name: 'Xcode',           mono: 'X',  tint: '#1B6FE8', kind: 'app', bundle: 'com.apple.dt.Xcode' },
+    ghostty:  { name: 'Ghostty',         mono: '>_', tint: '#26262C', kind: 'app', bundle: 'com.mitchellh.ghostty' },
+    chatgpt:  { name: 'ChatGPT',         mono: 'G',  tint: '#18181B', kind: 'app', bundle: 'com.openai.chat' },
+    claude:   { name: 'Claude',          mono: 'C',  tint: '#B8643F', kind: 'app', bundle: 'com.anthropic.claudefordesktop' },
+    notes:    { name: '备忘录',          mono: 'N',  tint: '#E9B330', kind: 'app', bundle: 'com.apple.Notes' },
+    zoom:     { name: 'Zoom',            mono: 'Z',  tint: '#2B7FEA', kind: 'app', bundle: 'us.zoom.xos' },
+    settings: { name: '系统设置',        mono: 'S',  tint: '#7C7C84', kind: 'app', bundle: 'com.apple.systempreferences' },
+    finder:   { name: '访达',            mono: 'F',  tint: '#2A8BEF', kind: 'app', bundle: 'com.apple.finder' },
+    preview:  { name: '预览',            mono: 'P',  tint: '#3E86D9', kind: 'app', bundle: 'com.apple.Preview' },
+    music:    { name: '音乐',            mono: '♪',  tint: '#F2465B', kind: 'app', bundle: 'com.apple.Music' },
+    discord:  { name: 'Discord',         mono: 'D',  tint: '#5865F2', kind: 'app', bundle: 'com.hnc.Discord' },
+    steam:    { name: 'Steam',           mono: 'S',  tint: '#1B2838', kind: 'app', bundle: 'com.valvesoftware.steam' },
+  };
+  const SITES = {
+    'developer.apple.com': { mono: 'D', tint: '#1D1D1F' },
+    'x.com':               { mono: 'X', tint: '#111111' },
+    'bilibili.com':        { mono: 'b', tint: '#F0648C' },
+    'youtube.com':         { mono: 'Y', tint: '#E8352E' },
+    'excalidraw.com':      { mono: 'E', tint: '#6965DB' },
+    'github.com':          { mono: 'G', tint: '#24292F' },
+    'docs.swift.org':      { mono: 'S', tint: '#F05138' },
+    'xiaohongshu.com':     { mono: '红', tint: '#FF2442' },
+  };
+
+  // ---- Today: Thursday 24 September 2026, now 16:40 ----
+  const hm = (s) => { const [h, m] = s.split(':').map(Number); return h * 60 + m; };
+  const NOW = hm('16:40');
+  const TODAY = { iso: '2026-09-24', month: 9, day: 24, weekday: '周四', weekdayEn: 'Thursday',
+                  label: '9月24日 周四', long: '9月24日 星期四', en: 'Thursday, September 24' };
+
+  // start, end, app, site, title, document, category, note
+  const RAW_TODAY = [
+    ['08:42', '08:58', 'mail',    null,                  '收件箱 · 3 封未读',                  null,                    'communication'],
+    ['08:58', '09:12', 'wechat',  null,                  '文件传输助手',                        null,                    'communication'],
+    ['09:12', '09:48', 'chrome',  'developer.apple.com', 'Charts | Apple Developer Documentation', null,                 'learning'],
+    ['09:48', '10:36', 'xcode',   null,                  'MenuBarDashboard.swift',              'TimeSink',              'softwareDev'],
+    ['10:36', '10:49', 'chrome',  'x.com',               '首页 / X',                            null,                    'socialMedia'],
+    ['10:49', '11:21', 'ghostty', null,                  'swift test',                          '~/Projects/timesink',   'softwareDev'],
+    ['11:21', '11:36', 'chatgpt', null,                  'Swift 并发里的 MainActor 问题',        null,                    'softwareDev'],
+    ['12:24', '12:51', 'chrome',  'bilibili.com',        '开发者访谈 · 第 12 期',                null,                    'entertainment'],
+    ['12:51', '13:04', 'wechat',  null,                  '家人群',                              null,                    'communication'],
+    ['13:04', '13:28', 'notes',   null,                  '周报草稿',                            null,                    'writing'],
+    ['13:28', '14:02', 'zoom',    null,                  '组会 · Weekly sync',                  null,                    'communication'],
+    ['14:02', '14:09', 'settings', null,                 '隐私与安全性',                        null,                    'utilities'],
+    ['14:09', '14:58', 'xcode',   null,                  'DrillDownViews.swift',                'TimeSink',              'softwareDev'],
+    ['14:58', '15:11', 'chrome',  'youtube.com',         'WWDC25 · Meet Liquid Glass',          null,                    'entertainment'],
+    ['15:11', '15:27', 'chrome',  'excalidraw.com',      '弹出层线框',                          null,                    'uncategorized'],
+    ['15:27', '16:14', 'ghostty', null,                  'cc · 重构 StatsModel',                '~/Projects/timesink',   'softwareDev'],
+    ['16:14', '16:40', 'chatgpt', null,                  'TimeSink 重设计',                     null,                    'softwareDev'],
+  ];
+  const WHY = {
+    communication: '内置应用规则',
+    learning: '内置网站规则 · developer.apple.com',
+    softwareDev: '内置应用规则',
+    socialMedia: '内置网站规则 · x.com',
+    entertainment: '内置网站规则',
+    writing: '内置应用规则',
+    utilities: '内置应用规则',
+    uncategorized: '没有规则匹配这个网站',
+  };
+  const spans = RAW_TODAY.map((r, i) => {
+    const [s, e, app, site, title, doc, cat] = r;
+    const span = { id: 'sp' + i, start: hm(s), end: hm(e), app, site, title, doc, cat,
+                   live: i === RAW_TODAY.length - 1 };
+    span.min = span.end - span.start;
+    span.label = site || APPS[app].name;
+    span.mono = site ? SITES[site].mono : APPS[app].mono;
+    span.tint = site ? SITES[site].tint : APPS[app].tint;
+    span.appName = APPS[app].name;
+    span.why = site === 'youtube.com' ? '内置网站规则 · youtube.com/watch'
+      : site === 'bilibili.com' ? '内置网站规则 · bilibili.com'
+      : app === 'ghostty' && title.startsWith('cc') ? '你的标题规则 · Ghostty 中以 “cc” 开头'
+      : app === 'chatgpt' ? '内置应用规则 · ChatGPT'
+      : WHY[cat];
+    return span;
+  });
+
+  const FOCUS_TODAY = [
+    { start: hm('09:50'), end: hm('10:15'), planned: 25, state: 'finished', blocked: 0, by: 'menu' },
+    { start: hm('14:10'), end: hm('14:55'), planned: 45, state: 'finished', blocked: 2, by: 'menu' },
+  ];
+  const CALENDAR_TODAY = [
+    { start: hm('13:30'), end: hm('14:00'), title: '组会 · Weekly sync', calendar: '工作', meeting: true },
+    { start: hm('17:30'), end: hm('18:00'), title: '答疑 · Office hour', calendar: '课程', meeting: true },
+  ];
+  const ALL_DAY = ['作业 3 截止'];
+
+  // ---- Minute helpers ----
+  const EMPTY = -1, FUTURE = -2;
+  function minutesFromSpans(list, now) {
+    const m = new Array(1440).fill(EMPTY);
+    list.forEach((sp) => { for (let t = sp.start; t < sp.end; t++) m[t] = CAT[sp.cat].index; });
+    if (now != null) for (let t = now; t < 1440; t++) m[t] = FUTURE;
+    return m;
+  }
+  function summarize(minutes, uptoMin) {
+    const byCat = {};
+    CATEGORIES.forEach((c) => { byCat[c.id] = 0; });
+    const lim = uptoMin == null ? 1440 : uptoMin;
+    let total = 0, first = null, last = null;
+    for (let t = 0; t < lim; t++) {
+      const v = minutes[t];
+      if (v >= 0) { byCat[CATEGORIES[v].id]++; total++; if (first == null) first = t; last = t + 1; }
+    }
+    let engaged = 0, weighted = 0;
+    CATEGORIES.forEach((c) => { const v = byCat[c.id]; if (engagedCat(c.id)) engaged += v; weighted += v * points(c.id); });
+    const pulse = total ? Math.round(weighted / total) : null;
+    return { byCat, total, engaged, pulse, first, last };
+  }
+
+  // ---- 29 earlier days, generated from a seeded routine ----
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const rng = mulberry32(57);
+  const rand = (a, b) => a + Math.floor(rng() * (b - a + 1));
+  function pick(weights) {
+    let sum = 0; for (const k in weights) sum += weights[k];
+    let r = rng() * sum;
+    for (const k in weights) { r -= weights[k]; if (r <= 0) return k; }
+    return Object.keys(weights)[0];
+  }
+  function mix(t, weekend, mood) {
+    const d = mood; // >1 means a more scattered day
+    if (weekend) return { softwareDev: 0.22, learning: 0.1, writing: 0.05, communication: 0.14, utilities: 0.03,
+      entertainment: 0.22 * d, socialMedia: 0.12 * d, shopping: 0.06 * d, news: 0.04 * d, misc: 0.02 };
+    if (t < 720) return { softwareDev: 0.4, learning: 0.18, communication: 0.13, writing: 0.06, business: 0.04,
+      utilities: 0.04, socialMedia: 0.05 * d, news: 0.04 * d, entertainment: 0.02 * d, uncategorized: 0.03 };
+    if (t < 1110) return { softwareDev: 0.42, communication: 0.12, learning: 0.1, writing: 0.08, business: 0.05,
+      utilities: 0.04, entertainment: 0.07 * d, socialMedia: 0.05 * d, shopping: 0.02 * d, uncategorized: 0.04, misc: 0.01 };
+    return { entertainment: 0.24 * d, softwareDev: 0.22, learning: 0.1, socialMedia: 0.1 * d, communication: 0.12,
+      writing: 0.05, shopping: 0.04 * d, news: 0.04, misc: 0.03 };
+  }
+  function genDay(date, mood) {
+    const weekend = date.getDay() === 0 || date.getDay() === 6;
+    const m = new Array(1440).fill(EMPTY);
+    const start = weekend ? rand(610, 700) : rand(500, 560);
+    const end = weekend ? rand(1080, 1290) : rand(1170, 1370);
+    const lunchS = rand(690, 740), lunchE = lunchS + rand(40, 70);
+    const dinS = rand(1070, 1120), dinE = dinS + rand(45, 80);
+    let t = start;
+    while (t < end) {
+      if (t >= lunchS && t < lunchE) { t = lunchE; continue; }
+      if (t >= dinS && t < dinE) { t = dinE; continue; }
+      const cat = pick(mix(t, weekend, mood));
+      let len = cat === 'softwareDev' || cat === 'learning' || cat === 'writing' ? rand(18, 75)
+        : cat === 'entertainment' ? rand(12, 55) : rand(5, 26);
+      for (let k = 0; k < len && t < end; k++, t++) {
+        if ((t >= lunchS && t < lunchE) || (t >= dinS && t < dinE)) break;
+        m[t] = CAT[cat].index;
+      }
+      if (rng() < (weekend ? 0.55 : 0.45)) t += rand(3, weekend ? 70 : 26);
+      if (!weekend && t > 900 && t < 960 && rng() < 0.25) t += rand(20, 45);
+    }
+    return m;
+  }
+  const DAY_MS = 86400000;
+  const todayDate = new Date(2026, 8, 24);
+  const WD = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  const WD_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const days = [];
+  for (let back = 29; back >= 1; back--) {
+    const date = new Date(todayDate.getTime() - back * DAY_MS);
+    // Six calm days lead into today; the seventh day back scattered and broke the streak.
+    const mood = back <= 6 ? 0.55 : back === 7 ? 2.6 : 0.8 + rng() * 0.9;
+    const minutes = genDay(date, mood);
+    days.push({ date, minutes });
+  }
+  const todayMinutes = minutesFromSpans(spans, NOW);
+  days.push({ date: todayDate, minutes: todayMinutes, isToday: true });
+  days.forEach((d, i) => {
+    d.index = i;
+    d.wd = WD[d.date.getDay()];
+    d.wdEn = WD_EN[d.date.getDay()];
+    d.dow = (d.date.getDay() + 6) % 7; // 0 = Monday
+    d.label = `${d.date.getMonth() + 1}月${d.date.getDate()}日`;
+    d.short = `${d.date.getMonth() + 1}/${d.date.getDate()}`;
+    Object.assign(d, summarize(d.minutes));
+  });
+
+  // Focus sessions across the recent days (for the Focus page history).
+  const FOCUS_HISTORY = [
+    { day: 29, start: hm('14:10'), planned: 45, actual: 45, state: 'finished', blocked: 2 },
+    { day: 29, start: hm('09:50'), planned: 25, actual: 25, state: 'finished', blocked: 0 },
+    { day: 28, start: hm('16:10'), planned: 45, actual: 18, state: 'ended', blocked: 1 },
+    { day: 28, start: hm('09:30'), planned: 90, actual: 90, state: 'finished', blocked: 4 },
+    { day: 26, start: hm('14:00'), planned: 45, actual: 45, state: 'finished', blocked: 0 },
+    { day: 25, start: hm('10:20'), planned: 25, actual: 25, state: 'finished', blocked: 1 },
+  ];
+
+  // ---- Derived views of today ----
+  const today = days[29];
+  const yesterday = days[28];
+  const ySame = summarize(yesterday.minutes, NOW);
+  const pieces = [];
+  let cursor = null;
+  spans.forEach((sp) => {
+    if (cursor != null && sp.start > cursor) pieces.push({ gap: true, start: cursor, end: sp.start, min: sp.start - cursor });
+    pieces.push(sp);
+    cursor = sp.end;
+  });
+  const catRows = CATEGORIES.map((c) => ({ ...c, min: today.byCat[c.id] }))
+    .filter((c) => c.min > 0).sort((a, b) => b.min - a.min);
+  const hourByCat = Array.from({ length: 24 }, () => ({}));
+  for (let t = 0; t < NOW; t++) {
+    const v = todayMinutes[t];
+    if (v >= 0) { const id = CATEGORIES[v].id; hourByCat[Math.floor(t / 60)][id] = (hourByCat[Math.floor(t / 60)][id] || 0) + 1; }
+  }
+  const appTotals = {};
+  spans.forEach((sp) => {
+    const key = sp.site || sp.app;
+    if (!appTotals[key]) appTotals[key] = { key, label: sp.site || APPS[sp.app].name, via: sp.site ? 'Chrome' : null,
+      mono: sp.mono, tint: sp.tint, cat: sp.cat, min: 0 };
+    appTotals[key].min += sp.min;
+  });
+  const appRows = Object.values(appTotals).sort((a, b) => b.min - a.min);
+  const gapMin = pieces.filter((p) => p.gap).reduce((s, p) => s + p.min, 0);
+
+  // ---- Week (last 7 days) vs the 7 before ----
+  const week = days.slice(23, 30);
+  const prevWeek = days.slice(16, 23);
+  const sumDays = (list) => {
+    const byCat = {}; CATEGORIES.forEach((c) => { byCat[c.id] = 0; });
+    let total = 0, engaged = 0, weighted = 0;
+    list.forEach((d) => { CATEGORIES.forEach((c) => { byCat[c.id] += d.byCat[c.id]; }); total += d.total; engaged += d.engaged; weighted += (d.pulse || 0) * d.total; });
+    return { byCat, total, engaged, pulse: total ? Math.round(weighted / total) : null, avg: Math.round(total / list.length) };
+  };
+  const weekSum = sumDays(week), prevWeekSum = sumDays(prevWeek);
+
+  // ---- Weekday x hour heatmap over the 30 days (minutes per occurrence) ----
+  const heat = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => ({ min: 0, w: 0, n: 0 })));
+  const dowCount = [0, 0, 0, 0, 0, 0, 0];
+  days.forEach((d) => {
+    dowCount[d.dow]++;
+    for (let t = 0; t < 1440; t++) {
+      const v = d.minutes[t];
+      if (v >= 0) { const cell = heat[d.dow][Math.floor(t / 60)]; cell.min++; cell.w += points(CATEGORIES[v].id); }
+    }
+  });
+  heat.forEach((row, dow) => row.forEach((cell) => {
+    cell.avg = dowCount[dow] ? cell.min / dowCount[dow] : 0;
+    cell.score = cell.min ? Math.round(cell.w / cell.min) : null;
+  }));
+
+  // ---- Streak of days scoring 70 or more, counted back from today ----
+  let streak = 0;
+  for (let i = 29; i >= 0 && days[i].pulse != null && days[i].pulse >= 70; i--) streak++;
+
+  // ---- Everything else the surfaces show ----
+  const BUDGETS = [
+    { cat: 'entertainment', limit: 45 },
+    { cat: 'socialMedia', limit: 30 },
+    { cat: 'shopping', limit: 20 },
+  ].map((b) => ({ ...b, used: today.byCat[b.cat] }));
+  const INBOX = [
+    { label: 'excalidraw.com', kind: 'site', min: 65, suggest: 'writing', from: '模型建议' },
+    { label: 'linear.app', kind: 'site', min: 42, suggest: 'business', from: '模型建议' },
+    { label: 'xiaohongshu.com', kind: 'site', min: 38, suggest: 'socialMedia', from: '相似网站' },
+    { label: 'Keynote', kind: 'app', min: 25, suggest: 'writing', from: '模型建议' },
+    { label: 'douban.com', kind: 'site', min: 21, suggest: 'entertainment', from: '相似网站' },
+    { label: 'sspai.com', kind: 'site', min: 19, suggest: 'news', from: '模型建议' },
+    { label: 'Pixelmator Pro', kind: 'app', min: 17, suggest: 'writing', from: '模型建议' },
+  ];
+  const RULES = [
+    { kind: 'title', scope: 'Ghostty', match: '标题以 “cc” 开头', cat: 'softwareDev', source: 'user', today: 47 },
+    { kind: 'site', scope: null, match: 'localhost', cat: 'softwareDev', source: 'builtin', today: 0 },
+    { kind: 'site', scope: null, match: 'youtube.com/watch', cat: 'entertainment', source: 'builtin', today: 13 },
+    { kind: 'site', scope: null, match: 'bilibili.com', cat: 'entertainment', source: 'builtin', today: 27 },
+    { kind: 'app', scope: null, match: 'ChatGPT', cat: 'softwareDev', source: 'builtin', today: 41 },
+    { kind: 'title', scope: null, match: 'lecture | 教程 | 课程 | 讲座', cat: 'learning', source: 'builtin', today: 0 },
+  ];
+  const BLOCKING = {
+    apps: ['wechat', 'discord', 'steam'],
+    siteCats: ['socialMedia', 'entertainment', 'shopping'],
+    passMinutes: 5,
+  };
+  const CAPTURE = { on: true, count: 212, latest: '16:39', keepDays: 7,
+                    never: ['钥匙串访问', '密码', '1Password', 'Bitwarden'] };
+  const SYNC = { signedIn: true, on: true, account: 'you@example.com', last: '16:38', pending: 4 };
+
+  // ---- Formatting ----
+  const pad = (n) => String(n).padStart(2, '0');
+  const clock = (min) => `${pad(Math.floor(min / 60) % 24)}:${pad(min % 60)}`;
+  const dur = (min) => {
+    const h = Math.floor(min / 60), m = Math.round(min % 60);
+    if (!h) return `${m}m`;
+    return m ? `${h}h ${m}m` : `${h}h`;
+  };
+  const durZh = (min) => {
+    const h = Math.floor(min / 60), m = Math.round(min % 60);
+    if (!h) return `${m} 分钟`;
+    return m ? `${h} 小时 ${m} 分` : `${h} 小时`;
+  };
+  const hmm = (min) => `${Math.floor(min / 60)}:${pad(Math.round(min % 60))}`;
+  const signed = (min, f = dur) => (min > 0 ? '+' : min < 0 ? '−' : '±') + f(Math.abs(min));
+
+  root.TS = {
+    CATEGORIES, CAT, APPS, SITES, points, engagedCat,
+    NOW, TODAY, spans, pieces, FOCUS_TODAY, CALENDAR_TODAY, ALL_DAY,
+    EMPTY, FUTURE, todayMinutes, days, today, yesterday, ySame,
+    catRows, hourByCat, appRows, gapMin,
+    week, prevWeek, weekSum, prevWeekSum, heat, streak,
+    BUDGETS, INBOX, RULES, BLOCKING, CAPTURE, SYNC, FOCUS_HISTORY,
+    focusMinToday: FOCUS_TODAY.reduce((s, f) => s + (f.end - f.start), 0),
+    fmt: { pad, clock, dur, durZh, hmm, signed },
+    summarize, minutesFromSpans,
+  };
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+(() => {
+"use strict";
+/* A · core: helpers, icons, chart primitives shared by every mock on the page. */
+const T = window.TS, F = T.fmt;
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const cvar = (id) => `var(--c-${id})`;
+const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* Duration, the refined way: no "0m" noise, Chinese units where a sentence reads them. */
+const d = (min) => F.dur(min);
+const dz = (min) => F.durZh(min);
+
+/* ---- SF-Symbol-like line icons, 16pt grid ---- */
+const ICON = {
+  hourglass: '<path d="M4 2.5h8M4 13.5h8"/><path d="M5 2.5c0 3.2 3 3.6 3 5.5s-3 2.3-3 5.5M11 2.5c0 3.2-3 3.6-3 5.5s3 2.3 3 5.5"/><path d="M6.1 13c.5-1.6 1.1-2.2 1.9-2.2s1.4.6 1.9 2.2z" fill="currentColor" stroke="none"/>',
+  hourglassPause: '<path d="M4 2.5h8M4 13.5h8"/><path d="M5 2.5c0 3.2 3 3.6 3 5.5s-3 2.3-3 5.5M11 2.5c0 3.2-3 3.6-3 5.5s3 2.3 3 5.5"/>',
+  sun: '<circle cx="8" cy="8" r="2.8"/><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1"/>',
+  list: '<rect x="2" y="2.5" width="12" height="11" rx="2"/><path d="M5 6h6M5 8.5h6M5 11h3.5"/>',
+  chart: '<path d="M2.5 13.5h11"/><path d="M4.5 11V8M7.2 11V4.5M9.9 11V6.5M12.5 11V9"/>',
+  scope: '<circle cx="8" cy="8" r="5.6"/><circle cx="8" cy="8" r="2.1"/><path d="M8 .9v2M8 13.1v2M.9 8h2M13.1 8h2"/>',
+  tag: '<path d="M8.6 2H13a1 1 0 0 1 1 1v4.4a1 1 0 0 1-.3.7l-5.9 5.9a1 1 0 0 1-1.4 0L2 9.6a1 1 0 0 1 0-1.4l5.9-5.9a1 1 0 0 1 .7-.3z"/><circle cx="11" cy="5" r="1"/>',
+  gear: '<circle cx="8" cy="8" r="2.2"/><path d="M8 1.6l1.1 1.8 2-.5.4 2 1.8 1.1-1.1 1.8 1.1 1.8-1.8 1.1-.4 2-2-.5L8 14.4l-1.1-1.8-2 .5-.4-2-1.8-1.1L3.8 8 2.7 6.2l1.8-1.1.4-2 2 .5z"/>',
+  pause: '<path d="M6 4v8M10 4v8"/>',
+  play: '<path d="M5.5 3.5v9l7-4.5z" fill="currentColor"/>',
+  chevR: '<path d="M6 3.5L10.5 8 6 12.5"/>',
+  chevL: '<path d="M10 3.5L5.5 8l4.5 4.5"/>',
+  chevD: '<path d="M3.5 6L8 10.5 12.5 6"/>',
+  chevU: '<path d="M3.5 10L8 5.5l4.5 4.5"/>',
+  updown: '<path d="M5 6l3-3 3 3M5 10l3 3 3-3"/>',
+  more: '<circle cx="3.5" cy="8" r="1.1" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r="1.1" fill="currentColor" stroke="none"/><circle cx="12.5" cy="8" r="1.1" fill="currentColor" stroke="none"/>',
+  search: '<circle cx="7" cy="7" r="4.3"/><path d="M10.2 10.2l3.3 3.3"/>',
+  cal: '<rect x="2" y="3" width="12" height="10.5" rx="2"/><path d="M2 6.5h12M5.5 1.8v2.4M10.5 1.8v2.4"/>',
+  bell: '<path d="M4 11V7.2a4 4 0 0 1 8 0V11l1.2 1.3H2.8z"/><path d="M6.6 13.8a1.5 1.5 0 0 0 2.8 0"/>',
+  shield: '<path d="M8 1.8l5 1.9v4c0 3.2-2.2 5.4-5 6.5-2.8-1.1-5-3.3-5-6.5v-4z"/><path d="M5.8 8l1.6 1.6 3-3.2"/>',
+  person: '<circle cx="8" cy="5.4" r="2.6"/><path d="M2.8 14c.6-2.7 2.7-4.2 5.2-4.2s4.6 1.5 5.2 4.2"/>',
+  sparkles: '<path d="M6.5 2.5l1 3 3 1-3 1-1 3-1-3-3-1 3-1z"/><path d="M12 9l.6 1.6 1.6.6-1.6.6L12 13.4l-.6-1.6-1.6-.6 1.6-.6z"/>',
+  info: '<circle cx="8" cy="8" r="6"/><path d="M8 7.2v4M8 4.9v.1"/>',
+  globe: '<circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c1.8 1.7 2.6 3.7 2.6 6S9.8 12.3 8 14c-1.8-1.7-2.6-3.7-2.6-6S6.2 3.7 8 2z"/>',
+  window: '<rect x="2" y="3" width="12" height="10" rx="2"/><path d="M2 6h12"/>',
+  x: '<path d="M4 4l8 8M12 4l-8 8"/>',
+  plus: '<path d="M8 3v10M3 8h10"/>',
+  minus: '<path d="M3 8h10"/>',
+  check: '<path d="M3.5 8.4l3 3 6-6.6"/>',
+  warn: '<path d="M8 2.2l6.2 11H1.8z"/><path d="M8 6.5v3.2M8 11.5v.1"/>',
+  cloud: '<path d="M4.6 12.5h7a2.9 2.9 0 0 0 .3-5.8 4 4 0 0 0-7.7.9 2.5 2.5 0 0 0 .4 4.9z"/>',
+  viewfinder: '<path d="M2 5.5V3.5a1.5 1.5 0 0 1 1.5-1.5h2M10.5 2h2A1.5 1.5 0 0 1 14 3.5v2M14 10.5v2a1.5 1.5 0 0 1-1.5 1.5h-2M5.5 14h-2A1.5 1.5 0 0 1 2 12.5v-2"/><circle cx="8" cy="8" r="1.6" fill="currentColor" stroke="none"/>',
+  power: '<path d="M8 2v5.5"/><path d="M4.4 4.3a5 5 0 1 0 7.2 0"/>',
+  sidebar: '<rect x="2" y="3" width="12" height="10" rx="2"/><path d="M6 3v10"/>',
+  inspector: '<rect x="2" y="3" width="12" height="10" rx="2"/><path d="M10 3v10"/>',
+  clock: '<circle cx="8" cy="8" r="6"/><path d="M8 4.8V8l2.2 1.4"/>',
+  arrowR: '<path d="M3 8h10M9 4l4 4-4 4"/>',
+  undo: '<path d="M5.5 5.5H10a3.5 3.5 0 0 1 0 7H6"/><path d="M7.5 3L5 5.5 7.5 8"/>',
+  hand: '<path d="M5.5 8V3.6a1 1 0 0 1 2 0V7.5M7.5 7V2.8a1 1 0 0 1 2 0V7.2M9.5 7.3V3.8a1 1 0 0 1 2 0v5.6c0 2.7-1.7 4.6-4.1 4.6-1.6 0-2.6-.7-3.5-2L2.4 9.1a1 1 0 0 1 1.6-1.2L5.5 9.6"/>',
+  trash: '<path d="M3 4.5h10M6.3 4.5V3h3.4v1.5M4.3 4.5l.6 9h6.2l.6-9"/>',
+  grip: '<circle cx="6" cy="4" r=".9" fill="currentColor" stroke="none"/><circle cx="10" cy="4" r=".9" fill="currentColor" stroke="none"/><circle cx="6" cy="8" r=".9" fill="currentColor" stroke="none"/><circle cx="10" cy="8" r=".9" fill="currentColor" stroke="none"/><circle cx="6" cy="12" r=".9" fill="currentColor" stroke="none"/><circle cx="10" cy="12" r=".9" fill="currentColor" stroke="none"/>',
+  moon: '<path d="M12.8 10.2A5.6 5.6 0 0 1 5.8 3.2a5.6 5.6 0 1 0 7 7z"/>',
+  filter: '<path d="M2.5 4.5h11M4.5 8h7M6.5 11.5h3"/>',
+  open: '<path d="M6 3H3.5A1.5 1.5 0 0 0 2 4.5v8A1.5 1.5 0 0 0 3.5 14h8a1.5 1.5 0 0 0 1.5-1.5V10"/><path d="M9 2h5v5M14 2L7.5 8.5"/>',
+  lock: '<rect x="3" y="7" width="10" height="7" rx="1.6"/><path d="M5.2 7V5.2a2.8 2.8 0 0 1 5.6 0V7"/>',
+  wifi: '<path d="M2 6.3a9 9 0 0 1 12 0M4.2 8.8a5.8 5.8 0 0 1 7.6 0M6.5 11.3a2.4 2.4 0 0 1 3 0"/>',
+  cc: '<rect x="2" y="3" width="12" height="4" rx="2"/><rect x="2" y="9" width="12" height="4" rx="2"/><circle cx="11.5" cy="5" r="1" fill="currentColor"/><circle cx="4.5" cy="11" r="1" fill="currentColor"/>',
+  battery: '<rect x="1.5" y="4.8" width="11.5" height="6.4" rx="1.8"/><path d="M14.5 7v2"/><rect x="3" y="6.3" width="7.5" height="3.4" rx=".8" fill="currentColor" stroke="none"/>',
+  keyboard: '<rect x="1.5" y="4" width="13" height="8" rx="1.6"/><path d="M4 6.5h.1M6.5 6.5h.1M9 6.5h.1M11.5 6.5h.1M5 9.5h6"/>',
+  bolt: '<path d="M9 1.8L3.8 9h3.8L7 14.2 12.2 7H8.4z"/>',
+  ring: '<circle cx="8" cy="8" r="5.6" stroke-opacity=".3"/><path d="M8 2.4a5.6 5.6 0 1 1-5.2 7.7"/>',
+  doc: '<path d="M4 2h5.5L12 4.5V14H4z"/><path d="M9.5 2v2.5H12"/>',
+  eye: '<path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/>',
+};
+const ic = (name, cls = '') => `<svg class="i ${cls}" viewBox="0 0 16 16" aria-hidden="true">${ICON[name] || ''}</svg>`;
+
+/* ---- Small building blocks ---- */
+const tile = (mono, tint, size = '') => `<span class="app-tile ${size}" style="background:${tint}">${esc(mono)}</span>`;
+const spanTile = (sp, size = '') => tile(sp.mono, sp.tint, size);
+const dot = (id, sq = false) => `<i class="dot${sq ? ' sq' : ''}" style="background:${cvar(id)}"></i>`;
+const catChip = (id) => `<span class="cat-chip">${dot(id)}${esc(T.CAT[id].name)}</span>`;
+
+/* Ribbon: absolute time positions, gaps hatched, now marked, future faded. */
+function ribbon({ from = 480, to = 1080, h = 14, gaps = true, now = true, focus = false, events = false, id = '' } = {}) {
+  const span = to - from;
+  const x = (m) => ((Math.max(from, Math.min(to, m)) - from) / span) * 100;
+  let html = `<div class="ribbon" ${id ? `id="${id}"` : ''} style="height:${h}px">`;
+  T.spans.forEach((sp) => {
+    html += `<i data-span="${sp.id}" style="left:${x(sp.start)}%;width:${x(sp.end) - x(sp.start)}%;background:${cvar(sp.cat)}" title="${esc(sp.label)} · ${F.clock(sp.start)}–${F.clock(sp.end)} · ${d(sp.min)}"></i>`;
+  });
+  if (gaps) T.pieces.filter((p) => p.gap).forEach((g) => { html += `<i class="gap" style="left:${x(g.start)}%;width:${x(g.end) - x(g.start)}%"></i>`; });
+  if (now && T.NOW < to) html += `<span class="future" style="left:${x(T.NOW)}%"></span><span class="now" style="left:${x(T.NOW)}%"></span>`;
+  html += '</div>';
+  if (focus) {
+    html += `<div style="position:relative;height:6px;margin-top:3px">` + T.FOCUS_TODAY.map((f) =>
+      `<i style="position:absolute;top:0;height:3px;border-radius:2px;background:var(--m-accent);left:${x(f.start)}%;width:${x(f.end) - x(f.start)}%" title="专注 ${f.planned} 分钟"></i>`).join('') + `</div>`;
+  }
+  if (events) {
+    html = `<div style="position:relative;height:16px;margin-bottom:3px">` + T.CALENDAR_TODAY.map((e) =>
+      `<span style="position:absolute;top:0;height:14px;left:${x(e.start)}%;width:${x(e.end) - x(e.start)}%;border-radius:4px;border:1px ${e.start > T.NOW ? 'dashed' : 'solid'} var(--m-text-3);font-size:9.5px;line-height:12px;padding:0 4px;overflow:hidden;white-space:nowrap;color:var(--m-text-2)" title="${esc(e.title)}">${esc(e.title.split(' · ')[0])}</span>`).join('') + `</div>` + html;
+  }
+  return html;
+}
+function axis(from, to, step, fmt = (m) => F.clock(m)) {
+  let html = '<div class="axis-abs">';
+  for (let m = from; m <= to; m += step) html += `<span style="left:${((m - from) / (to - from)) * 100}%">${fmt(m)}</span>`;
+  return html + '</div>';
+}
+
+/* Hourly bars with a real time axis and unit (fixes the axis-less histogram). */
+function hourBars(byHour, { w = 272, h = 86, color = null, stacked = true, from = 0, to = 24, nowHour = T.NOW / 60, max = 60 } = {}) {
+  const pad = { l: 22, r: 4, t: 6, b: 16 };
+  const iw = w - pad.l - pad.r, ih = h - pad.t - pad.b;
+  const n = to - from, bw = iw / n;
+  let s = `<svg class="chart" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img">`;
+  [0, max / 2, max].forEach((v) => {
+    const y = pad.t + ih - (v / max) * ih;
+    s += `<line class="grid" x1="${pad.l}" x2="${w - pad.r}" y1="${y}" y2="${y}"/><text x="${pad.l - 5}" y="${y + 3}" text-anchor="end">${v}</text>`;
+  });
+  for (let hr = from; hr < to; hr++) {
+    const cell = byHour[hr] || {};
+    let y = pad.t + ih;
+    const ids = stacked ? T.CATEGORIES.map((c) => c.id).filter((id) => cell[id]) : [];
+    if (stacked) {
+      ids.forEach((id) => {
+        const bh = (cell[id] / max) * ih;
+        y -= bh;
+        s += `<rect x="${pad.l + (hr - from) * bw + 1}" y="${y}" width="${Math.max(1, bw - 2)}" height="${bh}" rx="1" fill="${color || cvar(id)}"/>`;
+      });
+    } else {
+      const v = typeof cell === 'number' ? cell : 0;
+      const bh = (v / max) * ih;
+      s += `<rect x="${pad.l + (hr - from) * bw + 1}" y="${pad.t + ih - bh}" width="${Math.max(1, bw - 2)}" height="${bh}" rx="1.5" fill="${color}"/>`;
+    }
+  }
+  s += `<line class="base" x1="${pad.l}" x2="${w - pad.r}" y1="${pad.t + ih}" y2="${pad.t + ih}"/>`;
+  for (let t = from; t <= to; t += 6) {
+    const xx = pad.l + (t - from) * bw;
+    s += `<text x="${xx}" y="${h - 3}" text-anchor="${t === from ? 'start' : t === to ? 'end' : 'middle'}">${String(t).padStart(2, '0')}</text>`;
+  }
+  if (nowHour != null && nowHour > from && nowHour < to) {
+    const nx = pad.l + (nowHour - from) * bw;
+    s += `<line class="nowl" x1="${nx}" x2="${nx}" y1="${pad.t - 2}" y2="${pad.t + ih}" stroke-dasharray="2 2"/>`;
+  }
+  return s + '</svg>';
+}
+
+/* Contrast ratio, used to verify the category palette in both themes. */
+function hexToRgb(hex) { const n = parseInt(hex.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+function lum([r, g, b]) { const f = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); }
+function contrast(a, b) { const la = lum(hexToRgb(a)), lb = lum(hexToRgb(b)); return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05); }
+
+/* Stage fitting: every mock is drawn at real point size and scaled to fit. */
+function fitStages() {
+  $$('.stage').forEach((st) => {
+    const cvs = st.firstElementChild; if (!cvs) return;
+    const w = +st.dataset.w, h = +st.dataset.h;
+    const s = Math.min(1, st.clientWidth / w);
+    cvs.style.width = w + 'px'; cvs.style.height = h + 'px';
+    cvs.style.transform = st.classList.contains('center') ? `translateX(-50%) scale(${s})` : `scale(${s})`;
+    if (st.classList.contains('center')) cvs.style.transformOrigin = '50% 0';
+    st.style.height = Math.ceil(h * s) + 'px';
+  });
+}
+
+/* A · popover (MenuBarExtra window) in every state, its flyouts, and the menu-bar item. */
+
+const TOTAL = T.today.total, ENG = T.today.engaged;
+const cmpTotal = TOTAL - T.ySame.total, cmpEng = ENG - T.ySame.engaged;
+const liveSpan = T.spans[T.spans.length - 1];
+
+/* ---- Menu-bar status item ---- */
+function statusItem(state = 'recording', on = false) {
+  const on_ = on ? ' on' : '';
+  switch (state) {
+    case 'idle': return `<span class="si${on_}" data-si>${ic('hourglass', 'dim')}<span class="dim tab">${d(TOTAL)}</span></span>`;
+    case 'paused': return `<span class="si${on_}" data-si>${ic('hourglassPause')}<span class="tab">已暂停 0:48</span></span>`;
+    case 'focus': return `<span class="si${on_}" data-si>${ic('ring')}<span class="tab">18:42</span></span>`;
+    case 'permission': return `<span class="si${on_}" data-si>${ic('warn')}<span>未记录</span></span>`;
+    case 'iconOnly': return `<span class="si${on_}" data-si>${ic('hourglass')}</span>`;
+    case 'category': return `<span class="si${on_}" data-si>${ic('hourglass')}<span>软件开发 3h 37m</span></span>`;
+    default: return `<span class="si${on_}" data-si>${ic('hourglass')}<span class="tab">${d(TOTAL)}</span></span>`;
+  }
+}
+function menubar(state = 'recording', on = true) {
+  return `<div class="menubar"><span class="app">访达</span><span>文件</span><span>编辑</span><span>显示</span><span>前往</span><span>窗口</span>
+    <div class="right">${statusItem(state, on)}${ic('wifi')}${ic('battery')}${ic('cc')}<span class="tab">9月24日 周四 16:40</span></div></div>`;
+}
+
+/* ---- Popover sections ---- */
+function popHead(kind) {
+  const right = `<span style="margin-left:auto;display:flex;gap:2px;align-items:center">
+      <button class="mbtn ghost" data-act="pause" title="暂停记录">${ic('pause', 's')}暂停${ic('chevD', 'xs')}</button>
+      <button class="iconbtn" data-act="more" aria-label="更多统计" title="评分、比较、24 小时分布">${ic('more')}</button></span>`;
+  if (kind === 'idle') return `<div class="head"><span class="status-dot idle"></span><span class="sb f12">空闲</span><span class="t2 f12">· 离开 6 分钟</span>${right}</div>`;
+  if (kind === 'paused') return `<div class="head"><span class="status-dot paused"></span><span class="sb f12">已暂停</span><span class="t2 f12">· 17:28 自动恢复</span><span style="margin-left:auto"><button class="mbtn primary" data-act="resume">恢复记录</button></span></div>`;
+  if (kind === 'permission') return `<div class="head"><span class="status-dot off"></span><span class="sb f12">没有在记录</span><span class="t2 f12">· 自 14:12</span></div>`;
+  if (kind === 'focus') return `<div class="head">${ic('scope', 's')}<span class="sb f12" style="color:var(--m-accent-ink)">专注中</span><span class="t2 f12">· 45 分钟 · 16:40 开始</span><span style="margin-left:auto"><button class="iconbtn" data-act="more" aria-label="更多">${ic('more')}</button></span></div>`;
+  const date = kind === 'morning' ? '9月25日 周五' : T.TODAY.label;
+  return `<div class="head"><span class="status-dot live-pulse"></span><span class="sb f12">正在记录</span><span class="t2 f12">· ${date}</span>${right}</div>`;
+}
+function nowRow(kind) {
+  if (kind === 'idle') return `<div style="display:flex;gap:10px;align-items:center;margin-top:10px;padding:9px 10px;border-radius:8px;background:var(--m-fill)">${ic('moon')}<span class="f12 t2">你离开了电脑，这段时间不计入。回来后会自动继续。</span></div>`;
+  const sp = kind === 'morning' ? { mono: '访', tint: '#2A8BEF', label: '访达', title: '下载', cat: 'utilities' } : liveSpan;
+  const elapsed = kind === 'morning' ? '2m' : d(T.NOW - liveSpan.start);
+  const since = kind === 'morning' ? '自 08:03' : `自 ${F.clock(liveSpan.start)}`;
+  return `<div style="display:grid;grid-template-columns:32px minmax(0,1fr) auto;gap:2px 10px;align-items:center;margin-top:10px">
+    <span style="grid-row:span 2">${tile(sp.mono, sp.tint, 'lg')}</span>
+    <span class="sb f13" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(sp.title)}</span>
+    <span class="sb f13 tab" style="text-align:right">${elapsed}</span>
+    <span class="f11 t2" style="display:flex;gap:6px;align-items:center;min-width:0;white-space:nowrap">${esc(sp.label)} ${catChip(sp.cat)}</span>
+    <span class="f11 t2 tab" style="text-align:right">${since}</span></div>`;
+}
+function todayBlock(kind) {
+  if (kind === 'morning') {
+    return `<div class="sec"><div style="display:flex;align-items:baseline;gap:8px"><span class="tab" style="font-size:34px;font-weight:600;letter-spacing:-.02em;line-height:1">2m</span><span class="f12 t2">今天已记录</span></div>
+      <p class="f12 t2" style="margin:8px 0 10px">新的一天刚开始。离开电脑和锁屏的时间不会计入。</p>
+      <div class="ribbon" style="height:12px"><span class="future" style="left:0.8%"></span><span class="now" style="left:0.8%"></span></div>
+      ${axis(480, 1080, 120)}</div>`;
+  }
+  const dim = kind === 'paused' || kind === 'permission' ? 'opacity:.55' : '';
+  return `<div class="sec" style="${dim}">
+    <div style="display:flex;align-items:flex-end;gap:10px">
+      <div data-fly="compare" style="border-radius:6px;padding:2px 4px;margin:-2px -4px" class="hoverable">
+        <div class="tab" style="font-size:34px;font-weight:600;letter-spacing:-.025em;line-height:1" data-roll>${d(TOTAL)}</div>
+        <div class="f12 t2" style="margin-top:5px">今天已记录 · <span class="delta-up tab">比昨天同时段 ${F.signed(cmpTotal)}</span></div>
+      </div>
+      <div style="margin-left:auto;text-align:right" data-fly="compare" class="hoverable">
+        <div class="tab sb" style="font-size:17px">${d(ENG)}</div>
+        <div class="f11 t2">投入 · 占 ${pct(ENG, TOTAL)}%</div>
+      </div>
+    </div>
+    <div style="margin-top:12px" data-fly="hourly" class="hoverable-strip">${ribbon({ from: 480, to: 1080, h: 12 })}${axis(480, 1080, 120)}</div>
+    <div style="display:flex;gap:6px;margin-top:10px">
+      <button class="cat-chip" data-fly="score" style="height:20px">${ic('chart', 'xs')}评分 ${T.today.pulse} · 连续 ${T.streak} 天达标</button>
+      <button class="cat-chip" data-fly="hourly" style="height:20px">${ic('clock', 'xs')}24 小时分布</button>
+    </div></div>`;
+}
+function categoryBlock(expanded = false) {
+  const rows = T.catRows, shown = expanded ? rows : rows.slice(0, 5), rest = rows.slice(5);
+  const restMin = rest.reduce((s, r) => s + r.min, 0);
+  let html = `<div class="sec" style="padding-top:8px;padding-bottom:8px" data-cats>`;
+  shown.forEach((c) => {
+    html += `<div class="crow" data-fly="cat:${c.id}" data-act="open-activity" data-cat="${c.id}" tabindex="0">
+      ${dot(c.id)}<span class="nm">${esc(c.name)}</span><span class="v">${d(c.min)}</span><span class="p">${pct(c.min, TOTAL)}%</span><span class="chev">${ic('chevR', 'xs')}</span>
+      <span class="bar"><i style="width:${(c.min / TOTAL) * 100}%;background:${cvar(c.id)}"></i></span></div>`;
+  });
+  if (rest.length) {
+    html += expanded
+      ? `<button class="more-row" data-act="less">${ic('chevU', 'xs')}收起</button>`
+      : `<button class="more-row" data-act="more-cats">${ic('chevD', 'xs')}另外 ${rest.length} 个分类 · ${d(restMin)}<span class="t3" style="margin-left:auto">${rest.map((r) => r.name).join('、')}</span></button>`;
+  }
+  return html + '</div>';
+}
+function limitBlock() {
+  const rows = T.BUDGETS.filter((b) => b.used > 0).sort((a, b) => b.used / b.limit - a.used / a.limit).slice(0, 2);
+  return `<div class="sec" style="padding-top:8px;padding-bottom:10px">` + rows.map((b) => {
+    const left = b.limit - b.used, warn = left <= b.limit * 0.2;
+    return `<div class="limit-row" data-fly="limits" data-act="open-focus">
+      <span class="f12" style="display:flex;gap:6px;align-items:center">${dot(b.cat)}${esc(T.CAT[b.cat].name)} <span class="t3 tab">${b.used} / ${b.limit} 分钟</span></span>
+      <span class="f12 tab ${warn ? '' : 't2'}" style="${warn ? 'color:var(--m-amber);font-weight:600' : ''}">还剩 ${left} 分钟</span>
+      <span class="meter"><i style="width:${(b.used / b.limit) * 100}%;background:${warn ? 'var(--m-amber)' : cvar(b.cat)}"></i></span></div>`;
+  }).join('') + `</div>`;
+}
+function focusBlock(selected = 45) {
+  return `<div class="sec" style="display:grid;gap:8px">
+    <div style="display:flex;align-items:center;gap:8px">
+      <div class="mseg" role="group" aria-label="专注时长">${[15, 25, 45, 90].map((m) => `<button class="${m === selected ? 'on' : ''}" data-act="dur" data-min="${m}">${m}</button>`).join('')}</div>
+      <span class="f11 t3">分钟</span>
+      <button class="mbtn primary lg" style="margin-left:auto" data-act="start-focus">${ic('scope', 's')}开始专注</button>
+    </div>
+    <div class="f11 t2" style="display:flex;gap:6px;align-items:center">将隐藏 微信 等 3 个应用 · 拦截 3 类网站
+      <button class="lnk" style="margin-left:auto" data-act="open-focus">编辑…</button></div></div>`;
+}
+function statusFoot() {
+  return `<div class="sec" style="display:grid;gap:10px;padding-top:10px">
+    <div class="status-foot">
+      <button class="item" title="屏幕采集：保存 7 天，只在本机">${ic('viewfinder', 's')}<span>屏幕采集 · ${T.CAPTURE.count} 张 · ${T.CAPTURE.latest}</span></button>
+      <button class="item" title="云端同步">${ic('cloud', 's')}<span>已同步 ${T.SYNC.last} · 待传 ${T.SYNC.pending}</span></button>
+    </div>
+    <div class="foot">
+      <button class="mbtn" data-act="open-today">${ic('window', 's')}打开 TimeSink<span class="t3" style="margin-left:4px">⌘O</span></button>
+      <span style="margin-left:auto"></span>
+      <button class="iconbtn" title="设置… ⌘," aria-label="设置">${ic('gear')}</button>
+      <button class="iconbtn" title="退出 TimeSink ⌘Q" aria-label="退出">${ic('power')}</button>
+    </div></div>`;
+}
+
+function popover(kind = 'recording', opt = {}) {
+  let body = `<div class="sec">${popHead(kind)}${kind === 'permission' || kind === 'paused' ? '' : nowRow(kind)}</div>`;
+  if (kind === 'paused') {
+    body += `<div class="sec" style="display:grid;gap:10px">
+      <div style="display:flex;align-items:baseline;gap:8px"><span class="tab" style="font-size:34px;font-weight:600;line-height:1;letter-spacing:-.02em">0:48</span><span class="f12 t2">后恢复</span></div>
+      <p class="f12 t2" style="margin:0;line-height:1.5">暂停期间不记录应用、网站、窗口标题和屏幕画面。这段时间在时间带里留空，不会补记。</p>
+      <div style="display:flex;gap:6px"><button class="mbtn">+15 分钟</button><button class="mbtn">+1 小时</button><button class="mbtn">直到我恢复</button></div></div>`;
+    body += todayBlock(kind) + statusFoot();
+  } else if (kind === 'permission') {
+    body += `<div class="sec" style="display:grid;gap:10px">
+      <div style="display:flex;gap:10px;align-items:flex-start;padding:10px;border-radius:9px;background:var(--m-red-soft)">
+        <span style="color:var(--m-red)">${ic('warn')}</span>
+        <div><div class="sb f13">辅助功能权限已关闭</div><p class="f12 t2" style="margin:3px 0 8px;line-height:1.5">TimeSink 靠它看到最前面的应用和窗口标题。关闭期间不会记录任何时间。</p>
+        <button class="mbtn primary">打开系统设置…</button><div class="f11 t3" style="margin-top:6px">重新打开后会自动继续，不需要重启。</div></div></div>
+      <div style="display:flex;gap:10px;align-items:center;padding:0 2px"><span class="t2">${ic('globe', 's')}</span><span class="f12 t2" style="flex:1">Chrome 网站暂时只记为「Chrome」</span><button class="mbtn">允许读取网址</button></div></div>`;
+    body += todayBlock(kind) + statusFoot();
+  } else if (kind === 'focus') {
+    const r = 44, c = 2 * Math.PI * r, frac = 26 / 45;
+    body = `<div class="sec">${popHead('focus')}
+      <div style="display:flex;gap:16px;align-items:center;margin-top:12px">
+        <svg width="104" height="104" viewBox="0 0 104 104" aria-label="还剩 18 分 42 秒"><circle cx="52" cy="52" r="${r}" fill="none" stroke="var(--m-fill-2)" stroke-width="7"/>
+          <circle cx="52" cy="52" r="${r}" fill="none" stroke="var(--m-accent)" stroke-width="7" stroke-linecap="round" stroke-dasharray="${c * frac} ${c}" transform="rotate(-90 52 52)"/>
+          <text x="52" y="56" text-anchor="middle" style="font:600 22px var(--sys);fill:var(--m-text);font-variant-numeric:tabular-nums">18:42</text>
+          <text x="52" y="72" text-anchor="middle" style="font:11px var(--sys);fill:var(--m-text-2)">还剩</text></svg>
+        <div style="display:grid;gap:6px" class="f12"><span><b>17:25</b> 结束</span><span class="t2">已专注 26 分钟</span><span class="t2">已拦下 1 次：bilibili.com</span></div></div>
+      <div style="display:grid;gap:6px;margin-top:12px;padding:10px;border-radius:9px;background:var(--m-fill)" class="f12">
+        <div style="display:flex;gap:8px;align-items:center"><span class="t2" style="width:48px">隐藏</span>${tile('微', '#1FAE4B', 'sm')}${tile('D', '#5865F2', 'sm')}${tile('S', '#1B2838', 'sm')}<span class="t2">微信、Discord、Steam</span></div>
+        <div style="display:flex;gap:8px;align-items:center"><span class="t2" style="width:48px">拦截</span>${['socialMedia', 'entertainment', 'shopping'].map((id) => catChip(id)).join('')}</div></div>
+      <div style="display:flex;gap:6px;margin-top:10px"><button class="mbtn lg" style="flex:1" data-act="end-focus">结束会话…</button><button class="mbtn lg">+10 分钟</button></div></div>
+      <div class="sec" style="display:flex;align-items:center;gap:10px"><span class="tab sb" style="font-size:17px">${d(TOTAL)}</span><span class="f12 t2">今天已记录</span><span style="margin-left:auto;width:120px">${ribbon({ from: 480, to: 1080, h: 8, gaps: false })}</span></div>` + statusFoot();
+  } else {
+    body += todayBlock(kind);
+    if (kind !== 'morning') body += categoryBlock(opt.expanded) + limitBlock();
+    body += focusBlock(opt.dur || 45) + statusFoot();
+  }
+  return `<div class="pop m ${opt.static ? 'static' : ''}" data-pop="${kind}" style="${opt.style || ''}">${body}</div>`;
+}
+
+/* ---- Flyouts: one structure (header, chart, rows, action) for all six ---- */
+function flyout(kind) {
+  if (kind.startsWith('cat:')) {
+    const id = kind.slice(4), c = T.CAT[id], min = T.today.byCat[id];
+    const byHour = T.hourByCat.map((h) => ({ [id]: h[id] || 0 }));
+    const apps = T.appRows.filter((a) => a.cat === id).slice(0, 5);
+    const yMin = T.ySame.byCat[id];
+    return `<div class="fh">${dot(id)}<span class="ttl">${esc(c.name)}</span><span class="val">${d(min)} · ${pct(min, TOTAL)}%</span></div>
+      <div class="sub">每小时分钟数 · 今天 00:00–24:00</div>
+      <div style="margin-top:8px">${hourBars(byHour, { color: cvar(id) })}</div>
+      <div class="div"></div>
+      <div style="display:grid;gap:6px">${apps.map((a) => `<div style="display:grid;grid-template-columns:16px minmax(0,1fr) 70px 44px;gap:8px;align-items:center" class="f12">${tile(a.mono, a.tint, 'sm')}<span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(a.label)}</span><span class="meter"><i style="width:${(a.min / apps[0].min) * 100}%;background:${cvar(id)}"></i></span><span class="tab t2" style="text-align:right">${d(a.min)}</span></div>`).join('')}</div>
+      <div class="div"></div>
+      <div class="kv"><span class="t2">比昨天同时段</span><span>${F.signed(min - yMin)}</span></div>
+      <div class="foot-act">${ic('arrowR', 's')}在活动中查看<span class="kbd-m">点按 · ⏎</span></div>`;
+  }
+  if (kind === 'score') {
+    const rows = T.catRows.map((c) => ({ ...c, pts: T.points(c.id) })).sort((a, b) => b.min * b.pts - a.min * a.pts);
+    return `<div class="fh"><span class="ttl">评分构成</span><span class="val">${T.today.pulse} 分 · 比昨天 ${T.today.pulse - T.yesterday.pulse}</span></div>
+      <div class="sub">每分钟按分类的投入程度计分，全天取平均。</div>
+      <div style="display:grid;gap:2px;margin-top:10px">${rows.map((r) => `<div class="brow">${dot(r.id)}<span>${esc(r.name)}</span><span class="b"><i style="width:${(r.min / TOTAL) * 100}%;background:${cvar(r.id)}"></i></span><span class="r">${r.pts}</span><span class="r">${d(r.min)}</span></div>`).join('')}</div>
+      <div class="div"></div><div class="kv"><span class="t2">连续达标（≥ 70）</span><span>${T.streak} 天</span></div>
+      <div class="foot-act">${ic('arrowR', 's')}在趋势中查看<span class="kbd-m">点按 · ⏎</span></div>`;
+  }
+  if (kind === 'compare') {
+    const bar = (v, max, col) => `<span class="meter" style="height:7px"><i style="width:${(v / max) * 100}%;background:${col}"></i></span>`;
+    const max = Math.max(TOTAL, T.ySame.total);
+    return `<div class="fh"><span class="ttl">和昨天同一时刻比</span><span class="val">截至 16:40</span></div>
+      <div style="display:grid;grid-template-columns:52px minmax(0,1fr) 60px;gap:8px 10px;align-items:center;margin-top:12px" class="f12">
+        <span class="t2">已记录</span><span style="display:grid;gap:3px">${bar(TOTAL, max, 'var(--m-text)')}${bar(T.ySame.total, max, 'var(--m-text-3)')}</span><span class="tab" style="text-align:right">${F.signed(cmpTotal)}</span>
+        <span class="t2">投入</span><span style="display:grid;gap:3px">${bar(ENG, max, 'var(--m-accent)')}${bar(T.ySame.engaged, max, 'color-mix(in srgb, var(--m-accent) 40%, transparent)')}</span><span class="tab" style="text-align:right">${F.signed(cmpEng)}</span></div>
+      <div class="mini-legend"><span><i style="background:var(--m-text)"></i>今天 ${d(TOTAL)}</span><span><i style="background:var(--m-text-3)"></i>昨天同时段 ${d(T.ySame.total)}</span></div>
+      <div class="div"></div><p class="f11 t2" style="margin:0;line-height:1.5">昨天只算到 16:40，所以早上不会因为“还没过完”显得落后。时长多少不评判好坏。</p>`;
+  }
+  if (kind === 'hourly') {
+    return `<div class="fh"><span class="ttl">24 小时分布</span><span class="val"><span class="segm" style="transform:scale(.9);transform-origin:right"><button class="on">今天</button><button>近 7 天</button></span></span></div>
+      <div class="sub">每小时的分钟数，按分类叠加</div>
+      <div style="margin-top:8px">${hourBars(T.hourByCat, { w: 272, h: 110 })}</div>
+      <div class="mini-legend">${T.catRows.slice(0, 5).map((c) => `<span><i style="background:${cvar(c.id)}"></i>${esc(c.name)}</span>`).join('')}</div>
+      <div class="foot-act">${ic('arrowR', 's')}打开今天<span class="kbd-m">点按 · ⏎</span></div>`;
+  }
+  if (kind === 'limits') {
+    return `<div class="fh"><span class="ttl">今日限额</span><span class="val">3 项</span></div>
+      <div style="display:grid;gap:10px;margin-top:12px">${T.BUDGETS.map((b) => {
+        const left = b.limit - b.used, warn = left <= b.limit * 0.2;
+        return `<div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px;font-size:12px"><span style="display:flex;gap:6px;align-items:center">${dot(b.cat)}${esc(T.CAT[b.cat].name)}</span><span class="tab ${warn ? '' : 't2'}" style="${warn ? 'color:var(--m-amber);font-weight:600' : ''}">${b.used} / ${b.limit} 分钟</span><span class="meter" style="grid-column:1/-1"><i style="width:${(b.used / b.limit) * 100}%;background:${warn ? 'var(--m-amber)' : cvar(b.cat)}"></i></span></div>`;
+      }).join('')}</div>
+      <div class="div"></div><p class="f11 t2" style="margin:0;line-height:1.5">剩 20% 时提醒一次，到上限再提醒一次。限额只提醒，不会拦截。</p>
+      <div class="foot-act">${ic('arrowR', 's')}编辑限额<span class="kbd-m">点按 · ⏎</span></div>`;
+  }
+  if (kind === 'streak') {
+    return `<div class="fh"><span class="ttl">连续达标</span><span class="val">${T.streak} 天</span></div>`;
+  }
+  return '';
+}
+
+/* ---- Hover intent with a safe triangle toward the flyout ---- */
+function wireFlyouts(scope, { pop, fly, side = 'left', gap = 8, onRoute, showTriangle } = {}) {
+  let timer = null, hideTimer = null, current = null, lastPt = null, anchorEl = null;
+  const place = (el) => {
+    const pr = pop.getBoundingClientRect(), sr = scope.getBoundingClientRect(), er = el.getBoundingClientRect();
+    const s = sr.width / scope.offsetWidth || 1;
+    const top = (er.top - sr.top) / s - 14;
+    const left = side === 'left' ? (pr.left - sr.left) / s - gap - 300 : (pr.right - sr.left) / s + gap;
+    const maxTop = scope.offsetHeight - fly.offsetHeight - 8;
+    fly.style.top = Math.max(34, Math.min(maxTop, top)) + 'px';
+    fly.style.left = left + 'px';
+  };
+  const show = (el) => {
+    const kind = el.dataset.fly;
+    if (current !== kind) { fly.innerHTML = flyout(kind); current = kind; }
+    $$('.hot', pop).forEach((n) => n.classList.remove('hot'));
+    el.classList.add('hot'); anchorEl = el;
+    place(el);
+    fly.classList.add('show');
+  };
+  const hide = () => { fly.classList.remove('show'); $$('.hot', pop).forEach((n) => n.classList.remove('hot')); current = null; anchorEl = null; if (showTriangle) showTriangle(null); };
+  // Is the pointer heading into the flyout? (triangle: last point -> flyout's near corners)
+  const inTriangle = (p) => {
+    if (!lastPt || !fly.classList.contains('show')) return false;
+    const fr = fly.getBoundingClientRect();
+    const ax = side === 'left' ? fr.right : fr.left;
+    const A = lastPt, B = { x: ax, y: fr.top }, C = { x: ax, y: fr.bottom };
+    const sign = (p1, p2, p3) => (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
+    const d1 = sign(p, A, B), d2 = sign(p, B, C), d3 = sign(p, C, A);
+    const neg = d1 < 0 || d2 < 0 || d3 < 0, pos = d1 > 0 || d2 > 0 || d3 > 0;
+    return !(neg && pos);
+  };
+  pop.addEventListener('pointermove', (e) => {
+    const p = { x: e.clientX, y: e.clientY };
+    const el = e.target.closest('[data-fly]');
+    if (showTriangle && fly.classList.contains('show')) showTriangle(lastPt, fly.getBoundingClientRect(), side);
+    if (el && el !== anchorEl) {
+      clearTimeout(timer); clearTimeout(hideTimer);
+      const heading = inTriangle(p);
+      timer = setTimeout(() => show(el), heading ? 320 : fly.classList.contains('show') ? 60 : 150);
+    } else if (!el) {
+      clearTimeout(timer);
+      if (fly.classList.contains('show') && !inTriangle(p)) { clearTimeout(hideTimer); hideTimer = setTimeout(hide, 250); }
+    } else { clearTimeout(hideTimer); }
+    if (!inTriangle(p)) lastPt = p;
+  });
+  pop.addEventListener('pointerleave', (e) => {
+    clearTimeout(timer);
+    const p = { x: e.clientX, y: e.clientY };
+    if (!inTriangle(p)) { clearTimeout(hideTimer); hideTimer = setTimeout(hide, 250); }
+  });
+  fly.onpointerenter = () => { clearTimeout(hideTimer); clearTimeout(timer); };
+  fly.onpointerleave = () => { hideTimer = setTimeout(hide, 250); };
+  fly.onclick = () => { const k = current; hide(); if (onRoute && k) onRoute(k); };
+  // Keyboard: arrows move between rows, right opens, left closes, return routes.
+  pop.addEventListener('keydown', (e) => {
+    const rows = $$('[data-fly]', pop).filter((n) => n.tabIndex >= 0 || n.tagName === 'BUTTON');
+    const i = rows.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown' && i >= 0) { rows[Math.min(rows.length - 1, i + 1)].focus(); e.preventDefault(); }
+    if (e.key === 'ArrowUp' && i >= 0) { rows[Math.max(0, i - 1)].focus(); e.preventDefault(); }
+    if (e.key === 'ArrowRight' && i >= 0) { show(rows[i]); e.preventDefault(); }
+    if (e.key === 'ArrowLeft' || e.key === 'Escape') { hide(); }
+  });
+  return { hide };
+}
+
+/* A · main window: sidebar, toolbar and the five pages. */
+
+const PAGES = [
+  { id: 'today', name: '今天', icon: 'sun' },
+  { id: 'activity', name: '活动', icon: 'list' },
+  { id: 'trends', name: '趋势', icon: 'chart' },
+  { id: 'focus', name: '专注与限额', icon: 'scope', group: '安排时间' },
+  { id: 'rules', name: '分类与规则', icon: 'tag', badge: T.INBOX.length },
+];
+
+function sidebar(page) {
+  let nav = '', grp = null;
+  PAGES.forEach((p) => {
+    if (p.group && p.group !== grp) { nav += `</nav><div class="grp">${p.group}</div><nav>`; grp = p.group; }
+    nav += `<button class="${p.id === page ? 'on' : ''}" data-page="${p.id}">${ic(p.icon)}${p.name}${p.badge ? `<span class="badge">${p.badge}</span>` : ''}</button>`;
+  });
+  return `<aside class="side"><div class="lights"><i></i><i></i><i></i></div>
+    <div style="display:flex;align-items:center;gap:7px;padding:0 18px 8px;font-weight:600;font-size:13px">${ic('hourglass')}TimeSink</div>
+    <nav>${nav}</nav>
+    <div class="side-foot"><div class="row"><span class="status-dot live-pulse"></span><span class="sb">正在记录</span><span class="t2" style="margin-left:auto">自 08:42</span></div>
+      <div class="row t2">${ic('gear', 's')}设置…<span class="t3" style="margin-left:auto">⌘,</span></div></div></aside>`;
+}
+
+function toolbar(page) {
+  const nav = `<span class="tgroup"><button class="tbtn" aria-label="前一天">${ic('chevL')}</button><button class="tbtn" aria-label="后一天" style="opacity:.35">${ic('chevR')}</button></span>`;
+  switch (page) {
+    case 'today': return `<div class="tb"><div class="ttl"><b>今天</b><span>${T.TODAY.long}</span></div><span class="grow"></span>
+      <button class="tbtn bordered" data-act="start-focus-menu">${ic('scope', 's')}<span>开始专注</span>${ic('chevD', 'xs')}</button><button class="tbtn" aria-label="搜索">${ic('search')}</button></div>`;
+    case 'activity': return `<div class="tb"><div class="ttl"><b>活动</b><span>今天 · ${d(TOTAL)} · ${T.spans.length} 段</span></div><span class="grow"></span>${nav}
+      <button class="tbtn bordered">今天${ic('chevD', 'xs')}</button><button class="tbtn">${ic('filter')}<span>所有分类</span></button>
+      <span class="search">${ic('search', 's')}搜索应用、网址、标题</span><button class="tbtn" aria-label="检查器" style="color:var(--m-accent)">${ic('inspector')}</button></div>`;
+    case 'trends': return `<div class="tb"><div class="ttl"><b>趋势</b><span>9月18日 – 24日 · 与前 7 天比较</span></div><span class="grow"></span>${nav}<button class="tbtn bordered">近 7 天${ic('chevD', 'xs')}</button></div>`;
+    case 'focus': return `<div class="tb"><div class="ttl"><b>专注与限额</b><span>今天 2 次专注 · ${d(T.focusMinToday)}</span></div><span class="grow"></span></div>`;
+    case 'rules': return `<div class="tb"><div class="ttl"><b>分类与规则</b><span>${T.INBOX.length} 项待分类</span></div><span class="grow"></span><span class="search">${ic('search', 's')}搜索规则</span></div>`;
+  }
+  return '';
+}
+
+/* ---------- Today ---------- */
+function pageToday() {
+  const metric = (lbl, val, sub, size = 22, extra = '') => `<div class="metric" style="padding:0 18px;border-left:.5px solid var(--m-sep-2);${extra}"><div class="lbl">${lbl}</div><div class="val" style="font-size:${size}px;margin-top:3px">${val}</div><div class="sub">${sub}</div></div>`;
+  const pieces = T.pieces.slice().reverse();
+  const focusAt = (sp) => T.FOCUS_TODAY.find((f) => f.start < sp.end && f.end > sp.start);
+  const evAt = (sp) => T.CALENDAR_TODAY.find((e) => e.start < sp.end && e.end > sp.start && e.start < T.NOW);
+  const rows = pieces.slice(0, 9).map((p) => {
+    if (p.gap) return `<div class="list-row gap-row" style="grid-template-columns:78px 22px minmax(0,1fr) auto"><span class="f12 tab">${F.clock(p.start)}<br>${F.clock(p.end)}</span><span class="t3">${ic('moon', 's')}</span><span class="f13">未记录<span class="f12 t3"> · 离开电脑，不计入总时长</span></span><span class="f12 tab">${d(p.min)}</span></div>`;
+    const fo = focusAt(p), ev = evAt(p);
+    return `<div class="list-row" style="grid-template-columns:78px 22px minmax(0,1fr) auto auto 10px" data-act="open-activity" data-cat="${p.cat}">
+      <span class="f12 tab t2">${F.clock(p.start)}<br><span class="t3">${p.live ? '现在' : F.clock(p.end)}</span></span>${spanTile(p)}
+      <span style="min-width:0"><span class="f13" style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.label)}${fo ? ` <span class="cat-chip" style="background:var(--m-accent-soft);color:var(--m-accent-ink)">${ic('scope', 'xs')}专注 ${fo.planned} 分钟</span>` : ''}${ev ? ` <span class="cat-chip">${ic('cal', 'xs')}${esc(ev.title.split(' · ')[0])}</span>` : ''}</span>
+      <span class="f12 t2" style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.doc ? p.doc + ' — ' + p.title : p.title)}</span></span>
+      ${catChip(p.cat)}<span class="f13 tab" style="text-align:right;min-width:52px">${d(p.min)}</span><span class="t3">${ic('chevR', 'xs')}</span></div>`;
+  }).join('');
+  // Vessel: capacity 10 h, 1 h lines, layers bottom-up by size, linked to the list.
+  const cap = 600, vh = 230;
+  let layers = '', acc = 0;
+  T.catRows.forEach((c) => { const hh = (c.min / cap) * vh; layers += `<i data-cat="${c.id}" style="position:absolute;left:0;right:0;bottom:${(acc / cap) * vh}px;height:${hh}px;background:${cvar(c.id)}"></i>`; acc += c.min; });
+  let lines = ''; for (let hr = 1; hr < 10; hr++) lines += `<span style="position:absolute;left:0;right:0;bottom:${(hr * 60 / cap) * vh}px;border-top:.5px solid ${hr % 2 ? 'rgba(128,128,128,.14)' : 'rgba(128,128,128,.3)'}"></span>`;
+  const vessel = `<div style="display:flex;gap:14px;align-items:flex-end">
+    <div style="position:relative;width:18px;height:${vh}px" class="f11 t3 tab">${[0, 2, 4, 6, 8, 10].map((hr) => `<span style="position:absolute;right:0;bottom:${(hr * 60 / cap) * vh - 6}px">${hr}</span>`).join('')}</div>
+    <div class="vessel" style="position:relative;width:58px;height:${vh}px;border-radius:0 0 24px 24px;background:var(--m-fill);overflow:hidden;box-shadow:inset 0 0 0 .5px var(--m-sep)">${layers}${lines}</div>
+    <div style="flex:1;display:grid;gap:1px" data-vessel-list>${T.catRows.map((c) => `<div class="crow" data-cat="${c.id}" style="grid-template-columns:10px minmax(0,1fr) auto;height:24px">${dot(c.id)}<span class="nm f12">${esc(c.name)}</span><span class="v f12">${d(c.min)}</span></div>`).join('')}</div></div>
+    <div class="f11 t3" style="margin-top:8px">刻度：小时 · 容器按 10 小时绘制</div>`;
+  const limits = T.BUDGETS.map((b) => {
+    const left = b.limit - b.used, warn = left <= b.limit * 0.2;
+    return `<div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px" class="f12"><span style="display:flex;gap:6px;align-items:center">${dot(b.cat)}${esc(T.CAT[b.cat].name)}</span><span class="tab ${warn ? '' : 't2'}" style="${warn ? 'color:var(--m-amber);font-weight:600' : ''}">${b.used ? `还剩 ${left} 分钟` : `0 / ${b.limit} 分钟`}</span><span class="meter" style="grid-column:1/-1"><i style="width:${(b.used / b.limit) * 100}%;background:${warn ? 'var(--m-amber)' : cvar(b.cat)}"></i></span></div>`;
+  }).join('');
+  return `<div class="content" style="display:grid;gap:16px;align-content:start">
+    <div class="panel" style="padding:18px 18px 16px">
+      <div style="display:flex;align-items:flex-start">
+        <div class="metric" style="padding-right:22px"><div class="lbl">已记录</div><div class="val" style="font-size:34px;margin-top:2px" data-roll>${d(TOTAL)}</div><div class="sub">08:42 开始 · <span class="delta-up">比昨天同时段 ${F.signed(cmpTotal)}</span></div></div>
+        ${metric('投入', d(ENG), `占已记录 ${pct(ENG, TOTAL)}% · 按分类估算`)}
+        ${metric('专注会话', d(T.focusMinToday), '2 次，都已完成')}
+        ${metric('评分', `${T.today.pulse}<span class="f12 t2" style="font-weight:400;margin-left:4px">/ 100</span>`, `连续 ${T.streak} 天 ≥ 70`)}
+      </div>
+      <div style="margin-top:18px">${ribbon({ from: 480, to: 1200, h: 26, focus: true, events: true })}${axis(480, 1200, 60, (m) => (m / 60) + ':00')}</div>
+      <div class="mini-legend"><span><i style="background:var(--m-accent);height:3px"></i>专注会话</span><span><i style="border:1px solid var(--m-text-3);background:none"></i>日程</span><span><i style="background-image:var(--m-hatch)"></i>未记录</span><span><i style="background:var(--m-text);width:2px"></i>现在 16:40</span></div>
+    </div>
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start">
+      <div class="panel"><div class="ph" style="padding:14px 14px 0"><h4>一天的片段</h4><span class="f12 t3">最近的在前 · 点按在活动中查看</span><a class="aux" style="margin-left:auto" data-act="open-activity">全部活动</a></div>
+        <div style="margin-top:6px">${rows}</div>
+        <button class="more-row" style="margin:0;padding:0 14px;height:38px;width:100%;border-top:.5px solid var(--m-sep-2);border-radius:0 0 12px 12px">${ic('chevD', 'xs')}更早的 ${pieces.length - 9} 段 · 08:42 起</button></div>
+      <div style="display:grid;gap:16px">
+        <div class="panel pad"><div class="ph"><h4>时间的去向</h4><span class="aux">${T.catRows.length} 个分类</span></div>${vessel}</div>
+        <div class="panel pad"><div class="ph"><h4>今日限额</h4><a class="aux" data-act="open-focus">编辑</a></div><div style="display:grid;gap:12px">${limits}</div><div class="f11 t3" style="margin-top:10px">限额只提醒，不会拦截。</div></div>
+        <div class="panel pad" style="display:grid;grid-template-columns:22px minmax(0,1fr);gap:4px 10px">
+          <span style="color:var(--m-amber)">${ic('tag')}</span><div><div class="sb f13">1 项今天还没分类</div><div class="f12 t2" style="margin-top:2px">excalidraw.com · 16 分钟。分好以后，以后自动归类。</div>
+          <button class="mbtn" style="margin-top:8px" data-act="open-rules">去分类</button></div></div>
+      </div></div></div>`;
+}
+
+/* ---------- Activity: list · timeline · inspector ---------- */
+const actState = { sel: 'sp14', saved: false };
+function pageActivity() {
+  const groups = T.catRows.map((c) => {
+    const rows = {};
+    T.spans.filter((s) => s.cat === c.id).forEach((s) => {
+      const k = s.site || s.app + (s.doc ? '/' + s.doc : '');
+      rows[k] = rows[k] || { key: k, label: s.site || s.appName + (s.doc ? ' — ' + s.doc.replace('~/Projects/', '') : ''), via: s.site ? 'Chrome' : '', mono: s.mono, tint: s.tint, min: 0, spans: [], meet: false };
+      rows[k].min += s.min; rows[k].spans.push(s);
+      if (T.CALENDAR_TODAY.some((e) => e.start < s.end && e.end > s.start && e.start < T.NOW)) rows[k].meet = true;
+    });
+    return { ...c, rows: Object.values(rows).sort((a, b) => b.min - a.min) };
+  });
+  const selSpan = T.spans.find((s) => s.id === actState.sel);
+  const list = groups.map((g) => `<div style="border-top:.5px solid var(--m-sep-2)">
+      <div style="display:grid;grid-template-columns:12px 10px minmax(0,1fr) 120px 56px;gap:8px;align-items:center;height:34px;padding:0 14px" class="f13">
+        <span class="t3">${ic('chevD', 'xs')}</span>${dot(g.id)}<span class="sb">${esc(g.name)}</span><span class="meter"><i style="width:${(g.min / TOTAL) * 100}%;background:${cvar(g.id)}"></i></span><span class="tab" style="text-align:right">${d(g.min)}</span></div>
+      ${g.rows.map((r) => {
+        const on = r.spans.some((s) => s.id === actState.sel);
+        return `<div class="list-row ${on ? 'sel' : ''}" data-act="select-span" data-span="${r.spans[0].id}" style="grid-template-columns:22px minmax(0,1fr) auto 56px;min-height:32px;padding-left:44px;border-top:0">
+          ${tile(r.mono, r.tint, 'sm')}<span class="f13" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.label)}${r.via ? `<span class="t3 f12"> · ${r.via}</span>` : ''}</span>
+          <span>${r.meet ? `<span class="cat-chip" style="background:var(--m-accent-soft);color:var(--m-accent-ink)">${ic('cal', 'xs')}会议</span>` : ''}${r.spans.length > 1 ? `<span class="f11 t3">${r.spans.length} 段</span>` : ''}</span>
+          <span class="f13 tab t2" style="text-align:right">${d(r.min)}</span></div>`;
+      }).join('')}</div>`).join('');
+  // Timeline 08:00 - 17:00, 50pt per hour
+  const H = 50, t0 = 480, t1 = 1050;
+  const y = (m) => ((m - t0) / 60) * H;
+  let grid = '';
+  for (let m = t0; m <= t1; m += 60) grid += `<div style="position:absolute;left:0;right:0;top:${y(m)}px;display:flex;gap:6px;align-items:flex-start"><span class="f11 t3 tab" style="width:34px;margin-top:-7px">${String(m / 60).padStart(2, '0')}:00</span><span style="flex:1;border-top:.5px solid var(--m-sep-2)"></span></div>`;
+  const blocks = T.spans.map((s) => `<button data-act="select-span" data-span="${s.id}" title="${esc(s.label)} ${F.clock(s.start)}–${F.clock(s.end)}" style="position:absolute;left:40px;width:calc(66% - 40px);top:${y(s.start)}px;height:${Math.max(2, y(s.end) - y(s.start) - 1)}px;border-radius:4px;background:${cvar(s.cat)};opacity:${s.id === actState.sel ? 1 : .72};box-shadow:${s.id === actState.sel ? '0 0 0 2px var(--m-text)' : 'none'};font-size:10px;color:#fff;text-align:left;padding:2px 5px;overflow:hidden;white-space:nowrap">${y(s.end) - y(s.start) > 16 ? esc(s.label) : ''}</button>`).join('');
+  const events = T.CALENDAR_TODAY.filter((e) => e.start < t1).map((e) => `<div style="position:absolute;right:4px;width:30%;top:${y(e.start)}px;height:${y(e.end) - y(e.start)}px;border-radius:4px;border:1px solid var(--m-text-3);background:var(--m-fill);font-size:10px;padding:2px 4px;overflow:hidden" class="t2">${esc(e.title.split(' · ')[0])}</div>`).join('');
+  const focus = T.FOCUS_TODAY.map((f) => `<div style="position:absolute;left:38px;width:calc(66% - 36px);top:${y(f.start)}px;height:${y(f.end) - y(f.start)}px;border-radius:5px;border:1.5px dashed var(--m-accent);pointer-events:none"></div>`).join('');
+  const now = `<div style="position:absolute;left:34px;right:0;top:${y(T.NOW)}px;border-top:1.5px solid var(--m-red)"><span style="position:absolute;left:-4px;top:-4px;width:7px;height:7px;border-radius:50%;background:var(--m-red)"></span></div>`;
+  const s = selSpan;
+  const unsorted = s.cat === 'uncategorized' && !actState.saved;
+  const insp = `<div style="display:grid;gap:14px">
+      <div style="display:flex;gap:10px;align-items:center">${spanTile(s, 'lg')}<div style="min-width:0"><div class="sb f13">${esc(s.label)}</div><div class="f12 t2 tab">${s.site ? 'Chrome · ' : ''}${F.clock(s.start)}–${F.clock(s.end)} · ${dz(s.min)}</div></div></div>
+      <div class="kv f12" style="display:grid;grid-template-columns:44px minmax(0,1fr);gap:6px 10px"><span class="t2">标题</span><span>${esc(s.title)}</span>${s.site ? `<span class="t2">网址</span><span style="font-family:var(--mono);font-size:11px;word-break:break-all">${esc(s.site)}/#room=8f2c…</span>` : ''}<span class="t2">分类</span><span>${actState.saved ? catChip('writing') : catChip(s.cat)}</span></div>
+      <div style="padding:10px;border-radius:9px;background:${unsorted ? 'var(--m-amber-soft)' : 'var(--m-fill)'}" class="f12"><div class="sb" style="margin-bottom:3px">为什么是这个分类</div><div class="t2">${actState.saved ? '你的网站规则 · excalidraw.com → 写作创作（刚刚添加）' : esc(s.why)}</div></div>
+      ${unsorted ? `<div style="display:grid;gap:8px"><div class="sb f12">改为</div>
+        <div style="display:flex;gap:8px;align-items:center"><span class="popup">${dot('writing')}写作创作${ic('updown')}</span><span class="f11 t3">模型建议</span></div>
+        <div class="sb f12" style="margin-top:4px">应用到</div>
+        <div class="radio"><span class="o"></span><span>只改这一段<span class="t3" style="display:block">16 分钟</span></span></div>
+        <div class="radio on"><span class="o"></span><span>所有 excalidraw.com<span class="t3" style="display:block">近 30 天 9 段 · 1h 5m，以后自动归类</span></span></div>
+        <div class="radio"><span class="o"></span><span>标题包含「线框」<span class="t3" style="display:block">3 段 · 41 分钟</span></span></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px"><button class="mbtn">取消</button><button class="mbtn primary" data-act="save-reclass">保存并重新归类</button></div></div>`
+        : `<button class="mbtn" style="justify-self:start">${ic('tag', 's')}更改分类…</button>`}
+      <div><div class="sb f12" style="display:flex;gap:6px;align-items:center">屏幕回看<span class="t3" style="font-weight:400;margin-left:auto">只在本机 · 保存 7 天</span></div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px">${['15:12', '15:19', '15:26'].map((t, i) => `<div style="aspect-ratio:16/10;border-radius:6px;background:linear-gradient(180deg,#F6F6F8 0 18%,#FFFFFF 18%);box-shadow:inset 0 0 0 .5px var(--m-sep);position:relative;overflow:hidden">
+          <span style="position:absolute;left:14%;top:32%;width:${40 + i * 12}%;height:26%;border:1.5px solid #6965DB;border-radius:4px"></span><span style="position:absolute;left:60%;top:${48 - i * 6}%;width:22%;height:18%;border:1.5px solid #8C8C96;border-radius:50%"></span>
+          <span class="f11 tab" style="position:absolute;left:4px;bottom:3px;color:#555;font-size:9.5px">${t}</span></div>`).join('')}</div></div>
+    </div>`;
+  return `<div class="content flush">
+    <div style="flex:1;min-width:0;overflow:auto;background:var(--m-win)">
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px" class="f12 t2"><span><b class="tab" style="color:var(--m-text)">${d(TOTAL)}</b> · ${T.spans.length} 段 · ${T.catRows.length} 个分类</span><span style="margin-left:auto" class="segm"><button class="on">按分类</button><button>按应用</button><button>按时间</button></span></div>
+      ${list}</div>
+    <div style="width:230px;flex-shrink:0;border-left:.5px solid var(--m-sep-2);background:var(--m-win);display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:6px;padding:10px 10px 8px" class="f12"><span class="t2">全天时间轴</span><button class="mbtn" style="margin-left:auto;height:20px">现在</button><span class="segm"><button>${ic('minus', 'xs')}</button><button>${ic('plus', 'xs')}</button></span></div>
+      <div style="flex:1;overflow:auto;padding:8px 8px 0 8px"><div style="position:relative;height:${y(t1) + 10}px;margin-top:6px">${grid}${focus}${blocks}${events}${now}</div></div></div>
+    <div style="width:272px;flex-shrink:0;border-left:.5px solid var(--m-sep-2);background:var(--m-win);padding:16px;overflow:auto" data-inspector>${insp}</div>
+    <div class="m-toast" data-toast><span>已把 excalidraw.com 归为「写作创作」· 9 段</span><button data-act="undo">撤销</button></div>
+  </div>`;
+}
+
+/* ---------- Trends ---------- */
+function pageTrends() {
+  const W = T.week, P = T.prevWeekSum, S = T.weekSum;
+  const tile_ = (lbl, val, sub, good) => `<div class="panel pad metric"><div class="lbl">${lbl}</div><div class="val" style="font-size:24px;margin-top:4px">${val}</div><div class="sub ${good === true ? 'delta-up' : ''}">${sub}</div></div>`;
+  // Stacked daily bars (hours)
+  const w = 430, h = 200, pad = { l: 26, r: 6, t: 8, b: 22 }, iw = w - pad.l - pad.r, ih = h - pad.t - pad.b, maxH = 12;
+  const bw = iw / 7;
+  let bars = `<svg class="chart" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`;
+  [0, 4, 8, 12].forEach((v) => { const yy = pad.t + ih - (v / maxH) * ih; bars += `<line class="grid" x1="${pad.l}" x2="${w - pad.r}" y1="${yy}" y2="${yy}"/><text x="${pad.l - 6}" y="${yy + 3}" text-anchor="end">${v}h</text>`; });
+  W.forEach((day, i) => {
+    let yy = pad.t + ih;
+    T.CATEGORIES.forEach((c) => { const v = day.byCat[c.id] / 60; if (!v) return; const bh = (v / maxH) * ih; yy -= bh; bars += `<rect x="${pad.l + i * bw + 8}" y="${yy}" width="${bw - 16}" height="${bh}" fill="${cvar(c.id)}"><title>${day.label} ${c.name} ${d(day.byCat[c.id])}</title></rect>`; });
+    bars += `<text x="${pad.l + i * bw + bw / 2}" y="${h - 6}" text-anchor="middle" style="${day.isToday ? 'font-weight:600;fill:var(--m-text)' : ''}">${day.isToday ? '今天' : day.wd}</text>`;
+  });
+  bars += `<line class="base" x1="${pad.l}" x2="${w - pad.r}" y1="${pad.t + ih}" y2="${pad.t + ih}"/></svg>`;
+  const ranking = T.CATEGORIES.map((c) => ({ ...c, min: S.byCat[c.id], prev: P.byCat[c.id] })).filter((c) => c.min).sort((a, b) => b.min - a.min).slice(0, 7);
+  const rank = ranking.map((c) => `<div style="display:grid;grid-template-columns:10px 64px minmax(0,1fr) 60px 72px;gap:8px;align-items:center;height:26px" class="f12">${dot(c.id)}<span>${esc(c.name)}</span><span class="meter"><i style="width:${(c.min / ranking[0].min) * 100}%;background:${cvar(c.id)}"></i></span><span class="tab" style="text-align:right">${d(c.min)}</span><span class="tab t3" style="text-align:right">${F.signed(c.min - c.prev, (m) => d(m))}</span></div>`).join('');
+  // Heatmap with marginals: minutes per hour, 06-24, single-hue intensity
+  const hrs = [];
+  for (let hh = 6; hh < 24; hh++) hrs.push(hh);
+  const days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+  const maxC = Math.max(...T.heat.flat().map((c) => c.avg));
+  const rowSum = T.heat.map((r) => r.reduce((s, c) => s + c.avg, 0));
+  const colSum = hrs.map((hh) => T.heat.reduce((s, r) => s + r[hh].avg, 0) / 7);
+  const cs = 22;
+  let hm = `<div style="display:grid;grid-template-columns:34px repeat(${hrs.length}, ${cs}px) 12px 96px;gap:3px;align-items:center" class="f11">`;
+  T.heat.forEach((row, di) => {
+    hm += `<span class="t2">${days[di]}</span>`;
+    hrs.forEach((hh) => { const c = row[hh]; const a = c.avg / maxC; hm += `<span title="${days[di]} ${hh}:00 · 平均 ${Math.round(c.avg)} 分钟" style="height:${cs}px;border-radius:4px;background:${a < 0.04 ? 'var(--m-fill)' : `color-mix(in srgb, var(--m-accent) ${Math.round(12 + a * 88)}%, var(--m-panel))`};${di === 3 && hh === 14 ? 'box-shadow:0 0 0 2px var(--m-text)' : ''}"></span>`; });
+    hm += `<span></span><span style="display:flex;gap:6px;align-items:center"><span class="meter" style="flex:1;height:6px"><i style="width:${(rowSum[di] / Math.max(...rowSum)) * 100}%;background:var(--m-text-3)"></i></span><span class="tab t3" style="width:48px;text-align:right;white-space:nowrap">${d(Math.round(rowSum[di]))}</span></span>`;
+  });
+  hm += `<span></span>` + hrs.map((hh, i) => `<span style="height:34px;display:flex;flex-direction:column;justify-content:flex-start;align-items:center;gap:3px"><span style="width:${cs - 6}px;height:${Math.max(2, (colSum[i] / Math.max(...colSum)) * 22)}px;background:var(--m-text-3);border-radius:2px;margin-top:${22 - Math.max(2, (colSum[i] / Math.max(...colSum)) * 22)}px"></span>${hh % 3 === 0 ? `<span class="tab t3">${hh}</span>` : ''}</span>`).join('') + '</div>';
+  const top = T.appRows.slice(0, 8);
+  return `<div class="content" style="display:grid;gap:16px;align-content:start">
+    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px">
+      ${tile_('总时长', d(S.total), `比前 7 天 ${F.signed(S.total - P.total)}`)}
+      ${tile_('日均', d(S.avg), `前 7 天 ${d(P.avg)}`)}
+      ${tile_('投入', d(S.engaged), `占 ${pct(S.engaged, S.total)}% · 前 7 天 ${pct(P.engaged, P.total)}%`, true)}
+      ${tile_('评分', `${S.pulse}`, `前 7 天 ${P.pulse} · 连续 ${T.streak} 天达标`, true)}</div>
+    <div style="display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:16px">
+      <div class="panel pad"><div class="ph"><h4>每天的分类时长</h4><span class="aux">小时</span></div>${bars}</div>
+      <div class="panel pad"><div class="ph"><h4>分类</h4><span class="aux">近 7 天 · 与前 7 天差</span></div>${rank}</div></div>
+    <div class="panel pad"><div class="ph"><h4>什么时候在用电脑</h4><span class="aux">近 30 天 · 每格为该星期该小时的平均分钟数</span><span class="segm" style="margin-left:12px"><button class="on">时长</button><button>评分</button></span></div>
+      <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap"><div style="overflow:auto">${hm}</div>
+      <div style="flex:1;min-width:180px;padding:12px;border-radius:10px;background:var(--m-fill)" class="f12"><div class="sb f13">周四 14:00–15:00</div><div class="t2" style="margin:4px 0 8px">5 个周四平均 ${Math.round(T.heat[3][14].avg)} 分钟 · 评分 ${T.heat[3][14].score}</div>
+        <div class="kv" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px"><span>软件开发</span><span class="tab t2">38 分钟</span><span>沟通</span><span class="tab t2">9 分钟</span><span>娱乐</span><span class="tab t2">5 分钟</span></div>
+        <div class="lnk" style="margin-top:10px;display:flex;gap:4px;align-items:center">${ic('arrowR', 'xs')}查看这 5 个时段的活动</div></div></div></div>
+    <div class="panel pad"><div class="ph"><h4>应用与网站</h4><span class="aux">今天</span></div>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 28px">${top.map((a) => `<div style="display:grid;grid-template-columns:22px minmax(0,1fr) 110px 52px;gap:10px;align-items:center;height:32px" class="f13">${tile(a.mono, a.tint)}<span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(a.label)}${a.via ? `<span class="f11 t3"> · ${a.via}</span>` : ''}</span><span class="meter"><i style="width:${(a.min / top[0].min) * 100}%;background:${cvar(a.cat)}"></i></span><span class="tab t2" style="text-align:right">${d(a.min)}</span></div>`).join('')}</div></div>
+    <div class="panel f13" style="padding:12px 18px;display:flex;align-items:center;gap:8px"><span class="t3">${ic('chevR', 'xs')}</span><span class="sb">评分与连续记录</span><span class="f12 t2">近 30 天评分走势、达标日历</span></div>
+  </div>`;
+}
+
+/* ---------- Focus & limits ---------- */
+function pageFocus() {
+  const hist = T.FOCUS_HISTORY.map((f) => {
+    const day = T.days[f.day];
+    const lbl = f.day === 29 ? '今天' : f.day === 28 ? '昨天' : day.wd;
+    return `<div class="list-row" style="grid-template-columns:70px 64px minmax(0,1fr) auto;min-height:38px"><span class="f12">${lbl} <span class="t3 tab">${F.clock(f.start)}</span></span><span class="f12 tab">${f.state === 'ended' ? `${f.actual} / ${f.planned}` : f.planned} 分钟</span><span class="f12 t2">${f.blocked ? `拦下 ${f.blocked} 次` : '没有分心'}</span><span class="cat-chip" style="${f.state === 'ended' ? '' : 'background:color-mix(in srgb,var(--m-green) 14%,transparent);color:var(--m-green)'}">${f.state === 'ended' ? '提前结束' : '完成'}</span></div>`;
+  }).join('');
+  const limits = T.BUDGETS.map((b) => {
+    const left = b.limit - b.used, warn = b.used && left <= b.limit * 0.2;
+    return `<div style="display:grid;grid-template-columns:10px 72px minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:12px 0;border-top:.5px solid var(--m-sep-2)" class="f13">${dot(b.cat)}<span>${esc(T.CAT[b.cat].name)}</span>
+      <span style="display:grid;gap:4px"><span class="meter"><i style="width:${(b.used / b.limit) * 100}%;background:${warn ? 'var(--m-amber)' : cvar(b.cat)}"></i></span><span class="f11 ${warn ? '' : 't3'} tab" style="${warn ? 'color:var(--m-amber)' : ''}">今天 ${b.used} 分钟${warn ? ` · 还剩 ${left} 分钟` : ''}</span></span>
+      <span class="stepper"><button>${ic('minus', 'xs')}</button><span>${b.limit} 分钟</span><button>${ic('plus', 'xs')}</button></span><span class="switch on"></span></div>`;
+  }).join('');
+  return `<div class="content" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start">
+    <div style="display:grid;gap:16px">
+      <div class="panel" style="padding:20px">
+        <div class="ph"><h4>开始一段专注</h4><span class="aux">期间隐藏应用、拦截网站</span></div>
+        <div class="mseg lg">${[15, 25, 45, 90].map((m) => `<button class="${m === 45 ? 'on' : ''}">${m} 分钟</button>`).join('')}<button>自定义…</button></div>
+        <div style="display:flex;align-items:baseline;gap:10px;margin:18px 0 4px"><span class="tab" style="font-size:44px;font-weight:600;letter-spacing:-.03em;line-height:1">45</span><span class="f13 t2">分钟 · 16:40 → <b style="color:var(--m-text)">17:25</b> 结束</span></div>
+        <div style="display:grid;gap:10px;margin-top:16px">
+          <div style="display:flex;gap:10px;align-items:center" class="f13"><span class="switch on"></span><span style="width:84px">隐藏应用</span>${[['微', '#1FAE4B', '微信'], ['D', '#5865F2', 'Discord'], ['S', '#1B2838', 'Steam']].map(([m, t, n]) => `<span class="cat-chip" style="height:22px">${tile(m, t, 'sm')}${n}</span>`).join('')}<a class="lnk" style="margin-left:auto">编辑…</a></div>
+          <div style="display:flex;gap:10px;align-items:center" class="f13"><span class="switch on"></span><span style="width:84px">拦截网站</span>${['socialMedia', 'entertainment', 'shopping'].map((id) => catChip(id)).join('')}<a class="lnk" style="margin-left:auto">编辑…</a></div>
+        </div>
+        <p class="f12 t2" style="margin:14px 0 16px;line-height:1.5">切回被隐藏的应用时会提示你；网站在 Chrome 中拦截，需要时可以放行 5 分钟。</p>
+        <button class="mbtn primary lg" style="height:32px;padding:0 16px;font-size:13px">${ic('scope', 's')}开始 45 分钟专注</button></div>
+      <div class="panel"><div class="ph" style="padding:14px 14px 4px"><h4>本周的专注</h4><span class="aux">${T.FOCUS_HISTORY.length} 次 · 4h 8m</span></div>${hist}</div></div>
+    <div style="display:grid;gap:16px">
+      <div class="panel" style="padding:18px 20px 10px"><div class="ph"><h4>每日限额</h4><a class="aux">${ic('plus', 'xs')} 添加限额</a></div>${limits}
+        <div style="display:flex;align-items:center;gap:10px;padding:12px 0;border-top:.5px solid var(--m-sep-2)" class="f13"><span>剩余多少时提醒</span><span class="stepper" style="margin-left:auto"><button>${ic('minus', 'xs')}</button><span>20%</span><button>${ic('plus', 'xs')}</button></span></div>
+        <div class="f11 t3" style="padding:0 0 8px">限额只发提醒，不拦截任何东西；拦截只在专注会话里发生。</div></div>
+      <div class="panel" style="padding:16px 20px"><div class="ph"><h4>每日小结</h4><span class="switch on" style="margin-left:auto"></span></div><div class="f12 t2">每天 19:00 发一条通知：记录时长、投入、专注次数和评分。</div></div></div></div>`;
+}
+
+/* ---------- Categories & rules ---------- */
+const rulesState = { tab: 'inbox', accepted: new Set() };
+function pageRules() {
+  const seg = `<div class="segm" style="margin-bottom:14px">${[['inbox', `待分类 ${T.INBOX.length - rulesState.accepted.size}`], ['rules', '规则'], ['cats', '分类']].map(([k, n]) => `<button class="${rulesState.tab === k ? 'on' : ''}" data-act="rules-tab" data-tab="${k}">${n}</button>`).join('')}</div>`;
+  let body = '';
+  if (rulesState.tab === 'inbox') {
+    const total = T.INBOX.reduce((s, r) => s + r.min, 0);
+    body = `<div class="panel"><div style="display:flex;align-items:center;gap:10px;padding:14px"><div><div class="sb f13">近 30 天有 ${T.INBOX.length} 项还没有分类，合计 ${d(total)}</div><div class="f12 t2">按用时从多到少。建议只在你点接受后生效。</div></div><button class="mbtn" style="margin-left:auto" data-act="accept-all">接受全部建议</button></div>
+      ${T.INBOX.map((r, i) => {
+        const ok = rulesState.accepted.has(i);
+        return `<div class="list-row" style="grid-template-columns:22px minmax(0,1fr) 120px 150px 140px;min-height:44px;${ok ? 'opacity:.5' : ''}">${tile(r.label[0].toUpperCase(), r.kind === 'app' ? '#6C7581' : '#8B8B94', '')}<span><span class="f13">${esc(r.label)}</span><span class="f11 t3" style="display:block">${r.kind === 'app' ? '应用' : '网站'}</span></span>
+          <span style="display:grid;gap:3px"><span class="f12 tab">${d(r.min)}</span><span class="meter"><i style="width:${(r.min / T.INBOX[0].min) * 100}%;background:var(--c-uncategorized)"></i></span></span>
+          <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${catChip(r.suggest)}<span class="f11 t3">${r.from}</span></span>
+          <span style="display:flex;gap:6px;justify-content:flex-end">${ok ? `<span class="f12" style="color:var(--m-green);display:flex;gap:4px;align-items:center">${ic('check', 's')}已归类</span>` : `<button class="mbtn" data-act="accept" data-i="${i}">接受</button><span class="popup">其他${ic('updown')}</span>`}</span></div>`;
+      }).join('')}</div>`;
+  } else if (rulesState.tab === 'rules') {
+    body = `<div class="panel"><div style="display:flex;align-items:center;gap:10px;padding:14px"><div class="f12 t2">从上到下检查，先命中的规则生效。拖动调整顺序。</div><button class="mbtn" style="margin-left:auto">${ic('plus', 's')}新建规则</button></div>
+      <div class="list-row" style="grid-template-columns:16px 50px minmax(0,1fr) 110px 76px 48px 30px;min-height:28px;background:var(--m-fill)"><span></span><span class="f11 t3">类型</span><span class="f11 t3">条件</span><span class="f11 t3">归为</span><span class="f11 t3">今天命中</span><span class="f11 t3">来源</span><span></span></div>
+      ${T.RULES.map((r) => `<div class="list-row" style="grid-template-columns:16px 50px minmax(0,1fr) 110px 76px 48px 30px"><span class="t3">${ic('grip', 's')}</span><span class="cat-chip">${{ title: '标题', site: '网站', app: '应用' }[r.kind]}</span><span class="f13" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.scope ? `<span class="t2">${esc(r.scope)} · </span>` : ''}${esc(r.match)}</span>${catChip(r.cat)}<span class="f12 tab t2">${r.today ? d(r.today) : '—'}</span><span class="f11 t3">${r.source === 'user' ? '你' : '内置'}</span><span class="switch on"></span></div>`).join('')}</div>`;
+  } else {
+    body = `<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">${T.CATEGORIES.map((c) => `<div class="panel" style="padding:12px 14px;display:grid;gap:8px"><div style="display:flex;align-items:center;gap:8px"><span style="width:18px;height:18px;border-radius:5px;background:${cvar(c.id)};box-shadow:inset 0 0 0 .5px rgba(0,0,0,.2)"></span><span class="sb f13">${esc(c.name)}</span><span class="f12 t3 tab" style="margin-left:auto">${T.today.byCat[c.id] ? d(T.today.byCat[c.id]) : '—'}</span></div>
+      <div class="segm" style="display:flex">${[-2, -1, 0, 1, 2].map((v) => `<button style="flex:1;padding:0" class="${c.prod === v ? 'on' : ''}" title="${['非常分心', '分心', '中性', '投入', '非常投入'][v + 2]}">${v > 0 ? '+' + v : v}</button>`).join('')}</div><div class="f11 t3">${['非常分心', '分心', '中性', '投入', '非常投入'][c.prod + 2]}${c.prod >= 1 ? ' · 计入投入时长' : ''}</div></div>`).join('')}</div>`;
+  }
+  return `<div class="content">${seg}${body}</div>`;
+}
+
+const PAGE_FN = { today: pageToday, activity: pageActivity, trends: pageTrends, focus: pageFocus, rules: pageRules };
+function mainWindow(page = 'today', opt = {}) {
+  return `<div class="win m ${opt.static ? 'static' : ''}" data-win style="${opt.style || ''}">${sidebar(page)}<div class="main">${toolbar(page)}${PAGE_FN[page]()}</div></div>`;
+}
+function wireWindow(winEl) {
+  const go = (page) => { const tmp = document.createElement('div'); tmp.innerHTML = mainWindow(page, { static: winEl.classList.contains('static'), style: winEl.getAttribute('style') || '' }); const nw = tmp.firstElementChild; winEl.replaceWith(nw); winEl = nw; bind(); return nw; };
+  const bind = () => {
+    winEl.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-page],[data-act]'); if (!b) return;
+      if (b.dataset.page) { go(b.dataset.page); return; }
+      const a = b.dataset.act;
+      if (a === 'open-activity') { actState.sel = T.spans.find((s) => s.cat === (b.dataset.cat || 'uncategorized'))?.id || 'sp14'; go('activity'); }
+      if (a === 'open-focus') go('focus');
+      if (a === 'open-rules') { rulesState.tab = 'inbox'; go('rules'); }
+      if (a === 'select-span') { actState.sel = b.dataset.span; actState.saved = false; go('activity'); }
+      if (a === 'save-reclass') { actState.saved = true; const nw = go('activity'); const t = $('[data-toast]', nw); requestAnimationFrame(() => t.classList.add('show')); setTimeout(() => t.classList.remove('show'), 6000); }
+      if (a === 'undo') { actState.saved = false; go('activity'); }
+      if (a === 'rules-tab') { rulesState.tab = b.dataset.tab; go('rules'); }
+      if (a === 'accept') { rulesState.accepted.add(+b.dataset.i); go('rules'); }
+      if (a === 'accept-all') { T.INBOX.forEach((_, i) => rulesState.accepted.add(i)); go('rules'); }
+    });
+    // Linked highlighting: vessel layers <-> category rows
+    winEl.addEventListener('pointerover', (e) => {
+      const r = e.target.closest('[data-vessel-list] [data-cat], .vessel [data-cat]'); if (!r) return;
+      const id = r.dataset.cat;
+      $$('.vessel [data-cat]', winEl).forEach((n) => { n.style.opacity = n.dataset.cat === id ? 1 : .28; });
+      $$('[data-vessel-list] [data-cat]', winEl).forEach((n) => n.classList.toggle('hot', n.dataset.cat === id));
+    });
+    winEl.addEventListener('pointerout', (e) => {
+      if (!e.target.closest('[data-vessel-list], .vessel')) return;
+      $$('.vessel [data-cat]', winEl).forEach((n) => { n.style.opacity = 1; });
+      $$('[data-vessel-list] .hot', winEl).forEach((n) => n.classList.remove('hot'));
+    });
+  };
+  bind();
+  return { go, get el() { return winEl; } };
+}
+
+/* A · the rest of the surfaces: current-state reproduction, settings, sheets, onboarding, HUD, block page, notifications. */
+
+/* Faithful reproduction of today's popover (working tree, 26 Sep), for the audit. */
+function currentPopover() {
+  const top3 = T.catRows.slice(0, 3), max = top3[0].min, rest = T.catRows.slice(3);
+  return `<div class="pop m static cur" style="width:340px;padding:16px;display:grid;gap:12px">
+    <div style="display:flex;align-items:center;gap:6px" class="f12 t2"><span style="width:6px;height:6px;border-radius:50%;background:var(--m-green)"></span>正在记录<span style="margin-left:auto">${ic('more')}</span></div>
+    <div style="display:flex;gap:12px;align-items:flex-start;padding:6px 0"><span class="t2" style="width:32px;display:grid;place-items:center">${ic('window')}</span><div style="flex:1;min-width:0"><div class="sb" style="font-size:13px">ChatGPT</div><div class="f12 t2">TimeSink 重设计</div></div><span class="t2 tab f13">26m</span></div>
+    <div style="height:.5px;background:var(--m-sep)"></div>
+    <div style="display:flex;align-items:baseline"><div><div class="tab" style="font-size:32px;font-weight:500;line-height:1">7h 10m</div><div class="f11 t2" style="margin-top:5px">今天已记录</div></div><div style="margin-left:auto;text-align:right"><div class="tab" style="font-size:20px;font-weight:500">4h 44m</div><div class="f11 t2" style="margin-top:5px">投入 · 按分类估算</div></div></div>
+    <div><div class="ribbon" style="height:18px;border-radius:5px">${T.spans.map((s) => `<i style="left:${((s.start - 522) / (T.NOW - 522)) * 100}%;width:${(s.min / (T.NOW - 522)) * 100}%;background:${cvar(s.cat)}"></i>`).join('')}</div><div class="axis-row" style="font-size:10px"><span>08:42</span><span>16:40</span></div></div>
+    <div style="display:grid;gap:6px">${top3.map((c) => `<div style="display:grid;grid-template-columns:minmax(0,1fr) 14px;gap:8px;align-items:center"><div><div style="display:flex;align-items:baseline;gap:8px" class="f11">${dot(c.id)}<span>${esc(c.name)}</span><span class="t2 tab" style="margin-left:auto">${d(c.min)}</span></div><div style="margin:4px 0 0 16px;height:4px;border-radius:2px;width:${(c.min / max) * 85}%;background:${cvar(c.id)}"></div></div><span class="t2">${ic('chevD', 'xs')}</span></div>`).join('')}</div>
+    <div class="f11" style="color:var(--m-accent-ink)">其余 ${rest.length} 个分类 · ${d(rest.reduce((s, r) => s + r.min, 0))}</div>
+    <div style="display:grid;gap:5px">${T.BUDGETS.slice(0, 2).map((b) => `<div class="f11" style="display:flex"><span>${esc(T.CAT[b.cat].name)}</span><span class="t2 tab" style="margin-left:auto">${b.used}m / ${b.limit}m</span></div><div class="meter" style="height:4px"><i style="width:${(b.used / b.limit) * 100}%;background:${cvar(b.cat)}"></i></div>`).join('')}<span class="cap9">剩 20% 时提醒</span></div>
+    <button class="mbtn primary lg" style="width:100%;height:30px">${ic('scope', 's')}开始专注</button>
+    <div style="height:.5px;background:var(--m-sep)"></div>
+    <div style="display:grid;gap:4px"><div style="display:flex;align-items:center" class="f13">屏幕采集<span class="switch on" style="margin-left:auto;transform:scale(.8)"></span></div><div class="f11 t2">已启用 · 今日 212 张 · 最近 16:39</div></div>
+    <div style="display:grid;gap:2px"><div class="f13">云端同步</div><div class="f11 t2" style="font-size:10px">上次 16:38 · 待上传 4 条</div></div>
+    <div style="height:.5px;background:var(--m-sep)"></div>
+    <div style="display:flex;justify-content:space-between" class="f13 t2"><span>打开 TimeSink</span><span>设置</span><span>退出</span></div></div>`;
+}
+const AUDIT_PINS = [
+  // [pin number, top, left] positions on the 340-wide current popover
+  [1, 62, 346], [2, 128, 346], [3, 172, 346], [4, 222, 346], [5, 318, 346], [6, 356, 346], [7, 420, 346], [8, 14, 346], [9, 598, 346],
+];
+const AUDIT = [
+  ['正在做的事和分类脱节', '当前活动只有通用图标和应用名，看不出它属于哪个分类、持续了多久。', '<b>改为</b>应用图块 + 标题 + 分类标签，右侧写「自 16:14」。'],
+  ['「投入 · 按分类估算」是内部术语', '用户读不懂这个数怎么来的；与昨天的比较只藏在 ⋯ 菜单里。', '<b>改为</b>主数字下方直接写「比昨天同时段 +1h 21m」，投入附占比，悬停看算法。'],
+  ['时间带只有首尾两个时刻', '看不出几点做了什么，空档和未来一样是空白。', '<b>改为</b>固定 08:00–18:00 刻度，空档画斜纹，此刻画竖线，未来渐隐。'],
+  ['分类条按最大值拉满，只显示前三', '第一名永远满格，读不出比例；「其余 5 个分类」跳去主窗口。', '<b>改为</b>条长按占比、附百分比；超过 5 个就地展开，不离开弹出层。'],
+  ['限额要心算，说明只有 9pt', '「40m / 45m」要自己算剩多少；9pt 灰字几乎读不到。', '<b>改为</b>直接写「还剩 5 分钟」，低于阈值变琥珀色；全页最小 11pt。'],
+  ['最大的按钮还要再进一屏', '「开始专注」进入设置页才能选时长，拦截名单要跳去设置窗口。', '<b>改为</b>时长在弹出层里直接选，一次点按开始；名单写成一句摘要。'],
+  ['低频状态占了四分之一高度', '屏幕采集和同步各占两行，每次打开都要扫过。', '<b>改为</b>底部两枚状态胶囊，点开再看详情和开关。'],
+  ['没有「暂停记录」', '唯一的开关是屏幕采集，很容易被当成暂停全部记录。', '<b>改为</b>标题栏加「暂停」菜单：15 分钟、1 小时、直到恢复，并写明暂停范围。'],
+  ['三个同权重的文字按钮', '「打开 / 设置 / 退出」等距排列，最常用的和最危险的一样显眼。', '<b>改为</b>「打开 TimeSink ⌘O」是按钮，设置和退出收成带提示的图标。'],
+];
+
+/* ---------- Settings (preferences only; business lives in the main window) ---------- */
+const SET_TABS = [
+  ['general', '通用', 'gear'], ['privacy', '记录与隐私', 'hand'], ['perm', '权限', 'shield'],
+  ['notif', '通知', 'bell'], ['account', '账号与同步', 'cloud'], ['ai', '智能分类', 'sparkles'], ['about', '关于', 'info'],
+];
+function settingsPane(tab) {
+  const row = (label, ctl, desc = '') => `<div class="fr"><span>${label}${desc ? `<span class="desc">${desc}</span>` : ''}</span><span class="ctl">${ctl}</span></div>`;
+  const sw = (on = true) => `<span class="switch lg ${on ? 'on' : ''}"></span>`;
+  const pop = (t) => `<span class="popup">${t}${ic('updown')}</span>`;
+  const perm = (name, need, state, desc, act) => `<div class="fr" style="align-items:flex-start"><span class="dot" style="margin-top:6px;background:${state === 'ok' ? 'var(--m-green)' : state === 'warn' ? 'var(--m-amber)' : 'var(--m-text-3)'}"></span><span style="flex:1">${name} <span class="cat-chip" style="margin-left:4px">${need}</span><span class="desc">${desc}</span></span><span class="ctl"><span class="f12 ${state === 'ok' ? '' : 't2'}" style="${state === 'ok' ? 'color:var(--m-green)' : ''}">${state === 'ok' ? '已允许' : state === 'warn' ? '已拒绝' : '未开启'}</span>${act ? `<button class="mbtn">${act}</button>` : ''}</span></div>`;
+  switch (tab) {
+    case 'general': return `<div class="form-grp">${row('登录时启动', sw())}${row('菜单栏显示', pop('今日已记录时长'), '可选：只显示图标 · 今日已记录时长 · 当前分类与时长')}${row('打开弹出层', `<span class="field" style="min-width:0">⌃⌥T</span>`, '任何时候按这个快捷键打开菜单栏弹出层')}${row('离开多久算空闲', `<span class="stepper"><button>${ic('minus', 'xs')}</button><span>3 分钟</span><button>${ic('plus', 'xs')}</button></span>`, '空闲的时间不计入，回来自动继续')}</div>
+      <div class="form-h">显示</div><div class="form-grp">${row('显示评分', sw(), '在弹出层和「今天」显示评分与连续达标；关闭后只在「趋势」里出现')}${row('一周从哪天开始', pop('周一'))}${row('时间格式', pop('跟随系统（24 小时）'))}</div>`;
+    case 'privacy': return `<div class="form-grp">${row('暂停记录', pop('不暂停'), '暂停时不记录应用、网站、标题和屏幕画面，也不补记')}${row('不记录这些应用', `<span class="cat-chip">钥匙串访问</span><span class="cat-chip">密码</span><span class="cat-chip">1Password</span><button class="mbtn icon">${ic('plus', 'xs')}</button>`)}${row('不记录这些网站', `<span class="cat-chip">accounts.google.com</span><button class="mbtn icon">${ic('plus', 'xs')}</button>`, '私密浏览窗口始终不记录')}</div>
+      <div class="form-h">屏幕采集</div><div class="form-grp">${row('保存屏幕画面', sw(), '窗口停留时截取最前面的那一个窗口并识别文字，用来回看当时在做什么')}${row('保留', pop('7 天'), '截图到期自动删除；识别出的文字留在本机数据库')}${row('今天', `<span class="f12 t2 tab">212 张 · 186 MB</span><button class="mbtn">删除今天的截图…</button>`)}</div>
+      <div class="form-h">日历</div><div class="form-grp">${row('在时间轴上显示日程', sw(false), '标出会议时间；开会时不会因为没碰键盘而算作空闲')}</div>`;
+    case 'perm': return `<div class="form-grp">${perm('辅助功能', '必需', 'ok', '看到最前面的应用和窗口标题。没有它就不会记录。', '')}${perm('Chrome 自动化', '推荐', 'ok', '读取 Chrome 当前标签页的网址，按网站分类。不读网页内容。', '')}${perm('屏幕录制', '屏幕采集', 'ok', '只截取最前面的一个窗口，保存在本机。', '')}${perm('日历', '可选', 'off', '在时间轴上叠加日程，只读取标题、时间与人数。', '允许…')}${perm('通知', '可选', 'warn', '限额提醒、每日小结、专注结束。', '打开系统设置…')}</div>
+      <div class="form-foot">回到 TimeSink 时自动重新检查。Safari、Arc 等浏览器目前只按应用记录。</div>`;
+    case 'notif': return `<div class="form-grp">${row('限额提醒', sw(), '剩余 20% 时和到达上限时各提醒一次')}${row('剩余多少时提醒', `<span class="stepper"><button>${ic('minus', 'xs')}</button><span>20%</span><button>${ic('plus', 'xs')}</button></span>`)}${row('每日小结', `<span class="field" style="min-width:0">19:00</span>${sw()}`, '今天记录了多久、投入多少、评分')}${row('专注结束', sw())}${row('提醒声音', sw(false))}</div>`;
+    case 'account': return `<div class="form-grp">${row(`<span style="display:flex;gap:10px;align-items:center"><span class="app-tile lg" style="background:#8E8E96;border-radius:50%">Y</span><span>you@example.com<span class="desc">已登录 · 2 台 Mac</span></span></span>`, `<button class="mbtn">退出登录</button>`)}</div>
+      <div class="form-h">同步</div><div class="form-grp">${row('同步到云端', sw(), '会上传：每段活动的应用、窗口标题、网址和起止时间。<br>不会上传：截图、识别出的文字、分类规则。')}${row('上次同步', `<span class="f12 t2 tab">今天 16:38 · 待上传 4 条</span><button class="mbtn">立即同步</button>`)}</div>
+      <div class="form-h">危险操作</div><div class="form-grp">${row('删除账号', `<button class="mbtn" style="color:var(--m-red)">删除账号…</button>`, '清空云端全部记录，不能恢复；这台 Mac 上的数据保留')}</div>`;
+    case 'ai': return `<div class="form-grp">${row('用模型给没分类的活动提建议', sw(false), '只发送应用名或网站域名，不发送标题和网址路径。建议只在你接受后生效。')}</div>
+      <div class="form-h">OpenAI 兼容服务</div><div class="form-grp">${row('地址', `<span class="field" style="min-width:220px">https://api.openai.com/v1</span>`)}${row('模型', `<span class="field">gpt-4o-mini</span>`)}${row('API 密钥', `<span class="field" style="min-width:220px">••••••••••••••••sk3F</span>`, '保存在钥匙串')}${row('测试', `<span class="f12" style="color:var(--m-green);display:flex;gap:4px;align-items:center">${ic('check', 's')}excalidraw.com → 写作创作</span><button class="mbtn">测试</button>`)}</div>`;
+    case 'about': return `<div style="display:flex;gap:16px;align-items:center;padding:6px 4px 16px"><span class="app-tile" style="width:64px;height:64px;border-radius:15px;background:linear-gradient(160deg,#3B4A5E,#1C232C);color:#F5C451">${ic('hourglass')}</span><div><div class="sb" style="font-size:17px">TimeSink</div><div class="f12 t2">版本 0.2.1 (3) · 已是最新版本</div></div></div>
+      <div class="form-grp">${row('自动检查更新', sw())}${row('导出全部记录', `<button class="mbtn">导出为 CSV…</button>`)}${row('诊断信息', `<button class="mbtn">预览并导出…</button>`, '默认去掉窗口标题、网址、截图和识别文字')}</div>`;
+  }
+  return '';
+}
+function settingsWindow(tab = 'general') {
+  return `<div class="win nosb m static" data-settings style="width:640px;height:560px;grid-template-rows:auto 1fr;grid-template-columns:1fr">
+    <div style="background:var(--m-win)"><div style="display:flex;align-items:center;height:36px;position:relative"><div class="lights" style="padding:0 0 0 14px;height:auto"><i></i><i></i><i></i></div><span class="sb f13" style="position:absolute;left:0;right:0;text-align:center;pointer-events:none">${SET_TABS.find((t) => t[0] === tab)[1]}</span></div>
+    <div class="settings-tabs" style="border-top:0">${SET_TABS.map(([k, n, icn]) => `<button class="${k === tab ? 'on' : ''}" data-set="${k}">${ic(icn)}${n}</button>`).join('')}</div></div>
+    <div style="overflow:auto;padding:18px 22px 22px;background:var(--m-work)">${settingsPane(tab)}</div></div>`;
+}
+
+/* ---------- Sheets ---------- */
+function titleRuleSheet() {
+  return `<div class="m" style="width:460px;border-radius:12px;background:var(--m-win);box-shadow:var(--m-shadow-win);padding:20px;display:grid;gap:14px">
+    <div class="sb" style="font-size:15px">始终把这类标题归为…</div>
+    <div style="display:grid;gap:6px"><span class="f12 t2">标题包含</span>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;min-height:30px;padding:4px 6px;border-radius:7px;background:var(--m-panel);box-shadow:inset 0 0 0 .5px var(--m-sep),0 0 0 3px var(--m-accent-soft)"><span class="cat-chip" style="background:var(--m-accent-soft);color:var(--m-accent-ink)">WWDC${ic('x', 'xs')}</span><span class="cat-chip" style="background:var(--m-accent-soft);color:var(--m-accent-ink)">Apple Developer${ic('x', 'xs')}</span><span class="f12 t3">输入后按回车…</span></div>
+      <span class="f11 t3">每个词至少 2 个字。以 re: 开头按正则匹配。</span></div>
+    <div style="display:grid;grid-template-columns:60px minmax(0,1fr);gap:10px;align-items:center" class="f12"><span class="t2">范围</span><span class="segm"><button class="on">只在 youtube.com</button><button>所有应用和网站</button></span>
+      <span class="t2">归为</span><span><span class="popup">${dot('learning')}学习参考${ic('updown')}</span></span></div>
+    <div style="border-radius:9px;background:var(--m-fill);padding:10px 12px" class="f12"><div style="display:flex"><span class="sb">会影响 4 段 · 1h 18m</span><span class="t3" style="margin-left:auto">近 30 天</span></div>
+      <div style="display:grid;gap:4px;margin-top:8px" class="t2">${['WWDC25 · Meet Liquid Glass · 13 分钟 · 今天', 'WWDC25 · What’s new in SwiftUI · 31 分钟 · 周二', 'Apple Developer · Design with SF Symbols 7 · 22 分钟 · 周一'].map((t) => `<div style="display:flex;gap:6px;align-items:center">${dot('entertainment')}<span style="text-decoration:line-through;opacity:.7">娱乐</span>${ic('arrowR', 'xs')}${dot('learning')}<span>${t}</span></div>`).join('')}</div></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end"><button class="mbtn">取消</button><button class="mbtn primary">添加规则</button></div></div>`;
+}
+function blockedAppsSheet() {
+  const apps = [['微', '#1FAE4B', '微信', true, '今天 27 分钟'], ['D', '#5865F2', 'Discord', true, '未运行'], ['S', '#1B2838', 'Steam', true, '未运行'], ['♪', '#F2465B', '音乐', false, '今天 0 分钟'], ['X', '#1B6FE8', 'Xcode', false, '今天 1h 37m']];
+  return `<div class="m" style="width:380px;border-radius:12px;background:var(--m-win);box-shadow:var(--m-shadow-win);padding:18px;display:grid;gap:12px">
+    <div class="sb" style="font-size:15px">专注时隐藏的应用</div>
+    <span class="search" style="display:flex;align-items:center;gap:6px;height:28px;padding:0 9px;border-radius:7px;background:var(--m-fill-2);color:var(--m-text-3);font-size:13px">${ic('search', 's')}搜索已安装的应用</span>
+    <div class="form-grp">${apps.map(([m, t, n, on, sub]) => `<div class="fr" style="min-height:40px">${tile(m, t)}<span style="flex:1">${n}<span class="desc">${sub}</span></span><span class="switch lg ${on ? 'on' : ''}"></span></div>`).join('')}</div>
+    <div class="f11 t3">隐藏的应用在你切回时会提示，并可以放行 5 分钟。</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end"><button class="mbtn">取消</button><button class="mbtn primary">完成</button></div></div>`;
+}
+function rangePopover() {
+  const cells = []; for (let i = 0; i < 35; i++) { const day = i - 1; cells.push(day >= 1 && day <= 30 ? day : ''); }
+  return `<div class="m" style="width:300px;border-radius:12px;background:var(--m-fly);box-shadow:var(--m-shadow-pop);padding:12px;display:grid;gap:10px">
+    <div style="display:flex;gap:4px;flex-wrap:wrap">${['今天', '昨天', '本周', '近 7 天', '本月', '近 30 天'].map((p, i) => `<button class="cat-chip" style="height:22px;${i === 3 ? 'background:var(--m-accent);color:#fff' : ''}">${p}</button>`).join('')}</div>
+    <div style="display:flex;align-items:center" class="f13"><span class="sb">2026 年 9 月</span><span style="margin-left:auto;display:flex;gap:2px" class="t2">${ic('chevL', 's')}${ic('chevR', 's')}</span></div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center" class="f11 tab">${['一', '二', '三', '四', '五', '六', '日'].map((w) => `<span class="t3">${w}</span>`).join('')}${cells.map((c) => { const inR = c >= 18 && c <= 24; const edge = c === 18 || c === 24; return `<span style="height:26px;line-height:26px;border-radius:${edge ? '7px' : '2px'};${inR ? `background:${edge ? 'var(--m-accent)' : 'var(--m-accent-soft)'};${edge ? 'color:#fff;font-weight:600' : ''}` : ''}${c > 24 ? 'opacity:.3' : ''}">${c}</span>`; }).join('')}</div>
+    <div style="display:flex;align-items:center;gap:8px" class="f12"><span class="t2">9月18日 – 9月24日 · 7 天</span><button class="mbtn primary" style="margin-left:auto">应用</button></div></div>`;
+}
+
+/* ---------- Onboarding ---------- */
+const OB = [
+  { t: '让 TimeSink 替你记住时间', b: '它在后台记录你用了哪些应用和网站、各用了多久。你只需要偶尔看一眼菜单栏。', body: () => `<div style="display:grid;gap:10px;margin-top:6px">${[['lock', '记录只保存在这台 Mac', '登录账号后可以选择备份，默认不上传。'], ['list', '按应用、网站和窗口标题', '不读取网页内容、输入和文件。'], ['pause', '随时暂停', '在菜单栏一键暂停，暂停期间什么都不记。']].map(([i, t, s]) => `<div style="display:flex;gap:12px;align-items:flex-start"><span style="color:var(--m-accent);margin-top:2px">${ic(i)}</span><div><div class="sb f13">${t}</div><div class="f12 t2">${s}</div></div></div>`).join('')}</div>` },
+  { t: '会记录什么', b: '先看清楚，再决定开哪些。可选功能以后都能在设置里改。', body: () => `<div class="form-grp" style="margin-top:4px">${[['应用和窗口标题', '核心功能', true, true], ['Chrome 网址', '按网站分类', true, false], ['屏幕画面', '回看当时在做什么 · 保存 7 天', false, false], ['日历日程', '标出会议时间', false, false]].map(([n, s, on, lock]) => `<div class="fr"><span style="flex:1">${n}<span class="desc">${s}</span></span>${lock ? '<span class="f11 t3">必需</span>' : `<span class="switch lg ${on ? 'on' : ''}"></span>`}</div>`).join('')}</div>` },
+  { t: '允许「辅助功能」', b: 'macOS 需要你亲自打开这个开关，TimeSink 才能看到最前面的应用。', body: () => `<div style="display:grid;gap:12px;margin-top:6px"><div style="display:flex;gap:12px;align-items:center;padding:12px;border-radius:10px;background:var(--m-fill)"><span class="status-dot paused"></span><div style="flex:1"><div class="sb f13">等待你在系统设置中打开</div><div class="f12 t2">系统设置 › 隐私与安全性 › 辅助功能 › TimeSink</div></div><button class="mbtn primary">打开系统设置…</button></div><div class="f12 t3">打开开关后回到这里，会自动进入下一步。</div></div>` },
+  { t: '按网站记录 Chrome（可选）', b: '不开也能用：浏览时间会记成「Chrome」，不区分网站。', body: () => `<div style="display:grid;gap:10px;margin-top:6px"><div style="display:flex;gap:12px;align-items:center;padding:12px;border-radius:10px;background:var(--m-fill)">${tile('C', '#E0493E', 'lg')}<div style="flex:1"><div class="sb f13">检测到 Chrome</div><div class="f12 t2">只读取当前标签页的网址</div></div><button class="mbtn primary">允许</button></div><button class="mbtn ghost" style="justify-self:start">跳过，只按应用记录</button></div>` },
+  { t: '已经开始记录', b: 'TimeSink 住在菜单栏右上角。点一下看今天，悬停看细节。', body: () => `<div style="display:grid;gap:12px;margin-top:6px"><div style="display:flex;align-items:center;justify-content:flex-end;height:40px;padding:0 12px;border-radius:10px;background:var(--m-wall);position:relative"><span class="si on" style="color:var(--m-menubar-ink);background:var(--m-menubar)">${ic('hourglass')}<span class="tab">1m</span></span><span style="position:absolute;right:60px;top:-4px;color:var(--m-accent)">${ic('arrowR')}</span></div>
+    <div style="display:flex;gap:10px;align-items:center" class="f12"><span class="status-dot live-pulse"></span><span>正在记录：TimeSink 设置 · 刚刚</span></div></div>` },
+];
+function onboarding(step = 0) {
+  const s = OB[step];
+  return `<div class="m" data-ob style="width:500px;border-radius:14px;background:var(--m-win);box-shadow:var(--m-shadow-win);padding:28px 30px 22px;display:grid;gap:10px;min-height:470px;grid-template-rows:auto auto auto 1fr auto">
+    <div style="display:flex;gap:6px">${OB.map((_, i) => `<span style="height:4px;flex:1;border-radius:2px;background:${i <= step ? 'var(--m-accent)' : 'var(--m-fill-2)'}"></span>`).join('')}</div>
+    <div style="font-size:22px;font-weight:700;letter-spacing:-.02em;margin-top:14px">${s.t}</div>
+    <div class="f13 t2" style="line-height:1.55">${s.b}</div>
+    <div>${s.body()}</div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:18px"><span class="f12 t3">${step + 1} / ${OB.length}</span><span style="margin-left:auto"></span>${step ? '<button class="mbtn lg" data-ob-act="back">返回</button>' : ''}<button class="mbtn lg primary" data-ob-act="next">${step === OB.length - 1 ? '完成' : step === 0 ? '开始设置' : '继续'}</button></div></div>`;
+}
+
+/* ---------- Focus HUD, block page, notifications ---------- */
+function hud() {
+  return `<div class="hud m"><div style="display:flex;gap:10px;align-items:center">${tile('微', '#1FAE4B', 'lg')}<div style="flex:1"><div class="t">微信 在专注期间已隐藏</div><div style="opacity:.7">还剩 <b class="tab" data-live-cd>18:42</b> · 本次第 1 次打开</div></div></div>
+    <div style="display:flex;gap:6px;margin-top:12px"><button class="mbtn lg primary" style="flex:1">回到工作</button><button class="mbtn lg">允许 5 分钟</button></div></div>`;
+}
+function blockPage() {
+  return `<div class="m" style="width:560px;border-radius:12px;overflow:hidden;box-shadow:var(--m-shadow-win);background:var(--m-win)">
+    <div style="height:38px;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--m-work);border-bottom:.5px solid var(--m-sep)"><div class="lights" style="padding:0;height:auto"><i></i><i></i><i></i></div><span style="margin-left:14px;flex:1;height:24px;border-radius:7px;background:var(--m-fill-2);display:flex;align-items:center;gap:6px;padding:0 10px" class="f12 t2">${ic('lock', 'xs')}bilibili.com/video/BV1x…</span></div>
+    <div style="padding:54px 40px 48px;display:grid;justify-items:center;text-align:center;gap:10px">
+      <span style="color:var(--m-accent)">${ic('scope')}</span>
+      <div style="font-size:20px;font-weight:700;letter-spacing:-.01em">bilibili.com 在专注期间被拦截</div>
+      <div class="f13 t2">还剩 <b class="tab" style="color:var(--m-text)" data-live-cd>18:42</b>，17:25 结束。</div>
+      <div style="display:flex;gap:8px;margin-top:12px"><button class="mbtn lg primary">回到上一页</button><button class="mbtn lg">放行 5 分钟</button></div>
+      <div class="f11 t3" style="margin-top:14px">「娱乐」类网站在专注期间拦截 · 放行后回到原来的视频，而不是首页</div></div></div>`;
+}
+function notifications() {
+  const n = (ttl, body, acts, when = '现在') => `<div class="notif m"><span class="ico">${ic('hourglass')}</span><span class="ttl">${ttl}</span><span class="when">${when}</span><span class="body">${body}</span>${acts ? `<span class="acts">${acts.map((a, i) => `<button class="mbtn ${i === 0 ? '' : ''}">${a}</button>`).join('')}</span>` : ''}</div>`;
+  return [
+    n('娱乐还剩 5 分钟', '今天已用 40 分钟，上限 45 分钟。到上限时会再提醒一次。', ['查看今天', '开始专注']),
+    n('娱乐已到今日上限', '45 分钟已用完。今天不会再提醒；限额只提醒，不会拦截。', ['调整限额']),
+    n('45 分钟专注完成', '拦下 2 次分心：网站 1 次，应用 1 次。', ['再专注 25 分钟', '查看']),
+    n('今日小结', '记录 8 小时 2 分，投入 5 小时 10 分，专注 2 次。评分 78，比昨天低 8。', ['打开今天'], '19:00'),
+  ].join('');
+}
+
+/* A · page wiring: theme, stages, hero, galleries, demos. */
+
+/* ---- Theme toggle (system / light / dark) ---- */
+function initTheme() {
+  const root = document.documentElement;
+  let saved = null; try { saved = localStorage.getItem('ts-theme'); } catch (e) { /* storage may be blocked */ }
+  if (saved === 'light' || saved === 'dark') root.dataset.theme = saved;
+  const btns = $$('.theme-switch button');
+  const sync = () => btns.forEach((b) => b.setAttribute('aria-pressed', String((root.dataset.theme || 'system') === b.dataset.theme)));
+  btns.forEach((b) => b.addEventListener('click', () => {
+    if (b.dataset.theme === 'system') delete root.dataset.theme; else root.dataset.theme = b.dataset.theme;
+    try { localStorage.setItem('ts-theme', b.dataset.theme); } catch (e) { /* ignore */ }
+    sync(); renderSystem();
+  }));
+  sync();
+}
+
+/* ---- Hero: desktop with menu bar, popover, flyout and the main window ---- */
+const hero = { kind: 'recording', dur: 45, expanded: false, open: true };
+function renderHero() {
+  const host = $('#hero-desk');
+  host.innerHTML = `<div class="desk m" style="width:1280px;height:820px">${menubar(hero.kind === 'focus' ? 'focus' : hero.kind === 'paused' ? 'paused' : 'recording', hero.open)}
+    <div data-win-slot></div><div data-pop-slot></div><div class="fly m" data-fly-host></div></div>`;
+  const desk = host.firstElementChild;
+  $('[data-win-slot]', desk).outerHTML = mainWindow('today', { style: 'left:26px;top:52px;width:1010px;height:748px' });
+  const winCtl = wireWindow($('[data-win]', desk));
+  hero.win = winCtl;
+  placeHeroPop(desk);
+  $('[data-si]', desk).addEventListener('click', () => { hero.open = !hero.open; placeHeroPop(desk); $('[data-si]', desk).classList.toggle('on', hero.open); });
+}
+function placeHeroPop(desk) {
+  const slot = $('[data-pop-slot]', desk);
+  const fly = $('[data-fly-host]', desk);
+  fly.classList.remove('show');
+  if (!hero.open) { slot.innerHTML = ''; return; }
+  const si = $('[data-si]', desk);
+  const right = desk.offsetWidth - (si.offsetLeft + si.offsetWidth) - 4;
+  slot.innerHTML = popover(hero.kind, { dur: hero.dur, expanded: hero.expanded, style: `right:${Math.max(8, right)}px;top:30px` });
+  const pop = $('.pop', slot);
+  requestAnimationFrame(() => pop.animate([{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }], { duration: REDUCED ? 1 : 180, easing: 'cubic-bezier(.2,.8,.2,1)' }));
+  wireFlyouts(desk, { pop, fly, onRoute: (k) => routeFromPop(k.startsWith('cat:') ? 'open-activity' : k === 'limits' ? 'open-focus' : k === 'score' ? 'trends' : 'open-today', k.slice(4)) });
+  pop.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-act]'); if (!b) return;
+    const a = b.dataset.act;
+    if (a === 'dur') { hero.dur = +b.dataset.min; placeHeroPop(desk); }
+    else if (a === 'start-focus') { hero.kind = 'focus'; morphPop(desk); }
+    else if (a === 'end-focus') { hero.kind = 'recording'; morphPop(desk); }
+    else if (a === 'pause') { hero.kind = 'paused'; morphPop(desk); }
+    else if (a === 'resume') { hero.kind = 'recording'; morphPop(desk); }
+    else if (a === 'more-cats') { hero.expanded = true; placeHeroPop(desk); }
+    else if (a === 'less') { hero.expanded = false; placeHeroPop(desk); }
+    else routeFromPop(a, b.dataset.cat);
+  });
+}
+function morphPop(desk) {
+  const old = $('.pop', desk); const h0 = old ? old.offsetHeight : 0;
+  $('.menubar', desk).outerHTML = menubar(hero.kind === 'focus' ? 'focus' : hero.kind === 'paused' ? 'paused' : 'recording', true);
+  $('[data-si]', desk).addEventListener('click', () => { hero.open = !hero.open; placeHeroPop(desk); $('[data-si]', desk).classList.toggle('on', hero.open); });
+  placeHeroPop(desk);
+  const pop = $('.pop', desk); const h1 = pop.offsetHeight;
+  if (!REDUCED) pop.animate([{ height: h0 + 'px' }, { height: h1 + 'px' }], { duration: 320, easing: 'cubic-bezier(.3,1.25,.4,1)' });
+}
+function routeFromPop(act, cat) {
+  const map = { 'open-activity': 'activity', 'open-focus': 'focus', 'open-today': 'today', trends: 'trends' };
+  const page = map[act]; if (!page) return;
+  if (page === 'activity') actState.sel = T.spans.find((s) => s.cat === (cat || 'uncategorized'))?.id || 'sp14';
+  hero.open = false;
+  const desk = $('#hero-desk .desk');
+  placeHeroPop(desk); $('[data-si]', desk).classList.remove('on');
+  hero.win.go(page);
+}
+
+/* ---- Audit ---- */
+function renderAudit() {
+  $('#audit-current').innerHTML = `<div style="position:relative;width:340px">${currentPopover()}${AUDIT_PINS.map(([n, t, l]) => `<span class="pin" style="top:${t}px;left:${l}px">${n}</span>`).join('')}</div>`;
+  $('#audit-refined').innerHTML = `<div style="position:relative;width:340px" data-redline-host>${popover('recording', { static: true })}${redlines()}</div>`;
+  $('#audit-list').innerHTML = AUDIT.map(([h, p, fix], i) => `<div class="decision"><span class="n">${i + 1}</span><h4>${h}</h4><p>${p}</p><p>${fix}</p></div>`).join('');
+}
+function redlines() {
+  return `<div class="redlines">
+    <span class="rl h" style="left:0;width:340px;top:-14px"><span class="t">340</span></span>
+    <span class="rl h" style="left:0;width:14px;top:22px"><span class="t">14</span></span>
+    <span class="rl box" style="left:14px;top:70px;width:230px;height:40px"><span class="t">SF Pro 13 / 600 · 11 / 400</span></span>
+    <span class="rl box" style="left:14px;top:124px;width:120px;height:36px"><span class="t">34 / 600 · 等宽数字</span></span>
+    <span class="rl v" style="left:330px;top:258px;height:30px"><span class="t" style="left:auto;right:6px">行高 30</span></span>
+    <span class="rl box" style="left:14px;top:230px;width:312px;height:12px"><span class="t">时间带 12 · 08:00–18:00</span></span>
+  </div>`;
+}
+
+/* ---- System tokens ---- */
+function renderSystem() {
+  const cs = getComputedStyle(document.documentElement);
+  const panel = cs.getPropertyValue('--m-panel').trim();
+  const bg = /^#/.test(panel) ? panel : '#FFFFFF';
+  $('#tok-cats').innerHTML = T.CATEGORIES.map((c) => {
+    const hex = cs.getPropertyValue(`--c-${c.id}`).trim();
+    const r = contrast(hex, bg).toFixed(1);
+    return `<div class="sw"><i style="background:${hex}"></i><b>${c.name}</b><span>${hex} · ${r}:1</span></div>`;
+  }).join('');
+}
+
+/* ---- Menu-bar item states ---- */
+function renderSI() {
+  const states = [
+    ['recording', '正在记录', '今日已记录时长，等宽数字，每分钟更新'],
+    ['idle', '空闲', '图标与数字降到 45% 透明，时长不再增长'],
+    ['paused', '已暂停', '沙漏换成暂停形态，直接写出剩余时间'],
+    ['focus', '专注中', '圆环进度 + 倒计时；不依赖彩色，单色菜单栏也能区分'],
+    ['permission', '需要权限', '警告图形 + 「未记录」，点开就是修复入口'],
+    ['category', '显示分类（可选）', '设置里可改为显示当前分类与它今天的时长'],
+  ];
+  $('#si-strip').innerHTML = states.map(([k, n, s]) => `<div class="si-cell"><div class="bar"><div class="mbar m">${statusItem(k)}${ic('wifi')}<span class="tab">16:40</span></div></div><div class="meta"><b>${n}</b><span>${s}</span></div></div>`).join('');
+}
+
+/* ---- Popover state gallery ---- */
+const galleryStates = [['recording', '正在记录'], ['morning', '早晨空白'], ['idle', '离开电脑'], ['paused', '已暂停'], ['focus', '专注中'], ['permission', '缺少权限']];
+function renderGallery(k = 'recording') {
+  $('#pop-seg').innerHTML = galleryStates.map(([key, n]) => `<button aria-pressed="${key === k}" data-k="${key}">${n}</button>`).join('');
+  $('#pop-gallery').innerHTML = `<div style="position:relative;width:340px">${popover(k, { static: true, dur: 45 })}</div>`;
+  const notes = {
+    recording: '常态：状态、正在做的事、今天、分类、限额、专注、系统状态，自上而下由常看到少看。',
+    morning: '没有数据时不画空图表：一句话说明为什么是空的，时间带只标出此刻。',
+    idle: '离开时顶部变灰，当前活动换成一句解释；数字停止增长但保留，避免「清零」的误解。',
+    paused: '暂停是全局的：应用、网站、标题、截图都停。倒计时和延长按钮放在最显眼处。',
+    focus: '专注时弹出层整体切换：圆环倒计时、结束时刻、拦下了什么、隐藏与拦截名单。',
+    permission: '缺权限时先说后果（不会记录），再给唯一的修复按钮；Chrome 降级是次要提示。',
+  };
+  $('#pop-note').textContent = notes[k];
+}
+
+/* ---- Flyout gallery + safe triangle demo ---- */
+function renderFlyDemo() {
+  const host = $('#fly-desk');
+  host.innerHTML = `<div class="desk m" style="width:1000px;height:760px">${menubar('recording', true)}<div data-pop-slot></div><div class="fly m" data-fly-host></div>
+    <svg data-tri style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:8"></svg></div>`;
+  const desk = host.firstElementChild;
+  const si = $('[data-si]', desk);
+  const right = desk.offsetWidth - (si.offsetLeft + si.offsetWidth) - 4;
+  $('[data-pop-slot]', desk).innerHTML = popover('recording', { style: `right:${Math.max(8, right)}px;top:30px` });
+  const pop = $('.pop', desk), fly = $('[data-fly-host]', desk), svg = $('[data-tri]', desk);
+  const draw = (pt, fr, side) => {
+    if (!$('#tri-toggle').checked || !pt || !fr) { svg.innerHTML = ''; return; }
+    const dr = desk.getBoundingClientRect(), s = dr.width / desk.offsetWidth;
+    const P = (x, y) => `${(x - dr.left) / s},${(y - dr.top) / s}`;
+    const ax = side === 'left' ? fr.right : fr.left;
+    svg.innerHTML = `<polygon points="${P(pt.x, pt.y)} ${P(ax, fr.top)} ${P(ax, fr.bottom)}" fill="var(--redline-soft)" stroke="var(--redline)" stroke-dasharray="4 3"/>`;
+  };
+  wireFlyouts(desk, { pop, fly, showTriangle: draw });
+  $('#fly-grid').innerHTML = ['cat:softwareDev', 'score', 'compare', 'hourly', 'limits'].map((k) => `<div class="fly m static">${flyout(k)}</div>`).join('');
+}
+
+/* ---- Main window section ---- */
+function renderWindowSection() {
+  $('#win-host').innerHTML = mainWindow('today', { static: true, style: 'width:1240px;height:800px' });
+  const ctl = wireWindow($('#win-host [data-win]'));
+  $('#win-seg').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-p]'); if (!b) return;
+    ctl.go(b.dataset.p);
+    $$('#win-seg button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+  });
+  // keep the page tabs in sync with sidebar clicks
+  $('#win-host').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-page]'); if (!b) return;
+    $$('#win-seg button').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.p === b.dataset.page)));
+  });
+}
+
+/* ---- Settings + onboarding ---- */
+function renderSettings(tab = 'general') {
+  $('#set-host').innerHTML = settingsWindow(tab);
+  $('#set-host').onclick = (e) => { const b = e.target.closest('[data-set]'); if (b) renderSettings(b.dataset.set); };
+}
+let obStep = 0;
+function renderOnboarding() {
+  $('#ob-host').innerHTML = onboarding(obStep);
+  $('#ob-host').onclick = (e) => {
+    const b = e.target.closest('[data-ob-act]'); if (!b) return;
+    obStep = b.dataset.obAct === 'back' ? Math.max(0, obStep - 1) : (obStep + 1) % OB.length;
+    renderOnboarding();
+    if (!REDUCED) $('[data-ob]').animate([{ opacity: .4, transform: 'translateX(8px)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  };
+}
+
+/* ---- Motion demos ---- */
+function bezierPath(x1, y1, x2, y2, w = 240, h = 60) {
+  return `M0 ${h} C ${x1 * w} ${h - y1 * h}, ${x2 * w} ${h - y2 * h}, ${w} 0`;
+}
+function springPath(w = 240, h = 60, zeta = 0.62, omega = 12) {
+  let d = ''; for (let i = 0; i <= 60; i++) { const t = i / 60; const v = 1 - Math.exp(-zeta * omega * t) * Math.cos(omega * Math.sqrt(1 - zeta * zeta) * t); d += `${i ? 'L' : 'M'}${t * w} ${h - v * h * 0.85}`; }
+  return d;
+}
+function renderMotion() {
+  const curve = (p) => `<svg class="curve" viewBox="-4 -14 248 80" preserveAspectRatio="none"><line class="axis" x1="0" y1="60" x2="240" y2="60"/><line class="axis" x1="0" y1="0" x2="240" y2="0" stroke-dasharray="2 3"/><path d="${p}"/></svg>`;
+  $('#mo-roll .demo').innerHTML = `<div class="m" style="font-size:44px;font-weight:600;letter-spacing:-.03em;display:flex" data-rollbox>${rollDigits('7h 10m')}</div>`;
+  $('#mo-roll .curve-host').innerHTML = curve(bezierPath(0.2, 0.8, 0.2, 1));
+  $('#mo-fly .demo').innerHTML = `<div class="m" style="position:relative;width:250px;height:120px"><div class="crow hot" style="position:absolute;right:0;top:40px;width:140px;margin:0;grid-template-columns:10px 1fr auto">${dot('softwareDev')}<span class="nm">软件开发</span><span class="v">3h 37m</span></div><div class="fly" data-mo-fly style="width:100px;left:0;top:26px;padding:10px"><div class="f12 sb">软件开发</div>${hourBars(T.hourByCat.map((h) => ({ softwareDev: h.softwareDev || 0 })), { w: 80, h: 44, color: cvar('softwareDev'), nowHour: null })}</div></div>`;
+  $('#mo-fly .curve-host').innerHTML = curve(bezierPath(0.2, 0.8, 0.2, 1));
+  $('#mo-morph .demo').innerHTML = `<div class="m pop static" data-mo-pop style="width:200px;overflow:hidden"><div class="sec" data-mo-inner></div></div>`;
+  setMorph(false);
+  $('#mo-morph .curve-host').innerHTML = curve(springPath());
+  $('#mo-toast .demo').innerHTML = `<div class="m" style="position:absolute;inset:0"><div class="m-toast" data-mo-toast style="bottom:22px"><span>已归为「写作创作」</span><button>撤销</button><span style="position:absolute;left:10px;right:10px;bottom:3px;height:2px;border-radius:1px;background:rgba(255,255,255,.3);overflow:hidden"><i data-mo-bar style="display:block;height:100%;width:100%;background:currentColor;transform-origin:left"></i></span></div></div>`;
+  $('#mo-toast .curve-host').innerHTML = curve(bezierPath(0.2, 0.8, 0.2, 1));
+}
+function rollDigits(str) { return [...str].map((ch) => `<span style="display:inline-block;overflow:hidden;height:1.1em;line-height:1.1em;vertical-align:top" class="tab"><span style="display:block">${ch === ' ' ? '&nbsp;' : ch}</span></span>`).join(''); }
+let morphOn = false;
+function setMorph(on) {
+  morphOn = on;
+  const inner = $('[data-mo-inner]');
+  inner.innerHTML = on
+    ? `<div class="f12 sb" style="color:var(--m-accent-ink)">专注中 · 45 分钟</div><div class="tab" style="font-size:30px;font-weight:600;margin:8px 0">18:42</div><div class="meter"><i style="width:58%;background:var(--m-accent)"></i></div><div class="f11 t2" style="margin-top:8px">17:25 结束 · 拦下 1 次</div><button class="mbtn" style="margin-top:10px;width:100%">结束会话…</button>`
+    : `<div class="f12 sb">今天已记录</div><div class="tab" style="font-size:30px;font-weight:600;margin:8px 0">7h 10m</div><div class="mseg" style="display:flex"><button>25</button><button class="on">45</button><button>90</button></div>`;
+}
+function wireMotion() {
+  $('#mo-roll .play').onclick = () => {
+    const box = $('[data-rollbox]');
+    const from = '7h 10m', to = '7h 11m';
+    box.innerHTML = [...to].map((ch, i) => {
+      if (ch === from[i]) return `<span style="display:inline-block;overflow:hidden;height:1.1em;line-height:1.1em;vertical-align:top"><span style="display:block">${ch === ' ' ? '&nbsp;' : ch}</span></span>`;
+      return `<span style="display:inline-block;overflow:hidden;height:1.1em;line-height:1.1em;vertical-align:top"><span data-roll-col style="display:block;transform:translateY(0)"><span style="display:block">${from[i]}</span><span style="display:block">${ch}</span></span></span>`;
+    }).join('');
+    requestAnimationFrame(() => requestAnimationFrame(() => $$('[data-roll-col]', box).forEach((c) => { c.style.transition = REDUCED ? 'none' : 'transform 280ms cubic-bezier(.2,.8,.2,1)'; c.style.transform = 'translateY(-50%)'; })));
+    setTimeout(() => { box.innerHTML = rollDigits(from); }, 1800);
+  };
+  $('#mo-fly .play').onclick = () => { const f = $('[data-mo-fly]'); f.classList.remove('show'); void f.offsetWidth; setTimeout(() => f.classList.add('show'), 150); setTimeout(() => f.classList.remove('show'), 2200); };
+  $('#mo-morph .play').onclick = () => {
+    const pop = $('[data-mo-pop]'); const h0 = pop.offsetHeight;
+    setMorph(!morphOn); const h1 = pop.offsetHeight;
+    if (!REDUCED) { pop.animate([{ height: h0 + 'px' }, { height: h1 + 'px' }], { duration: 360, easing: 'cubic-bezier(.3,1.25,.4,1)' }); $('[data-mo-inner]').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, delay: 60, fill: 'backwards' }); }
+  };
+  $('#mo-toast .play').onclick = () => {
+    const t = $('[data-mo-toast]'), bar = $('[data-mo-bar]');
+    t.classList.add('show');
+    bar.animate([{ transform: 'scaleX(1)' }, { transform: 'scaleX(0)' }], { duration: 6000, easing: 'linear' });
+    clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 6000);
+  };
+}
+
+/* ---- Live countdown in HUD / block page / focus popover ---- */
+function tick() {
+  let left = 18 * 60 + 42;
+  setInterval(() => {
+    left = left > 0 ? left - 1 : 18 * 60 + 42;
+    const s = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+    $$('[data-live-cd]').forEach((n) => { n.textContent = s; });
+  }, 1000);
+}
+
+function init() {
+  initTheme();
+  renderHero();
+  renderAudit();
+  renderSystem();
+  renderSI();
+  renderGallery();
+  $('#pop-seg').addEventListener('click', (e) => { const b = e.target.closest('button[data-k]'); if (b) renderGallery(b.dataset.k); });
+  $('#redline-toggle').addEventListener('change', (e) => $('#audit-refined').classList.toggle('show-redlines', e.target.checked));
+  renderFlyDemo();
+  renderWindowSection();
+  $('#sheet-title').innerHTML = titleRuleSheet();
+  $('#sheet-apps').innerHTML = blockedAppsSheet();
+  $('#sheet-range').innerHTML = rangePopover();
+  renderSettings();
+  renderOnboarding();
+  $('#hud-host').innerHTML = hud();
+  $('#block-host').innerHTML = blockPage();
+  $('#notif-host').innerHTML = notifications();
+  renderMotion(); wireMotion();
+  fitStages();
+  window.addEventListener('resize', fitStages);
+  // Deep links: stages only get their height after fitting, so land on the anchor again.
+  if (location.hash.length > 1) { const t = document.getElementById(location.hash.slice(1)); if (t) t.scrollIntoView(); }
+  tick();
+}
+document.addEventListener('DOMContentLoaded', init);
+
+})();
+</script>
+
+</body></html>
