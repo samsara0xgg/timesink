@@ -114,8 +114,10 @@ final class TodayDashboardModel {
         // today's partial day against yesterday's full day (see doc comments
         // on `focusDelta`/`totalDelta`); pulseDelta above stays a whole-day
         // ratio comparison and must not be clipped.
-        let elapsed = now.timeIntervalSince(calendar.startOfDay(for: now))
+        // The same wall-clock time yesterday: on a DST day, seconds since
+        // midnight would land an hour off.
         let yesterdayStart = calendar.startOfDay(for: yesterdayAnchor)
+        let elapsed = yesterdayAnchor.timeIntervalSince(yesterdayStart)
         let clippedYesterday = Self.clippedToElapsed(yesterday, windowStart: yesterdayStart, elapsed: elapsed)
         let clippedYByCategory = Aggregator.durationByCategory(clippedYesterday)
         let clippedYFocus = Aggregator.focusTime(durationByCategory: clippedYByCategory, categories: categories)
@@ -507,7 +509,6 @@ struct MenuBarDashboardView: View {
     /// duration/block-list configuration screen. Superseded entirely by
     /// `FocusRunningView` whenever a session is actually running, regardless
     /// of this mode -- see `body`'s top-level `if`.
-    @State private var popoverMode: PopoverMode = .dashboard
     @State private var focusError: String?
     @State private var categoriesExpanded = false
     @FocusState private var keyboardCategory: String?
@@ -705,13 +706,14 @@ struct MenuBarDashboardView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 5) {
                 Picker("专注时长", selection: $focusMinutes) {
-                    ForEach([15, 25, 45, 90], id: \.self) { Text("\($0)").tag($0) }
+                    ForEach(FocusPresets.minutes, id: \.self) { Text("\($0)").tag($0) }
                 }.pickerStyle(.segmented).labelsHidden().frame(width: 158)
                 Text("分钟").font(.system(size: 11)).foregroundStyle(.secondary)
                 Spacer(minLength: 0)
+                // No bare-Space shortcut: the popover has no text field to
+                // absorb it, so any Space press would start blocking apps.
                 Button("开始专注") { startFocus(minutes: focusMinutes) }
                     .buttonStyle(.borderedProminent).controlSize(.small).disabled(model.focus == nil)
-                    .keyboardShortcut(.space, modifiers: [])
             }
             HStack(spacing: 4) {
                 Text("将隐藏 \(model.settings.focusAppBlockEnabled ? model.settings.focusBlockedApps.count : 0) 个应用 · 拦截 \(model.settings.focusSiteBlockEnabled ? model.settings.focusBlockedCategories.count : 0) 类网站")
@@ -782,23 +784,23 @@ struct MenuBarDashboardView: View {
                     HStack(spacing: 6) { Image(systemName: "macwindow"); Text("打开 TimeSink"); Text("⌘O").foregroundStyle(.secondary) }
                 }.controlSize(.small).keyboardShortcut("o")
                 Spacer()
-                SettingsLink { Image(systemName: "gearshape") }.buttonStyle(.plain).help("设置… ⌘,").accessibilityLabel("设置")
+                // Same route as the other Settings entries: a bare SettingsLink
+                // can open the window behind the frontmost app.
+                Button { openSettings(); AppWindow.settings.bringForward() } label: { Image(systemName: "gearshape") }
+                    .buttonStyle(.plain).help("设置… ⌘,").accessibilityLabel("设置")
                 Button { model.engine.stop(); NSApp.terminate(nil) } label: { Image(systemName: "power") }
                     .buttonStyle(.plain).help("退出 TimeSink ⌘Q").accessibilityLabel("退出 TimeSink")
             }.foregroundStyle(.secondary)
         }
     }
 
-    /// Starts the session and, on success, drops back to the normal
-    /// dashboard mode (superseded immediately by `FocusRunningView` since
-    /// `focusRunning` is now true). A `start(minutes:)` failure (DB write
-    /// error) leaves the config screen up rather than silently discarding
-    /// the user's action.
+    /// Starts the session; the popover then shows `FocusRunningView`. A
+    /// `start(minutes:)` failure (DB write error) is shown instead of being
+    /// silently discarded.
     private func startFocus(minutes: Int) {
         guard let focus = model.focus else { return }
         do {
             try focus.start(minutes: minutes)
-            popoverMode = .dashboard
             focusError = nil
         } catch {
             focusError = String(localized: "无法开始专注，请重试。")
@@ -1048,6 +1050,7 @@ struct ScreenCaptureRow: View {
 }
 
 struct ScreenCaptureStatusView: View {
+    @Environment(\.locale) private var locale
     let permissionGranted: Bool
     var compact = false
     @Binding var isEnabled: Bool
@@ -1087,7 +1090,7 @@ struct ScreenCaptureStatusView: View {
     private var statusLine: String {
         guard isEnabled else { return String(localized: "已暂停") }
         guard let latestAt else { return String(localized: "已启用 · 等待首张画面") }
-        return String(localized: "已启用 · 今日 \(count) 张 · 最近 \(latestAt.formatted(date: .omitted, time: .shortened))")
+        return String(localized: "已启用 · 今日 \(count) 张 · 最近 \(latestAt.formatted(.dateTime.hour().minute().locale(locale)))")
     }
 }
 
@@ -1123,6 +1126,6 @@ struct CloudSyncRow: View {
         if sync.isSyncing { return String(localized: "正在同步 · 已上传 \(sync.passPushed) 条") }
         if sync.lastError != nil { return String(localized: "上次同步失败") }
         guard let last = sync.lastSyncAt else { return String(localized: "还没有同步过") }
-        return String(localized: "上次 \(last.formatted(date: .omitted, time: .shortened)) · 待上传 \(sync.pending) 条")
+        return String(localized: "上次 \(model.time(last)) · 待上传 \(sync.pending) 条")
     }
 }

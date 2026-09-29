@@ -36,6 +36,9 @@ final class ClassifierTests: XCTestCase {
         // 无 URL → app 默认
         XCTAssertEqual(Classifier.categoryID(appBundleID: "com.google.Chrome",
             url: nil, domain: nil, title: nil, context: c), "misc")
+        // 有 URL 但不是网站（新标签页、本地文件）→ 同样按应用
+        XCTAssertEqual(Classifier.categoryID(appBundleID: "com.google.Chrome",
+            url: "chrome://newtab/", domain: nil, title: nil, context: c), "misc")
     }
     func testLLMCacheLowestAmongDomainLayers() {
         let c = ctx(domains: ["x.dev": .init(categoryID: "softwareDev", source: "llm")])

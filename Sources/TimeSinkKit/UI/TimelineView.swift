@@ -112,6 +112,7 @@ enum TimelineZoom {
 /// Vertically laid-out hour anchors make scrollTo reliable; blocks overlay the
 /// same day origin and scale. Selection and zoom are owned by the page model.
 struct DayTimelineView: View {
+    @Environment(\.locale) private var locale
     let day: Date
     let blocks: [TimelineBlock]
     var events: [TimelineEventBlock] = []
@@ -209,7 +210,7 @@ struct DayTimelineView: View {
                     .font(.caption).lineLimit(2)
                 HStack {
                     if let selectedBlock {
-                        Text("\(selectedBlock.start.formatted(date: .omitted, time: .shortened))–\(selectedBlock.end.formatted(date: .omitted, time: .shortened))")
+                        Text("\(selectedBlock.start.formatted(.dateTime.hour().minute().locale(locale)))–\(selectedBlock.end.formatted(.dateTime.hour().minute().locale(locale)))")
                             .monospacedDigit()
                     }
                     Spacer(minLength: 0)

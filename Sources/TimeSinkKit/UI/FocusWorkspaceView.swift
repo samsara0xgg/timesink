@@ -65,8 +65,8 @@ struct FocusWorkspaceView: View {
                 else {
                     HStack(spacing: 6) {
                         Picker("专注时长", selection: $minutes) {
-                            ForEach([15, 25, 45, 90], id: \.self) { Text("\($0) 分钟").tag($0) }
-                            if ![15, 25, 45, 90].contains(minutes) { Text("\(minutes) 分钟").tag(minutes) }
+                            ForEach(FocusPresets.minutes, id: \.self) { Text("\($0) 分钟").tag($0) }
+                            if !FocusPresets.minutes.contains(minutes) { Text("\(minutes) 分钟").tag(minutes) }
                         }.pickerStyle(.segmented).labelsHidden()
                         Button("自定义…") { customDuration.toggle() }.controlSize(.small)
                             .popover(isPresented: $customDuration) {
@@ -148,7 +148,10 @@ struct FocusWorkspaceView: View {
                     Text("每日限额").fontWeight(.semibold); Spacer()
                     Menu {
                         ForEach(model.resolver.categoriesByID.values.filter { category in !budgets.contains { $0.categoryID == category.id } }.sorted { $0.sortOrder < $1.sortOrder }, id: \.id) { category in
-                            Button(category.name) { writeBudget { try model.budgetStore?.setBudget(categoryID: category.id, dailySeconds: 45 * 60) } }
+                            Button(category.name) {
+                                writeBudget { try model.budgetStore?.setBudget(categoryID: category.id, dailySeconds: 45 * 60) }
+                                model.requestNotificationPermission()
+                            }
                         }
                     } label: { Label("添加限额", systemImage: "plus") }.menuStyle(.borderlessButton).fixedSize()
                 }
@@ -165,8 +168,11 @@ struct FocusWorkspaceView: View {
             }.font(.system(size: 13)).frame(maxWidth: .infinity, alignment: .leading).padding(20).workspacePanel()
             VStack(alignment: .leading, spacing: 10) {
                 Toggle("每日小结", isOn: $summary).toggleStyle(.switch).fontWeight(.semibold)
-                    .onChange(of: summary) { _, value in model.settings.setDailySummaryEnabled(value) }
-                Text("每天 \(model.settings.dailySummaryHour):00 发一条通知：记录时长、投入、专注次数和评分。")
+                    .onChange(of: summary) { _, value in
+                        model.settings.setDailySummaryEnabled(value)
+                        if value { model.requestNotificationPermission() }
+                    }
+                Text("每天 \(model.time(Calendar.current.date(bySettingHour: model.settings.dailySummaryHour, minute: 0, second: 0, of: Date()) ?? Date())) 发一条通知：记录时长、投入、专注次数和评分。")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
             }.font(.system(size: 13)).frame(maxWidth: .infinity, alignment: .leading).padding(20).workspacePanel()
         }
@@ -182,10 +188,14 @@ struct FocusWorkspaceView: View {
                 }), in: 5...1440, step: 5).fixedSize()
                 Toggle("启用限额", isOn: Binding(get: { budget.enabled }, set: { value in
                     writeBudget { try model.budgetStore?.setEnabled(categoryID: budget.categoryID, enabled: value) }
+                    if value { model.requestNotificationPermission() }
                 })).labelsHidden().toggleStyle(.switch).controlSize(.mini)
             }
             ProgressView(value: min(seconds, Double(budget.dailySeconds)), total: Double(budget.dailySeconds))
-                .tint(seconds >= Double(budget.dailySeconds) * 0.8 ? RefinedStyle.warning : RefinedStyle.category( budget.categoryID, hex: model.resolver.categoriesByID[budget.categoryID]?.colorHex ?? "808080"))
+                // The same threshold the notification uses, not a fixed 80%.
+                .tint(BudgetEngine.level(spent: seconds, limit: Double(budget.dailySeconds), warnPercent: warn) == .none
+                      ? RefinedStyle.category(budget.categoryID, hex: model.resolver.categoriesByID[budget.categoryID]?.colorHex ?? "808080")
+                      : RefinedStyle.warning)
             HStack {
                 Text("今天 \(Format.duration(seconds)) · \(RefinedStyle.remaining(spent: seconds, limit: Double(budget.dailySeconds)))")
                     .font(.system(size: 11)).foregroundStyle(.secondary).monospacedDigit()

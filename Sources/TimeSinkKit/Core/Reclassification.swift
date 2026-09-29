@@ -51,7 +51,7 @@ extension CategoryStore {
                 key = normalized
                 previousRule = try TitleRule.fetchOne(db, sql: "SELECT * FROM titleRule WHERE pattern = ? AND scopeKey = ?", arguments: [key, activityKey])
                 guard previousRule?.source != "builtin" else { throw ReclassificationError.builtinRule }
-                try db.execute(sql: "INSERT INTO titleRule(pattern, scopeKey, categoryID, priority, source, enabled, createdAt) VALUES (?, ?, ?, 100, 'user', 1, ?) ON CONFLICT(pattern, scopeKey) DO UPDATE SET categoryID = excluded.categoryID, enabled = 1, createdAt = excluded.createdAt", arguments: [key, activityKey, categoryID, now])
+                try db.execute(sql: "INSERT INTO titleRule(pattern, scopeKey, categoryID, priority, source, enabled, createdAt) VALUES (?, ?, ?, COALESCE((SELECT MAX(priority) FROM titleRule WHERE source = 'user' AND scopeKey = ?), 0) + 100, 'user', 1, ?) ON CONFLICT(pattern, scopeKey) DO UPDATE SET categoryID = excluded.categoryID, enabled = 1, createdAt = excluded.createdAt", arguments: [key, activityKey, categoryID, activityKey, now])
             }
             return ReclassificationEdit(scope: scope, key: key, categoryID: categoryID, isDomain: isDomain,
                 previousCategory: previous?["categoryID"], previousSource: previous?.hasColumn("source") == true ? previous?["source"] : nil,

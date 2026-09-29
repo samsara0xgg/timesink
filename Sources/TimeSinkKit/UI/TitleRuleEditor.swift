@@ -167,7 +167,7 @@ struct TitleRuleEditor: View {
             return
         }
         let items = model.rangedSpans(for: DateRangeSelection(kind: .last30, anchor: Date()))
-        matchingRows = items.first.map { model.resolver.previewEdit(span: $0.span, scope: .title, categoryID: categoryID, pattern: pattern, items: items, titleScope: scopeKey, titlePriority: 0) } ?? []
+        matchingRows = items.first.map { model.resolver.previewEdit(span: $0.span, scope: .title, categoryID: categoryID, pattern: pattern, items: items, titleScope: scopeKey) } ?? []
         affectedPreview = (matchingRows.count, matchingRows.reduce(0) { $0 + $1.span.duration })
     }
 

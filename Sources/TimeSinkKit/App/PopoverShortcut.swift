@@ -11,7 +11,9 @@ import SwiftUI
     var action: (() -> Void)?
     private(set) var available = false
     func register(keyCode: UInt32 = UInt32(kVK_ANSI_T), modifiers: UInt32 = UInt32(controlKey | optionKey)) {
-        if available, registeredKey == keyCode, registeredModifiers == modifiers { return }
+        // Also when the last attempt failed: a taken combination stays taken,
+        // and the menu label calls this on every render.
+        if registeredKey == keyCode, registeredModifiers == modifiers { return }
         unregister()
         var type = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         let context = Unmanaged.passUnretained(self).toOpaque()
@@ -27,6 +29,7 @@ import SwiftUI
         if let hotKey { UnregisterEventHotKey(hotKey) }
         if let handler { RemoveEventHandler(handler) }
         hotKey = nil; handler = nil; available = false
+        registeredKey = nil; registeredModifiers = nil
     }
 }
 

@@ -96,7 +96,9 @@ import os
         XCTAssertFalse(try categories.titleRules().contains { $0.pattern == "Design" && $0.scopeKey == "example.org" })
     }
 
-    func testPreviewRespectsHigherPriorityTitleAndSegmentOverride() throws {
+    /// A new rule lands above every earlier user rule in its scope, even one
+    /// dragged to the top, and the preview agrees with what saving does.
+    func testNewTitleRuleRanksFirstAndPreviewAgreesAndSegmentOverrideWins() throws {
         let db = try AppDatabase.openInMemory(), categories = CategoryStore(db), store = SpanStore(db)
         let span = try store.insert(Span(start: ts(0), end: ts(90), appBundleID: "editor", appName: "Editor", title: "Design course", url: nil, domain: nil))
         try categories.upsertUserTitleRule(pattern: "course", scopeKey: "editor", categoryID: "learning")
@@ -106,8 +108,8 @@ import os
         let preview = resolver.previewEdit(span: span, scope: .title, categoryID: "writing", pattern: "Design", items: before)
         _ = try categories.reclassify(span: span, scope: .title, categoryID: "writing", pattern: "Design")
         resolver.refresh()
-        XCTAssertTrue(preview.isEmpty)
-        XCTAssertEqual(resolver.categoryID(for: span), "learning")
+        XCTAssertEqual(preview.count, 1)
+        XCTAssertEqual(resolver.categoryID(for: span), "writing")
         _ = try categories.reclassify(span: span, scope: .segment, categoryID: "news")
         resolver.refresh()
         XCTAssertTrue(resolver.previewEdit(span: span, scope: .activity, categoryID: "writing", pattern: "", items: resolver.categorized([span])).isEmpty)

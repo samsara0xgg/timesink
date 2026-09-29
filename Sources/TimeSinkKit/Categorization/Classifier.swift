@@ -171,7 +171,8 @@ struct CompiledTitleRule: Sendable {
 ///    non-user remainder).
 /// 6. `domain` has a curated-sourced entry reachable by the same suffix walk.
 /// 7. `domain` has a seed-sourced entry reachable by the same suffix walk.
-/// 8. `url == nil` (non-browser activity): `appMap[appBundleID]`.
+/// 8. `domain == nil` (not a website -- a native app, or a browser page such
+///    as a new tab or a local file): `appMap[appBundleID]`.
 /// 9. `domain` has a `domainMap` entry with `source == "llm"` (exact match
 ///    only).
 /// 10. `"uncategorized"`.
@@ -250,7 +251,9 @@ public enum Classifier {
             return categoryID
         }
 
-        if url == nil, let entry = context.appMap[appBundleID] {
+        // Keyed on the domain, not the URL: a new tab or file:// page has a
+        // URL but no site, and the uncategorized list offers it as the app.
+        if domain == nil, let entry = context.appMap[appBundleID] {
             return entry.categoryID
         }
 

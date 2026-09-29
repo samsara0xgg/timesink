@@ -8,6 +8,9 @@ struct TodayView: View {
     @State private var dashboard = TodayDashboardModel()
     @State private var visiblePieces = 9
     @State private var events: [CalendarEvent] = []
+    /// Moves at midnight, so the day's calendar events are fetched again.
+    @State private var day = Calendar.current.startOfDay(for: Date())
+    private struct EventsKey: Equatable { let enabled: Bool; let day: Date }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -55,12 +58,13 @@ struct TodayView: View {
         }
         .background(WorkspaceBackground())
         .task(id: model.dataVersion) { await refresh() }
-        .task(id: model.calendarOverlayEnabled) {
-            events = model.calendarOverlayEnabled ? await model.calendarStore?.events(on: Date()) ?? [] : []
+        .task(id: EventsKey(enabled: model.calendarOverlayEnabled, day: day)) {
+            events = model.calendarOverlayEnabled ? await model.calendarStore?.events(on: day) ?? [] : []
         }
         .task {
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(30)) } catch { return }
+                day = Calendar.current.startOfDay(for: Date())
                 await refresh()
             }
         }
@@ -154,7 +158,7 @@ struct TodayView: View {
                 Text(piece.end, format: .dateTime.hour().minute()).foregroundStyle(.tertiary)
             }.font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary).frame(width: 60, alignment: .leading)
             if let segment = piece.segment, let item = piece.item {
-                AppIcon(bundleID: segment.dominant.appBundleID)
+                ActivityIcon(bundleID: segment.dominant.appBundleID, domain: item.span.domain)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 5) {
                         Text(segment.dominant.label).font(.system(size: 13)).lineLimit(1)
@@ -330,12 +334,12 @@ struct DayRibbonView: View {
                     Label("专注会话", systemImage: "minus").foregroundStyle(.tint)
                     Label("日程", systemImage: "rectangle")
                     Label("未记录", systemImage: "rectangle.dashed")
-                    Text("现在 \(overview.now.formatted(date: .omitted, time: .shortened))")
+                    Text("现在 \(overview.now.formatted(.dateTime.hour().minute().locale(locale)))")
                 }.font(.system(size: 11)).foregroundStyle(.secondary)
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("时间带，\(interval.start.formatted(date: .omitted, time: .shortened)) 至 \(interval.end.formatted(date: .omitted, time: .shortened))，已记录 \(Format.duration(overview.total))。片段详情见活动列表。")
+        .accessibilityLabel("时间带，\(interval.start.formatted(.dateTime.hour().minute().locale(locale))) 至 \(interval.end.formatted(.dateTime.hour().minute().locale(locale)))，已记录 \(Format.duration(overview.total))。片段详情见活动列表。")
     }
 
     private func bounds(start: Date, end: Date, width: CGFloat) -> CGRect {
@@ -357,7 +361,7 @@ struct DayRibbonView: View {
     }
 
     private func tooltip(_ piece: DayOverview.Piece) -> String {
-        let time = "\(piece.start.formatted(date: .omitted, time: .shortened))–\(piece.end.formatted(date: .omitted, time: .shortened))"
+        let time = "\(piece.start.formatted(.dateTime.hour().minute().locale(locale)))–\(piece.end.formatted(.dateTime.hour().minute().locale(locale)))"
         guard let segment = piece.segment else {
             return String(localized: "未记录 · \(time) · \(Format.duration(piece.seconds))")
         }

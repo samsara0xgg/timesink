@@ -204,17 +204,27 @@ public final class CategoryResolver {
     }
 
     func previewEdit(span: Span, scope: ReclassificationEdit.Scope, categoryID: String,
-                     pattern: String, items: [CategorizedSpan], titleScope: String? = nil, titlePriority: Int = 100) -> [CategorizedSpan] {
+                     pattern: String, items: [CategorizedSpan], titleScope: String? = nil, titlePriority: Int = .max) -> [CategorizedSpan] {
         var domains = context.domainMap
         var apps = context.appMap
         var titles = context.titleRules
+        // Only spans the new entry can reach are classified again: a 30-day
+        // preview otherwise re-classifies thousands of tuples cold per call.
+        let reachable: (Span) -> Bool
         switch scope {
         case .segment: return items.filter { $0.span.id == span.id && $0.categoryID != categoryID }
         case .activity:
-            if let domain = span.domain { domains[domain] = DomainEntry(categoryID: categoryID, source: "user") }
-            else { apps[span.appBundleID] = DomainEntry(categoryID: categoryID, source: "user") }
+            if let domain = span.domain {
+                domains[domain] = DomainEntry(categoryID: categoryID, source: "user")
+                reachable = { $0.domain.map { $0 == domain || $0.hasSuffix("." + domain) } ?? false }
+            } else {
+                let app = span.appBundleID
+                apps[app] = DomainEntry(categoryID: categoryID, source: "user")
+                reachable = { $0.appBundleID == app }
+            }
         case .title:
             guard let pattern = TitleRuleInput.normalizedPattern(pattern) else { return [] }
+            reachable = { $0.title.map { Classifier.titleMatches(pattern: pattern, title: $0) } ?? false }
             let key = titleScope ?? span.domain ?? span.appBundleID
             let old = (try? categoryStore.titleRules())?.first { $0.pattern == pattern && $0.scopeKey == key }
             guard old?.source != "builtin" else { return [] }
@@ -229,6 +239,7 @@ public final class CategoryResolver {
         let preview = ClassificationContext(domainMap: domains, appMap: apps, urlRules: context.urlRules, titleRules: titles)
         var memo: [MemoKey: String] = [:]
         return items.filter { item in
+            guard reachable(item.span) else { return false }
             if let id = item.span.id, overrides[id] != nil { return false }
             return Self.categoryID(for: item.span, context: preview, memo: &memo) != item.categoryID
         }
@@ -260,7 +271,7 @@ public final class CategoryResolver {
             return "url:\(id)"
         }
         if let key = title(true) ?? domain("user") ?? url(true) ?? title(false) ?? url(false) ?? domain("curated") ?? domain("seed") { return key }
-        if span.url == nil, context.appMap[span.appBundleID] != nil { return "app:" + span.appBundleID }
+        if span.domain == nil, context.appMap[span.appBundleID] != nil { return "app:" + span.appBundleID }
         if let domain = span.domain, context.domainMap[domain]?.source == "llm" { return "domain:" + domain }
         return nil
     }
@@ -292,7 +303,7 @@ public final class CategoryResolver {
         }
         if let reason = titleReason(user: true) ?? domainReason("user") ?? urlReason(user: true)
             ?? titleReason(user: false) ?? urlReason(user: false) ?? domainReason("curated") ?? domainReason("seed") { return reason }
-        if span.url == nil, let entry = context.appMap[span.appBundleID] { return String(localized: "\(entry.source == "user" ? String(localized: "你的") : String(localized: "内置"))应用分类 · \(span.appName)") }
+        if span.domain == nil, let entry = context.appMap[span.appBundleID] { return String(localized: "\(entry.source == "user" ? String(localized: "你的") : String(localized: "内置"))应用分类 · \(span.appName)") }
         if let domain = span.domain, context.domainMap[domain]?.source == "llm" { return String(localized: "智能分类 · 根据网站域名识别") }
         return String(localized: "还没有匹配的应用、网站或标题规则。选择分类后可以为以后自动归类。")
     }

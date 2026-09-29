@@ -17,8 +17,8 @@ struct SettingsView: View {
                     Button { model.settingsTab = tab.0 } label: {
                         VStack(spacing: 4) {
                             Image(systemName: tab.2).font(.system(size: 22, weight: .regular))
-                            Text(tab.1).font(.system(size: 11))
-                        }.frame(width: 76, height: 52)
+                            Text(tab.1).font(.system(size: 11)).lineLimit(1).fixedSize()
+                        }.frame(minWidth: 64).padding(.horizontal, 6).frame(height: 52)
                             .foregroundStyle(model.settingsTab == tab.0 ? Color.accentColor : .secondary)
                             .background(model.settingsTab == tab.0 ? Color.primary.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 7))
                     }.buttonStyle(.plain).accessibilityAddTraits(model.settingsTab == tab.0 ? .isSelected : [])
@@ -36,7 +36,9 @@ struct SettingsView: View {
                 default: RefinedGeneralPane(model: model)
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
-        }.frame(width: 640, height: 560).background(WorkspaceBackground())
+        // Tabs size to their labels ("Smart Categorization" needs 111 pt), so
+        // the window grows past 640 pt only where a language needs it.
+        }.frame(minWidth: 640, minHeight: 560).background(WorkspaceBackground())
         .onAppear { redirectLegacyTab() }
         .onChange(of: model.settingsTab) { _, _ in redirectLegacyTab() }
     }
@@ -233,24 +235,24 @@ struct RefinedPermissionsPane: View {
         Form {
             Section {
                 PermissionRow(title: String(localized: "辅助功能 · 必需"), explanation: String(localized: "看到最前面的应用和窗口标题。"), state: ax,
-                    actionTitle: String(localized: "打开系统设置…"), action: { open("Privacy_Accessibility") }, compact: false)
+                    actionTitle: String(localized: "打开系统设置…"), action: { open("Privacy_Accessibility") })
                 PermissionRow(title: String(localized: "Chrome 自动化 · 推荐"), explanation: String(localized: "读取当前标签页的网址，按网站分类。不读网页内容。"), state: chrome,
                     actionTitle: chrome == .denied ? String(localized: "打开系统设置…") : String(localized: "允许…"), action: {
                         if chrome == .denied { open("Privacy_Automation") }
                         else { chrome = Permissions.chromeAutomationState(ask: true) }
-                    }, compact: false)
+                    })
                 PermissionRow(title: String(localized: "屏幕录制 · 屏幕采集"), explanation: String(localized: "只截取最前面的窗口，保存在本机。"), state: screen,
-                    actionTitle: String(localized: "打开系统设置…"), action: { open("Privacy_ScreenCapture") }, compact: false)
+                    actionTitle: String(localized: "打开系统设置…"), action: { open("Privacy_ScreenCapture") })
                 PermissionRow(title: String(localized: "日历 · 可选"), explanation: String(localized: "叠加日程，只读取标题、时间与人数。"), state: calendar,
                     actionTitle: calendar == .denied ? String(localized: "打开系统设置…") : String(localized: "允许…"), action: {
                         if calendar == .denied { open("Privacy_Calendars") }
                         else { Task { _ = await Permissions.requestCalendarAccess(); await refresh() } }
-                    }, compact: false)
+                    })
                 PermissionRow(title: String(localized: "通知 · 可选"), explanation: String(localized: "限额提醒、每日小结、专注结束。"), state: notification,
                     actionTitle: notification == .denied ? String(localized: "打开系统设置…") : String(localized: "允许…"), action: {
                         if notification == .denied { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.notifications")!) }
                         else { Task { _ = await model.notifier?.requestAuthorization(); await refresh() } }
-                    }, compact: false)
+                    })
             }
             Text("回到 TimeSink 时自动重新检查。其他浏览器目前只按应用记录。")
                 .font(.system(size: 11)).foregroundStyle(.secondary)
@@ -281,7 +283,10 @@ struct RefinedNotificationsPane: View {
     var body: some View {
         Form {
             Section("限额提醒") {
-                Toggle("限额提醒", isOn: $budgetAlerts).onChange(of: budgetAlerts) { _, value in model.settings.set("budgetNotificationsEnabled", value ? "true" : "false") }
+                Toggle("限额提醒", isOn: $budgetAlerts).onChange(of: budgetAlerts) { _, value in
+                    model.settings.set("budgetNotificationsEnabled", value ? "true" : "false")
+                    if value { model.requestNotificationPermission() }
+                }
                 VStack(alignment: .leading, spacing: 4) {
                     Stepper("剩余 \(warn)% 时提醒", value: $warn, in: 10...30, step: 10)
                     .onChange(of: warn) { _, value in model.settings.setBudgetWarnPercent(value) }
@@ -291,8 +296,11 @@ struct RefinedNotificationsPane: View {
             }
             Section("每日小结") {
                 VStack(alignment: .leading, spacing: 4) {
-                    Toggle("每日小结", isOn: $summary).onChange(of: summary) { _, value in model.settings.setDailySummaryEnabled(value) }
-                Stepper("每天 \(hour):00", value: $hour, in: 0...23).disabled(!summary)
+                    Toggle("每日小结", isOn: $summary).onChange(of: summary) { _, value in
+                        model.settings.setDailySummaryEnabled(value)
+                        if value { model.requestNotificationPermission() }
+                    }
+                Stepper("每天 \(model.time(Calendar.current.date(bySettingHour: hour, minute: 0, second: 0, of: Date()) ?? Date()))", value: $hour, in: 0...23).disabled(!summary)
                     .onChange(of: hour) { _, value in model.settings.setDailySummaryHour(value) }
                 Text("今天记录了多久、投入多少、评分。").font(.system(size: 11)).foregroundStyle(.secondary)
                 }

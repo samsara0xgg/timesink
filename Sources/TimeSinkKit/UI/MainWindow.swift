@@ -31,7 +31,7 @@ struct MainWindowView: View {
                     if model.sidebarSelection == .today {
                         ToolbarItem {
                             Menu {
-                                ForEach([25, 45, 60, 90], id: \.self) { minutes in
+                                ForEach(FocusPresets.minutes, id: \.self) { minutes in
                                     Button("\(minutes) 分钟") {
                                         do { try model.focus?.start(minutes: minutes) }
                                         catch { focusError = error.localizedDescription }
@@ -64,11 +64,12 @@ struct MainWindowView: View {
     }
 
     private var windowSubtitle: String {
+        _ = model.dataVersion  // the counts below come from the store, not from observed state
         switch model.sidebarSelection {
         case .today: return Date().formatted(.dateTime.month().day().weekday(.wide))
         case .activities:
             let items = model.rangedSpans()
-            return String(localized: "\(rangeLabel) · \(Format.duration(items.reduce(0) { $0 + $1.span.duration })) · \(items.count) 段")
+            return String(localized: "\(rangeLabel) · \(Format.duration(items.reduce(0) { $0 + $1.span.duration })) · \(items.count) 条记录")
         case .stats: return String(localized: "\(rangeLabel) · 与前一时段比较")
         case .focus:
             let sessions = (try? model.focusStore?.sessions(overlapping: DateRangeSelection.today().interval)) ?? []

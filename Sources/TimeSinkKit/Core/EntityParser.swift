@@ -60,7 +60,9 @@ public enum EntityParser {
     /// dedup (`O/R` and `o/r` collapse to one row); labels keep the original
     /// casing.
     public static func entity(urlString: String, domain: String) -> (key: String, label: String)? {
-        guard let components = URLComponents(string: urlString) else { return nil }
+        // Most spans are on other sites; don't parse their URLs at all.
+        guard domain == "github.com" || domain == "gitlab.com" || domain == "youtube.com" || domain.hasSuffix(".youtube.com"),
+              let components = URLComponents(string: urlString) else { return nil }
         let parts = components.percentEncodedPath
             .split(separator: "/", omittingEmptySubsequences: true)
             .map { $0.removingPercentEncoding ?? String($0) }

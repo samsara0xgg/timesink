@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import os
 
 public final class SettingsStore: Sendable {
     let writer: any DatabaseWriter
@@ -38,23 +39,38 @@ public final class SettingsStore: Sendable {
         self.writer = writer
     }
 
+    /// Settings are read several times a second on the main actor (the
+    /// tracker's tick, SwiftUI bodies) and written rarely, only through this
+    /// store, so reads are served from memory after the first.
+    private let cache = OSAllocatedUnfairLock(initialState: [String: String?]())
+
     /// Reads a raw setting value. Swallows any error and returns nil (not fatal).
     public func get(_ key: String) -> String? {
-        try? writer.read { db in
-            try SettingRow.fetchOne(db, key: key)?.value
+        if let hit = cache.withLock({ $0[key] }) { return hit }
+        do {
+            let value = try writer.read { db in try SettingRow.fetchOne(db, key: key)?.value }
+            cache.withLock { $0[key] = .some(value) }
+            return value
+        } catch {
+            return nil
         }
     }
 
     /// Writes a raw setting value. Swallows any error.
     public func set(_ key: String, _ value: String) {
-        _ = try? writer.write { db in
-            try db.execute(
-                sql: """
-                INSERT INTO setting (key, value) VALUES (?, ?)
-                ON CONFLICT(key) DO UPDATE SET value = excluded.value
-                """,
-                arguments: [key, value]
-            )
+        do {
+            try writer.write { db in
+                try db.execute(
+                    sql: """
+                    INSERT INTO setting (key, value) VALUES (?, ?)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                    """,
+                    arguments: [key, value]
+                )
+            }
+            cache.withLock { $0[key] = .some(value) }
+        } catch {
+            cache.withLock { _ = $0.removeValue(forKey: key) }
         }
     }
 

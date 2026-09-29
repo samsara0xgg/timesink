@@ -38,7 +38,7 @@ struct ActivityListView: View {
     }
 
     private var summary: some View {
-        Text("\(Format.duration(totalSeconds)) · \(activities.displayedItems.count) 段 · \(displayedGroups.count) 个分类")
+        Text("\(Format.duration(totalSeconds)) · \(activities.displayedItems.count) 条记录 · \(displayedGroups.count) 个分类")
             .font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit().fixedSize()
     }
 
@@ -81,20 +81,20 @@ struct ActivityListView: View {
                                 CategoryGroupRow(model: model, activities: activities, group: group, totalSeconds: totalSeconds, pendingTitleRule: $pendingTitleRule)
                             }
                         } else if grouping == 1 {
-                            ForEach(applicationGroups, id: \.key) { group in
+                            ForEach(activities.appGroups) { group in
                                 Section {
-                                    ForEach(Array(group.items.enumerated()), id: \.offset) { _, item in segmentRow(item) }
+                                    ForEach(group.rows) { row in appRow(row, app: group.id) }
                                 } header: {
                                     HStack {
-                                        AppIcon(bundleID: group.key, size: 18)
-                                        Text(group.items.first?.span.appName ?? group.key)
+                                        AppIcon(bundleID: group.id, size: 18)
+                                        Text(group.name)
                                         Spacer()
-                                        Text(Format.duration(group.items.reduce(0) { $0 + $1.span.duration })).monospacedDigit()
+                                        Text(Format.duration(group.seconds)).monospacedDigit()
                                     }
                                 }
                             }
                         } else {
-                            ForEach(Array(activities.displayedItems.sorted { $0.span.start > $1.span.start }.enumerated()), id: \.offset) { _, item in segmentRow(item) }
+                            ForEach(activities.timeRows) { segment in timeRow(segment) }
                         }
                     }
                     .listStyle(.inset)
@@ -111,28 +111,57 @@ struct ActivityListView: View {
         }
     }
 
-    private var applicationGroups: [(key: String, items: [CategorizedSpan])] {
-        Dictionary(grouping: activities.displayedItems, by: { $0.span.appBundleID })
-            .map { (key: $0.key, items: $0.value.sorted { $0.span.start > $1.span.start }) }
-            .sorted { $0.items.reduce(0) { $0 + $1.span.duration } > $1.items.reduce(0) { $0 + $1.span.duration } }
+    private func categoryColor(_ id: String) -> Color {
+        RefinedStyle.category(id, hex: model.resolver.categoriesByID[id]?.colorHex ?? "#C7C7CC")
     }
 
-    private func segmentRow(_ item: CategorizedSpan) -> some View {
-        let selection = ActivitiesModel.selection(for: item)
-        return Button { activities.select(selection, start: item.span.start) } label: {
+    private func appRow(_ row: ActivitiesModel.AppGroup.Row, app: String) -> some View {
+        let selected = activities.selectedActivity?.row == row.selection
+        return Button { activities.select(row.selection) } label: {
             HStack(spacing: 8) {
-                AppIcon(bundleID: item.span.appBundleID, size: 18)
+                ActivityIcon(bundleID: app, domain: row.domain, size: 16)
+                Text(row.label).lineLimit(1).truncationMode(.middle)
+                Circle().fill(categoryColor(row.selection.categoryID)).frame(width: 6, height: 6)
+                    .help(model.resolver.categoriesByID[row.selection.categoryID]?.name ?? String(localized: "未分类"))
+                Spacer(minLength: 6)
+                Text(Format.duration(row.seconds)).monospacedDigit().foregroundStyle(.secondary)
+            }.font(.system(size: 12)).padding(.vertical, 4).padding(.horizontal, 4)
+                .background(selected ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 4))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    /// A folded stretch: its leading activity, what else it holds, and its
+    /// category mix when no single activity dominates.
+    private func timeRow(_ segment: TimelineSegment) -> some View {
+        let part = segment.dominant
+        let selected = activities.selectedActivity.map(segment.contains) == true
+            && activities.selectedStart.map { segment.start <= $0 && $0 < segment.end } == true
+        let others = segment.parts.dropFirst()
+        return Button { activities.select(part.selection, start: part.longest.span.start) } label: {
+            HStack(spacing: 8) {
+                ActivityIcon(bundleID: part.appBundleID, domain: part.longest.span.domain, size: 18)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(item.span.title ?? item.span.domain ?? item.span.appName).lineLimit(1)
-                    Text("\(model.time(item.span.start))–\(model.time(item.span.end)) · \(model.resolver.categoriesByID[item.categoryID]?.name ?? String(localized: "未分类"))")
-                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text(part.label).lineLimit(1).truncationMode(.middle)
+                    Text(others.isEmpty
+                         ? "\(model.time(segment.start))–\(model.time(segment.end))"
+                         : String(localized: "\(model.time(segment.start))–\(model.time(segment.end)) · 另有 \(others.count) 项"))
+                        .font(.system(size: 11)).foregroundStyle(.secondary).monospacedDigit()
                 }
                 Spacer(minLength: 6)
-                Text(Format.duration(item.span.duration)).monospacedDigit().foregroundStyle(.secondary)
+                if segment.isMixed {
+                    CompositionBar(segment: segment, color: categoryColor).frame(width: 36, height: 4)
+                }
+                Text(Format.duration(segment.recorded)).monospacedDigit().foregroundStyle(.secondary)
             }.font(.system(size: 12)).padding(.vertical, 5).padding(.horizontal, 4)
-                .background(activities.selectedActivity == selection && activities.selectedStart == item.span.start ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 4))
+                .background(selected ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 4))
                 .contentShape(Rectangle())
-        }.buttonStyle(.plain).id(selection)
+        }
+        .buttonStyle(.plain)
+        .help(TimelineSegmentText.composition(segment).joined(separator: "\n"))
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private var emptyState: some View {
@@ -256,7 +285,7 @@ private struct ActivityRowView: View {
         } label: {
             Button { activities.select(ActivitySelection(categoryID: categoryID, rowID: row.id)) } label: {
             HStack {
-                AppIcon(bundleID: row.isDomain ? "com.google.Chrome" : row.reassignKey, size: 18)
+                ActivityIcon(bundleID: row.reassignKey, domain: row.isDomain ? row.reassignKey : nil, size: 18)
                 Text(row.label).lineLimit(1)
                 Spacer()
                 if row.hasMeeting {
@@ -269,7 +298,7 @@ private struct ActivityRowView: View {
                         .help("由日历事件自动标注")
                 }
                 let count = activities.segmentCounts[ActivitySelection(categoryID: categoryID, rowID: row.id)] ?? 0
-                if count > 1 { Text("\(count) 段").font(.system(size: 11)).foregroundStyle(.tertiary) }
+                if count > 1 { Text("\(count) 次").font(.system(size: 11)).foregroundStyle(.tertiary).help("来回 \(count) 次") }
                 Text(Format.duration(row.seconds))
                     .foregroundStyle(.secondary)
             }

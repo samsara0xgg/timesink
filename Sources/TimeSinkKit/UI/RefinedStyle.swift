@@ -21,8 +21,10 @@ enum RefinedStyle {
     static let panel = adaptive("#FFFFFF", "#252528")
     static let warning = adaptive("#C98300", "#F2AA2E")
 
-    static func category(_ id: String, hex: String) -> Color {
-        let colors: [String: (String, String)] = [
+    /// Shipped hex -> its light/dark pair, built once: this is called per
+    /// block, row and chip on every render.
+    private static let shipped: [String: (hex: String, color: Color)] = {
+        let pairs: [String: (String, String)] = [
             "softwareDev": ("#2F6BE4", "#4D8DFF"), "learning": ("#2C9A55", "#3CC46E"),
             "writing": ("#0C8898", "#2BB8C8"), "business": ("#6B50D6", "#9580FF"),
             "utilities": ("#6C7581", "#8D96A3"), "communication": ("#E27F0C", "#FFA23A"),
@@ -30,12 +32,20 @@ enum RefinedStyle {
             "socialMedia": ("#DA4338", "#FF645A"), "entertainment": ("#C29406", "#F2C51C"),
             "misc": ("#978E82", "#A99F92"), "uncategorized": ("#B4B4BB", "#6A6A72")
         ]
+        var result: [String: (hex: String, color: Color)] = [:]
+        for category in Taxonomy.categories {
+            if let pair = pairs[category.id] { result[category.id] = (category.colorHex, adaptive(pair.0, pair.1)) }
+        }
+        return result
+    }()
+
+    static func category(_ id: String, hex: String) -> Color {
         // Keep personal category colors; only remap the shipped palette.
-        guard let original = Taxonomy.categories.first(where: { $0.id == id }),
-              original.colorHex.caseInsensitiveCompare(hex) == .orderedSame,
-              let pair = colors[id] else { return Color(hex: hex) }
-        return adaptive(pair.0, pair.1)
+        guard let shipped = shipped[id], shipped.hex.caseInsensitiveCompare(hex) == .orderedSame else { return Color(hex: hex) }
+        return shipped.color
     }
+
+    static func shippedHex(_ id: String) -> String? { shipped[id]?.hex }
 
     static func remaining(spent: TimeInterval, limit: TimeInterval) -> String {
         let remaining = limit - spent
@@ -80,23 +90,63 @@ struct CategoryChip: View {
 }
 
 struct AppIcon: View {
-    static func name(for bundleID: String) -> String {
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return bundleID.split(separator: ".").last.map(String.init) ?? String(localized: "应用") }
-        return FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: "")
+    /// Launch Services lookups cost ~50 µs each and rows re-create their
+    /// icons on every scroll; apps don't change names or icons while we run.
+    @MainActor private static var names: [String: String] = [:]
+    @MainActor private static var icons: [String: NSImage] = [:]
+
+    @MainActor static func name(for bundleID: String) -> String {
+        if let name = names[bundleID] { return name }
+        let name = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
+            .map { FileManager.default.displayName(atPath: $0.path).replacingOccurrences(of: ".app", with: "") }
+            ?? bundleID.split(separator: ".").last.map(String.init) ?? String(localized: "应用")
+        names[bundleID] = name
+        return name
     }
     let bundleID: String
     var size: CGFloat = 22
     @State private var icon: NSImage?
     var body: some View {
         Group {
-            if let icon { Image(nsImage: icon).resizable().interpolation(.high) }
+            if let icon = icon ?? Self.icons[bundleID] { Image(nsImage: icon).resizable().interpolation(.high) }
             else { Image(systemName: "app.fill").resizable().foregroundStyle(.secondary) }
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
         .task(id: bundleID) {
-            icon = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
-                .map { NSWorkspace.shared.icon(forFile: $0.path) }
+            guard Self.icons[bundleID] == nil,
+                  let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return }
+            let loaded = NSWorkspace.shared.icon(forFile: url.path)
+            Self.icons[bundleID] = loaded
+            icon = loaded
+        }
+    }
+}
+
+/// A site's monogram, or the app's icon when there is no site. Every site
+/// is visited in the same browser, so its icon alone can't tell rows apart.
+struct ActivityIcon: View {
+    let bundleID: String
+    let domain: String?
+    var size: CGFloat = 22
+
+    static func monogram(for domain: String) -> String {
+        let labels = domain.split(separator: ".")
+        guard labels.count >= 2 else { return String(domain.prefix(1)).uppercased() }
+        let generic: Set<Substring> = ["co", "com", "org", "net", "gov", "edu", "ac"]
+        let name = labels.count >= 3 && generic.contains(labels[labels.count - 2]) ? labels[labels.count - 3] : labels[labels.count - 2]
+        return String(name.prefix(1)).uppercased()
+    }
+
+    var body: some View {
+        if let domain {
+            RoundedRectangle(cornerRadius: size * 0.24, style: .continuous)
+                .fill(.quaternary)
+                .overlay(Text(Self.monogram(for: domain)).font(.system(size: size * 0.55, weight: .semibold, design: .rounded)).foregroundStyle(.secondary))
+                .frame(width: size, height: size)
+                .accessibilityHidden(true)
+        } else {
+            AppIcon(bundleID: bundleID, size: size)
         }
     }
 }

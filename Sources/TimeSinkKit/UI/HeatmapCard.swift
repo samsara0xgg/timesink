@@ -11,6 +11,7 @@ struct HeatmapCard: View {
     private var previewKey: HeatmapData.Key { interaction.preview(fallback: data.suggestedKey) }
     private var preview: HeatmapData.Cell { data[previewKey] }
     @Environment(\.calendar) private var calendar
+    @Environment(\.locale) private var locale
     private var hours: [Int] {
         let first = min(6, data.cells.filter { $0.seconds > 0 }.map { $0.key.hour }.min() ?? 6)
         return Array(first..<24)
@@ -74,7 +75,7 @@ struct HeatmapCard: View {
                         RoundedRectangle(cornerRadius: 2).fill(Color.secondary.opacity(0.55))
                             .frame(width: max(2, cellWidth - 6), height: max(2, 22 * columns[hour] / max(1, columns.max() ?? 1)))
                             .frame(height: 22, alignment: .bottom)
-                        Text(hour % 3 == 0 ? String(format: "%02d", hour) : " ")
+                        Text(hour % 3 == 0 ? HeatmapData.Key.hourLabel(hour, locale: locale) : " ")
                             .font(.system(size: 11)).monospacedDigit().foregroundStyle(.secondary)
                     }.frame(width: cellWidth).help("\(hour):00 平均 \(Format.chineseDuration(columns[hour]))")
                 }
@@ -106,7 +107,7 @@ struct HeatmapCard: View {
 
     private func cell(_ cell: HeatmapData.Cell) -> some View {
         let key = previewKey
-        return HeatmapCellView(cell: cell, showsScore: showsScore, highlighted: key == cell.key,
+        return HeatmapCellView(cell: cell, locale: locale, showsScore: showsScore, highlighted: key == cell.key,
             aligned: key.weekday == cell.key.weekday || key.hour == cell.key.hour,
             pinned: interaction.pinned == cell.key,
             select: { interaction.select(cell.key); gridFocused = true },
@@ -144,7 +145,7 @@ struct HeatmapCard: View {
     private var previewSummary: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
-                Text(preview.key.label).font(.subheadline.weight(.semibold)).monospacedDigit()
+                Text(preview.key.label(locale)).font(.subheadline.weight(.semibold)).monospacedDigit()
                 Spacer(minLength: 4)
                 if interaction.pinned != nil {
                     Button { interaction.dismiss(); gridFocused = true } label: {
@@ -206,7 +207,7 @@ struct HeatmapCard: View {
                 .buttonStyle(.plain).disabled(day.seconds == 0)
                 .font(.caption).monospacedDigit()
                 .help(day.seconds == 0 ? "这一天此时段没有记录" : day.seconds < 900 ? "此日期的样本不足 15 分钟，暂不显示分数" : "查看这一天此时段的活动")
-                .accessibilityLabel("查看 \(day.date.formatted(date: .abbreviated, time: .omitted)) \(preview.key.timeLabel) 的活动，\(Format.duration(day.seconds))")
+                .accessibilityLabel("查看 \(day.date.formatted(date: .abbreviated, time: .omitted)) \(preview.key.timeLabel(locale)) 的活动，\(Format.duration(day.seconds))")
             }
             if preview.days.isEmpty {
                 Text("所选范围内这个时段尚未到来。").font(.caption).foregroundStyle(.secondary)
@@ -225,6 +226,7 @@ struct HeatmapCard: View {
 /// on every displayed value rather than on closure identity.
 private struct HeatmapCellView: View, Equatable {
     let cell: HeatmapData.Cell
+    let locale: Locale
     let showsScore: Bool
     let highlighted: Bool
     let aligned: Bool
@@ -233,7 +235,7 @@ private struct HeatmapCellView: View, Equatable {
     let hover: (Bool) -> Void
 
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.showsScore == rhs.showsScore && lhs.cell.key == rhs.cell.key && lhs.cell.seconds == rhs.cell.seconds
+        lhs.showsScore == rhs.showsScore && lhs.locale == rhs.locale && lhs.cell.key == rhs.cell.key && lhs.cell.seconds == rhs.cell.seconds
             && lhs.cell.pulse == rhs.cell.pulse && lhs.cell.averageSeconds == rhs.cell.averageSeconds
             && lhs.cell.accessibilitySummary == rhs.cell.accessibilitySummary
             && lhs.highlighted == rhs.highlighted && lhs.aligned == rhs.aligned && lhs.pinned == rhs.pinned
@@ -263,8 +265,8 @@ private struct HeatmapCellView: View, Equatable {
         }
         .buttonStyle(.plain).focusable(false)
         .onHover(perform: hover)
-        .help("\(cell.label)\n\(cell.accessibilitySummary)\n点击固定并查看具体日期")
-        .accessibilityLabel(cell.label)
+        .help("\(cell.key.label(locale))\n\(cell.accessibilitySummary)\n点击固定并查看具体日期")
+        .accessibilityLabel(cell.key.label(locale))
         .accessibilityValue(cell.accessibilitySummary)
         .accessibilityAddTraits(pinned ? .isSelected : [])
         .accessibilityHint("查看贡献此格的具体日期和活动")

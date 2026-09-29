@@ -56,21 +56,24 @@ struct OnboardingView: View {
                             actionTitle: String(localized: "打开系统设置…"), action: {
                                 _ = Permissions.accessibilityGranted(prompt: true)
                                 NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
-                            }, compact: false)
+                            }).padding(12).workspacePanel()
                         Text("打开开关后回到这里，会自动进入下一步。").foregroundStyle(.secondary)
                     }.padding(.top, 10)
                 case 3:
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(spacing: 12) {
                             AppIcon(bundleID: "com.google.Chrome", size: 32)
-                            VStack(alignment: .leading, spacing: 3) { Text("Chrome").fontWeight(.semibold); Text("只读取当前标签页的网址").foregroundStyle(.secondary) }
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Chrome").fontWeight(.semibold)
+                                Text(chromeStateText).foregroundStyle(chromeState == .denied ? AnyShapeStyle(RefinedStyle.warning) : AnyShapeStyle(.secondary))
+                            }
                             Spacer()
-                            Button(chromeState == .granted ? "已允许" : "允许") {
+                            Button(chromeState == .granted ? "已允许" : chromeState == .denied ? "打开系统设置…" : "允许") {
                                 chromeEnabled = true; model.settings.set("chromeTrackingEnabled", "true")
                                 if chromeState == .denied { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")!) }
                                 else { chromeState = Permissions.chromeAutomationState(ask: true) }
-                            }.disabled(chromeState == .granted)
-                        }.padding(12).background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
+                            }.disabled(chromeState == .granted || chromeState.isUnavailable)
+                        }.padding(12).workspacePanel()
                         Button("跳过，只按应用记录") { chromeEnabled = false; model.settings.set("chromeTrackingEnabled", "false"); advance(1) }.buttonStyle(.link)
                     }.padding(.top, 10)
                 default:
@@ -107,7 +110,20 @@ struct OnboardingView: View {
             }
         }
     }
-    private func advance(_ delta: Int) { withAnimation(RefinedStyle.motion(reduced: reduceMotion)) { step = max(0, min(4, step + delta)) } }
+    private var chromeStateText: String {
+        switch chromeState {
+        case .granted: return String(localized: "已允许 · 只读取当前标签页的网址")
+        case .denied: return String(localized: "已拒绝 · 需在系统设置 › 自动化中打开")
+        case .unavailable: return String(localized: "先打开 Chrome，再回到这里允许")
+        case .notDetermined: return String(localized: "只读取当前标签页的网址")
+        }
+    }
+    /// The Chrome step is skipped when Chrome recording was switched off.
+    private func advance(_ delta: Int) {
+        var next = max(0, min(4, step + delta))
+        if next == 3, !chromeEnabled { next += delta }
+        withAnimation(RefinedStyle.motion(reduced: reduceMotion)) { step = max(0, min(4, next)) }
+    }
     private func choice<Content: View>(_ title: String, _ detail: String, @ViewBuilder control: () -> Content) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 3) { Text(title).font(.system(size: 13)); Text(detail).foregroundStyle(.secondary) }

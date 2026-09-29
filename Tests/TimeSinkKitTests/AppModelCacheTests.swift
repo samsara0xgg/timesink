@@ -69,6 +69,39 @@ final class AppModelCacheTests: XCTestCase {
         XCTAssertEqual(model.dataEditVersion, startEdit + 2, "an engine write must NOT count as an edit")
     }
 
+    /// The tracker only ever writes the span it is recording, so a window
+    /// that ended before that span started keeps its cached rows.
+    func testTrackerWritesKeepEarlierWindowsCached() throws {
+        let (model, store) = try makeModel()
+        let today = Calendar.current.startOfDay(for: Date())
+        let yesterday = DateRangeSelection(kind: .day, anchor: today.addingTimeInterval(-43200))
+        XCTAssertEqual(model.rangedSpans(for: yesterday).count, 0)
+        XCTAssertEqual(model.rangedSpans(for: .today()).count, 0)
+
+        try store.insert(span(hourOffset: -12))  // yesterday, bypassing the model
+        try store.insert(span(hourOffset: 12))
+        model.engineDataChangedForTesting(writtenFrom: today.addingTimeInterval(12 * 3600))
+        XCTAssertEqual(model.rangedSpans(for: yesterday).count, 0, "a window before the write stays cached")
+        XCTAssertEqual(model.rangedSpans(for: .today()).count, 1, "the window holding the write is re-read")
+
+        model.dataChanged()
+        XCTAssertEqual(model.rangedSpans(for: yesterday).count, 1, "a user edit still clears everything")
+    }
+
+    func testMidnightMovesTodayButNotAnOlderDay() throws {
+        let (model, _) = try makeModel()
+        let now = Date()
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: now)!
+        model.range = DateRangeSelection(kind: .day, anchor: yesterday)
+        model.dayChanged(now: now)
+        XCTAssertTrue(Calendar.current.isDate(model.range.anchor, inSameDayAs: now))
+
+        let older = Calendar.current.date(byAdding: .day, value: -3, to: now)!
+        model.range = DateRangeSelection(kind: .day, anchor: older)
+        model.dayChanged(now: now)
+        XCTAssertTrue(Calendar.current.isDate(model.range.anchor, inSameDayAs: older))
+    }
+
     func testRangeCacheEvictsOldestBeyondCap() throws {
         let (model, store) = try makeModel()
         let today = Calendar.current.startOfDay(for: Date()).addingTimeInterval(12 * 3600)

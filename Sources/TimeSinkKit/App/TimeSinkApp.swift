@@ -51,6 +51,12 @@ public struct TimeSinkApp: App {
         let resolver = CategoryResolver(categoryStore: categoryStore)
         let observationStore = ObservationStore(db)
         let engine = TrackerEngine(spanStore: spanStore, settings: settingsStore, observations: observationStore)
+        // First run: screen capture waits for the onboarding switch, as its
+        // first page promises, instead of raising the system prompt unasked.
+        if settingsStore.get("screenCapturePaused") == nil,
+           Bundle.main.bundleIdentifier == "com.alllllenshi.TimeSink", !Permissions.accessibilityGranted(prompt: false) {
+            settingsStore.setScreenCapturePaused(true)
+        }
         if let imagesRoot = try? ScreenCollector.defaultImagesRoot() {
             engine.screenCollector = ScreenCollector(store: observationStore, imagesRoot: imagesRoot,
                                                      paused: settingsStore.screenCapturePaused)
@@ -76,6 +82,7 @@ public struct TimeSinkApp: App {
         model.calendarStore = calendarStore
         engine.isInMeetingProvider = { [weak model] in model?.isNowInMeeting ?? false }
         model.observeCalendarChanges()
+        model.observeDayChanges()
         model.startCalendarRefreshLoop()
 
         // C4 budgets -- assigned AFTER `AppModel` construction (post-init
@@ -248,6 +255,7 @@ public struct TimeSinkApp: App {
 
         Settings {
             SettingsView(model: model)
+                .environment(\.locale, model.displayLocale)
                 .appWindow(.settings)
         }
     }

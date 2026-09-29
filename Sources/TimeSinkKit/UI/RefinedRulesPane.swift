@@ -5,6 +5,7 @@ struct RefinedRulesPane: View {
     @State private var rows: [RuleRow] = []
     private var search: String { model.organizationSearch }
     @State private var error: String?
+    @State private var urlError: String?
     @State private var pendingTitle: PendingTitleRule?
     @State private var showURL = false
     @State private var newPattern = ""
@@ -22,6 +23,20 @@ struct RefinedRulesPane: View {
         let recordID: Int64?
         let seconds: TimeInterval
         var enabled: Bool
+        /// What a person reads: an app's name rather than its bundle ID.
+        var scopeLabel = ""
+        var displayPattern: String { pattern.hasPrefix("re:") ? pattern : pattern.replacingOccurrences(of: "|", with: "、") }
+    }
+
+    /// A URL rule is one substring (or `re:` expression) tested against the
+    /// whole URL -- unlike a title rule, a comma is part of it, not a list.
+    static func urlPattern(_ text: String) -> String? {
+        let pattern = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if pattern.hasPrefix("re:") {
+            let body = String(pattern.dropFirst(3))
+            return !body.isEmpty && (try? NSRegularExpression(pattern: body)) != nil ? pattern : nil
+        }
+        return pattern.count >= 3 ? pattern : nil
     }
     private var visible: [RuleRow] { rows.filter { search.isEmpty || ($0.pattern + $0.scope + (model.resolver.categoriesByID[$0.category]?.name ?? "")).localizedCaseInsensitiveContains(search) } }
     var body: some View {
@@ -43,8 +58,13 @@ struct RefinedRulesPane: View {
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(visible) { row in
-                        rule(row).draggable(row.id) { Text(row.pattern).padding(10).background(RefinedStyle.panel) }
-                            .dropDestination(for: String.self) { ids, _ in reorder(ids.first, before: row) }
+                        // Only user title rules have an order to change.
+                        if isOrderable(row) {
+                            rule(row).draggable(row.id) { Text(row.displayPattern).padding(10).background(RefinedStyle.panel) }
+                                .dropDestination(for: String.self) { ids, _ in reorder(ids.first, onto: row) }
+                        } else {
+                            rule(row)
+                        }
                         Divider()
                     }
                 }
@@ -58,20 +78,25 @@ struct RefinedRulesPane: View {
                 Text("新建网址规则").font(.system(size: 17, weight: .semibold))
                 TextField("网址包含，或 re: 正则表达式", text: $newPattern).textFieldStyle(.roundedBorder)
                 Picker("归为", selection: $newCategory) { ForEach(model.resolver.categoriesByID.values.sorted { $0.sortOrder < $1.sortOrder }, id: \.id) { Text($0.name).tag($0.id) } }
-                Text("仅检查记录中的网址；不访问网页。").font(.system(size: 11)).foregroundStyle(.secondary)
-                HStack { Spacer(); Button("取消") { showURL = false }; Button("添加规则", action: addURL).buttonStyle(.borderedProminent).disabled(TitleRuleInput.normalizedPattern(newPattern) == nil) }
-                if let error { Text(error).foregroundStyle(.red) }
+                Text("仅检查记录中的网址；不访问网页。至少 3 个字符。").font(.system(size: 11)).foregroundStyle(.secondary)
+                HStack {
+                    Spacer()
+                    Button("取消") { newPattern = ""; urlError = nil; showURL = false }.keyboardShortcut(.cancelAction)
+                    Button("添加规则", action: addURL).buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                        .disabled(Self.urlPattern(newPattern) == nil)
+                }
+                if let urlError { Text(urlError).foregroundStyle(.red) }
             }.padding(24).frame(width: 460)
         }
     }
     private var header: some View {
         HStack(spacing: 10) {
             Color.clear.frame(width: 16, height: 1)
-            Text("类型").frame(width: 42, alignment: .leading)
+            Text("类型").frame(width: 56, alignment: .leading)
             Text("条件").frame(maxWidth: .infinity, alignment: .leading)
-            Text("归为").frame(width: 94, alignment: .leading)
-            Text("今天命中").frame(width: 70, alignment: .trailing)
-            Text("来源").frame(width: 32)
+            Text("归为").frame(width: 124, alignment: .leading)
+            Text("今天命中").frame(width: 84, alignment: .trailing)
+            Text("来源").frame(width: 48)
             Color.clear.frame(width: 30, height: 1)
         }.font(.system(size: 11)).foregroundStyle(.secondary).padding(.horizontal, 14).frame(height: 28).background(.quaternary.opacity(0.45))
     }
@@ -79,17 +104,24 @@ struct RefinedRulesPane: View {
         HStack(spacing: 10) {
             Image(systemName: "line.3.horizontal").font(.system(size: 11)).foregroundStyle(.tertiary).frame(width: 16)
                 .opacity(row.type == String(localized: "标题") && row.source == "user" ? 1 : 0)
-            Text(row.type).font(.system(size: 11)).foregroundStyle(.secondary).padding(.vertical, 3).frame(width: 42).background(.quaternary, in: RoundedRectangle(cornerRadius: 5))
+            Text(row.type).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).padding(.vertical, 3).padding(.horizontal, 4)
+                .frame(minWidth: 42).background(.quaternary, in: RoundedRectangle(cornerRadius: 5)).frame(width: 56, alignment: .leading)
             HStack(spacing: 3) {
-                if !row.scope.isEmpty { Text(row.scope + " ·").foregroundStyle(.secondary) }
-                Text(row.pattern)
-            }.font(.system(size: 13)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading).help(row.scope + " " + row.pattern)
-            CategoryChip(category: model.resolver.categoriesByID[row.category]).frame(width: 94, alignment: .leading)
-            Text(row.seconds == 0 ? "—" : Format.duration(row.seconds)).font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit().frame(width: 70, alignment: .trailing)
-            Text(row.source == "user" ? "你" : "内置").font(.system(size: 11)).foregroundStyle(.secondary).frame(width: 32)
-            Toggle("启用规则", isOn: Binding(get: { row.enabled }, set: { setEnabled(row, $0) })).toggleStyle(.switch).controlSize(.mini).labelsHidden().frame(width: 30)
+                if !row.scopeLabel.isEmpty { Text(row.scopeLabel + " ·").foregroundStyle(.secondary) }
+                Text(row.displayPattern)
+            }.font(.system(size: 13)).lineLimit(1).truncationMode(.middle).frame(maxWidth: .infinity, alignment: .leading).help(row.scopeLabel + " " + row.displayPattern)
+            CategoryChip(category: model.resolver.categoriesByID[row.category]).lineLimit(1).frame(width: 124, alignment: .leading)
+            Text(row.seconds == 0 ? "—" : Format.duration(row.seconds)).font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit().frame(width: 84, alignment: .trailing)
+            Text(row.source == "user" ? "你" : "内置").font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).frame(width: 48)
+            Toggle(String(localized: "启用规则：\(row.displayPattern)"), isOn: Binding(get: { row.enabled }, set: { setEnabled(row, $0) }))
+                .toggleStyle(.switch).controlSize(.mini).labelsHidden().frame(width: 30)
         }.padding(.horizontal, 14).frame(minHeight: 42).opacity(row.enabled ? 1 : 0.5)
             .contextMenu {
+                if isOrderable(row) {
+                    Button("上移") { move(row, by: -1) }
+                    Button("下移") { move(row, by: 1) }
+                    Divider()
+                }
                 if row.source == "user", row.type == String(localized: "标题") || row.type == String(localized: "网址") {
                     Button("删除规则", role: .destructive) { delete(row) }
                 }
@@ -104,7 +136,9 @@ struct RefinedRulesPane: View {
             }
             var result: [RuleRow] = []
             for rule in try model.categoryStore.titleRules() {
-                result.append(.init(id: "title:\(rule.id ?? 0)", type: String(localized: "标题"), pattern: rule.pattern, scope: rule.scopeKey, category: rule.categoryID, source: rule.source, rank: rule.source == "user" ? 0 : 3, priority: rule.priority, recordID: rule.id, seconds: hits["title:\(rule.id ?? 0)", default: 0], enabled: rule.enabled))
+                let scopeLabel = rule.scopeKey.isEmpty || NSWorkspace.shared.urlForApplication(withBundleIdentifier: rule.scopeKey) == nil
+                    ? rule.scopeKey : AppIcon.name(for: rule.scopeKey)
+                result.append(.init(id: "title:\(rule.id ?? 0)", type: String(localized: "标题"), pattern: rule.pattern, scope: rule.scopeKey, category: rule.categoryID, source: rule.source, rank: rule.source == "user" ? 0 : 3, priority: rule.priority, recordID: rule.id, seconds: hits["title:\(rule.id ?? 0)", default: 0], enabled: rule.enabled, scopeLabel: scopeLabel))
             }
             for (domain, entry) in try model.categoryStore.domainMap() where entry.source == "user" {
                 let key = "domain:" + domain
@@ -141,20 +175,34 @@ struct RefinedRulesPane: View {
         }
     }
     private func addURL() {
-        guard let pattern = TitleRuleInput.normalizedPattern(newPattern) else { return }
-        perform { try model.categoryStore.addUserURLRule(pattern: pattern, categoryID: newCategory, priority: 1000) }
-        if error == nil { newPattern = ""; showURL = false }
+        guard let pattern = Self.urlPattern(newPattern) else { return }
+        do {
+            try model.categoryStore.addUserURLRule(pattern: pattern, categoryID: newCategory, priority: 1000)
+            model.resolver.refresh(); model.dataChanged()
+            newPattern = ""; urlError = nil; showURL = false
+        } catch { urlError = String(localized: "规则未保存：\(error.localizedDescription)") }
     }
-    private func reorder(_ id: String?, before target: RuleRow) -> Bool {
-        guard let id, let source = rows.first(where: { $0.id == id }), source.type == String(localized: "标题"), target.type == String(localized: "标题"), source.source == "user", target.source == "user", source.scope == target.scope else { return false }
-        var ordered = rows.filter { $0.type == String(localized: "标题") && $0.source == "user" && $0.scope == target.scope && $0.id != id }
-        guard let index = ordered.firstIndex(where: { $0.id == target.id }) else { return false }
-        ordered.insert(source, at: index)
+    private func isOrderable(_ row: RuleRow) -> Bool { row.type == String(localized: "标题") && row.source == "user" }
+    /// Dropping moves a rule to the target's place: below it when dragged
+    /// down, above it when dragged up, so every position is reachable.
+    private func reorder(_ id: String?, onto target: RuleRow) -> Bool {
+        guard let id, id != target.id, let source = rows.first(where: { $0.id == id }),
+              isOrderable(source), isOrderable(target), source.scope == target.scope else { return false }
+        var ordered = rows.filter { isOrderable($0) && $0.scope == target.scope }
+        guard let from = ordered.firstIndex(where: { $0.id == id }), let to = ordered.firstIndex(where: { $0.id == target.id }) else { return false }
+        ordered.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
         perform { try model.categoryStore.orderTitleRules(ordered.compactMap(\.recordID)) }
         return error == nil
     }
+    private func move(_ row: RuleRow, by offset: Int) {
+        var ordered = rows.filter { isOrderable($0) && $0.scope == row.scope }
+        guard let from = ordered.firstIndex(where: { $0.id == row.id }), ordered.indices.contains(from + offset) else { return }
+        ordered.swapAt(from, from + offset)
+        perform { try model.categoryStore.orderTitleRules(ordered.compactMap(\.recordID)) }
+    }
+    /// `dataChanged()` bumps `dataEditVersion`, whose observer reloads the list.
     private func perform(_ action: () throws -> Void) {
-        do { try action(); error = nil; model.resolver.refresh(); model.dataChanged(); load() }
+        do { try action(); error = nil; model.resolver.refresh(); model.dataChanged() }
         catch { self.error = String(localized: "规则未保存：\(error.localizedDescription)") }
     }
 }

@@ -95,6 +95,14 @@ actor StatsWorker {
         return DayOverview(items: records, categories: categories, sessions: sessions, now: now, calendar: calendar)
     }
 
+    /// Distinct apps and sites still uncategorized in `interval`.
+    func uncategorizedCount(store: SpanStore, classification seed: CategoryResolver.Snapshot,
+                            editVersion: Int, dataVersion: Int, interval: DateInterval) throws -> Int {
+        try prepare(classification: seed, editVersion: editVersion, dataVersion: dataVersion)
+        return Set(try items(store: store, in: interval).lazy
+            .filter { $0.categoryID == "uncategorized" }.map { $0.span.domain ?? $0.span.appBundleID }).count
+    }
+
     private func items(store: SpanStore, in interval: DateInterval) throws -> [CategorizedSpan] {
         if let cached = windows[interval] { return cached }
         try Task.checkCancellation()

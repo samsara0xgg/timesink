@@ -295,6 +295,8 @@ public final class TrackerEngine {
     private var tickInFlight = false
 
     public var onChange: (() -> Void)?
+    /// Start of the span the last `onChange` wrote: nothing before it changed.
+    public private(set) var lastWriteStart: Date?
     public var llmCoordinator: LLMCoordinator?
     private var suspensionState = SuspensionState()
 
@@ -756,6 +758,7 @@ public final class TrackerEngine {
             do {
                 try spanStore.updateEnd(id: rowID, end: span.end)
                 lastHeartbeat = now
+                lastWriteStart = span.start
                 onChange?()
                 if final { llmCoordinator?.noteSpanClosed(span) }
             } catch {
@@ -766,6 +769,7 @@ public final class TrackerEngine {
                 let inserted = try spanStore.insert(span)
                 currentRowID = inserted.id
                 lastHeartbeat = now
+                lastWriteStart = span.start
                 onChange?()
                 if final { llmCoordinator?.noteSpanClosed(span) }
             } catch {

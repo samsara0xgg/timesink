@@ -182,19 +182,21 @@ public final class CategoryStore: Sendable {
     /// There is no re-seed path for a collided builtin row. Callers (the
     /// rules UI) are expected to pre-check for a builtin collision and
     /// message the user instead of relying on this to surface an error.
+    /// A new rule ranks above every earlier user rule in its scope ("新规则优
+    /// 先"), the same as one saved from the inspector.
     public func upsertUserTitleRule(pattern: String, scopeKey: String, categoryID: String) throws {
         try writer.write { db in
             try db.execute(
                 sql: """
                 INSERT INTO titleRule (pattern, scopeKey, categoryID, priority, source, enabled, createdAt)
-                VALUES (?, ?, ?, 0, 'user', 1, ?)
+                VALUES (?, ?, ?, COALESCE((SELECT MAX(priority) FROM titleRule WHERE source = 'user' AND scopeKey = ?), 0) + 100, 'user', 1, ?)
                 ON CONFLICT(pattern, scopeKey) DO UPDATE SET
                     categoryID = excluded.categoryID,
                     source = 'user',
                     enabled = 1
                 WHERE titleRule.source = 'user'
                 """,
-                arguments: [pattern, scopeKey, categoryID, Date()]
+                arguments: [pattern, scopeKey, categoryID, scopeKey, Date()]
             )
         }
     }

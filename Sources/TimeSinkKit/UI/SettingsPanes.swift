@@ -5,273 +5,6 @@ import os
 
 private let settingsLogger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "settings")
 
-// MARK: - 通用
-
-/// Idle threshold, login-item registration, and permission status rows.
-/// Permission checks use `prompt: false` / `ask: false` on every render (the
-/// pane's `onAppear`) so opening Settings never itself triggers a system
-/// prompt — only the explicit "去授权" buttons do.
-struct GeneralSettingsPane: View {
-    let model: AppModel
-
-    @State private var idleThreshold: Double = 180
-    @State private var loginItemEnabled = false
-    @State private var loginItemAlertMessage: String?
-    @State private var axState: PermissionState = .denied
-    @State private var chromeState: PermissionState = .notDetermined
-    @State private var calendarState: PermissionState = .notDetermined
-    /// Spec §11's fourth permission. Cached rather than read per render
-    /// because the underlying read is async/callback-based -- refreshed on
-    /// `onAppear` and after the row's own action, never polled.
-    @State private var notificationState: PermissionState = .notDetermined
-    @State private var autoCheckUpdates = false
-
-    /// Whether the four permission probes have run since the app last became
-    /// active -- see `refreshPermissionsIfNeeded()`.
-    @State private var didProbePermissions = false
-
-    /// SMAppService.mainApp only functions when the app runs from
-    /// /Applications; toggling elsewhere silently fails, so the control is
-    /// disabled instead.
-    private var runningFromApplications: Bool {
-        Bundle.main.bundlePath.hasPrefix("/Applications")
-    }
-
-    var body: some View {
-        Form {
-            Section {
-                Stepper(value: $idleThreshold, in: 60...900, step: 30) {
-                    Text("空闲阈值：\(Int(idleThreshold)) 秒")
-                }
-                .onChange(of: idleThreshold) { _, newValue in
-                    model.settings.setIdleThreshold(newValue)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Toggle("登录时启动", isOn: loginItemBinding)
-                        .disabled(!runningFromApplications)
-                    if !runningFromApplications {
-                        Text("安装到 /Applications 后可用")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Toggle("菜单栏显示今日专注时长", isOn: menuTextBinding)
-                Toggle("日历叠加", isOn: calendarOverlayBinding)
-            }
-
-            if let updates = model.updates {
-                Section("更新") {
-                    Toggle("自动检查更新", isOn: Binding(
-                        get: { autoCheckUpdates },
-                        set: { updates.automaticallyChecks = $0; autoCheckUpdates = $0 }
-                    ))
-                    HStack {
-                        Text("当前版本 \(Updates.version)")
-                        Spacer()
-                        Button("检查更新…") { updates.checkForUpdates() }
-                    }
-                }
-            }
-
-            Section("权限") {
-                PermissionRow(
-                    title: String(localized: "辅助功能"),
-                    state: axState,
-                    action: {
-                        _ = Permissions.accessibilityGranted(prompt: true)
-                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-                            NSWorkspace.shared.open(url)
-                        }
-                        refreshAccessibility()
-                    }
-                )
-                PermissionRow(
-                    title: String(localized: "Chrome 自动化"),
-                    state: chromeState,
-                    action: {
-                        chromeState = Permissions.chromeAutomationState(ask: true)
-                    }
-                )
-                PermissionRow(
-                    title: String(localized: "日历"),
-                    state: calendarState,
-                    action: {
-                        if calendarState == .denied {
-                            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") {
-                                NSWorkspace.shared.open(url)
-                            }
-                        } else {
-                            Task { @MainActor in
-                                _ = await Permissions.requestCalendarAccess()
-                                refreshCalendar()
-                            }
-                        }
-                    }
-                )
-                // Spec §8: once the one-shot authorization prompt (fired by
-                // 首次启用预算 / 首次开始专注) has been declined, the system
-                // never prompts again -- this row is the ONLY user-visible
-                // recovery path, and the only place the app admits that
-                // budget alerts / 每日小结 / 专注结束提醒 are being dropped.
-                PermissionRow(
-                    title: String(localized: "通知"),
-                    state: notificationState,
-                    action: {
-                        if notificationState == .denied {
-                            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") {
-                                NSWorkspace.shared.open(url)
-                            }
-                        } else {
-                            Task { @MainActor in
-                                _ = await model.notifier?.requestAuthorization()
-                                await refreshNotification()
-                            }
-                        }
-                    }
-                )
-            }
-        }
-        .formStyle(.grouped)
-        .onAppear {
-            idleThreshold = model.settings.idleThreshold
-            loginItemEnabled = SMAppService.mainApp.status == .enabled
-            autoCheckUpdates = model.updates?.automaticallyChecks ?? false
-            refreshPermissionsIfNeeded()
-        }
-        // The user grants or revokes a permission in System Settings, which
-        // means leaving and returning to this app -- so reactivation, not a
-        // tab switch, is when the answers can actually have changed. This
-        // only marks them stale; `refreshPermissionsIfNeeded` decides whether
-        // 通用 is actually on screen, because `TabView` keeps this pane (and
-        // this subscription) alive while the user works on another tab.
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            didProbePermissions = false
-            refreshPermissionsIfNeeded()
-        }
-        .onChange(of: model.settingsTab) { _, _ in refreshPermissionsIfNeeded() }
-        .alert("登录项设置失败", isPresented: alertIsPresented) {
-            Button("好", role: .cancel) {}
-        } message: {
-            Text(loginItemAlertMessage ?? "")
-        }
-    }
-
-    private var alertIsPresented: Binding<Bool> {
-        Binding(
-            get: { loginItemAlertMessage != nil },
-            set: { if !$0 { loginItemAlertMessage = nil } }
-        )
-    }
-
-    private var loginItemBinding: Binding<Bool> {
-        Binding(
-            get: { loginItemEnabled },
-            set: { newValue in
-                do {
-                    if newValue {
-                        try SMAppService.mainApp.register()
-                    } else {
-                        try SMAppService.mainApp.unregister()
-                    }
-                } catch {
-                    loginItemAlertMessage = newValue
-                        ? String(localized: "无法启用登录时启动：\(error.localizedDescription)")
-                        : String(localized: "无法关闭登录时启动：\(error.localizedDescription)")
-                }
-                loginItemEnabled = SMAppService.mainApp.status == .enabled
-            }
-        )
-    }
-
-    private var menuTextBinding: Binding<Bool> {
-        Binding(
-            get: { model.menuTextEnabled },
-            set: { newValue in
-                model.menuTextEnabled = newValue
-                model.settings.setMenuBarTextEnabled(newValue)
-            }
-        )
-    }
-
-    /// Makes the overlay a real two-way switch -- previously only
-    /// `ActivitiesView`'s enable card could turn it ON, with no Settings
-    /// control to turn it back OFF (a one-way switch the doc comments on
-    /// `AppModel.calendarOverlayEnabled` and `ActivitiesView.CalendarTaskKey`
-    /// already (aspirationally) described as having a "Settings row" writer).
-    ///
-    /// The `Task { await model.refreshCalendarWindows() }` closes the same
-    /// gap FOLD-IN 10 closed on the Activities card's enable path, on this
-    /// second path into the same setting: without it, turning the overlay
-    /// OFF here leaves `AppModel.todayMeetingEvents` (and therefore
-    /// `isNowInMeeting`) stale for up to 5 minutes -- exempting idle
-    /// detection off a meeting window that, from the user's perspective,
-    /// should have stopped applying the instant they flipped the switch --
-    /// and turning it ON here leaves the exemption inert for the same
-    /// window instead of picking up today's meetings immediately.
-    /// `refreshCalendarWindows()` itself already clears `todayMeetingEvents`
-    /// on the disabled path (its `guard` short-circuits on
-    /// `calendarOverlayEnabled` before ever reaching `Permissions
-    /// .calendarState()`), so this is safe to call unconditionally on
-    /// either direction of the toggle.
-    private var calendarOverlayBinding: Binding<Bool> {
-        Binding(
-            get: { model.calendarOverlayEnabled },
-            set: { newValue in
-                model.calendarOverlayEnabled = newValue
-                model.settings.setCalendarOverlayEnabled(newValue)
-                Task { @MainActor in
-                    await model.refreshCalendarWindows()
-                }
-            }
-        )
-    }
-
-    /// `TabView` re-runs `onAppear` every time 通用 becomes the selected tab,
-    /// and `refreshChrome()` is a synchronous
-    /// `AEDeterminePermissionToAutomateTarget` -- an Apple Event/TCC
-    /// round-trip to another process on the main thread, and the
-    /// `Permissions.chromeAutomationStatus(ask:)` frame the 60s sample caught
-    /// 108 times. None of these four answers can change while the app stays
-    /// frontmost, so probe once per activation instead of once per tab
-    /// switch.
-    ///
-    /// Gated on 通用 being the selected tab for the same reason its sibling
-    /// panes are: `TabView` keeps every visited pane mounted, so this pane's
-    /// activation subscription stays live while the user works on 规则 or
-    /// 预算, and without the guard every Cmd-Tab back into the app would run
-    /// the Chrome round-trip for a pane nobody is looking at. Reactivation
-    /// only marks the answers stale; the probe itself waits until the pane is
-    /// on screen, which `onChange(of: model.settingsTab)` delivers.
-    private func refreshPermissionsIfNeeded() {
-        guard model.settingsTab == .general, !didProbePermissions else { return }
-        didProbePermissions = true
-        refreshAccessibility()
-        refreshChrome()
-        refreshCalendar()
-        Task { @MainActor in await refreshNotification() }
-    }
-
-    private func refreshAccessibility() {
-        axState = Permissions.accessibilityState(prompt: false)
-    }
-
-    private func refreshChrome() {
-        chromeState = Permissions.chromeAutomationState(ask: false)
-    }
-
-    private func refreshCalendar() {
-        calendarState = Permissions.calendarState()
-    }
-
-    /// Reads through the injected `Notifying` (never `UNUserNotificationCenter`
-    /// directly) so this pane stays safe in a bundle-less process.
-    private func refreshNotification() async {
-        notificationState = await Permissions.notificationState(model.notifier)
-    }
-}
-
 // MARK: - 分类
 
 /// All 12 taxonomy categories, each editable in place. Any field change
@@ -283,10 +16,13 @@ struct CategoriesSettingsPane: View {
     @State private var categories: [Category] = []
 
     var body: some View {
+        // One pass for every card, and re-read as today's records grow.
+        let today = Aggregator.durationByCategory(model.rangedSpans(for: .today()))
+        let _ = model.dataVersion
         ScrollView {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 10)], spacing: 10) {
                 ForEach($categories, id: \.id) { $category in
-                    CategoryEditRow(model: model, category: $category)
+                    CategoryEditRow(model: model, category: $category, todaySeconds: today[category.id] ?? 0)
                 }
             }
         }.onAppear { load() }
@@ -318,23 +54,30 @@ struct CategoriesSettingsPane: View {
 private struct CategoryEditRow: View {
     let model: AppModel
     @Binding var category: Category
+    let todaySeconds: TimeInterval
 
     @FocusState private var isNameFocused: Bool
     @State private var pendingColorRefresh: Task<Void, Never>?
+    /// Written to the store but not yet published to the rest of the app.
+    @State private var unpublished = false
 
     private static let colorRefreshDebounce: Duration = .milliseconds(400)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                ColorPicker("分类颜色", selection: colorBinding, supportsOpacity: false).labelsHidden().fixedSize()
-                TextField("名称", text: $category.name)
+                ColorPicker(String(localized: "\(category.name)的颜色"), selection: colorBinding, supportsOpacity: false).labelsHidden().fixedSize()
+                    .contextMenu {
+                        if let shipped = RefinedStyle.shippedHex(category.id), shipped != category.colorHex {
+                            Button("恢复默认颜色") { category.colorHex = shipped; persistOnly(); commitRefresh() }
+                        }
+                    }
+                TextField(String(localized: "\(category.name)的名称"), text: $category.name)
                     .textFieldStyle(.plain).font(.system(size: 13, weight: .semibold))
                     .focused($isNameFocused).onSubmit { commitRefresh() }
-                let seconds = model.rangedSpans(for: .today()).filter { $0.categoryID == category.id }.reduce(0) { $0 + $1.span.duration }
-                Text(seconds == 0 ? "—" : Format.duration(seconds)).font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit().fixedSize()
+                Text(todaySeconds == 0 ? "—" : Format.duration(todaySeconds)).font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit().fixedSize()
             }
-            Picker("投入程度", selection: $category.productivity) {
+            Picker(String(localized: "\(category.name)的投入程度"), selection: $category.productivity) {
                 ForEach(-2...2, id: \.self) { level in
                     Text(level > 0 ? "+\(level)" : "\(level)").tag(level).help(Self.productivityLabel(level))
                 }
@@ -350,7 +93,8 @@ private struct CategoryEditRow: View {
             persistOnly()
             commitRefresh()
         }
-        .onDisappear { pendingColorRefresh?.cancel() }
+        // Leaving mid-edit publishes the edit instead of dropping it.
+        .onDisappear { if unpublished { commitRefresh() } }
     }
 
     private var colorBinding: Binding<Color> {
@@ -367,8 +111,12 @@ private struct CategoryEditRow: View {
     /// Writes the current `category` value to the store. Cheap and safe to
     /// call on every field mutation.
     private func persistOnly() {
+        // An empty name is never stored; the field gets the stored one back
+        // when editing ends.
+        guard !category.name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         do {
             try model.categoryStore.updateCategory(category)
+            unpublished = true
         } catch {
             settingsLogger.error("updateCategory failed for \(category.id, privacy: .public): \(String(describing: error), privacy: .public)")
         }
@@ -379,6 +127,11 @@ private struct CategoryEditRow: View {
     private func commitRefresh() {
         pendingColorRefresh?.cancel()
         pendingColorRefresh = nil
+        if category.name.trimmingCharacters(in: .whitespaces).isEmpty,
+           let stored = model.resolver.categoriesByID[category.id]?.name {
+            category.name = stored
+        }
+        unpublished = false
         model.resolver.refreshCategories()
         model.categoryMetadataChanged()
     }
@@ -392,6 +145,7 @@ private struct CategoryEditRow: View {
         pendingColorRefresh = Task { @MainActor in
             try? await Task.sleep(for: Self.colorRefreshDebounce)
             guard !Task.isCancelled else { return }
+            unpublished = false
             model.resolver.refreshCategories()
             model.categoryMetadataChanged()
         }
@@ -404,291 +158,6 @@ private struct CategoryEditRow: View {
         case 0: return String(localized: "中性")
         case 1: return String(localized: "投入")
         default: return String(localized: "非常投入")
-        }
-    }
-}
-
-// MARK: - 规则
-
-/// The two rule kinds `RulesSettingsPane` switches between via its top
-/// segmented picker.
-enum RuleMode: String, CaseIterable {
-    case url, title
-
-    var label: String {
-        switch self {
-        case .url: return String(localized: "URL 规则")
-        case .title: return String(localized: "标题规则")
-        }
-    }
-}
-
-/// URL and title classification rules, switched via a top segmented picker.
-/// Builtin rows are grayed and undeletable (URL rows show no delete button;
-/// title rows show a Toggle instead, since a builtin title rule can be
-/// disabled but never removed — see `CategoryStore.upsertUserTitleRule`).
-/// The URL add row is rejected (button disabled) for an empty pattern or the
-/// degenerate `re:` pattern, whose empty regex would match every URL.
-struct RulesSettingsPane: View {
-    let model: AppModel
-    @State private var mode: RuleMode = .url
-
-    @State private var rules: [URLRule] = []
-    @State private var newPattern = ""
-    @State private var newCategoryID = ""
-
-    @State private var titleRules: [TitleRule] = []
-    @State private var pendingTitleRule: PendingTitleRule?
-
-    /// Set when `dataVersion` bumps while this pane is not the selected tab.
-    /// `TabView` keeps every visited pane mounted, so its `.onChange`
-    /// handlers keep firing for edits made on other tabs -- without this the
-    /// pane reloads itself while off screen, and an edit on one tab pays for
-    /// the work of every other tab the user has ever opened. Reloading on
-    /// becoming visible again is not enough on its own either: that would
-    /// put the cost back on every tab switch even when nothing changed.
-    @State private var needsReload = true
-
-    private var sortedCategories: [Category] {
-        model.resolver.categoriesByID.values.sorted { $0.sortOrder < $1.sortOrder }
-    }
-
-    private var isPatternValid: Bool {
-        let trimmed = newPattern.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !trimmed.isEmpty && trimmed != "re:"
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Picker("", selection: $mode) {
-                ForEach(RuleMode.allCases, id: \.self) { m in
-                    Text(m.label).tag(m)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding([.horizontal, .top])
-
-            if mode == .url {
-                urlRuleSection
-            } else {
-                titleRuleSection
-            }
-        }
-        .onAppear {
-            reloadIfVisibleAndStale()
-            if newCategoryID.isEmpty {
-                newCategoryID = sortedCategories.first?.id ?? ""
-            }
-        }
-        .onChange(of: model.dataVersion) { _, _ in
-            needsReload = true
-            reloadIfVisibleAndStale()
-        }
-        .onChange(of: model.organizationTab) { _, _ in reloadIfVisibleAndStale() }
-        .sheet(item: $pendingTitleRule) { pending in
-            TitleRuleEditor(model: model, pending: pending)
-        }
-    }
-
-    private func reloadIfVisibleAndStale() {
-        guard model.organizationTab == .rules, needsReload else { return }
-        needsReload = false
-        load()
-        loadTitleRules()
-    }
-
-    // MARK: URL rules
-
-    private var urlRuleSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            List {
-                ForEach(rules, id: \.id) { rule in
-                    ruleRow(rule)
-                }
-            }
-            Divider()
-            HStack {
-                TextField("URL 模式", text: $newPattern)
-                    .textFieldStyle(.roundedBorder)
-                Picker("分类", selection: $newCategoryID) {
-                    ForEach(sortedCategories, id: \.id) { category in
-                        Text(category.name).tag(category.id)
-                    }
-                }
-                .labelsHidden()
-                .frame(width: 140)
-                Button("添加") { addRule() }
-                    .disabled(!isPatternValid || newCategoryID.isEmpty)
-            }
-            .padding()
-        }
-    }
-
-    @ViewBuilder
-    private func ruleRow(_ rule: URLRule) -> some View {
-        HStack {
-            Text(rule.pattern)
-            Spacer()
-            Text(model.resolver.categoriesByID[rule.categoryID]?.name ?? rule.categoryID)
-                .foregroundStyle(.secondary)
-            if rule.source == "user" {
-                Button {
-                    delete(rule)
-                } label: {
-                    Image(systemName: "trash")
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .foregroundStyle(rule.source == "builtin" ? .secondary : .primary)
-    }
-
-    private func load() {
-        rules = (try? model.categoryStore.urlRules())?.sorted { lhs, rhs in
-            lhs.priority != rhs.priority ? lhs.priority > rhs.priority : lhs.pattern < rhs.pattern
-        } ?? []
-    }
-
-    private func addRule() {
-        guard isPatternValid else { return }
-        let pattern = newPattern.trimmingCharacters(in: .whitespacesAndNewlines)
-        let categoryID = newCategoryID.isEmpty ? (sortedCategories.first?.id ?? "") : newCategoryID
-        guard !categoryID.isEmpty else { return }
-        do {
-            try model.categoryStore.addUserURLRule(pattern: pattern, categoryID: categoryID, priority: 1000)
-            model.resolver.refresh()
-            model.dataChanged()
-            newPattern = ""
-            load()
-        } catch {
-            settingsLogger.error("addUserURLRule failed for \(pattern, privacy: .public): \(String(describing: error), privacy: .public)")
-        }
-    }
-
-    private func delete(_ rule: URLRule) {
-        guard let id = rule.id else { return }
-        do {
-            try model.categoryStore.deleteURLRule(id: id)
-            model.resolver.refresh()
-            model.dataChanged()
-            load()
-        } catch {
-            settingsLogger.error("deleteURLRule failed for \(id): \(String(describing: error), privacy: .public)")
-        }
-    }
-
-    // MARK: Title rules
-
-    private var titleRuleSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            List {
-                ForEach(titleRules, id: \.id) { rule in
-                    titleRuleRow(rule)
-                }
-            }
-            Divider()
-            HStack {
-                Spacer()
-                Button("+ 新建标题规则…") {
-                    pendingTitleRule = PendingTitleRule(
-                        prefill: "", scopeKey: "", scopeLabel: "",
-                        categoryID: sortedCategories.first?.id ?? ""
-                    )
-                }
-            }
-            .padding()
-        }
-    }
-
-    /// A `re:`-prefixed pattern displays as a single chip (splitting it on
-    /// `|` would break a regex that itself uses `|` alternation); any other
-    /// pattern splits into its keyword chips.
-    private func chips(for rule: TitleRule) -> [String] {
-        rule.pattern.hasPrefix("re:") ? [rule.pattern] : rule.pattern.split(separator: "|").map(String.init)
-    }
-
-    private func todayHit(for rule: TitleRule) -> (count: Int, seconds: TimeInterval) {
-        TitleRuleInput.affected(items: model.rangedSpans(for: .today()), pattern: rule.pattern, scopeKey: rule.scopeKey)
-    }
-
-    @ViewBuilder
-    private func titleRuleRow(_ rule: TitleRule) -> some View {
-        let hit = todayHit(for: rule)
-        HStack {
-            HStack(spacing: 4) {
-                ForEach(chips(for: rule), id: \.self) { chip in
-                    Text(chip)
-                        .font(.caption)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Capsule().fill(Color.secondary.opacity(0.15)))
-                }
-            }
-            Text(rule.scopeKey.isEmpty ? String(localized: "全局") : rule.scopeKey)
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text(model.resolver.categoriesByID[rule.categoryID]?.name ?? rule.categoryID)
-                .foregroundStyle(.secondary)
-            Text(rule.source == "builtin" ? "内置" : "用户")
-                .foregroundStyle(.secondary)
-            Text("今日命中 \(Format.duration(hit.seconds))")
-                .foregroundStyle(.secondary)
-            if rule.source == "user" {
-                Button {
-                    deleteTitleRule(rule)
-                } label: {
-                    Image(systemName: "trash")
-                }
-                .buttonStyle(.plain)
-            } else {
-                Toggle("", isOn: titleRuleEnabledBinding(rule))
-                    .labelsHidden()
-            }
-        }
-        .foregroundStyle(rule.source == "builtin" ? .secondary : .primary)
-    }
-
-    private func titleRuleEnabledBinding(_ rule: TitleRule) -> Binding<Bool> {
-        Binding(
-            get: { rule.enabled },
-            set: { newValue in setTitleRuleEnabled(rule, enabled: newValue) }
-        )
-    }
-
-    private func loadTitleRules() {
-        titleRules = (try? model.categoryStore.titleRules())?.sorted { lhs, rhs in
-            if lhs.scopeKey.isEmpty != rhs.scopeKey.isEmpty {
-                return !lhs.scopeKey.isEmpty // scoped rows before global ones
-            }
-            if lhs.scopeKey != rhs.scopeKey {
-                return lhs.scopeKey < rhs.scopeKey
-            }
-            return lhs.pattern < rhs.pattern
-        } ?? []
-    }
-
-    private func deleteTitleRule(_ rule: TitleRule) {
-        guard let id = rule.id else { return }
-        do {
-            try model.categoryStore.deleteTitleRule(id: id)
-            model.resolver.refresh()
-            model.dataChanged()
-            loadTitleRules()
-        } catch {
-            settingsLogger.error("deleteTitleRule failed for \(id): \(String(describing: error), privacy: .public)")
-        }
-    }
-
-    private func setTitleRuleEnabled(_ rule: TitleRule, enabled: Bool) {
-        guard let id = rule.id else { return }
-        do {
-            try model.categoryStore.setTitleRuleEnabled(id: id, enabled: enabled)
-            model.resolver.refresh()
-            model.dataChanged()
-            loadTitleRules()
-        } catch {
-            settingsLogger.error("setTitleRuleEnabled failed for \(id): \(String(describing: error), privacy: .public)")
         }
     }
 }
@@ -715,6 +184,10 @@ struct UncategorizedSettingsPane: View {
     /// becoming visible again is not enough on its own either: that would
     /// put the cost back on every tab switch even when nothing changed.
     @State private var needsRecompute = true
+    /// The edit version this pane's own assignment produced: its rows are
+    /// already updated in place, so it skips the 30-day reload.
+    @State private var ownEditVersion = -1
+    @State private var loadFailed = false
 
     private struct Row: Identifiable {
         let id: String
@@ -729,7 +202,10 @@ struct UncategorizedSettingsPane: View {
 
     var body: some View {
         Group {
-            if rows.isEmpty {
+            if rows.isEmpty && loadFailed {
+                ContentUnavailableView("待分类暂时无法读取", systemImage: "exclamationmark.triangle",
+                                       description: Text("记录没有丢失。稍后切回这里会再试一次。"))
+            } else if rows.isEmpty {
                 emptyState
             } else {
                 VStack(spacing: 0) {
@@ -741,8 +217,9 @@ struct UncategorizedSettingsPane: View {
                         if !suggestions.isEmpty {
                             Button("接受全部建议") {
                                 for row in rows where accepted[row.id] == nil {
-                                    if let suggestion = suggestions[row.id] { assign(row: row, categoryID: suggestion.categoryID) }
+                                    if let suggestion = suggestions[row.id] { assign(row: row, categoryID: suggestion.categoryID, publish: false) }
                                 }
+                                publishAssignments()
                             }.controlSize(.small)
                         }
                         if let error { Text(error).foregroundStyle(.red) }
@@ -754,7 +231,10 @@ struct UncategorizedSettingsPane: View {
             }
         }
         .onAppear { recomputeIfVisibleAndStale() }
-        .onChange(of: model.dataVersion) { _, _ in
+        // User edits only: a 30-day pass per tracker write would stall the
+        // pane every few seconds while it is open.
+        .onChange(of: model.dataEditVersion) { _, version in
+            guard version != ownEditVersion else { return }
             needsRecompute = true
             recomputeIfVisibleAndStale()
         }
@@ -782,8 +262,7 @@ struct UncategorizedSettingsPane: View {
 
     private func rowView(_ row: Row) -> some View {
         HStack(spacing: 12) {
-            if row.isDomain { Image(systemName: "globe").font(.system(size: 20)).foregroundStyle(.secondary).frame(width: 22) }
-            else { AppIcon(bundleID: row.id) }
+            ActivityIcon(bundleID: row.id, domain: row.isDomain ? row.id : nil)
             VStack(alignment: .leading, spacing: 3) {
                 Text(row.label).font(.system(size: 13)).lineLimit(1)
                 Text(row.isDomain ? "网站" : "应用").font(.system(size: 11)).foregroundStyle(.secondary)
@@ -805,8 +284,8 @@ struct UncategorizedSettingsPane: View {
                 }
                 Picker("分类", selection: pickerBinding(for: row)) {
                     Text("选择分类").tag(Optional<String>.none)
-                    ForEach(sortedCategories, id: \.id) { Text($0.name).tag(Optional($0.id)) }
-                }.labelsHidden().frame(width: 130)
+                    ForEach(sortedCategories.filter { $0.id != "uncategorized" }, id: \.id) { Text($0.name).tag(Optional($0.id)) }
+                }.labelsHidden().frame(minWidth: 130).fixedSize()
             }
         }.opacity(accepted[row.id] == nil ? 1 : 0.55)
     }
@@ -821,7 +300,9 @@ struct UncategorizedSettingsPane: View {
         )
     }
 
-    private func assign(row: Row, categoryID: String) {
+    /// `publish: false` lets 接受全部建议 refresh the classifier once for the
+    /// whole batch instead of once per row.
+    private func assign(row: Row, categoryID: String, publish: Bool = true) {
         do {
             if row.isDomain {
                 try model.categoryStore.setUserDomain(row.id, categoryID: categoryID)
@@ -831,13 +312,18 @@ struct UncategorizedSettingsPane: View {
             try model.categoryStore.dismissSuggestion(key: row.id, kind: row.isDomain ? "domain" : "app")
             suggestions[row.id] = nil
             accepted[row.id] = categoryID
-            model.resolver.refresh()
-            model.dataChanged()
+            if publish { publishAssignments() }
             error = nil
         } catch {
             self.error = String(localized: "分类未保存，请重试。")
             settingsLogger.error("assign failed for \(row.id, privacy: .public): \(String(describing: error), privacy: .public)")
         }
+    }
+
+    private func publishAssignments() {
+        model.resolver.refresh()
+        model.dataChanged()
+        ownEditVersion = model.dataEditVersion
     }
 
     private func recompute() {
@@ -855,13 +341,16 @@ struct UncategorizedSettingsPane: View {
                 isDomainByKey[key] = span.domain != nil
             }
             let items = uncategorized.map { CategorizedSpan(span: $0, categoryID: "uncategorized") }
-            let retained = rows.filter { accepted[$0.id] != nil }
-            rows = Aggregator.durationByDomainOrApp(items).map { entry in
+            let fresh = Aggregator.durationByDomainOrApp(items).map { entry in
                 Row(id: entry.key, label: entry.label, seconds: entry.seconds, isDomain: isDomainByKey[entry.key] ?? false)
-            } + retained
+            }
+            let freshIDs = Set(fresh.map(\.id))
+            rows = fresh + rows.filter { accepted[$0.id] != nil && !freshIDs.contains($0.id) }
+            loadFailed = false
         } catch {
             settingsLogger.error("uncategorized recompute failed: \(String(describing: error), privacy: .public)")
-            rows = []
+            loadFailed = true
+            needsRecompute = true
         }
     }
 }
@@ -880,6 +369,7 @@ struct LLMSettingsPane: View {
     @State private var endpoint = ""
     @State private var modelName = ""
     @State private var apiKeyInput = ""
+    @State private var hasStoredKey = false
     @State private var apiKeyStatus: String?
     @State private var testStatus: String?
     @State private var isTesting = false
@@ -901,19 +391,19 @@ struct LLMSettingsPane: View {
             Section("OpenAI 兼容服务") {
                 TextField("地址", text: $endpoint)
                     .textFieldStyle(.roundedBorder)
-                    .onSubmit {
-                        model.settings.setLLMEndpoint(endpoint)
-                        model.engine.llmCoordinator?.invalidateService()
-                    }
+                    .onSubmit(commitFields)
                 TextField("模型", text: $modelName)
                     .textFieldStyle(.roundedBorder)
-                    .onSubmit {
-                        model.settings.setLLMModel(modelName)
-                        model.engine.llmCoordinator?.invalidateService()
+                    .onSubmit(commitFields)
+                HStack {
+                    // Never shows the stored key; typing replaces it.
+                    SecureField(hasStoredKey ? String(localized: "已保存 · 输入新密钥可替换") : String(localized: "API 密钥"), text: $apiKeyInput)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit { saveKey() }
+                    if hasStoredKey {
+                        Button("移除密钥", role: .destructive) { removeKey() }
                     }
-                SecureField("API 密钥", text: $apiKeyInput)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit { saveKey() }
+                }
                 if let apiKeyStatus {
                     Text(apiKeyStatus)
                         .font(.caption)
@@ -942,17 +432,39 @@ struct LLMSettingsPane: View {
             enabled = model.settings.llmEnabled
             endpoint = model.settings.llmEndpoint
             modelName = model.settings.llmModel
+            hasStoredKey = !(Keychain.get(account: LLMCoordinator.apiKeyAccount) ?? "").isEmpty
+        }
+        // Switching tabs must not drop what was typed.
+        .onDisappear(perform: commitFields)
+    }
+
+    private func commitFields() {
+        guard endpoint != model.settings.llmEndpoint || modelName != model.settings.llmModel else { return }
+        model.settings.setLLMEndpoint(endpoint)
+        model.settings.setLLMModel(modelName)
+        model.engine.llmCoordinator?.invalidateService()
+    }
+
+    /// An empty field is not a request to erase the key; 移除密钥 is.
+    private func saveKey() {
+        let key = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { return }
+        do {
+            try Keychain.set(key, account: LLMCoordinator.apiKeyAccount)
+            model.engine.llmCoordinator?.invalidateService()
+            apiKeyInput = ""
+            hasStoredKey = true
+            apiKeyStatus = String(localized: "已保存")
+        } catch {
+            apiKeyStatus = String(localized: "保存失败：\(error.localizedDescription)")
         }
     }
 
-    private func saveKey() {
-        do {
-            try Keychain.set(apiKeyInput, account: LLMCoordinator.apiKeyAccount)
-            model.engine.llmCoordinator?.invalidateService()
-            apiKeyStatus = String(localized: "已保存")
-        } catch {
-            apiKeyStatus = String(localized: "保存失败：\(String(describing: error))")
-        }
+    private func removeKey() {
+        Keychain.delete(account: LLMCoordinator.apiKeyAccount)
+        model.engine.llmCoordinator?.invalidateService()
+        hasStoredKey = false
+        apiKeyStatus = String(localized: "已移除，建议会停止")
     }
 
     /// Runs one classification against `example-blog.net` with the
@@ -960,6 +472,7 @@ struct LLMSettingsPane: View {
     /// the field is empty, so a previously-saved key can be re-tested
     /// without retyping it), and shows the resulting category id or error.
     private func runTest() {
+        commitFields()
         guard let url = URL(string: endpoint) else {
             testStatus = String(localized: "Endpoint 无效")
             return
@@ -977,7 +490,7 @@ struct LLMSettingsPane: View {
                 let categoryID = try await classifier.classify(domain: "example-blog.net", title: nil)
                 testStatus = "example-blog.net → \(model.resolver.categoriesByID[categoryID]?.name ?? categoryID)"
             } catch {
-                testStatus = String(localized: "测试失败：\(String(describing: error))")
+                testStatus = String(localized: "测试失败：\(error.localizedDescription)")
             }
             isTesting = false
         }

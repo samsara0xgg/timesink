@@ -48,11 +48,14 @@ public final class AppModel {
     public var settingsTab: SettingsTab = .general
     public var organizationTab: SettingsTab = .uncategorized
     public var organizationSearch = ""
-    public var pendingClassificationCount: Int {
-        Set(rangedSpans(for: DateRangeSelection(kind: .last30, anchor: Date()))
-            .filter { $0.categoryID == "uncategorized" }
-            .map { $0.span.domain ?? $0.span.appBundleID }).count
-    }
+    /// Distinct apps and sites uncategorized over the last 30 days. Counted
+    /// off the main actor after each user edit, and at most every ten
+    /// minutes for the tracker's own writes -- see `refreshPendingCount()`.
+    public private(set) var pendingClassificationCount = 0
+    @ObservationIgnored private let pendingWorker = StatsWorker()
+    @ObservationIgnored private var pendingTask: Task<Void, Never>?
+    @ObservationIgnored private var pendingCountedAt = Date.distantPast
+    @ObservationIgnored private var pendingEditVersion = -1
 
     /// A route decoded from a tapped notification, buffered here by
     /// `TimeSinkApp`'s `appDelegate.onRoute` assignment until `MenuBarLabel`
@@ -129,12 +132,18 @@ public final class AppModel {
         guard timeFormat != "system" else { return .current }
         return Locale(identifier: Locale.current.identifier + (Locale.current.identifier.contains("@") ? ";" : "@") + "hours=" + (timeFormat == "24" ? "h23" : "h12"))
     }
+    /// Rows call this per render; building a `DateFormatter` costs ~45 µs.
+    @ObservationIgnored private var timeFormatter: (key: String, formatter: DateFormatter)?
     public func time(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = displayLocale
-        if timeFormat == "system" { formatter.timeStyle = .short }
-        else { formatter.dateFormat = timeFormat == "24" ? "HH:mm" : "h:mm a" }
-        return formatter.string(from: date)
+        let key = timeFormat + "|" + Locale.current.identifier
+        if timeFormatter?.key != key {
+            let formatter = DateFormatter()
+            formatter.locale = displayLocale
+            if timeFormat == "system" { formatter.timeStyle = .short }
+            else { formatter.dateFormat = timeFormat == "24" ? "HH:mm" : "h:mm a" }
+            timeFormatter = (key, formatter)
+        }
+        return timeFormatter!.formatter.string(from: date)
     }
 
     /// @Observable mirror of `engine.chromeCaptureDegraded` -- `TrackerEngine`
@@ -176,7 +185,9 @@ public final class AppModel {
         trackingResumeAt = minutes.map { Date().addingTimeInterval(Double($0) * 60) }
         settings.set("trackingResumeAt", trackingResumeAt.map { String($0.timeIntervalSince1970) } ?? "manual")
         engine.setUserPaused(true)
-        dataChanged()
+        // Closes the open span; classifications are untouched, so the 30-day
+        // aggregates keyed on `dataEditVersion` need not rerun.
+        invalidateAndBump()
         if let minutes {
             trackingResumeTask = Task { @MainActor [weak self] in
                 do { try await Task.sleep(for: .seconds(Double(minutes) * 60)) } catch { return }
@@ -193,7 +204,7 @@ public final class AppModel {
         settings.set("trackingResumeAt", "")
         trackingResumeAt = nil
         engine.setUserPaused(false)
-        dataChanged()
+        invalidateAndBump()
     }
     public func extendTrackingPause(minutes: Int) {
         let remaining = max(0, trackingResumeAt?.timeIntervalSinceNow ?? 0)
@@ -249,7 +260,7 @@ public final class AppModel {
     /// `@Observable`'s registrar and self-invalidate any SwiftUI body that
     /// reads it, costing an extra render on every cold-cache fetch.
     @ObservationIgnored
-    private var rangeCache: [String: [CategorizedSpan]] = [:]
+    private var rangeCache: [DateInterval: [CategorizedSpan]] = [:]
 
     /// LRU order for `rangeCache`'s keys, oldest first. Capped at
     /// `rangeCacheCap` entries -- once querying a *new* interval would push
@@ -259,7 +270,11 @@ public final class AppModel {
     /// `rangedSpans(for:)` calls with different intervals per recompute)
     /// without ever hitting `dataChanged()` to clear the whole cache.
     @ObservationIgnored
-    private var cacheOrder: [String] = []
+    private var cacheOrder: [DateInterval] = []
+    /// Earliest span start the tracker wrote since the last bump. Windows
+    /// ending before it -- yesterday, last week -- read the same rows as
+    /// before, so the engine path keeps them cached.
+    @ObservationIgnored private var engineDirtyFrom: Date?
     private static let rangeCacheCap = 8
 
     /// Trailing debounce for `scheduleEngineDataChanged()` -- see its doc
@@ -300,7 +315,13 @@ public final class AppModel {
         // rather than serving that bootstrap-time snapshot indefinitely.
         rangeCache.removeAll()
         cacheOrder.removeAll()
-        engine.onChange = { [weak self] in self?.scheduleEngineDataChanged() }
+        engine.onChange = { [weak self] in
+            guard let self else { return }
+            let start = engine.lastWriteStart ?? .distantPast
+            engineDirtyFrom = min(engineDirtyFrom ?? start, start)
+            scheduleEngineDataChanged()
+        }
+        refreshPendingCount()
         engine.llmCoordinator?.onSuggestion = { [weak self] in self?.dataChanged() }
     }
 
@@ -395,21 +416,52 @@ public final class AppModel {
     /// touch `dataEditVersion`: this fires about every 1.5s while tracking
     /// and must not drag a once-a-day aggregation along with it.
     private func engineDataChanged() {
-        invalidateAndBump()
+        let from = engineDirtyFrom ?? .distantPast
+        engineDirtyFrom = nil
+        cacheOrder.removeAll { interval in
+            guard interval.end > from else { return false }
+            rangeCache.removeValue(forKey: interval)
+            return true
+        }
+        bump()
     }
 
     /// The engine path is private and only ever reached through a 1.5s
     /// debounce, so `testDataEditVersionSeparatesUserEditsFromEngineWrites`
     /// needs a way in that does not involve waiting on a timer.
-    func engineDataChangedForTesting() {
+    func engineDataChangedForTesting(writtenFrom start: Date? = nil) {
+        engineDirtyFrom = start
         engineDataChanged()
     }
 
     private func invalidateAndBump() {
         rangeCache.removeAll()
         cacheOrder.removeAll()
+        bump()
+    }
+
+    private func bump() {
         refreshMenu()
         dataVersion += 1
+        refreshPendingCount()
+    }
+
+    /// A 30-day classify pass costs ~0.2-1 s, so it never runs on the main
+    /// actor or on every tracker write.
+    func refreshPendingCount() {
+        guard dataEditVersion != pendingEditVersion || Date().timeIntervalSince(pendingCountedAt) > 600 else { return }
+        pendingEditVersion = dataEditVersion
+        pendingCountedAt = Date()
+        pendingTask?.cancel()
+        let (worker, store, classification) = (pendingWorker, spanStore, resolver.snapshot())
+        let (edits, version) = (dataEditVersion, dataVersion)
+        let interval = DateRangeSelection(kind: .last30, anchor: Date()).interval
+        pendingTask = Task { [weak self] in
+            guard let count = try? await worker.uncategorizedCount(store: store, classification: classification,
+                                                                     editVersion: edits, dataVersion: version, interval: interval),
+                  !Task.isCancelled else { return }
+            self?.pendingClassificationCount = count
+        }
     }
 
     /// `dataChanged()` for edits that change how a category is presented or
@@ -463,7 +515,7 @@ public final class AppModel {
     /// `cacheOrder`) until the next `dataChanged()`. DB errors are logged and
     /// yield [] (not cached, so a transient failure doesn't stick).
     public func rangedSpans(for interval: DateInterval) -> [CategorizedSpan] {
-        let key = "\(interval.start.timeIntervalSinceReferenceDate)-\(interval.end.timeIntervalSinceReferenceDate)"
+        let key = interval
         if let cached = rangeCache[key] {
             touchCacheKey(key)
             return cached
@@ -536,7 +588,7 @@ public final class AppModel {
 
     /// Moves `key` to the most-recently-used end of `cacheOrder` on a cache
     /// hit, so a repeatedly-read interval isn't the one evicted next.
-    private func touchCacheKey(_ key: String) {
+    private func touchCacheKey(_ key: DateInterval) {
         if let idx = cacheOrder.firstIndex(of: key) {
             cacheOrder.remove(at: idx)
             cacheOrder.append(key)
@@ -630,6 +682,29 @@ public final class AppModel {
                 await self.refreshCalendarWindows()
             }
         }
+    }
+
+    /// Budgets and the daily summary only ever notify; without asking here
+    /// the first alert would be dropped silently. The system prompts once.
+    public func requestNotificationPermission() {
+        Task { _ = await notifier?.requestAuthorization() }
+    }
+
+    /// At midnight a window left on "today" would keep showing yesterday,
+    /// and the menu total would wait for the next tracker write.
+    public func observeDayChanges() {
+        NotificationCenter.default.addObserver(forName: .NSCalendarDayChanged, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.dayChanged() }
+        }
+    }
+
+    func dayChanged(now: Date = Date()) {
+        let calendar = Calendar.current
+        if range.kind == .day, let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
+           calendar.isDate(range.anchor, inSameDayAs: yesterday) {
+            range = .today()
+        }
+        invalidateAndBump()
     }
 
     // MARK: - C4 daily summary

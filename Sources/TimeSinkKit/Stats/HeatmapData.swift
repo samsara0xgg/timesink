@@ -9,6 +9,19 @@ struct HeatmapData: Sendable {
         var weekdayLabel: String { [String(localized: "周一"), String(localized: "周二"), String(localized: "周三"), String(localized: "周四"), String(localized: "周五"), String(localized: "周六"), String(localized: "周日")][weekday] }
         var timeLabel: String { String(format: "%02d:00–%02d:00", hour, hour + 1) }
         var label: String { "\(weekdayLabel) · \(timeLabel)" }
+        /// In the reader's clock (12- or 24-hour) rather than a fixed pattern.
+        func timeLabel(_ locale: Locale) -> String {
+            let start = Self.date(hour: hour), style = Date.FormatStyle.dateTime.hour().minute().locale(locale)
+            return "\(start.formatted(style))–\(start.addingTimeInterval(3600).formatted(style))"
+        }
+        func label(_ locale: Locale) -> String { "\(weekdayLabel) · \(timeLabel(locale))" }
+        static func hourLabel(_ hour: Int, locale: Locale) -> String {
+            date(hour: hour).formatted(.dateTime.hour(.defaultDigits(amPM: .narrow)).locale(locale))
+        }
+        private static func date(hour: Int) -> Date {
+            let day = Calendar.current.startOfDay(for: Date())
+            return Calendar.current.date(bySettingHour: hour, minute: 0, second: 0, of: day) ?? day
+        }
     }
 
     struct Contribution: Identifiable, Sendable {

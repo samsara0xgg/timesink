@@ -69,13 +69,13 @@ final class TimelinePerformanceTests: XCTestCase {
         render("ribbon_full_render", DayRibbonView(overview: overview), size: NSSize(width: 1100, height: 100))
         render("menu_popover_render", MenuBarDashboardView(model: model), size: NSSize(width: 340, height: 760))
 
+        // The badge is counted on a worker; the main actor only reads it.
         start = CFAbsoluteTimeGetCurrent()
         _ = model.pendingClassificationCount
-        report("sidebar_badge_30d", since: start)
+        report("sidebar_badge_main", since: start)
+        start = CFAbsoluteTimeGetCurrent()
         model.dataChanged()
-        start = CFAbsoluteTimeGetCurrent()
-        _ = model.pendingClassificationCount
-        report("sidebar_badge_30d_after_bump", since: start)
+        report("data_changed_main", since: start)
     }
 
     @MainActor

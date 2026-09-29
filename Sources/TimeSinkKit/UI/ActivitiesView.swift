@@ -28,6 +28,9 @@ struct ActivitiesView: View {
     /// `meetingSpanIDs`/etc. stay in sync with what's on screen.
     @State private var calendarEvents: [CalendarEvent] = []
     @State private var calendarPermissionState: PermissionState = .notDetermined
+    /// The enable card is an offer, not a state to fix: once declined it
+    /// stays away (Settings keeps the switch).
+    @AppStorage("calendarBandDismissed") private var calendarBandDismissed = false
 
     private var searchBinding: Binding<String> {
         Binding(get: { model.activitySearch }, set: { model.activitySearch = $0 })
@@ -138,7 +141,7 @@ struct ActivitiesView: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Label("热力图时段 · \(interval.start.formatted(.dateTime.month().day()))", systemImage: "square.grid.3x3")
-                    Text("\(interval.start.formatted(date: .omitted, time: .shortened))–\(interval.end.formatted(date: .omitted, time: .shortened))")
+                    Text("\(model.time(interval.start))–\(model.time(interval.end))")
                         .monospacedDigit()
                     Spacer(minLength: 0)
                 }
@@ -175,19 +178,23 @@ struct ActivitiesView: View {
     /// list's meeting badges/summary, not a persistent band).
     @ViewBuilder
     private var calendarBand: some View {
-        if !model.calendarOverlayEnabled || calendarPermissionState == .notDetermined {
+        if calendarBandDismissed {
+            EmptyView()
+        } else if !model.calendarOverlayEnabled || calendarPermissionState == .notDetermined {
             CalendarBandCard(
                 title: String(localized: "日历叠加"),
                 message: String(localized: "在时间轴上叠加你的日历日程，自动标注会议时间；会议期间空闲不会触发挂起。"),
                 actionTitle: String(localized: "启用"),
-                action: enableCalendarOverlay
+                action: enableCalendarOverlay,
+                dismiss: { calendarBandDismissed = true }
             )
         } else if calendarPermissionState != .granted {
             CalendarBandCard(
                 title: String(localized: "日历访问被拒绝"),
                 message: String(localized: "无法叠加日程或自动标注会议。前往系统设置重新授权日历访问后即可生效。"),
                 actionTitle: String(localized: "打开系统设置"),
-                action: openCalendarSystemSettings
+                action: openCalendarSystemSettings,
+                dismiss: { calendarBandDismissed = true }
             )
         }
     }
@@ -273,9 +280,8 @@ struct ActivitiesView: View {
     }
 }
 
-/// Enable-card / guide-card chrome for `ActivitiesView.calendarBand`. Mirrors
-/// `PermissionRow(compact: false)`'s look, but deliberately isn't
-/// `PermissionRow` itself: that component disables its action button once
+/// Enable-card / guide-card chrome for `ActivitiesView.calendarBand`.
+/// Deliberately not `PermissionRow`: that component disables its action button once
 /// `state == .granted`, which is wrong here -- this card's button flips
 /// `calendarOverlayEnabled` (an app setting), a different axis from the
 /// underlying `PermissionState` a user can already have granted access, then
@@ -286,6 +292,7 @@ private struct CalendarBandCard: View {
     let message: String
     let actionTitle: String
     let action: () -> Void
+    let dismiss: () -> Void
 
     var body: some View {
         HStack(alignment: .top) {
@@ -297,12 +304,11 @@ private struct CalendarBandCard: View {
             }
             Spacer()
             Button(actionTitle, action: action)
+            Button("不用了", action: dismiss).buttonStyle(.borderless)
+                .help("可在「设置 · 记录与隐私」中随时开启日历叠加")
         }
         .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
+        .workspacePanel()
     }
 }
 
@@ -348,12 +354,64 @@ final class ActivitiesModel {
         let rows: [ActivityRow]
     }
 
+    /// One app's time in the 按应用 grouping: its rows, not its raw records.
+    struct AppGroup: Identifiable {
+        struct Row: Identifiable {
+            let selection: ActivitySelection
+            let label: String
+            let domain: String?
+            var seconds: TimeInterval
+            var id: ActivitySelection { selection }
+        }
+        let id: String
+        let name: String
+        let seconds: TimeInterval
+        let rows: [Row]
+    }
+
     var groups: [CategoryGroup] = []
-    var displayedItems: [CategorizedSpan] = []
-    /// `displayedItems` counted per row (`ActivitySelection.row`), built once
-    /// in `recompute` -- each `ActivityRowView` reads its "N 段" badge here
-    /// instead of re-parsing every item's URL on every body evaluation.
+    var displayedItems: [CategorizedSpan] = [] {
+        didSet { foldedRows = nil; appGroupRows = nil }
+    }
+    /// Visits per row (`ActivitySelection.row`): consecutive records of one
+    /// row count once, so a row reads "来回 12 次", not "412 条记录". Built
+    /// once in `recompute`, not per body evaluation.
     var segmentCounts: [ActivitySelection: Int] = [:]
+    @ObservationIgnored private var foldedRows: [TimelineSegment]?
+    @ObservationIgnored private var appGroupRows: [AppGroup]?
+
+    /// 按时间: `displayedItems` folded like the Today list, newest first.
+    /// Built on first use only; most visits never leave 按分类.
+    var timeRows: [TimelineSegment] {
+        let items = displayedItems  // registers the observation even on a cache hit
+        if let foldedRows { return foldedRows }
+        let rows = Array(TimelineSegmenter.segments(items, resolution: DayOverview.listResolution).reversed())
+        foldedRows = rows
+        return rows
+    }
+
+    /// 按应用: each app with its documents, sites and entities.
+    var appGroups: [AppGroup] {
+        let items = displayedItems
+        if let appGroupRows { return appGroupRows }
+        var apps: [String: (name: String, seconds: TimeInterval, rows: [ActivitySelection: AppGroup.Row])] = [:]
+        for item in items {
+            let identity = ActivityIdentity(item)
+            let row = identity.selection.row
+            var app = apps[item.span.appBundleID] ?? (item.span.appName, 0, [:])
+            app.seconds += item.span.duration
+            app.rows[row, default: .init(selection: row, label: identity.rowLabel, domain: item.span.domain, seconds: 0)].seconds += item.span.duration
+            apps[item.span.appBundleID] = app
+        }
+        func longestFirst(_ a: AppGroup.Row, _ b: AppGroup.Row) -> Bool {
+            a.seconds == b.seconds ? a.label < b.label : a.seconds > b.seconds
+        }
+        let groups: [AppGroup] = apps.map { id, app in
+            AppGroup(id: id, name: app.name, seconds: app.seconds, rows: app.rows.values.sorted(by: longestFirst))
+        }.sorted { (a: AppGroup, b: AppGroup) in a.seconds == b.seconds ? a.id < b.id : a.seconds > b.seconds }
+        appGroupRows = groups
+        return groups
+    }
     var timelineBlocks: [TimelineBlock] = []
     /// C4 focus sessions overlapping the visible range (single-day-ish
     /// ranges only, same gate as `timelineBlocks`) -- `DayTimelineView`
@@ -518,7 +576,18 @@ final class ActivitiesModel {
         // just the search hits.
         let matchedSelections = matchedItems.map(Self.selection)
         let visibleSelections = Set(matchedSelections)
-        segmentCounts = Dictionary(matchedSelections.map { ($0.row, 1) }, uniquingKeysWith: +)
+        var visits: [ActivitySelection: Int] = [:]
+        var previous: (row: ActivitySelection, end: Date)?
+        for (item, selection) in zip(matchedItems, matchedSelections) {
+            let row = selection.row
+            if let last = previous, last.row == row, item.span.start.timeIntervalSince(last.end) <= TimelineSegmenter.defaultBridge {
+                previous = (row, max(last.end, item.span.end))
+            } else {
+                visits[row, default: 0] += 1
+                previous = (row, item.span.end)
+            }
+        }
+        segmentCounts = visits
         let filterCategory = model.activityFilter
         let timeInterval = model.activityTimeInterval
         timelineItems = showsTimeline ? Self.splitAtTimeFilter(all, interval: timeInterval) : []
