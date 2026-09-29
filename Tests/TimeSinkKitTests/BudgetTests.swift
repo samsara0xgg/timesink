@@ -1,4 +1,5 @@
 import XCTest
+import UserNotifications
 @testable import TimeSinkKit
 
 @MainActor
@@ -87,14 +88,14 @@ final class BudgetTests: XCTestCase {
 
         m.evaluate(byCategory: ["entertainment": 3000], categories: cats, now: ts(0))   // 50m / 1h -> warn
         XCTAssertEqual(spy.posted[0].id, "budget.warn.entertainment")
-        XCTAssertEqual(spy.posted[0].title, "娱乐还剩 10m")
-        XCTAssertEqual(spy.posted[0].body, "今天已用 50m / 1h 0m。到达上限前会再提醒一次。")
+        XCTAssertEqual(spy.posted[0].title, "娱乐还剩 10 分钟")
+        XCTAssertEqual(spy.posted[0].body, "今天已用 50 分钟 / 1 小时。到达上限时会再提醒一次。")
         XCTAssertEqual(spy.posted[0].route, .settingsBudget)
 
         m.evaluate(byCategory: ["entertainment": 3600], categories: cats, now: ts(60))  // 1h / 1h -> limit
         XCTAssertEqual(spy.posted[1].id, "budget.limit.entertainment")
         XCTAssertEqual(spy.posted[1].title, "娱乐已到今日上限")
-        XCTAssertEqual(spy.posted[1].body, "已用 1h 0m / 1h 0m。今天不会再提醒；上限可在设置中调整。")
+        XCTAssertEqual(spy.posted[1].body, "已用 1 小时 / 1 小时。今天不会再提醒；可在「专注与限额」中调整。")
         XCTAssertEqual(spy.posted[1].route, .settingsBudget)
     }
 
@@ -130,9 +131,17 @@ final class BudgetTests: XCTestCase {
         m.evaluateSummary(now: after) { ("今日小结", "x") }
         XCTAssertEqual(spy.posted.count, 1)
         XCTAssertEqual(spy.posted[0].id, "summary.daily")   // R-T11d: day-less id
+        XCTAssertEqual(spy.posted[0].route, .today)
         XCTAssertEqual(settings.lastSummaryDay, BudgetEngine.dayStamp(after, calendar: cal))
         m.evaluateSummary(now: after.addingTimeInterval(600)) { ("今日小结", "x") }
         XCTAssertEqual(spy.posted.count, 1)     // 当天不重发
+    }
+
+    func testSummaryDefaultAndExplicitActionsRouteToToday() {
+        XCTAssertEqual(NotificationRoute.destination(action: UNNotificationDefaultActionIdentifier, notificationID: "summary.daily", storedRoute: "statsToday"), .today)
+        XCTAssertEqual(NotificationRoute.destination(action: "today", notificationID: "summary.daily", storedRoute: "statsToday"), .today)
+        XCTAssertNil(NotificationRoute.destination(action: UNNotificationDismissActionIdentifier, notificationID: "summary.daily", storedRoute: "today"))
+        XCTAssertEqual(NotificationRoute.destination(action: UNNotificationDefaultActionIdentifier, notificationID: "custom.trends", storedRoute: "statsToday"), .statsToday)
     }
     func testNilSummaryBodySkipsWithoutStamping() throws {
         let (m, _, spy, settings) = try makeMonitor()

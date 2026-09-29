@@ -31,6 +31,7 @@ final class TodayDashboardModel {
     /// evening, every day.
     var focusDelta: TimeInterval?
     var total: TimeInterval = 0
+    var overview: DayOverview?
     /// Same "same time-of-day" semantics as `focusDelta`; see its doc comment.
     var totalDelta: TimeInterval?
     var streakDays = 0
@@ -83,18 +84,14 @@ final class TodayDashboardModel {
     @ObservationIgnored
     private var lastStreakDay: Date?
 
-    /// Per-bump refresh: today, yesterday, and their deltas (unconditional,
-    /// cheap -- `AppModel.rangedSpans(for:)` memoizes both ranges between
-    /// `dataChanged()` calls). The 30-day streak lookback is gated
-    /// separately: `forceStreak` recomputes it unconditionally (the
-    /// popover's `.onAppear` -- `.menuBarExtraStyle(.window)` keeps this
-    /// view's `@State dashboard` alive across dismissals, so without a
-    /// force the day-changed guard below would only ever fire once per day,
-    /// on the FIRST open, and every reopen that day would silently serve a
-    /// stale number even if category edits or a threshold crossing changed
-    /// it); the dataVersion-driven path passes `false` and relies on the
-    /// guard. See `refreshStreakIfDayChanged`.
-    func recompute(model: AppModel, forceStreak: Bool) {
+    @ObservationIgnored private let streakWorker = StatsWorker()
+    @ObservationIgnored private var lastStreakUpdate: Date?
+    @ObservationIgnored private var lastStreakEditVersion = -1
+    @ObservationIgnored private var streakGeneration = 0
+
+    /// Refresh today's small summary immediately; prepare the month-long streak
+    /// on a background actor. Reopening within a minute reuses the snapshot.
+    func recompute(model: AppModel, forceStreak: Bool) async {
         let calendar = Calendar.current
         let categories = model.resolver.categoriesByID
 
@@ -106,6 +103,7 @@ final class TodayDashboardModel {
         total = Aggregator.totalDuration(today.map(\.span))
 
         let now = Date()
+        overview = DayOverview(items: today, categories: categories, sessions: [], now: now)
         let yesterdayAnchor = calendar.date(byAdding: .day, value: -1, to: now) ?? now
         let yesterday = model.rangedSpans(for: DateRangeSelection(kind: .day, anchor: yesterdayAnchor))
         let yByCategory = Aggregator.durationByCategory(yesterday)
@@ -131,7 +129,6 @@ final class TodayDashboardModel {
                 return (id, c.name, c.colorHex, seconds)
             }
             .sorted { $0.3 > $1.3 }
-            .prefix(3)
             .map { $0 }
         maxCategorySeconds = topCategories.first?.seconds ?? 0
 
@@ -167,36 +164,36 @@ final class TodayDashboardModel {
         allBudgetRows = sortedBudgetRows
         budgetRows = Array(sortedBudgetRows.prefix(2))
 
-        refreshStreakIfDayChanged(model: model, calendar: calendar, force: forceStreak)
+        await refreshStreakIfDayChanged(model: model, calendar: calendar, force: forceStreak)
     }
 
-    /// Runs the 30-day streak lookback when `force` is true (every popover
-    /// open) or when the calendar day has rolled over since the last run --
-    /// skipped otherwise (every dataVersion-driven refresh within the same
-    /// day the popover has already opened for). Accepted tradeoff: a
-    /// streak-threshold crossing while the popover sits open without being
-    /// reopened surfaces only on the next open, not live.
     private func refreshStreakIfDayChanged(
         model: AppModel, calendar: Calendar, force: Bool
-    ) {
-        let todayStart = calendar.startOfDay(for: Date())
-        guard force || lastStreakDay != todayStart else { return }
-        lastStreakDay = todayStart
-
-        // Was `rangedSpans(for: .last30)` + `Self.dailyPulses(items:)`, i.e.
-        // one materialized+classified Span per row of the whole month to
-        // produce 30 integers. `AppModel.dailyPulses` aggregates the same
-        // window in SQL down to one row per (day, classification tuple)
-        // instead; see its doc comment for the measured before/after. The
-        // `categories` parameter went with it -- the model folds with its own
-        // `resolver.categoriesByID`, the same dictionary `recompute` reads.
-        let pulses = model.dailyPulses(days: Self.streakLookbackDays,
-                                       endingAt: Date(), calendar: calendar)
-        // C1+: `StreakDotsView`'s dot pattern reuses this same 30-day
-        // lookback's per-day breakdown -- kept alongside the derived
-        // `streakDays` count instead of discarded, no second lookback.
-        streakLookbackPulses = pulses
-        streakDays = Self.streak(dailyPulses: pulses, threshold: Self.streakThreshold)
+    ) async {
+        let now = Date()
+        let todayStart = calendar.startOfDay(for: now)
+        let editVersion = model.dataEditVersion
+        guard force || lastStreakDay != todayStart || lastStreakEditVersion != editVersion
+                || now.timeIntervalSince(lastStreakUpdate ?? .distantPast) >= 60 else { return }
+        streakGeneration += 1
+        let request = streakGeneration
+        do {
+            let pulses = try await streakWorker.dailyPulses(store: model.spanStore,
+                classification: model.resolver.snapshot(), categories: model.resolver.categoriesByID,
+                editVersion: editVersion, dataVersion: model.dataVersion,
+                days: Self.streakLookbackDays, endingAt: now, calendar: calendar)
+            try Task.checkCancellation()
+            guard request == streakGeneration, model.dataEditVersion == editVersion else { return }
+            streakLookbackPulses = pulses
+            streakDays = Self.streak(dailyPulses: pulses, threshold: Self.streakThreshold)
+            lastStreakDay = todayStart
+            lastStreakEditVersion = editVersion
+            lastStreakUpdate = now
+        } catch is CancellationError {
+            // A dismissed popover keeps its last completed snapshot for reopening.
+        } catch {
+            menuBarDashboardLogger.error("streak refresh failed: \(String(describing: error))")
+        }
     }
 
     /// Lifted to `Aggregator.dailyPulses` (Task 7 C2) so `StatsModel` can
@@ -387,6 +384,7 @@ private struct DrillDownModifier<DrillContent: View>: ViewModifier {
             )
             .onHover { hovering in
                 if hovering {
+                    guard expandedDrill != kind else { return }
                     host.cancelScheduledClose()
                     showTask?.cancel()
                     showTask = Task { @MainActor in
@@ -399,6 +397,11 @@ private struct DrillDownModifier<DrillContent: View>: ViewModifier {
                     showTask = nil
                     host.scheduleClose()
                 }
+            }
+            .accessibilityAction(named: "展开详情") {
+                showTask?.cancel()
+                host.closeNow()
+                expandedDrill = kind
             }
             .onDisappear {
                 // F2: a pending 0.15s show timer must never fire after this
@@ -421,6 +424,13 @@ private struct DrillDownModifier<DrillContent: View>: ViewModifier {
     }
 
     private func attemptShow() {
+        if host.shouldDeferSwitch() {
+            showTask = Task { @MainActor in
+                do { try await Task.sleep(for: .milliseconds(150)) } catch { return }
+                attemptShow()
+            }
+            return
+        }
         guard let hostWindow, let anchorView else {
             // WindowAccessor never resolved a window/probe view -- the
             // sanctioned fallback (spec §10): expand in place.
@@ -493,15 +503,21 @@ private struct ExpandedDrillView<Content: View>: View {
 struct MenuBarDashboardView: View {
     let model: AppModel
     @State private var dashboard = TodayDashboardModel()
-    @State private var gaugeProgress: Double = 0
     /// C4: switches the popover between the normal dashboard and the focus
     /// duration/block-list configuration screen. Superseded entirely by
     /// `FocusRunningView` whenever a session is actually running, regardless
     /// of this mode -- see `body`'s top-level `if`.
     @State private var popoverMode: PopoverMode = .dashboard
+    @State private var focusError: String?
+    @State private var categoriesExpanded = false
+    @FocusState private var keyboardCategory: String?
+    @State private var focusMinutes = 25
+    @State private var showsCapture = false
+    @State private var showsSync = false
+    @State private var captureSummary = ObservationStore.Summary(count: 0, latestAt: nil)
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// C1+ hover drill-down: one reused `PanelHost` (see its own doc
     /// comment for why it isn't `FocusHUDController`), the popover's own
@@ -518,202 +534,258 @@ struct MenuBarDashboardView: View {
     private var focusRunning: Bool { model.focus?.running != nil }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 0) {
+            section {
+                dashboardHeader
+                if model.accessibilityGranted && !model.trackingPaused && !focusRunning { currentActivity }
+            }
             if focusRunning {
-                FocusRunningView(model: model)
-            } else if popoverMode == .focusConfig {
-                FocusConfigView(model: model, onCancel: { popoverMode = .dashboard }, onStart: startFocus)
+                section { FocusRunningView(model: model) }
+                section {
+                    HStack {
+                        Text("今天已记录").foregroundStyle(.secondary)
+                        Text(Format.duration(dashboard.total)).fontWeight(.semibold).monospacedDigit()
+                        Spacer()
+                        Button("查看今天", action: openToday).buttonStyle(.link)
+                    }.font(.system(size: 12))
+                    if let overview = dashboard.overview { DayRibbonView(overview: overview, compact: true) }
+                }
             } else {
-                HStack(spacing: 14) {
-                    Button(action: openStatsToday) { scoreColumn }
-                        .buttonStyle(.plain)
-                        .drillDown(host: panelHost, kind: .score, hostWindow: hostWindow, anchorView: anchorView,
-                                   expandedDrill: $expandedDrill, shownKind: $shownKind) {
-                            scoreBreakdownContent()
-                        }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Button(action: openStatsToday) {
-                            kpiLine(value: Format.duration(dashboard.focus), label: String(localized: "专注"),
-                                    delta: dashboard.focusDelta.map(Format.durationDelta))
-                        }
-                        .buttonStyle(.plain)
-                        .drillDown(host: panelHost, kind: .compareFocus, hostWindow: hostWindow, anchorView: anchorView,
-                                   expandedDrill: $expandedDrill, shownKind: $shownKind) {
-                            compareBaseContent(focus: true)
-                        }
-                        Button(action: openStatsToday) {
-                            kpiLine(value: Format.duration(dashboard.total), label: String(localized: "总计"),
-                                    delta: dashboard.totalDelta.map(Format.durationDelta))
-                        }
-                        .buttonStyle(.plain)
-                        .drillDown(host: panelHost, kind: .compareTotal, hostWindow: hostWindow, anchorView: anchorView,
-                                   expandedDrill: $expandedDrill, shownKind: $shownKind) {
-                            compareBaseContent(focus: false)
-                        }
-                        if dashboard.streakDays >= 2 {
-                            Button(action: openStatsTrend) {
-                                Text("连续 \(dashboard.streakDays) 天保持 \(TodayDashboardModel.streakThreshold) 分以上")
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(.tint)
-                            }
-                            .buttonStyle(.plain)
-                            .drillDown(host: panelHost, kind: .streak, hostWindow: hostWindow, anchorView: anchorView,
-                                       expandedDrill: $expandedDrill, shownKind: $shownKind) {
-                                streakDotsContent()
-                            }
-                        }
+                if !model.accessibilityGranted {
+                    section {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label("辅助功能权限已关闭", systemImage: "exclamationmark.triangle").font(.system(size: 13, weight: .semibold)).foregroundStyle(.red)
+                            Text("TimeSink 靠它看到最前面的应用和窗口标题。关闭期间不会记录任何时间。")
+                                .font(.system(size: 12)).foregroundStyle(.secondary)
+                            Button("打开系统设置…") { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!) }.buttonStyle(.borderedProminent)
+                            Text("重新打开后会自动继续，不需要重启。").font(.system(size: 11)).foregroundStyle(.secondary)
+                        }.padding(10).background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 9))
                     }
                 }
-                if expandedDrill == .score {
-                    ExpandedDrillView(content: scoreBreakdownContent(compact: true)) { expandedDrill = nil }
-                }
-                if expandedDrill == .compareFocus {
-                    ExpandedDrillView(content: compareBaseContent(focus: true, compact: true)) { expandedDrill = nil }
-                }
-                if expandedDrill == .compareTotal {
-                    ExpandedDrillView(content: compareBaseContent(focus: false, compact: true)) { expandedDrill = nil }
-                }
-                if expandedDrill == .streak {
-                    ExpandedDrillView(content: streakDotsContent(compact: true)) { expandedDrill = nil }
+                if model.trackingPaused { section { pausedContent } }
+                section { todaySummary }
+                if model.accessibilityGranted && !model.trackingPaused {
+                    if !dashboard.topCategories.isEmpty { section { categoryList } }
+                    if !dashboard.budgetRows.isEmpty {
+                        section {
+                            Button(action: openBudgetSettings) { budgetSection }
+                                .buttonStyle(.plain)
+                                .drillDown(host: panelHost, kind: .budget, hostWindow: hostWindow, anchorView: anchorView,
+                                    expandedDrill: $expandedDrill, shownKind: $shownKind) { budgetProgressContent() }
+                        }
+                    }
+                    section { quickFocus }
                 }
             }
-
-            if !focusRunning && popoverMode == .dashboard {
-                if !dashboard.topCategories.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(dashboard.topCategories, id: \.id) { entry in
-                            Button(action: { openActivities(category: entry.id) }) {
-                                categoryRow(entry)
-                            }
-                            .buttonStyle(.plain)
-                            .drillDown(host: panelHost, kind: .category(entry.id), hostWindow: hostWindow, anchorView: anchorView,
-                                       expandedDrill: $expandedDrill, shownKind: $shownKind) {
-                                categoryDetailContent(entry)
-                            }
-                            if expandedDrill == .category(entry.id) {
-                                ExpandedDrillView(content: categoryDetailContent(entry, compact: true)) { expandedDrill = nil }
-                            }
-                        }
-                    }
-                }
-
-                if dashboard.total > 0 {
-                    // Spec §10's click-route enumeration ends with 「24h 图→
-                    // 统计」; the plan's hover table said 子窗即终点 instead,
-                    // which left this as the one dead click target in a
-                    // popover whose whole point is 全面可点击化. Same
-                    // Button + .drillDown composition as the six sibling
-                    // routes above/below.
-                    Button(action: openStatsToday) { sparkline }
-                        .buttonStyle(.plain)
-                        .drillDown(host: panelHost, kind: .spark, hostWindow: hostWindow, anchorView: anchorView,
-                                   expandedDrill: $expandedDrill, shownKind: $shownKind) {
-                            hourlyBigContent()
-                        }
-                    if expandedDrill == .spark {
-                        ExpandedDrillView(content: hourlyBigContent(compact: true)) { expandedDrill = nil }
-                    }
-                }
-
-                if !dashboard.budgetRows.isEmpty {
-                    Button(action: openBudgetSettings) { budgetSection }
-                        .buttonStyle(.plain)
-                        .drillDown(host: panelHost, kind: .budget, hostWindow: hostWindow, anchorView: anchorView,
-                                   expandedDrill: $expandedDrill, shownKind: $shownKind) {
-                            budgetProgressContent()
-                        }
-                    if expandedDrill == .budget {
-                        ExpandedDrillView(content: budgetProgressContent(compact: true)) { expandedDrill = nil }
-                    }
-                }
-
-                Button("开始专注") { popoverMode = .focusConfig }
-                    .buttonStyle(.bordered)
-                    .frame(maxWidth: .infinity)
-            }
-
-            // Fold-in: kept OUTSIDE the dashboard-only block above -- this
-            // warning is actionable (check Chrome Automation permission),
-            // so hiding it for the length of a running focus session (up to
-            // 90 minutes) would bite. Shown regardless of `popoverMode`/
-            // `focusRunning`.
-            // Reads the `AppModel` mirror, not `engine.chromeCaptureDegraded`
-            // directly: `TrackerEngine` isn't `@Observable`, so a direct read
-            // registers no SwiftUI dependency (the Task 6 fix on
-            // `MenuBarLabel`). It happens to refresh today only because the
-            // whole popover body re-evaluates on each recompute -- that's an
-            // incidental re-render, not a declared dependency.
             if model.chromeDegraded {
-                Label("Chrome 网页读取已降级，请检查自动化权限", systemImage: "exclamationmark.triangle")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
+                section {
+                    Button {
+                        model.settingsTab = .permissions
+                        NSApp.activate(ignoringOtherApps: true)
+                        openSettings(); AppWindow.settings.bringForward()
+                    } label: {
+                        Label("Chrome 网页读取已降级 · 检查权限", systemImage: "exclamationmark.triangle")
+                            .font(.system(size: 11)).foregroundStyle(RefinedStyle.warning)
+                    }.buttonStyle(.plain)
+                }
             }
-
-            Divider()
-            ScreenCaptureRow(model: model)
-            CloudSyncRow(model: model)
-
-            Divider()
-            HStack {
-                Button("打开 TimeSink") {
-                    openWindow(id: "main")
-                    AppWindow.main.bringForward()
-                }
-                    .buttonStyle(.plain).foregroundStyle(.secondary)
-                Spacer()
-                Button("设置") {
-                    openSettings()
-                    AppWindow.settings.bringForward()
-                }
-                    .buttonStyle(.plain).foregroundStyle(.secondary)
-                Spacer()
-                Button("退出") {
-                    model.engine.stop()
-                    NSApp.terminate(nil)
-                }
-                .buttonStyle(.plain).foregroundStyle(.secondary)
-            }
-            .font(.callout)
+            if let focusError { Text(focusError).font(.system(size: 11)).foregroundStyle(.red).padding(14) }
+            expandedContent
+            section { footer }
         }
-        .padding(16)
-        .frame(width: 300)
+        .frame(width: RefinedStyle.popoverWidth)
+        .environment(\.locale, model.displayLocale)
+        .environment(\.calendar, model.displayCalendar)
+        .background(RefinedStyle.panel, in: RoundedRectangle(cornerRadius: 12))
         .background(WindowAccessor(window: $hostWindow, anchorView: $anchorView))
-        // `.menuBarExtraStyle(.window)` keeps this view (and its @State
-        // dashboard) alive across popover dismissals, so `.onAppear` fires
-        // on every open, not just app launch -- force the streak lookback
-        // there so a reopen always reflects same-day changes (a threshold
-        // crossing, a category edit). The dataVersion path stays unforced;
-        // see `TodayDashboardModel.recompute`.
-        .onAppear {
-            refresh(forceStreak: true)
-            // Create the drill-down panel now rather than inside the first
-            // hover, but in a follow-up main-actor hop so it lands after the
-            // popover's own first frame instead of adding to it.
-            Task { @MainActor in panelHost.prewarm() }
+        .animation(RefinedStyle.motion(reduced: reduceMotion), value: model.trackingPaused)
+        .animation(RefinedStyle.motion(reduced: reduceMotion), value: categoriesExpanded)
+        .task(id: model.dataVersion) {
+            await refresh(forceStreak: false)
+            guard !Task.isCancelled else { return }
+            panelHost.prewarm()
+            captureSummary = model.observationStore?.summary(since: Calendar.current.startOfDay(for: Date())) ?? captureSummary
         }
-        .onChange(of: model.dataVersion) { refresh(forceStreak: false) }
-        // Fold-in 2: switching `popoverMode` (常态 <-> 专注配置态) removes
-        // every drill-down row from the tree and re-adds fresh ones on the
-        // way back -- each row's own `.onDisappear` already clears
-        // `expandedDrill`/`shownKind` for ITS kind (see
-        // `DrillDownModifier`), but this is a direct, unconditional
-        // belt-and-suspenders clear so switching modes can never bring a
-        // stale inline expansion back pre-opened.
-        .onChange(of: popoverMode) { _, _ in expandedDrill = nil }
-        // C1+: the hover panel (and any degraded in-popover expansion) must
-        // not outlive the popover itself -- spec §10's "弹出层关闭随之消失".
+        .onAppear { focusMinutes = model.settings.focusDurationMinutes }
         .onDisappear {
-            panelHost.closeNow()
-            shownKind = nil
-            expandedDrill = nil
-            // `.menuBarExtraStyle(.window)` keeps this view's @State alive
-            // across dismissals (the same property `.onAppear`-per-open
-            // relies on), so without this a popover dismissed while in
-            // 专注配置态 reopens there instead of on the 常态仪表盘 -- the
-            // dashboard is the popover's primary surface (spec §3). The
-            // `.onChange(of: popoverMode)` above already clears any inline
-            // expansion on the transition back.
-            popoverMode = .dashboard
+            panelHost.closeNow(); shownKind = nil; expandedDrill = nil
+        }
+    }
+
+    private func section<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10, content: content)
+            .padding(.horizontal, 14).padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .bottom) { Divider().opacity(0.65) }
+    }
+
+    private var todaySummary: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .bottom, spacing: 4) {
+                Button(action: openToday) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(Format.duration(dashboard.total)).font(.system(size: 34, weight: .semibold))
+                            .tracking(-0.8).monospacedDigit().refinedNumberMotion(Format.duration(dashboard.total))
+                        Text("今天已记录").font(.system(size: 12)).foregroundStyle(.secondary)
+                    }
+                }.buttonStyle(.plain)
+                .drillDown(host: panelHost, kind: .compareTotal, hostWindow: hostWindow, anchorView: anchorView,
+                    expandedDrill: $expandedDrill, shownKind: $shownKind) { compareBaseContent(focus: false) }
+                Spacer(minLength: 2)
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text(Format.duration(dashboard.focus)).font(.system(size: 17, weight: .semibold)).monospacedDigit().refinedNumberMotion(Format.duration(dashboard.focus))
+                    Text("投入 · 占 \(Int((dashboard.focus / max(1, dashboard.total) * 100).rounded()))%")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                .drillDown(host: panelHost, kind: .compareFocus, hostWindow: hostWindow, anchorView: anchorView,
+                    expandedDrill: $expandedDrill, shownKind: $shownKind) { compareBaseContent(focus: true) }
+            }
+            if let delta = dashboard.totalDelta {
+                Text("比昨天同时段 \(Format.durationDelta(delta))").font(.system(size: 11)).foregroundStyle(.secondary)
+                    .padding(.top, -7).monospacedDigit()
+            } else if dashboard.total < 300 {
+                Text("新的一天刚开始。离开电脑和锁屏的时间不会计入。")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+            }
+            if let overview = dashboard.overview {
+                Button(action: openToday) { DayRibbonView(overview: overview, compact: true) }.buttonStyle(.plain)
+                    .drillDown(host: panelHost, kind: .spark, hostWindow: hostWindow, anchorView: anchorView,
+                        expandedDrill: $expandedDrill, shownKind: $shownKind) { hourlyBigContent() }
+            }
+            HStack(spacing: 6) {
+                if model.showScore {
+                    Button { expandedDrill = expandedDrill == .score ? nil : .score } label: {
+                        Label("评分 \(dashboard.pulse.map(String.init) ?? "—") · 连续 \(dashboard.streakDays) 天达标", systemImage: "chart.bar")
+                    }
+                    .drillDown(host: panelHost, kind: .score, hostWindow: hostWindow, anchorView: anchorView,
+                        expandedDrill: $expandedDrill, shownKind: $shownKind) { scoreBreakdownContent() }
+                }
+                Button { expandedDrill = expandedDrill == .spark ? nil : .spark } label: {
+                    Label("24 小时分布", systemImage: "clock")
+                }
+            }.font(.system(size: 11)).controlSize(.mini)
+        }.opacity(model.trackingPaused ? 0.55 : 1)
+    }
+
+    private var categoryList: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(dashboard.topCategories.prefix(categoriesExpanded ? dashboard.topCategories.count : 5)), id: \.id) { entry in
+                Button { openActivities(category: entry.id) } label: { categoryRow(entry) }
+                    .buttonStyle(RefinedRowButtonStyle())
+                    .background(shownKind == .category(entry.id) ? Color.primary.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: 6))
+                    .drillDown(host: panelHost, kind: .category(entry.id), hostWindow: hostWindow, anchorView: anchorView,
+                        expandedDrill: $expandedDrill, shownKind: $shownKind) { categoryDetailContent(entry) }
+                    .focused($keyboardCategory, equals: entry.id)
+                    .onKeyPress(.upArrow) { moveCategory(-1, from: entry.id); return .handled }
+                    .onKeyPress(.downArrow) { moveCategory(1, from: entry.id); return .handled }
+                    .onKeyPress(.rightArrow) { expandedDrill = .category(entry.id); return .handled }
+                    .onKeyPress(.leftArrow) { expandedDrill = nil; panelHost.closeNow(); return .handled }
+                    .accessibilityLabel("\(entry.name)，\(Format.duration(entry.seconds))，占 \(Int((entry.seconds / max(1, dashboard.total) * 100).rounded()))%，有详情")
+            }
+            if dashboard.topCategories.count > 5 {
+                let rest = dashboard.topCategories.dropFirst(5)
+                Button { categoriesExpanded.toggle() } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: categoriesExpanded ? "chevron.up" : "chevron.down")
+                        Text(categoriesExpanded ? "收起" : "另外 \(rest.count) 个分类 · \(Format.duration(rest.reduce(0) { $0 + $1.seconds }))")
+                        Spacer()
+                    }.font(.system(size: 12)).foregroundStyle(.secondary).frame(height: 26)
+                }.buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func moveCategory(_ step: Int, from id: String) {
+        let ids = Array(dashboard.topCategories.prefix(categoriesExpanded ? dashboard.topCategories.count : 5)).map(\.id)
+        guard let index = ids.firstIndex(of: id), !ids.isEmpty else { return }
+        keyboardCategory = ids[(index + step + ids.count) % ids.count]
+    }
+
+    private var quickFocus: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 5) {
+                Picker("专注时长", selection: $focusMinutes) {
+                    ForEach([15, 25, 45, 90], id: \.self) { Text("\($0)").tag($0) }
+                }.pickerStyle(.segmented).labelsHidden().frame(width: 158)
+                Text("分钟").font(.system(size: 11)).foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Button("开始专注") { startFocus(minutes: focusMinutes) }
+                    .buttonStyle(.borderedProminent).controlSize(.small).disabled(model.focus == nil)
+                    .keyboardShortcut(.space, modifiers: [])
+            }
+            HStack(spacing: 4) {
+                Text("将隐藏 \(model.settings.focusAppBlockEnabled ? model.settings.focusBlockedApps.count : 0) 个应用 · 拦截 \(model.settings.focusSiteBlockEnabled ? model.settings.focusBlockedCategories.count : 0) 类网站")
+                    .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                Spacer(minLength: 0)
+                Button("编辑…", action: openBudgetSettings).buttonStyle(.link).font(.system(size: 11))
+            }
+        }.onChange(of: focusMinutes) { _, value in model.settings.setFocusDurationMinutes(value) }
+    }
+
+    private var pausedContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let until = model.trackingResumeAt {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(Format.mmss(until.timeIntervalSince(context.date))).font(.system(size: 34, weight: .semibold)).monospacedDigit()
+                        Text("后恢复").font(.system(size: 12)).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            Text("暂停期间不记录应用、网站、窗口标题和屏幕画面。这段时间在时间带里留空，不会补记。")
+                .font(.system(size: 12)).foregroundStyle(.secondary)
+            HStack {
+                Button("再加 15 分钟") { model.extendTrackingPause(minutes: 15) }
+                Button("1 小时后恢复") { model.pauseTracking(minutes: 60) }
+                Button("直到我恢复") { model.pauseTracking(minutes: nil) }
+            }.controlSize(.small)
+        }
+    }
+
+    @ViewBuilder private var expandedContent: some View {
+        if expandedDrill == .spark { ExpandedDrillView(content: hourlyBigContent(compact: true)) { expandedDrill = nil } }
+        if expandedDrill == .score { ExpandedDrillView(content: scoreBreakdownContent(compact: true)) { expandedDrill = nil } }
+        if expandedDrill == .compareFocus { ExpandedDrillView(content: compareBaseContent(focus: true, compact: true)) { expandedDrill = nil } }
+        if expandedDrill == .compareTotal { ExpandedDrillView(content: compareBaseContent(focus: false, compact: true)) { expandedDrill = nil } }
+        if expandedDrill == .streak { ExpandedDrillView(content: streakDotsContent(compact: true)) { expandedDrill = nil } }
+        if expandedDrill == .budget { ExpandedDrillView(content: budgetProgressContent(compact: true)) { expandedDrill = nil } }
+        if case .category(let id) = expandedDrill, let entry = dashboard.topCategories.first(where: { $0.id == id }) {
+            ExpandedDrillView(content: categoryDetailContent(entry, compact: true)) { expandedDrill = nil }
+        }
+    }
+
+    private var footer: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 6) {
+                Button { showsCapture.toggle() } label: {
+                    Label(String(localized: "屏幕采集 · \(model.trackingPaused || model.screenCapturePaused ? String(localized: "已暂停") : model.screenCollector == nil ? String(localized: "未开启") : String(localized: "\(captureSummary.count) 张"))"), systemImage: "viewfinder")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }.popover(isPresented: $showsCapture) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ScreenCaptureRow(model: model)
+                        Text("屏幕画面只保存在本机。").font(.system(size: 11)).foregroundStyle(.secondary)
+                        Button("记录与隐私设置…") { model.settingsTab = .privacy; openSettings(); AppWindow.settings.bringForward() }
+                    }.padding(16).frame(width: 280)
+                }
+                Button { showsSync.toggle() } label: {
+                    Label(model.sync?.isSyncing == true ? "正在同步" : model.sync?.lastError != nil ? "同步失败" : model.settings.cloudSyncEnabled ? "待传 \(model.sync?.pending ?? 0)" : "同步未开启", systemImage: "icloud")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }.popover(isPresented: $showsSync) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        CloudSyncRow(model: model)
+                        Button("账号与同步…") { model.settingsTab = .account; openSettings(); AppWindow.settings.bringForward() }
+                    }.padding(16).frame(width: 240)
+                }
+            }.font(.system(size: 11)).controlSize(.mini)
+            HStack(spacing: 6) {
+                Button(action: openToday) {
+                    HStack(spacing: 6) { Image(systemName: "macwindow"); Text("打开 TimeSink"); Text("⌘O").foregroundStyle(.secondary) }
+                }.controlSize(.small).keyboardShortcut("o")
+                Spacer()
+                SettingsLink { Image(systemName: "gearshape") }.buttonStyle(.plain).help("设置… ⌘,").accessibilityLabel("设置")
+                Button { model.engine.stop(); NSApp.terminate(nil) } label: { Image(systemName: "power") }
+                    .buttonStyle(.plain).help("退出 TimeSink ⌘Q").accessibilityLabel("退出 TimeSink")
+            }.foregroundStyle(.secondary)
         }
     }
 
@@ -727,30 +799,69 @@ struct MenuBarDashboardView: View {
         do {
             try focus.start(minutes: minutes)
             popoverMode = .dashboard
+            focusError = nil
         } catch {
+            focusError = String(localized: "无法开始专注，请重试。")
             menuBarDashboardLogger.error("focus.start failed: \(String(describing: error))")
         }
     }
 
-    private func refresh(forceStreak: Bool) {
-        dashboard.recompute(model: model, forceStreak: forceStreak)
-        let target = Double(dashboard.pulse ?? 0) / 100.0
-        if reduceMotion {
-            gaugeProgress = target
-        } else {
-            gaugeProgress = 0
-            withAnimation(.spring(duration: 0.6)) { gaugeProgress = target }
+    private func refresh(forceStreak: Bool) async {
+        await dashboard.recompute(model: model, forceStreak: forceStreak)
+    }
+
+    private var dashboardHeader: some View {
+        HStack(spacing: 6) {
+            RecordingStatusView(model: model)
+            Text(Date(), format: .dateTime.month().day().weekday(.abbreviated))
+                .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+            Spacer(minLength: 0)
+            RecordingPauseMenu(model: model)
+            Menu {
+                Button("评分明细") { expandedDrill = .score }
+                Button("投入时长比较") { expandedDrill = .compareFocus }
+                Button("总时长比较") { expandedDrill = .compareTotal }
+                Button("连续达标") { expandedDrill = .streak }
+                Button("24 小时分布") { expandedDrill = .spark }
+                Divider()
+                Button("查看趋势", action: openStatsTrend)
+            } label: { Image(systemName: "ellipsis") }
+            .menuStyle(.borderlessButton).fixedSize().accessibilityLabel("更多统计")
+        }.frame(height: 22)
+    }
+
+    private var currentActivity: some View {
+        TimelineView(.periodic(from: .now, by: 2)) { context in
+            if let current = model.engine.currentActivity, model.engine.isRunning, !model.engine.isSuspended {
+                HStack(spacing: 10) {
+                    AppIcon(bundleID: current.appBundleID, size: 32)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(current.document ?? current.title ?? current.appName).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                        HStack(spacing: 5) {
+                            Text(current.domain ?? current.appName).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                            CategoryChip(category: model.resolver.categoriesByID[model.resolver.categoryID(for: current)])
+                        }
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .trailing, spacing: 3) {
+                        Text(Format.duration(max(0, context.date.timeIntervalSince(current.start)))).font(.system(size: 13, weight: .semibold)).monospacedDigit()
+                        Text("自 \(model.time(current.start))").font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                }
+            } else {
+                Label(model.engine.isSuspended ? "你离开了电脑，这段时间不计入。回来后会自动继续。" : "下一段活动会显示在这里。", systemImage: model.engine.isSuspended ? "moon" : "sun.max")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .padding(9).frame(maxWidth: .infinity, alignment: .leading).background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+            }
         }
     }
 
-    // MARK: - C1+ click-through routes
-
-    /// 分数环 / 专注行 / 总计行 all deepen to the same destination: 统计·今天.
-    private func openStatsToday() {
-        model.openStats(range: .today())
-        openWindow(id: "main")
-        AppWindow.main.bringForward()
+    private func openToday() {
+        model.openToday()
+        openWindow(id: "main"); AppWindow.main.bringForward()
+        NSApp.activate(ignoringOtherApps: true)
     }
+
+    // MARK: - C1+ click-through routes
 
     /// 连续达标行 deepens to 统计 anchored on the same 30-day window its
     /// hover pane (`StreakDotsView`) shows.
@@ -771,9 +882,9 @@ struct MenuBarDashboardView: View {
     /// `.settingsBudget` notification route (`TimeSinkApp.swift`); there's
     /// no matching restore-to-`.accessory` path for a policy flip here.
     private func openBudgetSettings() {
-        model.settingsTab = .budget
-        openSettings()
-        AppWindow.settings.bringForward()
+        model.sidebarSelection = .focus
+        openWindow(id: "main"); AppWindow.main.bringForward()
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     // MARK: - C1+ drill-down content builders
@@ -801,7 +912,7 @@ struct MenuBarDashboardView: View {
     private func compareBaseContent(focus: Bool, compact: Bool = false) -> CompareBaseView {
         let width = compact ? DrillWidths.compact : DrillWidths.compare
         return focus
-            ? CompareBaseView(label: String(localized: "专注时长比较"), todayValue: dashboard.focus, delta: dashboard.focusDelta, width: width)
+            ? CompareBaseView(label: String(localized: "投入时长比较"), todayValue: dashboard.focus, delta: dashboard.focusDelta, width: width)
             : CompareBaseView(label: String(localized: "总计时长比较"), todayValue: dashboard.total, delta: dashboard.totalDelta, width: width)
     }
 
@@ -823,7 +934,12 @@ struct MenuBarDashboardView: View {
             .map { CategoryDetailView.SubEntry(id: $0.key, label: $0.label, seconds: $0.seconds) }
         return CategoryDetailView(name: entry.name, colorHex: entry.colorHex, seconds: entry.seconds,
                                    hourBars: bars, subs: Array(subs),
-                                   width: compact ? DrillWidths.compact : DrillWidths.category)
+                                   width: compact ? DrillWidths.compact : DrillWidths.category,
+                                   onOpenActivities: {
+                                       panelHost.closeNow()
+                                       expandedDrill = nil
+                                       openActivities(category: entry.id)
+                                   })
     }
 
     private func hourlyBigContent(compact: Bool = false) -> HourlyBigView {
@@ -865,153 +981,113 @@ struct MenuBarDashboardView: View {
                                    width: compact ? DrillWidths.compact : DrillWidths.budget)
     }
 
-    /// The score gauge plus its 环比 (pulse delta) chip, grouped together so
-    /// the delta reads as "vs yesterday" for the ring specifically, not for
-    /// an unrelated KPI row.
-    private var scoreColumn: some View {
-        VStack(spacing: 4) {
-            scoreGauge
-            if let pulseDelta = dashboard.pulseDelta {
-                Text("\(Format.signedInt(pulseDelta)) 分")
-                    .font(.caption2.weight(.bold)).monospacedDigit()
-                    .foregroundStyle(pulseDelta < 0 ? Color.red : Color.green)
-            }
-        }
-    }
-
-    private var scoreGauge: some View {
-        ZStack {
-            Circle().stroke(Color.secondary.opacity(0.2), lineWidth: 7)
-            Circle()
-                .trim(from: 0, to: gaugeProgress)
-                .stroke(scoreColor(dashboard.pulse),
-                        style: StrokeStyle(lineWidth: 7, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-            VStack(spacing: 1) {
-                Text(dashboard.pulse.map(String.init) ?? "--")
-                    .font(.title2.weight(.bold)).monospacedDigit()
-                Text("生产力分").font(.system(size: 9)).foregroundStyle(.secondary)
-            }
-        }
-        .frame(width: 78, height: 78)
-    }
-
-    private func kpiLine(value: String, label: String, delta: String?) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(value).font(.headline).monospacedDigit()
-            Text(label).font(.caption).foregroundStyle(.secondary)
-            if let delta {
-                Text(delta)
-                    .font(.caption2.weight(.bold)).monospacedDigit()
-                    .foregroundStyle(delta.hasPrefix("-") ? Color.red : Color.green)
-            }
-        }
-    }
-
     private func categoryRow(_ entry: (id: String, name: String, colorHex: String, seconds: TimeInterval)) -> some View {
-        HStack(spacing: 8) {
-            Circle().fill(Color(hex: entry.colorHex)).frame(width: 8, height: 8)
-            Text(entry.name).font(.caption).frame(width: 60, alignment: .leading)
-            GeometryReader { geo in
-                let ratio = dashboard.maxCategorySeconds > 0
-                    ? entry.seconds / dashboard.maxCategorySeconds : 0
-                Capsule().fill(Color(hex: entry.colorHex))
-                    .frame(width: max(4, geo.size.width * ratio))
-                    .frame(maxHeight: .infinity, alignment: .center)
+        let ratio = entry.seconds / max(1, dashboard.total)
+        let color = RefinedStyle.category(entry.id, hex: entry.colorHex)
+        return HStack(spacing: 8) {
+            Circle().fill(color).frame(width: 8, height: 8)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(entry.name).font(.system(size: 13)).lineLimit(1)
+                GeometryReader { geo in
+                    Capsule().fill(.quaternary)
+                    Capsule().fill(color).frame(width: geo.size.width * ratio)
+                }.frame(height: 3)
             }
-            .frame(height: 6)
-            Text(Format.duration(entry.seconds))
-                .font(.caption2).monospacedDigit().foregroundStyle(.secondary)
-                .frame(width: 44, alignment: .trailing)
-        }
+            Spacer(minLength: 0)
+            Text(Format.duration(entry.seconds)).font(.system(size: 12)).monospacedDigit().frame(minWidth: 45, alignment: .trailing)
+            Text("\(Int((ratio * 100).rounded()))%").font(.system(size: 11)).monospacedDigit().foregroundStyle(.secondary).frame(width: 30, alignment: .trailing)
+            Image(systemName: "chevron.right").font(.system(size: 11)).foregroundStyle(.tertiary)
+        }.frame(height: 30).contentShape(Rectangle())
     }
 
-    /// C4 budget progress row(s), between the sparkline and the Chrome
-    /// degraded notice -- the tightest up to 2 enabled budgets, reusing
-    /// `categoryRow`'s bar geometry with spent/limit on the right instead of
-    /// a plain duration.
     private var budgetSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 10) {
             ForEach(dashboard.budgetRows, id: \.id) { row in
-                budgetProgressRow(row)
+                RefinedBudgetRow(name: row.name, color: RefinedStyle.category(row.id, hex: row.colorHex),
+                    spent: row.spent, limit: row.limit, warningPercent: dashboard.budgetWarnPercent)
             }
-            Text("剩 \(dashboard.budgetWarnPercent)% 时提醒")
-                .font(.system(size: 9))
-                .foregroundStyle(.secondary)
         }
     }
 
-    private func budgetProgressRow(
-        _ row: (id: String, name: String, colorHex: String, spent: TimeInterval, limit: TimeInterval)
-    ) -> some View {
-        HStack(spacing: 8) {
-            Circle().fill(Color(hex: row.colorHex)).frame(width: 8, height: 8)
-            Text(row.name).font(.caption).frame(width: 60, alignment: .leading)
-            GeometryReader { geo in
-                let ratio = row.limit > 0 ? min(1, row.spent / row.limit) : 0
-                Capsule().fill(Color(hex: row.colorHex))
-                    .frame(width: max(4, geo.size.width * ratio))
-                    .frame(maxHeight: .infinity, alignment: .center)
+
+}
+
+/// Refresh only while this status is visible, including the Settings round trip.
+struct ScreenCaptureRow: View {
+    let model: AppModel
+    var compact = false
+    @State private var summary = ObservationStore.Summary(count: 0, latestAt: nil)
+    @State private var permissionGranted = false
+
+    var body: some View {
+        ScreenCaptureStatusView(permissionGranted: permissionGranted, compact: compact,
+                                isEnabled: Binding(get: { !model.screenCapturePaused },
+                                                   set: { model.setScreenCapturePaused(!$0) }),
+                                count: summary.count, latestAt: summary.latestAt) {
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+                NSWorkspace.shared.open(url)
             }
-            .frame(height: 6)
-            Text("\(Format.duration(row.spent)) / \(Format.duration(row.limit))")
-                .font(.caption2).monospacedDigit().foregroundStyle(.secondary)
-                .frame(width: 70, alignment: .trailing)
+        }
+        .task {
+            while !Task.isCancelled {
+                refreshStatus()
+                do { try await Task.sleep(for: .seconds(5)) }
+                catch { return }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshStatus()
         }
     }
 
-    private var sparkline: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text("今日分布").font(.system(size: 9)).foregroundStyle(.secondary)
-                Spacer()
-                Text("0 – 24 时").font(.system(size: 9)).foregroundStyle(.secondary)
-            }
-            Chart(Array(dashboard.hourProfile.enumerated()), id: \.offset) { hour, hours in
-                AreaMark(x: .value("时", hour), y: .value("时长", hours))
-                    .opacity(0.16)
-                LineMark(x: .value("时", hour), y: .value("时长", hours))
-                    .lineStyle(StrokeStyle(lineWidth: 1.5))
-            }
-            .chartXAxis(.hidden)
-            .chartYAxis(.hidden)
-            .frame(height: 40)
-        }
+    private func refreshStatus() {
+        permissionGranted = Permissions.screenRecordingState() == .granted
+        let today = Calendar.current.startOfDay(for: Date())
+        summary = model.observationStore?.summary(since: today) ?? summary
     }
 }
 
-/// Screen capture status and its only control: a pause toggle. Counts are
-/// read from the store when the popover opens, not observed live.
-struct ScreenCaptureRow: View {
-    let model: AppModel
-    @State private var summary = ObservationStore.Summary(count: 0, latestAt: nil)
+struct ScreenCaptureStatusView: View {
+    let permissionGranted: Bool
+    var compact = false
+    @Binding var isEnabled: Bool
+    let count: Int
+    let latestAt: Date?
+    let openPermissions: () -> Void
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
                 Text("屏幕采集").font(.callout)
-                Text(statusLine).font(.caption2).foregroundStyle(.secondary)
+                Spacer()
+                if permissionGranted {
+                    Toggle("启用屏幕采集", isOn: $isEnabled)
+                        .toggleStyle(.switch).controlSize(.mini).labelsHidden()
+                }
             }
-            Spacer()
-            Toggle("", isOn: Binding(
-                get: { !model.screenCapturePaused },
-                set: { model.setScreenCapturePaused(!$0) }
-            ))
-            .toggleStyle(.switch)
-            .controlSize(.mini)
-            .labelsHidden()
-        }
-        .onAppear {
-            let today = Calendar.current.startOfDay(for: Date())
-            summary = model.observationStore?.summary(since: today) ?? summary
+            if !permissionGranted {
+                if compact {
+                    HStack {
+                        Label("需屏幕录制权限 · 未采集", systemImage: "exclamationmark.circle")
+                            .font(.system(size: 11)).foregroundStyle(RefinedStyle.warning)
+                        Spacer(minLength: 4)
+                        Button("打开系统设置…", action: openPermissions).controlSize(.small)
+                    }
+                } else {
+                    Label("需要屏幕录制权限", systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(.orange)
+                    Text("当前不会保存屏幕画面").font(.caption).foregroundStyle(.secondary)
+                    Button("打开系统设置…", action: openPermissions).controlSize(.small)
+                }
+            } else {
+                Text(statusLine).font(.caption).foregroundStyle(.secondary)
+            }
         }
     }
 
     private var statusLine: String {
-        if model.screenCapturePaused { return String(localized: "已暂停") }
-        if Permissions.screenRecordingState() != .granted { return String(localized: "缺少屏幕录制权限") }
-        guard let latest = summary.latestAt else { return String(localized: "今日 0 张") }
-        return String(localized: "今日 \(summary.count) 张 · 最近 \(latest.formatted(date: .omitted, time: .shortened))")
+        guard isEnabled else { return String(localized: "已暂停") }
+        guard let latestAt else { return String(localized: "已启用 · 等待首张画面") }
+        return String(localized: "已启用 · 今日 \(count) 张 · 最近 \(latestAt.formatted(date: .omitted, time: .shortened))")
     }
 }
 

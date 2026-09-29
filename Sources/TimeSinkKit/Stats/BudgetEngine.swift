@@ -108,7 +108,7 @@ public final class BudgetMonitor {
     /// `budgets()` and the per-category alert-kind lookup below still run
     /// against the DB each evaluation.
     public func evaluate(byCategory: [String: TimeInterval], categories: [String: Category], now: Date) {
-        guard let budgets = try? budgetStore.budgets() else { return }
+        guard settings.budgetNotificationsEnabled, let budgets = try? budgetStore.budgets() else { return }
         let calendar = Calendar.current
         let day = BudgetEngine.dayStamp(now, calendar: calendar)
         let warnPercent = settings.budgetWarnPercent   // one read per evaluation, not per budget
@@ -129,12 +129,12 @@ public final class BudgetMonitor {
             switch level {
             case .warn:
                 id = "budget.warn.\(budget.categoryID)"
-                title = String(localized: "\(name)还剩 \(Format.duration(limit - spent))")
-                body = String(localized: "今天已用 \(Format.duration(spent)) / \(Format.duration(limit))。到达上限前会再提醒一次。")
+                title = String(localized: "\(name)还剩 \(Format.chineseDuration(limit - spent))")
+                body = String(localized: "今天已用 \(Format.chineseDuration(spent)) / \(Format.chineseDuration(limit))。到达上限时会再提醒一次。")
             case .limit:
                 id = "budget.limit.\(budget.categoryID)"
                 title = String(localized: "\(name)已到今日上限")
-                body = String(localized: "已用 \(Format.duration(limit)) / \(Format.duration(limit))。今天不会再提醒；上限可在设置中调整。")
+                body = String(localized: "已用 \(Format.chineseDuration(limit)) / \(Format.chineseDuration(limit))。今天不会再提醒；可在「专注与限额」中调整。")
             case .none:
                 continue
             }
@@ -188,7 +188,7 @@ public final class BudgetMonitor {
         // one in Notification Center rather than accumulating a distinct
         // entry per day, matching the deliberate day-less convention already
         // used for the (per-category, not per-day) budget ids.
-        notifier.post(id: "summary.daily", title: title, body: body, route: .statsToday)
+        notifier.post(id: "summary.daily", title: title, body: body, route: .today)
         settings.setLastSummaryDay(day)
     }
 }

@@ -15,7 +15,7 @@ private struct FlyoutCard: ViewModifier {
     func body(content: Content) -> some View {
         content
             .padding(14)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
             .shadow(color: .black.opacity(0.22), radius: 14, y: 6)
     }
 }
@@ -59,10 +59,10 @@ struct ScoreBreakdownView: View {
             }
             ForEach(rows) { row in
                 HStack(spacing: 8) {
-                    Circle().fill(Color(hex: row.colorHex)).frame(width: 8, height: 8)
+                    Circle().fill(RefinedStyle.category(row.id, hex: row.colorHex)).frame(width: 8, height: 8)
                     Text(row.name).font(.caption).frame(width: 56, alignment: .leading)
                     GeometryReader { geo in
-                        Capsule().fill(Color(hex: row.colorHex))
+                        Capsule().fill(RefinedStyle.category(row.id, hex: row.colorHex))
                             .frame(width: max(4, geo.size.width * row.share))
                             .frame(maxHeight: .infinity, alignment: .center)
                     }
@@ -75,8 +75,8 @@ struct ScoreBreakdownView: View {
                         .frame(width: 44, alignment: .trailing)
                 }
             }
-            Text("加权净值按当日总时长归一化到 0 – 100，按贡献降序排列")
-                .font(.system(size: 9))
+            Text("每分钟按分类的投入程度计分，全天取平均。")
+                .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         }
         .frame(width: width, alignment: .leading)
@@ -113,13 +113,13 @@ struct CompareBaseView: View {
                     Text(Format.duration(yesterdayValue)).font(.caption).monospacedDigit()
                     Text(Format.durationDelta(delta))
                         .font(.caption2.weight(.bold)).monospacedDigit()
-                        .foregroundStyle(delta < 0 ? Color.red : Color.green)
+                        .foregroundStyle(.secondary)
                 }
             } else {
                 Text("昨日暂无同时段数据可比较").font(.caption2).foregroundStyle(.secondary)
             }
-            Text("比较基准 = 昨日裁剪到与今日相同的已过时长，而非昨日全天。")
-                .font(.system(size: 9))
+            Text("昨天只算到现在。时长多少不评判好坏。")
+                .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         }
         .frame(width: width, alignment: .leading)
@@ -157,7 +157,7 @@ struct StreakDotsView: View {
                 }
             }
             Text("近 30 天 · 达标 \(metDaysCount) 天，当前连续 \(streakDays) 天")
-                .font(.system(size: 9))
+                .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         }
         .frame(width: width, alignment: .leading)
@@ -186,7 +186,7 @@ struct CategoryDetailView: View {
     let subs: [SubEntry]
     var width: CGFloat = DrillWidths.category
 
-    private var maxHourBar: Double { max(hourBars.max() ?? 0, 0.01) }
+    let onOpenActivities: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -196,15 +196,9 @@ struct CategoryDetailView: View {
                 Spacer()
                 Text("今日 \(Format.duration(seconds))").font(.caption).foregroundStyle(.secondary)
             }
-            HStack(alignment: .bottom, spacing: 2) {
-                ForEach(Array(hourBars.enumerated()), id: \.offset) { hour, hours in
-                    Capsule()
-                        .fill(Color(hex: colorHex).opacity(hours > 0 ? 0.85 : 0.15))
-                        .frame(height: max(2, hours / maxHourBar * 40))
-                        .help("\(hour) 时 · \(Format.duration(hours * 3600))")
-                }
-            }
-            .frame(height: 40)
+            HourlyActivityChart(bars: hourBars.enumerated().map { hour, hours in
+                HourlyBigView.Bar(hour: hour, categoryID: name, colorHex: colorHex, seconds: hours * 3600)
+            })
             if !subs.isEmpty {
                 VStack(alignment: .leading, spacing: 3) {
                     ForEach(subs) { sub in
@@ -217,9 +211,11 @@ struct CategoryDetailView: View {
                     }
                 }
             }
-            Text("路径级条目来自轻量实体分组（C3）。点击 = 打开活动页并按该分类筛选。")
-                .font(.system(size: 9))
-                .foregroundStyle(.secondary)
+            Button(action: onOpenActivities) {
+                Label("查看该分类的全部活动", systemImage: "arrow.right")
+            }
+            .buttonStyle(.bordered)
+            .padding(.top, 4)
         }
         .frame(width: width, alignment: .leading)
         .flyoutCard()
@@ -274,14 +270,6 @@ struct HourlyBigView: View {
 
     var body: some View {
         let bars = activeBars
-        let byHour = Dictionary(grouping: bars, by: \.hour)
-        let totals = byHour.mapValues { $0.reduce(0) { $0 + $1.seconds } }
-        let maxTotal = max(totals.values.max() ?? 0, 1)
-        let pulses: [Int: Int] = byHour.compactMapValues { hourBars in
-            let byCategory = Dictionary(grouping: hourBars, by: \.categoryID)
-                .mapValues { $0.reduce(0) { $0 + $1.seconds } }
-            return Aggregator.pulse(durationByCategory: byCategory, categories: categories)
-        }
         let categoryOrder = Array(Set(bars.map(\.categoryID)))
             .sorted { (categories[$0]?.sortOrder ?? 0) < (categories[$1]?.sortOrder ?? 0) }
 
@@ -301,23 +289,9 @@ struct HourlyBigView: View {
                     }
                 }
             }
-            HStack(alignment: .bottom, spacing: 2) {
-                ForEach(0..<24, id: \.self) { hour in
-                    let hourBars = (byHour[hour] ?? []).sorted {
-                        (categories[$0.categoryID]?.sortOrder ?? 0) < (categories[$1.categoryID]?.sortOrder ?? 0)
-                    }
-                    VStack(spacing: 0) {
-                        ForEach(hourBars) { bar in
-                            Rectangle()
-                                .fill(Color(hex: bar.colorHex))
-                                .frame(height: max(1, bar.seconds / maxTotal * 56))
-                        }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: 56, alignment: .bottom)
-                    .help("\(hour) 时 · \(Format.duration(totals[hour] ?? 0)) · 分 \(pulses[hour].map(String.init) ?? "--")")
-                }
-            }
-            .frame(height: 56)
+            Text(mode == .today ? "今天 · 00:00–24:00" : "近 7 天 · 按小时累计")
+                .font(.caption).foregroundStyle(.secondary)
+            HourlyActivityChart(bars: bars.sorted { $0.categoryID < $1.categoryID })
             legend(categoryOrder)
         }
         .frame(width: width, alignment: .leading)
@@ -325,11 +299,11 @@ struct HourlyBigView: View {
     }
 
     private func legend(_ ids: [String]) -> some View {
-        HStack(spacing: 8) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), alignment: .leading)], alignment: .leading, spacing: 6) {
             ForEach(ids, id: \.self) { id in
                 HStack(spacing: 3) {
                     Circle().fill(Color(hex: categories[id]?.colorHex ?? "#8E8E93")).frame(width: 6, height: 6)
-                    Text(categories[id]?.name ?? id).font(.system(size: 9)).foregroundStyle(.secondary)
+                    Text(categories[id]?.name ?? id).font(.caption).foregroundStyle(.secondary)
                 }
             }
         }
@@ -362,11 +336,11 @@ struct BudgetProgressView: View {
             }
             ForEach(rows) { row in
                 HStack(spacing: 8) {
-                    Circle().fill(Color(hex: row.colorHex)).frame(width: 8, height: 8)
+                    Circle().fill(RefinedStyle.category(row.id, hex: row.colorHex)).frame(width: 8, height: 8)
                     Text(row.name).font(.caption).frame(width: 56, alignment: .leading)
                     GeometryReader { geo in
                         let ratio = row.limit > 0 ? min(1, row.spent / row.limit) : 0
-                        Capsule().fill(Color(hex: row.colorHex))
+                        Capsule().fill(RefinedStyle.category(row.id, hex: row.colorHex))
                             .frame(width: max(4, geo.size.width * ratio))
                             .frame(maxHeight: .infinity, alignment: .center)
                     }
@@ -377,7 +351,7 @@ struct BudgetProgressView: View {
                 }
             }
             Text("剩 \(warnPercent)% 时预警，每类每日「预警 + 上限」各一次")
-                .font(.system(size: 9))
+                .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         }
         .frame(width: width, alignment: .leading)
@@ -400,8 +374,8 @@ enum DrillWidths {
     static let score: CGFloat = 280
     static let compare: CGFloat = 240
     static let streak: CGFloat = 220
-    static let category: CGFloat = 260
-    static let hourly: CGFloat = 300
+    static let category: CGFloat = 340
+    static let hourly: CGFloat = 340
     static let budget: CGFloat = 280
     static let compact: CGFloat = 240
 }

@@ -34,30 +34,29 @@ final class ActivitiesModelTests: XCTestCase {
         XCTAssertEqual(blocks.count, 2)
     }
 
-    /// A <30s sliver contiguous with the previous block (small gap) is
-    /// absorbed into it — the previous block's end extends to cover it.
-    func testContiguousSliverIsAbsorbedIntoPreviousBlock() {
+    /// Short records remain independently selectable rather than being
+    /// absorbed into a different application's/category's interval.
+    func testShortActivityRemainsSelectable() {
         let items = [
             CategorizedSpan(span: mkSpan("2026-08-23T09:00:00Z", "2026-08-23T09:30:00Z"), categoryID: "work"),
-            CategorizedSpan(span: mkSpan("2026-08-23T09:30:05Z", "2026-08-23T09:30:20Z"), categoryID: "chat"),
+            CategorizedSpan(span: mkSpan("2026-08-23T09:30:05Z", "2026-08-23T09:30:20Z", app: "Chat"), categoryID: "chat"),
         ]
         let blocks = ActivitiesModel.timelineBlocks(items, categories: categories)
-        XCTAssertEqual(blocks.count, 1)
-        XCTAssertEqual(blocks[0].label, "Work")
-        XCTAssertEqual(blocks[0].end, mkSpan("2026-08-23T09:30:05Z", "2026-08-23T09:30:20Z").end)
+        XCTAssertEqual(blocks.count, 2)
+        XCTAssertEqual(blocks[0].end, items[0].span.end)
+        XCTAssertEqual(blocks[1].activity?.rowID, "com.example.Chat")
+        XCTAssertEqual(blocks[1].duration, 15)
     }
 
-    /// A <30s sliver hours after the previous block (large gap) is dropped
-    /// entirely rather than teleporting the previous block's end forward.
-    func testDistantSliverIsDropped() {
+    func testDistantShortActivityIsNotDropped() {
         let items = [
             CategorizedSpan(span: mkSpan("2026-08-23T09:00:00Z", "2026-08-23T09:30:00Z"), categoryID: "work"),
             CategorizedSpan(span: mkSpan("2026-08-23T14:00:00Z", "2026-08-23T14:00:10Z"), categoryID: "chat"),
         ]
         let blocks = ActivitiesModel.timelineBlocks(items, categories: categories)
-        XCTAssertEqual(blocks.count, 1)
-        XCTAssertEqual(blocks[0].label, "Work")
-        XCTAssertEqual(blocks[0].end, mkSpan("2026-08-23T09:00:00Z", "2026-08-23T09:30:00Z").end)
+        XCTAssertEqual(blocks.count, 2)
+        XCTAssertEqual(blocks[1].duration, 10)
+        XCTAssertEqual(blocks[1].activity?.categoryID, "chat")
     }
 
     func testSearchMatchesAcrossFields() {

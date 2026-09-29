@@ -45,14 +45,14 @@ final class UnderReportingTests: XCTestCase {
     }
 
     /// 已结束的周期：分母就是整个窗口，行为不变。
-    func testAvgPerDayOverCompletedWeekDividesByFullWindow() throws {
+    func testAvgPerDayOverCompletedWeekDividesByFullWindow() async throws {
         let (model, store) = try makeModel()
         try store.insert(span(dayOffset: -30))
         model.dataChanged()
         model.range = DateRangeSelection(kind: .week,
                                          anchor: Calendar.current.date(byAdding: .day, value: -30, to: Date())!)
         let stats = StatsModel()
-        stats.recompute(model: model, forceHeavy: false)
+        await stats.recompute(model: model, forceHeavy: false)
 
         XCTAssertEqual(stats.total, 7200, accuracy: 1)
         XCTAssertEqual(stats.avgPerDay, 7200 / 7, accuracy: 1)
@@ -60,7 +60,7 @@ final class UnderReportingTests: XCTestCase {
 
     /// 跑到一半的周期：分母是已过去的天数，不是整个日历窗口。
     /// 旧代码在周一看"本周"是拿一天的数据除以 7。
-    func testAvgPerDayOverRunningMonthDividesByElapsedDays() throws {
+    func testAvgPerDayOverRunningMonthDividesByElapsedDays() async throws {
         let (model, store) = try makeModel()
         try store.insert(span())
         model.dataChanged()
@@ -72,7 +72,7 @@ final class UnderReportingTests: XCTestCase {
 
         model.range = sel
         let stats = StatsModel()
-        stats.recompute(model: model, forceHeavy: false)
+        await stats.recompute(model: model, forceHeavy: false)
 
         XCTAssertEqual(stats.avgPerDay, stats.total / elapsedDays, accuracy: 1)
         XCTAssertGreaterThan(stats.avgPerDay, stats.total / windowDays,

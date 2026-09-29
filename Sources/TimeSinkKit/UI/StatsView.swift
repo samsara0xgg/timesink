@@ -1,216 +1,130 @@
 import SwiftUI
+import Charts
 
-/// Dashboard replicating the Timing "overview" layout, C2 revision: an
-/// in-page range control, a summary row of three delta-bearing stat cards
-/// (Total/Score/Focus), a trend row (30-day score trend + 7x24 heatmap), the
-/// existing profile mini-cards (now 2x2, since Total/Score moved up to the
-/// summary row) + stacked-category card, and the bottom donut+ranking row.
 struct StatsView: View {
     let model: AppModel
-    /// Owned by `MainWindowView` so it outlives a sidebar switch -- see the
-    /// declaration there.
-    let stats: StatsModel
-
+    @Bindable var stats: StatsModel
     @State private var granularity: StatsModel.Granularity = .day
-    @State private var showingCustomRangePopover = false
-    @State private var customRangeStart = Date()
-    @State private var customRangeEnd = Date()
-
-    private let spacing: CGFloat = 12
-    private let miniCardHeight: CGFloat = 150
-    private let summaryCardHeight: CGFloat = 110
-    private let trendRowHeight: CGFloat = 220
+    @State private var showsScore = false
+    private struct RefreshID: Equatable { let range: DateRangeSelection; let version: Int }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: spacing) {
-                rangeControlRow
-                summaryRow
-                trendRow
-                profileRow
-                bottomRow
-            }
-            .padding()
-        }
-        // NOT forceHeavy: `stats` now outlives this view, so the first
-        // appearance still runs the heavy lookback (its `lastHeavyDay` gate
-        // starts nil) while every later switch back into 统计 reuses what is
-        // already computed. Forcing it here was only ever compensating for a
-        // model that was rebuilt on each switch.
-        .onAppear { stats.recompute(model: model, forceHeavy: false) }
-        // A user edit also reaches the heavy lookback, without a second
-        // handler here that would recompute twice per edit -- see
-        // `StatsModel.recomputeHeavyIfNeeded`, which compares
-        // `model.dataEditVersion` itself.
-        .onChange(of: model.dataVersion) { _, _ in stats.recompute(model: model, forceHeavy: false) }
-        // NOT forceHeavy: the 30-day trend/heatmap lookback is a fixed
-        // `.last30` window, independent of `model.range` -- forcing it on
-        // every range change (a paging click, a segment tap, a trend-card
-        // click) would re-run a ~70ms main-actor aggregation for no reason.
-        // `StatsModel`'s own day-rollover gate still refreshes it once a day
-        // through this same call (fix round 1, IMPORTANT 5).
-        .onChange(of: model.range) { _, _ in stats.recompute(model: model, forceHeavy: false) }
-    }
-
-    // MARK: - (1) In-page range control
-
-    private var rangeControlRow: some View {
-        HStack {
-            Picker("", selection: pageRangeKind) {
-                Text("今天").tag(DateRangeSelection.Kind?.some(.day))
-                Text("本周").tag(DateRangeSelection.Kind?.some(.week))
-                Text("本月").tag(DateRangeSelection.Kind?.some(.month))
-            }
-            .labelsHidden()
-            .pickerStyle(.segmented)
-            .frame(width: 220)
-
-            Button("自定义…") { showingCustomRangePopover = true }
-                .popover(isPresented: $showingCustomRangePopover) {
-                    customRangePopover
+        ScrollViewReader { proxy in
+            GeometryReader { geometry in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        if stats.hasLoaded {
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: geometry.size.width >= 650 ? 4 : 2), spacing: 12) {
+                                metric(String(localized: "总时长"), Format.duration(stats.total), stats.totalDelta.map { String(localized: "比上期 \(Format.durationDelta($0))") } ?? String(localized: "上期暂无记录"))
+                                metric(String(localized: "日均"), Format.duration(stats.avgPerDay), String(localized: "按所选时段已过的天数"))
+                                metric(String(localized: "投入"), Format.duration(stats.focus), String(localized: "占 \(Int((stats.focus / max(1, stats.total) * 100).rounded()))% · 按分类估算"))
+                                metric(String(localized: "评分"), stats.pulse.map(String.init) ?? "—", String(localized: "连续 \(stats.trendStreak) 天达标"))
+                            }
+                            if geometry.size.width >= 850 {
+                                HStack(alignment: .top, spacing: 16) {
+                                    categoryHistory.frame(maxWidth: .infinity)
+                                    ranking.frame(maxWidth: .infinity)
+                                }
+                            } else { categoryHistory; ranking }
+                            if let heatmap = stats.heatmapData {
+                                HeatmapCard(data: heatmap, interaction: $stats.heatmapInteraction) { model.openHeatmapActivities(in: $0) }.id("heatmap")
+                            }
+                            appRanking
+                            DisclosureGroup("评分与连续记录", isExpanded: $showsScore) {
+                                ScoreTrendCard(trend: stats.scoreTrend, streak: stats.trendStreak, updatedAt: stats.lastHeavyUpdate) { day in
+                                    model.range = DateRangeSelection(kind: .day, anchor: day)
+                                }.frame(height: 240).padding(.top, 12)
+                            }.font(.system(size: 13, weight: .semibold)).padding(18).workspacePanel()
+                        } else if stats.loadError == nil {
+                            VStack(spacing: 16) {
+                                Text("正在读取趋势…").foregroundStyle(.secondary)
+                                ForEach(0..<3) { _ in RoundedRectangle(cornerRadius: 12).fill(.quaternary).frame(height: 120) }
+                            }.accessibilityLabel("正在读取趋势")
+                        }
+                        if let error = stats.loadError {
+                            Text(error).foregroundStyle(.secondary)
+                            Button("重试") { Task { await stats.recompute(model: model) } }
+                        }
+                    }.padding(.horizontal, 24).padding(.top, 22).padding(.bottom, 28)
+                        .frame(maxWidth: 1500).frame(maxWidth: .infinity)
                 }
-
-            Spacer()
-        }
-    }
-
-    /// Reads/writes `model.range` directly (same state the toolbar's range
-    /// menu writes -- see `MainWindowView.rangeToolbar`), so the two controls
-    /// stay in sync. The getter is `nil` (no segment highlighted) unless
-    /// `model.range` genuinely IS one of the three segment kinds anchored to
-    /// right now -- comparing `.kind` alone would keep "今天" highlighted
-    /// after the toolbar pages back to 昨天, AND would make re-tapping "今天"
-    /// a no-op (the bound value wouldn't actually change, so SwiftUI never
-    /// calls the setter). Comparing `.interval` catches that: a paged range
-    /// still reports `kind == .day` but its interval differs from a
-    /// freshly-anchored today. Every tap always writes a brand-new
-    /// `DateRangeSelection(kind:, anchor: Date())`, discarding any custom
-    /// start/end -- matching the toolbar menu's plain-kind buttons.
-    private var pageRangeKind: Binding<DateRangeSelection.Kind?> {
-        Binding(
-            get: {
-                let kind = model.range.kind
-                guard kind == .day || kind == .week || kind == .month else { return nil }
-                let fresh = DateRangeSelection(kind: kind, anchor: Date())
-                return model.range.interval == fresh.interval ? kind : nil
-            },
-            set: { newKind in
-                guard let newKind else { return }
-                model.range = DateRangeSelection(kind: newKind, anchor: Date())
             }
-        )
+            .task(id: RefreshID(range: model.range, version: model.dataVersion)) { await stats.recompute(model: model) }
+            .task {
+                if stats.heatmapInteraction.pinned != nil { await Task.yield(); proxy.scrollTo("heatmap", anchor: .top) }
+                while !Task.isCancelled {
+                    do { try await Task.sleep(for: .seconds(60)) } catch { return }
+                    await stats.recompute(model: model)
+                }
+            }
+        }.background(WorkspaceBackground())
     }
-
-    /// Mirrors `MainWindowView.customRangePopover` (same cross-bounded,
-    /// today-clamped DatePickers applying a `.custom` `DateRangeSelection`)
-    /// so the in-page "自定义…" button behaves identically to the toolbar's.
-    private var customRangePopover: some View {
+    private func metric(_ title: String, _ value: String, _ detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title).font(.system(size: 12)).foregroundStyle(.secondary)
+            Text(value).font(.system(size: 24, weight: .semibold)).monospacedDigit().contentTransition(.numericText())
+            Text(detail).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2)
+        }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.vertical, 16).workspacePanel()
+    }
+    private var categoryHistory: some View {
         VStack(alignment: .leading, spacing: 12) {
-            DatePicker("开始", selection: $customRangeStart,
-                       in: ...min(customRangeEnd, Date()), displayedComponents: .date)
-            DatePicker("结束", selection: $customRangeEnd,
-                       in: customRangeStart...Date(), displayedComponents: .date)
-            Button("应用") {
-                model.range = DateRangeSelection(
-                    kind: .custom, anchor: customRangeEnd,
-                    customStart: customRangeStart, customEnd: customRangeEnd)
-                showingCustomRangePopover = false
+            HStack {
+                Text(granularity == .day ? "每天的分类时长" : "每周的分类时长").font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Picker("分组", selection: $granularity) { Text("天").tag(StatsModel.Granularity.day); Text("周").tag(StatsModel.Granularity.week) }
+                    .pickerStyle(.segmented).labelsHidden().frame(width: 90)
             }
-        }
-        .padding()
-        .frame(width: 240)
+            Chart(granularity == .day ? stats.stackedByDay : stats.stackedByWeek) { point in
+                BarMark(x: .value("日期", point.bucketStart, unit: granularity == .day ? .day : .weekOfYear), y: .value("小时", point.hours))
+                    .foregroundStyle(RefinedStyle.category(point.categoryID, hex: point.colorHex))
+                    .accessibilityLabel("\(point.bucketStart.formatted(.dateTime.month().day())) · \(point.categoryName)")
+                    .accessibilityValue(Format.duration(point.hours * 3600))
+            }
+            .chartYAxis { AxisMarks(position: .leading) { value in AxisGridLine(); AxisValueLabel { if let hours = value.as(Double.self) { Text("\(hours.formatted())h").font(.system(size: 11)) } } } }
+            .frame(height: 200)
+        }.padding(18).workspacePanel()
     }
-
-    // MARK: - (2) Summary row: Total/Score/Focus, with 环比 delta chips
-
-    private var summaryRow: some View {
-        HStack(spacing: spacing) {
-            TotalTimeCard(total: stats.total, avgPerDay: stats.avgPerDay, delta: stats.totalDelta)
-            ProductivityScoreCard(pulse: stats.pulse, delta: stats.pulseDelta)
-            FocusTimeCard(focus: stats.focus, delta: stats.focusDelta)
-        }
-        .frame(height: summaryCardHeight)
+    private var ranking: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("分类").font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Text("\(model.range.label) · 与上期差").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            if stats.categoryRows.isEmpty { Text("这段时间还没有记录。").font(.system(size: 12)).foregroundStyle(.secondary) }
+            ForEach(stats.categoryRows) { row in
+                Button { model.openActivities(category: row.id, range: model.range) } label: {
+                    HStack(spacing: 8) {
+                        Circle().fill(RefinedStyle.category(row.id, hex: row.colorHex)).frame(width: 8, height: 8)
+                        Text(row.name).frame(width: 64, alignment: .leading).lineLimit(1)
+                        GeometryReader { geo in
+                            Capsule().fill(.quaternary)
+                            Capsule().fill(RefinedStyle.category(row.id, hex: row.colorHex))
+                                .frame(width: geo.size.width * row.seconds / max(1, stats.categoryRows.first?.seconds ?? 1))
+                        }.frame(height: 5)
+                        Text(Format.duration(row.seconds)).monospacedDigit().frame(width: 58, alignment: .trailing)
+                        Text(stats.categoryDeltas[row.id].map(Format.durationDelta) ?? "—").monospacedDigit().foregroundStyle(.secondary).frame(width: 66, alignment: .trailing)
+                    }.font(.system(size: 12)).frame(height: 26).contentShape(Rectangle())
+                }.buttonStyle(RefinedRowButtonStyle())
+            }
+        }.frame(maxWidth: .infinity, minHeight: 235, alignment: .topLeading).padding(18).workspacePanel()
     }
-
-    // MARK: - (3) Trend row: 30-day score trend + 7x24 heatmap
-
-    private var trendRow: some View {
-        GeometryReader { geo in
-            let leftWidth = (geo.size.width - spacing) * 0.6
-            let rightWidth = (geo.size.width - spacing) * 0.4
-            HStack(alignment: .top, spacing: spacing) {
-                ScoreTrendCard(trend: stats.scoreTrend, streak: stats.trendStreak) { day in
-                    model.range = DateRangeSelection(kind: .day, anchor: day)
+    private var appRanking: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack { Text("应用与网站").font(.system(size: 13, weight: .semibold)); Spacer(); Text(model.range.label).font(.system(size: 12)).foregroundStyle(.secondary) }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 330), spacing: 28)], spacing: 4) {
+                ForEach(stats.appRows) { row in
+                    HStack(spacing: 10) {
+                        AppIcon(bundleID: row.id)
+                        Text(row.name).font(.system(size: 13)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                        GeometryReader { geo in
+                            Capsule().fill(.quaternary)
+                            Capsule().fill(Color(hex: row.colorHex)).frame(width: geo.size.width * row.seconds / max(1, stats.appRows.first?.seconds ?? 1))
+                        }.frame(width: 90, height: 5)
+                        Text(Format.duration(row.seconds)).font(.system(size: 12)).monospacedDigit().frame(width: 52, alignment: .trailing)
+                    }.frame(height: 32)
                 }
-                .frame(width: leftWidth)
-
-                HeatmapCard(cells: stats.heatmap, occurrences: stats.heatmapOccurrences)
-                    .frame(width: rightWidth)
             }
-        }
-        .frame(height: trendRowHeight)
-    }
-
-    // MARK: - (4) Existing profile mini-cards (2x2, Total/Score moved out) +
-    // stacked-category card, and the unchanged donut/ranking row.
-
-    private var profileRow: some View {
-        GeometryReader { geo in
-            let leftWidth = (geo.size.width - spacing) * 0.65
-            let rightWidth = (geo.size.width - spacing) * 0.35
-            HStack(alignment: .top, spacing: spacing) {
-                Grid(horizontalSpacing: spacing, verticalSpacing: spacing) {
-                    GridRow {
-                        ProfileBarCard(
-                            title: String(localized: "最活跃的星期"),
-                            points: stats.weekdayProfile,
-                            tickLabels: nil,
-                            diverging: false
-                        )
-                        .frame(maxWidth: .infinity, minHeight: miniCardHeight, maxHeight: miniCardHeight)
-                        ProfileBarCard(
-                            title: String(localized: "最活跃的时段"),
-                            points: stats.hourProfile,
-                            tickLabels: ["0", "6", "12", "18"],
-                            diverging: false
-                        )
-                        .frame(maxWidth: .infinity, minHeight: miniCardHeight, maxHeight: miniCardHeight)
-                    }
-                    GridRow {
-                        ProfileBarCard(
-                            title: String(localized: "最高效的星期"),
-                            points: stats.prodWeekdayProfile,
-                            tickLabels: nil,
-                            diverging: true
-                        )
-                        .frame(maxWidth: .infinity, minHeight: miniCardHeight, maxHeight: miniCardHeight)
-                        ProfileBarCard(
-                            title: String(localized: "最高效的时段"),
-                            points: stats.prodHourProfile,
-                            tickLabels: ["0", "6", "12", "18"],
-                            diverging: true
-                        )
-                        .frame(maxWidth: .infinity, minHeight: miniCardHeight, maxHeight: miniCardHeight)
-                    }
-                }
-                .frame(width: leftWidth)
-
-                StackedCategoryCard(
-                    granularity: $granularity,
-                    points: granularity == .day ? stats.stackedByDay : stats.stackedByWeek,
-                    domainNames: stats.stackedDomainNames,
-                    domainColors: stats.stackedDomainColorHex.map { Color(hex: $0) }
-                )
-                .frame(width: rightWidth)
-            }
-        }
-        .frame(height: miniCardHeight * 2 + spacing)
-    }
-
-    private var bottomRow: some View {
-        HStack(alignment: .top, spacing: spacing) {
-            DonutRankingCard(title: String(localized: "应用"), rows: stats.appRows)
-            DonutRankingCard(title: String(localized: "分类"), rows: stats.categoryRows)
-        }
+        }.padding(18).workspacePanel()
     }
 }

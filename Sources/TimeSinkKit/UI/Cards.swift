@@ -6,16 +6,13 @@ import Charts
 private struct CardBackground: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(nsColor: .controlBackgroundColor))
-            )
+            .padding(18)
+            .workspacePanel()
     }
 }
 
 extension View {
-    fileprivate func statCardBackground() -> some View { modifier(CardBackground()) }
+    func statCardBackground() -> some View { modifier(CardBackground()) }
 }
 
 private struct CardTitle: View {
@@ -33,12 +30,13 @@ private struct CardTitle: View {
 private struct DeltaChip: View {
     let text: String
     let isNegative: Bool
+    var neutral = false
 
     var body: some View {
         Text(text)
             .font(.caption.weight(.bold))
             .monospacedDigit()
-            .foregroundStyle(isNegative ? Color.red : Color.green)
+            .foregroundStyle(neutral ? Color.secondary : (isNegative ? Color.red : Color.green))
     }
 }
 
@@ -56,9 +54,9 @@ struct TotalTimeCard: View {
             Spacer(minLength: 0)
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(Format.duration(total))
-                    .font(.system(size: 34, weight: .bold))
+                    .font(.system(size: 28, weight: .medium)).monospacedDigit()
                 if let delta {
-                    DeltaChip(text: Format.durationDelta(delta), isNegative: delta < 0)
+                    DeltaChip(text: Format.durationDelta(delta), isNegative: delta < 0, neutral: true)
                 }
             }
             Text("每日均值 \(Format.duration(avgPerDay))")
@@ -79,15 +77,17 @@ struct FocusTimeCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            CardTitle(text: String(localized: "专注时长"))
+            CardTitle(text: String(localized: "投入时长"))
             Spacer(minLength: 0)
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(Format.duration(focus))
-                    .font(.system(size: 34, weight: .bold))
+                    .font(.system(size: 28, weight: .medium)).monospacedDigit()
                 if let delta {
                     DeltaChip(text: Format.durationDelta(delta), isNegative: delta < 0)
                 }
             }
+            Text("按高效分类统计，非专注会话时长")
+                .font(.caption).foregroundStyle(.secondary)
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -115,7 +115,7 @@ struct ProductivityScoreCard: View {
 
     private var subtitle: String {
         guard let pulse else { return String(localized: "暂无数据") }
-        return pulse >= 70 ? String(localized: "继续保持") : String(localized: "有点分心")
+        return pulse >= 70 ? String(localized: "满分 100 分 · 继续保持") : String(localized: "满分 100 分 · 按分类估算")
     }
 
     var body: some View {
@@ -123,11 +123,11 @@ struct ProductivityScoreCard: View {
             CardTitle(text: String(localized: "生产力分"))
             Spacer(minLength: 0)
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(pulse.map { "\($0)%" } ?? "--")
-                    .font(.system(size: 34, weight: .bold))
+                Text(pulse.map { "\($0) 分" } ?? "--")
+                    .font(.system(size: 28, weight: .medium)).monospacedDigit()
                     .foregroundStyle(color)
                 if let delta {
-                    DeltaChip(text: (delta >= 0 ? "+\(delta)" : "\(delta)") + "%", isNegative: delta < 0)
+                    DeltaChip(text: (delta >= 0 ? "+\(delta)" : "\(delta)") + String(localized: " 分"), isNegative: delta < 0)
                 }
             }
             Text(subtitle)
@@ -206,7 +206,14 @@ struct StackedCategoryCard: View {
             }
             .chartForegroundStyleScale(domain: domainNames, range: domainColors)
             .chartLegend(.hidden)
-            .chartYAxis(.hidden)
+            .chartYAxis {
+                AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
+                    AxisGridLine()
+                    AxisValueLabel {
+                        if let hours = value.as(Double.self) { Text("\(hours, specifier: "%.0f")h") }
+                    }
+                }
+            }
             .chartXAxis {
                 AxisMarks(values: .automatic) { _ in
                     AxisTick()
@@ -220,43 +227,62 @@ struct StackedCategoryCard: View {
     }
 }
 
-/// 应用卡/分类卡: donut chart + top-10 ranking list (color dot + name + duration).
+/// Compact ranking with a complete distribution, including the remainder.
 struct DonutRankingCard: View {
     let title: String
     let rows: [StatsModel.RankingRow]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CardTitle(text: title)
-            HStack(alignment: .top, spacing: 16) {
-                Chart(rows) { row in
-                    SectorMark(
-                        angle: .value("时长", row.seconds),
-                        innerRadius: .ratio(0.62)
-                    )
-                    .foregroundStyle(Color(hex: row.colorHex))
-                }
-                .frame(width: 180, height: 180)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(rows) { row in
-                        HStack(spacing: 6) {
-                            Circle()
-                                .fill(Color(hex: row.colorHex))
-                                .frame(width: 8, height: 8)
-                            Text(row.name)
-                                .lineLimit(1)
-                            Spacer(minLength: 8)
-                            Text(Format.duration(row.seconds))
-                                .foregroundStyle(.secondary)
-                        }
-                        .font(.callout)
+            HStack {
+                CardTitle(text: title)
+                Spacer()
+                Text("合计 \(Format.duration(rows.reduce(0) { $0 + $1.seconds }))")
+                    .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+            }
+            if rows.isEmpty {
+                Text("当前范围内没有活动记录")
+                    .foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 180)
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 16) {
+                        distribution
+                        ranking.frame(minWidth: 150)
+                    }
+                    VStack(alignment: .leading, spacing: 12) {
+                        distribution.frame(maxWidth: .infinity)
+                        ranking
                     }
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .statCardBackground()
+    }
+
+    private var distribution: some View {
+        Chart(rows) { row in
+            SectorMark(angle: .value("时长", row.seconds), innerRadius: .ratio(0.62))
+                .foregroundStyle(Color(hex: row.colorHex))
+                .accessibilityLabel(row.name)
+                .accessibilityValue(Format.duration(row.seconds))
+        }
+        .frame(width: 160, height: 160)
+    }
+
+    private var ranking: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(rows) { row in
+                HStack(spacing: 6) {
+                    Circle().fill(Color(hex: row.colorHex)).frame(width: 8, height: 8)
+                    Text(row.name).lineLimit(1).help(row.name)
+                    Spacer(minLength: 8)
+                    Text(Format.duration(row.seconds))
+                        .monospacedDigit().foregroundStyle(.secondary).fixedSize()
+                }
+                .font(.callout)
+            }
+        }
     }
 }
 
@@ -272,6 +298,7 @@ struct DonutRankingCard: View {
 struct ScoreTrendCard: View {
     let trend: [Int?]
     let streak: Int
+    var updatedAt: Date? = nil
     let onSelectDay: (Date) -> Void
 
     @State private var hoverIndex: Int?
@@ -313,7 +340,7 @@ struct ScoreTrendCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                CardTitle(text: String(localized: "生产力趋势"))
+                CardTitle(text: String(localized: "生产力趋势 · 近 30 天"))
                 Spacer()
                 if streak >= 2 {
                     Text("连续 \(streak) 天 ≥ \(StatsModel.streakThreshold) 分")
@@ -330,6 +357,8 @@ struct ScoreTrendCard: View {
                             series: .value("段", runIndex)
                         )
                         .interpolationMethod(.monotone)
+                        .accessibilityLabel(day(forIndex: point.index).formatted(date: .abbreviated, time: .omitted))
+                        .accessibilityValue("\(point.pulse) 分")
                         PointMark(x: .value("日", point.index), y: .value("分数", point.pulse))
                             .symbolSize(hoverIndex == point.index ? 60 : 18)
                     }
@@ -351,7 +380,16 @@ struct ScoreTrendCard: View {
             }
             .chartXScale(domain: 0...max(trend.count - 1, 0))
             .chartYScale(domain: 0...100)
-            .chartXAxis(.hidden)
+            .chartXAxis {
+                AxisMarks(values: [0, 7, 14, 21, 29]) { value in
+                    let index = value.as(Int.self) ?? 0
+                    AxisTick()
+                    AxisValueLabel(anchor: index == 29 ? .topTrailing : (index == 0 ? .topLeading : .top),
+                                   collisionResolution: .disabled) {
+                        Text(day(forIndex: index), format: .dateTime.month(.defaultDigits).day())
+                    }
+                }
+            }
             .chartOverlay { proxy in
                 GeometryReader { geo in
                     Rectangle()
@@ -379,6 +417,14 @@ struct ScoreTrendCard: View {
                         )
                 }
             }
+            HStack {
+                Text("\(day(forIndex: 0).formatted(.dateTime.month().day()))–\(today.formatted(.dateTime.month().day()))")
+                Spacer()
+                if let updatedAt {
+                    Text("更新于 \(updatedAt.formatted(date: .omitted, time: .shortened))")
+                }
+            }
+            .font(.caption2).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .statCardBackground()
@@ -390,107 +436,5 @@ struct ScoreTrendCard: View {
         let xPos = location.x - origin.x
         guard let index: Int = proxy.value(atX: xPos) else { return nil }
         return min(max(index, 0), max(trend.count - 1, 0))
-    }
-}
-
-/// 生产力热力图: hand-drawn 7x24 `Grid` (168 cells), not a Swift Charts mark
-/// grid -- `DayTimelineView` established that per-mark `.help()` tooltips are
-/// unreliable on Charts marks, so this card places plain `RoundedRectangle`s
-/// with `.help()` directly, same as `DayTimelineView`'s timeline blocks.
-/// Cell color is `scoreColor(pulse)` at an opacity driven by the cell's
-/// PER-OCCURRENCE average tracked seconds -- `cells[row][hour].seconds` is a
-/// SUM across every occurrence of that weekday in the 30-day window (4 or 5,
-/// per `occurrences`), so dividing the raw sum by one hour would saturate
-/// any weekday with as little as ~12 min/day tracked (fix round 1, IMPORTANT
-/// 1). The per-occurrence average is then clamped to 3600 -- a DST
-/// fall-back day's last hour can exceed 3600 wall-clock seconds, and
-/// intensity must never exceed 100%. The low-sample rule is unchanged from
-/// the original brief: cells with under 15 minutes of AGGREGATE sample lose
-/// most of their opacity and get a "样本不足" tooltip instead of a score.
-/// Cell side is derived from the available width (fix round 1, IMPORTANT 4)
-/// so the grid compresses rather than overflowing its column at narrower
-/// window widths, capped at 12pt.
-struct HeatmapCard: View {
-    let cells: [[(pulse: Int?, seconds: TimeInterval)]]
-    /// 7 entries, Monday=0...Sunday=6 -- see `StatsModel.heatmapOccurrences`.
-    let occurrences: [Int]
-
-    private static let weekdayLabels = [String(localized: "周一"), String(localized: "周二"), String(localized: "周三"), String(localized: "周四"), String(localized: "周五"), String(localized: "周六"), String(localized: "周日")]
-    private static let hourTickLabels: [Int: String] = [0: "0", 6: "6", 12: "12", 18: "18", 23: "23"]
-    private static let lowSampleThreshold: TimeInterval = 900
-    private static let secondsPerHour: TimeInterval = 3600
-    private static let labelColumnWidth: CGFloat = 24
-    private static let gridSpacing: CGFloat = 2
-    private static let minCellSide: CGFloat = 6
-    private static let maxCellSide: CGFloat = 12
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                CardTitle(text: String(localized: "生产力热力图"))
-                Spacer()
-                Text("近 30 天")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            GeometryReader { geo in
-                let cellSide = Self.cellSide(forAvailableWidth: geo.size.width)
-                Grid(horizontalSpacing: Self.gridSpacing, verticalSpacing: Self.gridSpacing) {
-                    ForEach(0..<7, id: \.self) { row in
-                        GridRow {
-                            Text(Self.weekdayLabels[row])
-                                .font(.system(size: 9))
-                                .foregroundStyle(.secondary)
-                                .frame(width: Self.labelColumnWidth, alignment: .trailing)
-                            ForEach(0..<24, id: \.self) { hour in
-                                cellView(row: row, hour: hour, side: cellSide)
-                            }
-                        }
-                    }
-                    GridRow {
-                        Color.clear.frame(width: Self.labelColumnWidth, height: 10)
-                        ForEach(0..<24, id: \.self) { hour in
-                            Text(Self.hourTickLabels[hour] ?? "")
-                                .font(.system(size: 8))
-                                .foregroundStyle(.secondary)
-                                .frame(width: cellSide)
-                        }
-                    }
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .statCardBackground()
-    }
-
-    /// `(available width - label column - inter-column spacing) / 24`,
-    /// clamped to `minCellSide...maxCellSide`. 25 columns (1 label + 24
-    /// hours) means 24 gaps of `gridSpacing`.
-    private static func cellSide(forAvailableWidth width: CGFloat) -> CGFloat {
-        let totalSpacing = gridSpacing * 24
-        let available = (width - labelColumnWidth - totalSpacing) / 24
-        return max(minCellSide, min(maxCellSide, available))
-    }
-
-    private func entry(row: Int, hour: Int) -> (pulse: Int?, seconds: TimeInterval) {
-        guard cells.indices.contains(row), cells[row].indices.contains(hour) else { return (nil, 0) }
-        return cells[row][hour]
-    }
-
-    private func cellView(row: Int, hour: Int, side: CGFloat) -> some View {
-        let e = entry(row: row, hour: hour)
-        let occurrenceCount = max(1, row < occurrences.count ? occurrences[row] : 1)
-        let perOccurrenceSeconds = e.seconds / Double(occurrenceCount)
-        let clampedSeconds = min(perOccurrenceSeconds, Self.secondsPerHour)
-        let intensity = e.pulse == nil ? 0.06 : 0.2 + 0.8 * (clampedSeconds / Self.secondsPerHour)
-        let lowSample = e.seconds < Self.lowSampleThreshold
-        let opacity = lowSample ? intensity * 0.35 : intensity
-        let tooltip = lowSample
-            ? String(localized: "\(Self.weekdayLabels[row]) \(hour) 时 · 样本不足")
-            : String(localized: "\(Self.weekdayLabels[row]) \(hour) 时 · 平均分 \(e.pulse.map(String.init) ?? "--")")
-        return RoundedRectangle(cornerRadius: 2)
-            .fill(scoreColor(e.pulse).opacity(opacity))
-            .frame(width: side, height: side)
-            .help(tooltip)
     }
 }

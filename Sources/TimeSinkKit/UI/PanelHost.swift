@@ -21,6 +21,29 @@ final class PanelHost {
 
     private var panel: NSPanel?
     private var closeTask: Task<Void, Never>?
+    private var bridgeOrigin: CGPoint?
+    private var bridgeStarted = Date.distantPast
+    private var anchor: CGRect = .zero
+
+    /// Protect a diagonal move from its source row to the existing flyout.
+    func shouldDeferSwitch() -> Bool {
+        guard let panel, panel.isVisible, let origin = bridgeOrigin,
+              Date().timeIntervalSince(bridgeStarted) < 0.65 else { return false }
+        let point = NSEvent.mouseLocation
+        if panel.frame.insetBy(dx: -2, dy: -2).contains(point) { return true }
+        let edge = panel.frame.midX < anchor.midX ? panel.frame.maxX : panel.frame.minX
+        return Self.contains(point, triangle: (origin, CGPoint(x: edge, y: panel.frame.minY - 8), CGPoint(x: edge, y: panel.frame.maxY + 8)))
+    }
+
+    nonisolated static func contains(_ p: CGPoint, triangle: (CGPoint, CGPoint, CGPoint)) -> Bool {
+        func sign(_ a: CGPoint, _ b: CGPoint, _ c: CGPoint) -> CGFloat {
+            (a.x - c.x) * (b.y - c.y) - (b.x - c.x) * (a.y - c.y)
+        }
+        let (a, b, c) = triangle
+        guard abs(sign(a, b, c)) > 0.001 else { return false }
+        let d = [sign(p, a, b), sign(p, b, c), sign(p, c, a)]
+        return !(d.contains { $0 < 0 } && d.contains { $0 > 0 })
+    }
 
     /// Creates the `NSPanel` before the first hover needs it, so that show
     /// pays only content layout instead of also paying window creation (a
@@ -57,6 +80,8 @@ final class PanelHost {
         else { return false }
 
         cancelScheduledClose()
+        bridgeOrigin = nil
+        anchor = anchorFrame
 
         // Hovering the panel's own content must keep it open (spec §10:
         // "悬停子窗本体保持显示") -- wrapping here, rather than in every
@@ -75,8 +100,21 @@ final class PanelHost {
         panel.contentView = hosting
         hosting.layout()
         panel.setContentSize(hosting.fittingSize)
+        let wasVisible = panel.isVisible
         position(panel, near: anchorFrame, on: screen)
+        let finalFrame = panel.frame
+        if !wasVisible {
+            panel.alphaValue = 0
+            if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                panel.setFrameOrigin(NSPoint(x: finalFrame.minX + (finalFrame.midX < anchorFrame.midX ? 6 : -6), y: finalFrame.minY))
+            }
+        }
         panel.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0.15 : 0.16
+            panel.animator().alphaValue = 1
+            panel.animator().setFrame(finalFrame, display: true)
+        }
         self.panel = panel
         return true
     }
@@ -85,10 +123,13 @@ final class PanelHost {
     /// subsequent `show`/hover (own row or the panel's own content).
     func scheduleClose(after delay: TimeInterval = PanelHost.defaultCloseDelay) {
         closeTask?.cancel()
+        if bridgeOrigin == nil { bridgeOrigin = NSEvent.mouseLocation; bridgeStarted = Date() }
         closeTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled else { return }
-            self?.closeNow()
+            guard let self else { return }
+            if self.shouldDeferSwitch() { self.scheduleClose(after: 0.15) }
+            else { self.closeNow() }
         }
     }
 
@@ -99,6 +140,7 @@ final class PanelHost {
 
     func closeNow() {
         cancelScheduledClose()
+        bridgeOrigin = nil
         panel?.orderOut(nil)
         // Fold-in 7: drops the last-shown pane's `NSHostingView` (and
         // everything its SwiftUI content closure captured -- the

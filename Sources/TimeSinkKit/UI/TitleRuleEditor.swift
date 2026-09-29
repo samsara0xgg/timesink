@@ -100,7 +100,9 @@ struct TitleRuleEditor: View {
 
     @Environment(\.dismiss) private var dismiss
 
+    @State private var matchingRows: [CategorizedSpan] = []
     @State private var keywordText: String
+    @State private var keywordDraft = ""
     @State private var scopeKey: String
     @State private var categoryID: String
     @State private var duplicateMessage: String?
@@ -132,7 +134,7 @@ struct TitleRuleEditor: View {
     }
 
     private var normalizedPattern: String? {
-        TitleRuleInput.normalizedPattern(keywordText)
+        TitleRuleInput.normalizedPattern([keywordText, keywordDraft].filter { !$0.isEmpty }.joined(separator: String(localized: "，")))
     }
 
     /// The keyword chips `normalizedPattern` would actually store, shown
@@ -142,7 +144,7 @@ struct TitleRuleEditor: View {
     /// surprise afterward. A `re:` pattern renders as one chip; invalid
     /// input renders none (matching the disabled Save button).
     private var previewChips: [String] {
-        guard let pattern = normalizedPattern else { return [] }
+        guard let pattern = TitleRuleInput.normalizedPattern(keywordText) else { return [] }
         return pattern.hasPrefix("re:") ? [pattern] : pattern.split(separator: "|").map(String.init)
     }
 
@@ -161,90 +163,91 @@ struct TitleRuleEditor: View {
     private func recomputePreview() {
         guard let pattern = normalizedPattern else {
             affectedPreview = (0, 0)
+            matchingRows = []
             return
         }
-        affectedPreview = TitleRuleInput.affected(
-            items: model.rangedSpans(), pattern: pattern, scopeKey: scopeKey)
+        let items = model.rangedSpans(for: DateRangeSelection(kind: .last30, anchor: Date()))
+        matchingRows = items.first.map { model.resolver.previewEdit(span: $0.span, scope: .title, categoryID: categoryID, pattern: pattern, items: items, titleScope: scopeKey, titlePriority: 0) } ?? []
+        affectedPreview = (matchingRows.count, matchingRows.reduce(0) { $0 + $1.span.duration })
     }
 
     var body: some View {
-        Form {
-            Section {
-                TextField("关键词", text: $keywordText)
-                    .onChange(of: keywordText) { _, _ in
-                        duplicateMessage = nil
-                        schedulePreview()
-                    }
-                Text("多个关键词用逗号分隔；`re:` 前缀为正则")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if !previewChips.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 4) {
-                            ForEach(previewChips, id: \.self) { chip in
-                                Text(chip)
-                                    .font(.caption)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Capsule().fill(Color.accentColor.opacity(0.15)))
+        VStack(alignment: .leading, spacing: 14) {
+            Text("始终把这类标题归为…").font(.system(size: 15, weight: .semibold))
+            VStack(alignment: .leading, spacing: 6) {
+                Text("标题包含").font(.system(size: 12)).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    if !previewChips.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                ForEach(previewChips, id: \.self) { chip in
+                                    HStack(spacing: 5) {
+                                        Text(chip)
+                                        Button { keywordText = previewChips.filter { $0 != chip }.joined(separator: String(localized: "，")) } label: {
+                                            Image(systemName: "xmark").font(.system(size: 9, weight: .semibold))
+                                        }.buttonStyle(.plain).accessibilityLabel("移除关键词 \(chip)")
+                                    }.font(.system(size: 12)).padding(.horizontal, 6).padding(.vertical, 3)
+                                        .foregroundStyle(Color.accentColor)
+                                        .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 5))
+                                }
                             }
+                        }.fixedSize(horizontal: false, vertical: true)
+                    }
+                    TextField("输入后按回车…", text: $keywordDraft).textFieldStyle(.plain)
+                        .onSubmit {
+                            if let normalized = normalizedPattern { keywordText = normalized; keywordDraft = "" }
                         }
-                    }
-                }
+                }.padding(7).background(RefinedStyle.panel, in: RoundedRectangle(cornerRadius: 7))
+                    .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(.quaternary, lineWidth: 1))
+                Text("每个词至少 2 个字。以 re: 开头按正则匹配。")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
             }
-
-            Section {
-                // The scoped option only makes sense when `pending` actually
-                // carries a scope (the right-click path); the "+ 新建标题
-                // 规则…" path starts with an empty scopeKey/scopeLabel, which
-                // would otherwise duplicate the "所有活动" option's "" tag.
-                Picker("范围", selection: $scopeKey) {
-                    if !pending.scopeKey.isEmpty {
-                        Text("仅 \(pending.scopeLabel)").tag(pending.scopeKey)
-                    }
-                    Text("所有活动").tag("")
+            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 10) {
+                GridRow {
+                    Text("范围").foregroundStyle(.secondary).frame(width: 50, alignment: .leading)
+                    Picker("范围", selection: $scopeKey) {
+                        if !pending.scopeKey.isEmpty { Text("只在 \(pending.scopeLabel)").tag(pending.scopeKey) }
+                        Text("所有应用和网站").tag("")
+                    }.pickerStyle(.segmented).labelsHidden()
                 }
-                .pickerStyle(.radioGroup)
-                .onChange(of: scopeKey) { _, _ in
-                    duplicateMessage = nil
-                    // A single discrete choice, not a keystroke stream: run it
-                    // straight away so the count does not lag a click.
-                    pendingPreview?.cancel()
-                    recomputePreview()
+                GridRow {
+                    Text("归为").foregroundStyle(.secondary)
+                    Picker("归为", selection: $categoryID) {
+                        ForEach(sortedCategories, id: \.id) { category in Text(category.name).tag(category.id) }
+                    }.labelsHidden().fixedSize()
                 }
-
-                Picker("分类", selection: $categoryID) {
-                    ForEach(sortedCategories, id: \.id) { category in
-                        Text(category.name).tag(category.id)
-                    }
-                }
-                .onChange(of: categoryID) { _, _ in duplicateMessage = nil }
-            }
-
-            Section {
-                Text("将影响当前范围内 \(affectedPreview.count) 项 · \(Format.duration(affectedPreview.seconds))")
-                    .foregroundStyle(.secondary)
-                if let duplicateMessage {
-                    Text(duplicateMessage)
-                        .foregroundStyle(.red)
-                }
-            }
-
-            Section {
+            }.font(.system(size: 12))
+            VStack(alignment: .leading, spacing: 8) {
                 HStack {
+                    Text("会影响 \(affectedPreview.count) 段 · \(Format.duration(affectedPreview.seconds))").fontWeight(.semibold)
                     Spacer()
-                    Button("取消") { dismiss() }
-                    Button("保存") { save() }
-                        .disabled(normalizedPattern == nil)
-                        .keyboardShortcut(.defaultAction)
+                    Text("近 30 天").foregroundStyle(.secondary)
                 }
+                ForEach(Array(matchingRows.prefix(3).enumerated()), id: \.offset) { _, item in
+                    HStack(spacing: 5) {
+                        Text(model.resolver.categoriesByID[item.categoryID]?.name ?? String(localized: "未分类")).strikethrough().foregroundStyle(.tertiary)
+                        Image(systemName: "arrow.right").foregroundStyle(.tertiary)
+                        Circle().fill(RefinedStyle.category(categoryID, hex: model.resolver.categoriesByID[categoryID]?.colorHex ?? "#B4B4BB")).frame(width: 6, height: 6)
+                        Text(item.span.title ?? item.span.appName).lineLimit(1)
+                        Spacer(minLength: 0)
+                        Text(Format.duration(item.span.duration)).monospacedDigit().foregroundStyle(.secondary)
+                    }.font(.system(size: 11))
+                }
+            }.font(.system(size: 12)).padding(.vertical, 10).padding(.horizontal, 12)
+                .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 9))
+            if let duplicateMessage { Text(duplicateMessage).font(.system(size: 12)).foregroundStyle(.red) }
+            HStack(spacing: 8) {
+                Spacer()
+                Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("添加规则") { save() }.buttonStyle(.borderedProminent)
+                    .disabled(normalizedPattern == nil).keyboardShortcut(.defaultAction)
             }
-        }
-        .formStyle(.grouped)
-        .frame(minWidth: 360)
-        .padding()
-        // The right-click path opens with `pending.prefill` already in the
-        // field, so the count has to be right before the first keystroke.
+        }.padding(20).frame(width: 460).fixedSize(horizontal: false, vertical: true)
+        .background(WorkspaceBackground())
+        .onChange(of: keywordText) { _, _ in duplicateMessage = nil; schedulePreview() }
+        .onChange(of: keywordDraft) { _, _ in duplicateMessage = nil; schedulePreview() }
+        .onChange(of: scopeKey) { _, _ in duplicateMessage = nil; pendingPreview?.cancel(); recomputePreview() }
+        .onChange(of: categoryID) { _, _ in duplicateMessage = nil; recomputePreview() }
         .onAppear { recomputePreview() }
         .onDisappear { pendingPreview?.cancel() }
     }

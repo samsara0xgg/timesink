@@ -1,59 +1,54 @@
 import SwiftUI
 
-/// One row in the sidebar's "分类" section: a category's total duration
-/// within the model's current date range.
-private struct CategoryRow: Identifiable {
-    let id: String
-    let name: String
-    let colorHex: String
-    let seconds: TimeInterval
-}
-
 struct SidebarView: View {
     @Bindable var model: AppModel
-    @State private var categoryRows: [CategoryRow] = []
 
-    var body: some View {
-        List(selection: $model.sidebarSelection) {
-            Section {
-                Label("统计", systemImage: "chart.pie")
-                    .tag(SidebarItem.stats)
-                Label("活动", systemImage: "waveform.path.ecg")
-                    .tag(SidebarItem.activities)
+    private var navigation: Binding<SidebarItem> {
+        Binding(get: { model.sidebarSelection }, set: { destination in
+            switch destination {
+            case .today: model.openToday()
+            case .stats: model.openStats(range: DateRangeSelection(kind: .last7, anchor: Date()))
+            default: model.sidebarSelection = destination
             }
-            Section("分类") {
-                ForEach(categoryRows) { row in
-                    Button {
-                        model.activityFilter = row.id
-                        model.sidebarSelection = .activities
-                    } label: {
-                        HStack {
-                            Circle()
-                                .fill(Color(hex: row.colorHex))
-                                .frame(width: 8, height: 8)
-                            Text(row.name)
-                            Spacer()
-                            Text(Format.duration(row.seconds))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .onAppear { refreshCategoryRows() }
-        .onChange(of: model.range) { _, _ in refreshCategoryRows() }
-        .onChange(of: model.dataVersion) { _, _ in refreshCategoryRows() }
+        })
     }
 
-    private func refreshCategoryRows() {
-        let byCategory = Aggregator.durationByCategory(model.rangedSpans())
-        let categories = model.resolver.categoriesByID
-        categoryRows = byCategory
-            .compactMap { categoryID, seconds -> CategoryRow? in
-                guard let category: TimeSinkKit.Category = categories[categoryID] else { return nil }
-                return CategoryRow(id: category.id, name: category.name, colorHex: category.colorHex, seconds: seconds)
+    var body: some View {
+        VStack(spacing: 0) {
+            List(selection: navigation) {
+                Section {
+                    navigationLabel(String(localized: "今天"), symbol: "sun.max").tag(SidebarItem.today)
+                    navigationLabel(String(localized: "活动"), symbol: "list.bullet.rectangle").tag(SidebarItem.activities)
+                    navigationLabel(String(localized: "趋势"), symbol: "chart.bar.xaxis").tag(SidebarItem.stats)
+                }
+                Section("安排时间") {
+                    navigationLabel(String(localized: "专注与限额"), symbol: "scope").tag(SidebarItem.focus)
+                    navigationLabel(String(localized: "分类与规则"), symbol: "tag")
+                        .badge(model.pendingClassificationCount).tag(SidebarItem.organization)
+                }
             }
-            .sorted { $0.seconds > $1.seconds }
+            .listStyle(.sidebar)
+            .safeAreaInset(edge: .top) {
+                HStack(spacing: 9) {
+                    Image(systemName: "hourglass.bottomhalf.filled").foregroundStyle(.tint)
+                    Text("TimeSink").font(.headline)
+                    Spacer()
+                }
+                .padding(.horizontal, 20).padding(.top, 14).padding(.bottom, 12)
+            }
+            VStack(alignment: .leading, spacing: 12) {
+                RecordingStatusView(model: model)
+                SettingsLink { Label("设置", systemImage: "gearshape") }
+                    .buttonStyle(.plain).font(.callout).foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(20)
+        }
+    }
+
+    private func navigationLabel(_ title: String, symbol: String) -> some View {
+        Label { Text(title) } icon: {
+            Image(systemName: symbol).foregroundStyle(Color.accentColor)
+        }
     }
 }

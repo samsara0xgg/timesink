@@ -180,7 +180,7 @@ final class TodayDashboardModelTests: XCTestCase {
     /// sliced from the SAME sorted list in `recompute`, guarding against a
     /// future refactor that decouples them.
     @MainActor
-    func testRecomputeBudgetRowsIsPrefixOfAllBudgetRows() throws {
+    func testRecomputeBudgetRowsIsPrefixOfAllBudgetRows() async throws {
         let (model, _, budgetStore) = try makeDashboardAppModel()
         // Three enabled budgets so the tightest-2 is a STRICT prefix of the
         // full list (`setBudget` enables a brand-new row by default).
@@ -189,7 +189,7 @@ final class TodayDashboardModelTests: XCTestCase {
         try budgetStore.setBudget(categoryID: "news", dailySeconds: 2700)
 
         let dashboard = TodayDashboardModel()
-        dashboard.recompute(model: model, forceStreak: true)
+        await dashboard.recompute(model: model, forceStreak: true)
 
         XCTAssertEqual(dashboard.allBudgetRows.count, 3)
         XCTAssertEqual(dashboard.budgetRows.count, 2)
@@ -203,7 +203,7 @@ final class TodayDashboardModelTests: XCTestCase {
     /// `refreshStreakIfDayChanged`, so this pins that they stay aligned
     /// (index-order and value) if that method is ever refactored.
     @MainActor
-    func testRecomputeStreakLookbackPulsesTailMatchesTodayAndAgreesWithStreakDays() throws {
+    func testRecomputeStreakLookbackPulsesTailMatchesTodayAndAgreesWithStreakDays() async throws {
         let (model, spanStore, _) = try makeDashboardAppModel()
         let todayStart = Calendar.current.startOfDay(for: Date())
         // com.apple.dt.Xcode -> softwareDev (builtin app map), the sole
@@ -213,7 +213,7 @@ final class TodayDashboardModelTests: XCTestCase {
                                    title: nil, url: nil, domain: nil))
 
         let dashboard = TodayDashboardModel()
-        dashboard.recompute(model: model, forceStreak: true)
+        await dashboard.recompute(model: model, forceStreak: true)
 
         XCTAssertEqual(dashboard.pulse, 100)
         XCTAssertEqual(dashboard.streakLookbackPulses.count, 30)

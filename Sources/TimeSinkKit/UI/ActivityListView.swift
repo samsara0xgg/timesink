@@ -10,6 +10,7 @@ private let activityListLogger = Logger(subsystem: "com.alllllenshi.TimeSink", c
 /// rather than an empty screen.
 struct ActivityListView: View {
     let model: AppModel
+    let activities: ActivitiesModel
     let groups: [ActivitiesModel.CategoryGroup]
     /// Non-nil only while a search query is active — see
     /// `ActivitiesModel.matchCount`/`matchSeconds`.
@@ -24,6 +25,22 @@ struct ActivityListView: View {
     /// Sheet is hosted here (not inside the transient `contextMenu`) because
     /// the menu tears itself down as soon as its action runs.
     @State private var pendingTitleRule: PendingTitleRule?
+    @State private var grouping = 0
+
+    private var totalSeconds: TimeInterval { displayedGroups.reduce(0) { $0 + $1.seconds } }
+
+    private var groupingControl: some View {
+        Picker("分组方式", selection: $grouping) {
+            Text("按分类").tag(0)
+            Text("按应用").tag(1)
+            Text("按时间").tag(2)
+        }.pickerStyle(.segmented).labelsHidden().frame(width: 186)
+    }
+
+    private var summary: some View {
+        Text("\(Format.duration(totalSeconds)) · \(activities.displayedItems.count) 段 · \(displayedGroups.count) 个分类")
+            .font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit().fixedSize()
+    }
 
     private var displayedGroups: [ActivitiesModel.CategoryGroup] {
         guard let filter = model.activityFilter else { return groups }
@@ -32,6 +49,10 @@ struct ActivityListView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            ViewThatFits(in: .horizontal) {
+                HStack { summary; Spacer(minLength: 10); groupingControl }
+                VStack(alignment: .leading, spacing: 8) { summary; groupingControl }
+            }.padding(.horizontal, 14).padding(.top, 10)
             if let matchCount {
                 Text("命中 \(matchCount) 项 · 合计 \(Format.duration(matchSeconds ?? 0))")
                     .font(.callout)
@@ -53,17 +74,65 @@ struct ActivityListView: View {
             if displayedGroups.isEmpty {
                 emptyState
             } else {
-                List {
-                    ForEach(displayedGroups) { group in
-                        CategoryGroupRow(model: model, group: group, pendingTitleRule: $pendingTitleRule)
+                ScrollViewReader { proxy in
+                    List {
+                        if grouping == 0 {
+                            ForEach(displayedGroups) { group in
+                                CategoryGroupRow(model: model, activities: activities, group: group, totalSeconds: totalSeconds, pendingTitleRule: $pendingTitleRule)
+                            }
+                        } else if grouping == 1 {
+                            ForEach(applicationGroups, id: \.key) { group in
+                                Section {
+                                    ForEach(Array(group.items.enumerated()), id: \.offset) { _, item in segmentRow(item) }
+                                } header: {
+                                    HStack {
+                                        AppIcon(bundleID: group.key, size: 18)
+                                        Text(group.items.first?.span.appName ?? group.key)
+                                        Spacer()
+                                        Text(Format.duration(group.items.reduce(0) { $0 + $1.span.duration })).monospacedDigit()
+                                    }
+                                }
+                            }
+                        } else {
+                            ForEach(Array(activities.displayedItems.sorted { $0.span.start > $1.span.start }.enumerated()), id: \.offset) { _, item in segmentRow(item) }
+                        }
+                    }
+                    .listStyle(.inset)
+                    .task(id: activities.selectedActivity) {
+                        guard let selection = activities.selectedActivity else { return }
+                        await Task.yield()
+                        proxy.scrollTo(selection, anchor: .center)
                     }
                 }
-                .listStyle(.inset)
             }
         }
         .sheet(item: $pendingTitleRule) { pending in
             TitleRuleEditor(model: model, pending: pending)
         }
+    }
+
+    private var applicationGroups: [(key: String, items: [CategorizedSpan])] {
+        Dictionary(grouping: activities.displayedItems, by: { $0.span.appBundleID })
+            .map { (key: $0.key, items: $0.value.sorted { $0.span.start > $1.span.start }) }
+            .sorted { $0.items.reduce(0) { $0 + $1.span.duration } > $1.items.reduce(0) { $0 + $1.span.duration } }
+    }
+
+    private func segmentRow(_ item: CategorizedSpan) -> some View {
+        let selection = ActivitiesModel.selection(for: item)
+        return Button { activities.select(selection, start: item.span.start) } label: {
+            HStack(spacing: 8) {
+                AppIcon(bundleID: item.span.appBundleID, size: 18)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.span.title ?? item.span.domain ?? item.span.appName).lineLimit(1)
+                    Text("\(model.time(item.span.start))–\(model.time(item.span.end)) · \(model.resolver.categoriesByID[item.categoryID]?.name ?? String(localized: "未分类"))")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 6)
+                Text(Format.duration(item.span.duration)).monospacedDigit().foregroundStyle(.secondary)
+            }.font(.system(size: 12)).padding(.vertical, 5).padding(.horizontal, 4)
+                .background(activities.selectedActivity == selection && activities.selectedStart == item.span.start ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 4))
+                .contentShape(Rectangle())
+        }.buttonStyle(.plain).id(selection)
     }
 
     private var emptyState: some View {
@@ -119,23 +188,38 @@ private struct FilterChip: View {
 /// each category row's own instance defaults to open on first appearance.
 private struct CategoryGroupRow: View {
     let model: AppModel
+    let activities: ActivitiesModel
     let group: ActivitiesModel.CategoryGroup
+    let totalSeconds: TimeInterval
     @Binding var pendingTitleRule: PendingTitleRule?
 
-    @State private var isExpanded = true
+    private var isExpanded: Binding<Bool> {
+        Binding(get: { !activities.collapsedCategories.contains(group.id) }, set: { expanded in
+            if expanded { activities.collapsedCategories.remove(group.id) }
+            else { activities.collapsedCategories.insert(group.id) }
+        })
+    }
 
     var body: some View {
-        DisclosureGroup(isExpanded: $isExpanded) {
+        DisclosureGroup(isExpanded: isExpanded) {
             ForEach(group.rows) { row in
-                ActivityRowView(model: model, row: row, pendingTitleRule: $pendingTitleRule)
+                ActivityRowView(model: model, activities: activities, categoryID: group.id, row: row, pendingTitleRule: $pendingTitleRule)
+                    .id(ActivitySelection(categoryID: group.id, rowID: row.id))
             }
         } label: {
             HStack {
                 Circle()
-                    .fill(Color(hex: group.colorHex))
+                    .fill(RefinedStyle.category(group.id, hex: group.colorHex))
                     .frame(width: 8, height: 8)
                 Text(group.name)
                 Spacer()
+                GeometryReader { geometry in
+                    Capsule().fill(.quaternary)
+                        .overlay(alignment: .leading) {
+                            Capsule().fill(RefinedStyle.category(group.id, hex: group.colorHex))
+                                .frame(width: geometry.size.width * group.seconds / max(1, totalSeconds))
+                        }
+                }.frame(width: 70, height: 4)
                 Text(Format.duration(group.seconds))
                     .foregroundStyle(.secondary)
             }
@@ -148,6 +232,15 @@ private struct CategoryGroupRow: View {
 /// matching `CategoryStore` method based on `row.isDomain`.
 private struct ActivityRowView: View {
     let model: AppModel
+    let activities: ActivitiesModel
+    let categoryID: String
+    private var isExpanded: Binding<Bool> {
+        let key = ActivitySelection(categoryID: categoryID, rowID: row.id)
+        return Binding(get: { activities.expandedRows.contains(key) }, set: { expanded in
+            if expanded { activities.expandedRows.insert(key) }
+            else { activities.expandedRows.remove(key) }
+        })
+    }
     let row: ActivitiesModel.ActivityRow
     @Binding var pendingTitleRule: PendingTitleRule?
 
@@ -156,13 +249,15 @@ private struct ActivityRowView: View {
     }
 
     var body: some View {
-        DisclosureGroup {
+        DisclosureGroup(isExpanded: isExpanded) {
             ForEach(row.titles) { title in
-                TitleRowView(model: model, parent: row, title: title, pendingTitleRule: $pendingTitleRule)
+                TitleRowView(model: model, activities: activities, categoryID: categoryID, parent: row, title: title, pendingTitleRule: $pendingTitleRule)
             }
         } label: {
+            Button { activities.select(ActivitySelection(categoryID: categoryID, rowID: row.id)) } label: {
             HStack {
-                Text(row.label)
+                AppIcon(bundleID: row.isDomain ? "com.google.Chrome" : row.reassignKey, size: 18)
+                Text(row.label).lineLimit(1)
                 Spacer()
                 if row.hasMeeting {
                     Text("会议")
@@ -173,39 +268,28 @@ private struct ActivityRowView: View {
                         .foregroundStyle(Color.accentColor)
                         .help("由日历事件自动标注")
                 }
+                let count = activities.displayedItems.filter { ActivitiesModel.selection(for: $0).row == ActivitySelection(categoryID: categoryID, rowID: row.id) }.count
+                if count > 1 { Text("\(count) 段").font(.system(size: 11)).foregroundStyle(.tertiary) }
                 Text(Format.duration(row.seconds))
                     .foregroundStyle(.secondary)
             }
+            .padding(.vertical, 3)
+            .padding(.horizontal, 4)
+            .background(activities.selectedActivity?.row == ActivitySelection(categoryID: categoryID, rowID: row.id)
+                        ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 4))
+            .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("在时间轴中定位这项活动")
         }
         .contextMenu {
-            ForEach(sortedCategories, id: \.id) { category in
-                Button(!row.isEntity ? category.name
-                       : row.isDomain ? String(localized: "\(category.name)（整站）")
-                       : String(localized: "\(category.name)（整个应用）")) {
-                    reassign(to: category.id)
-                }
+            Button("检查并调整分类…") {
+                activities.select(ActivitySelection(categoryID: categoryID, rowID: row.id), start: nil)
             }
         }
     }
 
-    /// Always writes at `row.reassignKey` (domain or bundleID) — a finer
-    /// `row.id` (a specific github repo, a working directory, an AI chat
-    /// conversation) is display-only; `CategoryStore` only understands
-    /// domain/app-level overrides, hence the「（整站）」/「（整个应用）」
-    /// menu hint on those rows.
-    private func reassign(to categoryID: String) {
-        do {
-            if row.isDomain {
-                try model.categoryStore.setUserDomain(row.reassignKey, categoryID: categoryID)
-            } else {
-                try model.categoryStore.setUserApp(row.reassignKey, categoryID: categoryID)
-            }
-            model.resolver.refresh()
-            model.dataChanged()
-        } catch {
-            activityListLogger.error("reassign failed for \(row.reassignKey, privacy: .public): \(String(describing: error), privacy: .public)")
-        }
-    }
+
 }
 
 /// Level 3: a single title within a domain/app row. Right-click opens the
@@ -214,6 +298,8 @@ private struct ActivityRowView: View {
 /// domain/app — "始终把此标题归为…".
 private struct TitleRowView: View {
     let model: AppModel
+    let activities: ActivitiesModel
+    let categoryID: String
     let parent: ActivitiesModel.ActivityRow
     let title: ActivitiesModel.TitleRow
     @Binding var pendingTitleRule: PendingTitleRule?
@@ -223,6 +309,8 @@ private struct TitleRowView: View {
     }
 
     var body: some View {
+        let selection = ActivitySelection(categoryID: categoryID, rowID: parent.id, title: title.title)
+        Button { activities.select(selection) } label: {
         HStack {
             Text(title.title)
                 .lineLimit(1)
@@ -231,7 +319,16 @@ private struct TitleRowView: View {
                 .foregroundStyle(.secondary)
         }
         .font(.caption)
-        .foregroundStyle(.secondary)
+        .padding(.vertical, 3)
+        .padding(.horizontal, 4)
+        .background(activities.selectedActivity == selection ? Color.accentColor.opacity(0.2) : .clear,
+                    in: RoundedRectangle(cornerRadius: 4))
+        .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .id(selection)
+        .help(title.title + String(localized: " · 在时间轴中定位"))
+        .accessibilityAddTraits(activities.selectedActivity == selection ? .isSelected : [])
         .contextMenu {
             Button("始终把此标题归为…") {
                 // `scopeKey` must be `parent.reassignKey` (domain/bundleID),

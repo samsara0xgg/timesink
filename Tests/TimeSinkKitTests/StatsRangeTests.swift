@@ -140,7 +140,7 @@ final class StatsRangeTests: XCTestCase {
         XCTAssertEqual(fullPulse, 67)
     }
 
-    @MainActor func testHeavyRecomputeGatedByDay() throws {
+    @MainActor func testHeavyRecomputeGatedByDay() async throws {
         let db = try AppDatabase.openInMemory()
         let store = SpanStore(db)
         _ = try store.insert(Span(start: Date().addingTimeInterval(-3600), end: Date(),
@@ -151,13 +151,13 @@ final class StatsRangeTests: XCTestCase {
                              resolver: CategoryResolver(categoryStore: catStore),
                              engine: TrackerEngine(spanStore: store, settings: SettingsStore(db)))
         let stats = StatsModel()
-        stats.recompute(model: model, forceHeavy: true)
+        await stats.recompute(model: model, forceHeavy: true)
         let firstTrend = stats.scoreTrend
         XCTAssertEqual(firstTrend.count, 30)
         stats.scoreTrend = []                                  // 打标
-        stats.recompute(model: model, forceHeavy: false)       // 同日非强制：不重算重部分
+        await stats.recompute(model: model, forceHeavy: false)       // 同日非强制：不重算重部分
         XCTAssertEqual(stats.scoreTrend, [])
-        stats.recompute(model: model, forceHeavy: true)        // 强制：重算
+        await stats.recompute(model: model, forceHeavy: true)        // 强制：重算
         XCTAssertEqual(stats.scoreTrend.count, 30)
     }
 
@@ -212,7 +212,7 @@ final class StatsRangeTests: XCTestCase {
     /// fixed-constant margin that can itself overflow past midnight late in
     /// the day. Expected deltas are computed from these same placements, not
     /// hardcoded, so the assertion stays exact.
-    @MainActor func testRecomputeDeltasClipPreviousToElapsedTimeOfDayWhenRangeContainsNow() throws {
+    @MainActor func testRecomputeDeltasClipPreviousToElapsedTimeOfDayWhenRangeContainsNow() async throws {
         let (model, store) = try makeStatsRangeModel()
         let cal = Calendar.current
         let todayStart = cal.startOfDay(for: Date())
@@ -249,7 +249,7 @@ final class StatsRangeTests: XCTestCase {
                                start: yesterdayStart.addingTimeInterval(clippedAwayStart), seconds: clippedAwaySeconds))
 
         let stats = StatsModel()
-        stats.recompute(model: model, forceHeavy: true)
+        await stats.recompute(model: model, forceHeavy: true)
 
         XCTAssertEqual(stats.total, 3600)
         XCTAssertEqual(stats.focus, 3600)
@@ -269,7 +269,7 @@ final class StatsRangeTests: XCTestCase {
     /// A historical (never `containsNow`) day range, so this test has no
     /// wall-clock dependency at all: pins the UNCLIPPED branch, where
     /// duration deltas compare against the full previous day.
-    @MainActor func testRecomputeDeltasUseFullPreviousPeriodWhenRangeDoesNotContainNow() throws {
+    @MainActor func testRecomputeDeltasUseFullPreviousPeriodWhenRangeDoesNotContainNow() async throws {
         let (model, store) = try makeStatsRangeModel()
         let cal = Calendar.current
         let currentDayStart = cal.startOfDay(for: Date().addingTimeInterval(-10 * 86400))
@@ -284,7 +284,7 @@ final class StatsRangeTests: XCTestCase {
         XCTAssertFalse(model.range.containsNow)
 
         let stats = StatsModel()
-        stats.recompute(model: model, forceHeavy: true)
+        await stats.recompute(model: model, forceHeavy: true)
 
         XCTAssertEqual(stats.total, 3 * 3600)
         XCTAssertEqual(stats.focus, 3 * 3600)
@@ -295,7 +295,7 @@ final class StatsRangeTests: XCTestCase {
         XCTAssertEqual(stats.pulseDelta, 100)        // 100 - 0
     }
 
-    @MainActor func testRecomputeDeltasAreNilWhenPreviousPeriodIsEmpty() throws {
+    @MainActor func testRecomputeDeltasAreNilWhenPreviousPeriodIsEmpty() async throws {
         let (model, store) = try makeStatsRangeModel()
         let todayStart = Calendar.current.startOfDay(for: Date())
         try store.insert(span("com.apple.dt.Xcode", appName: "Xcode",
@@ -303,7 +303,7 @@ final class StatsRangeTests: XCTestCase {
         // No spans inserted for yesterday -- `prev` is empty.
 
         let stats = StatsModel()
-        stats.recompute(model: model, forceHeavy: true)
+        await stats.recompute(model: model, forceHeavy: true)
 
         XCTAssertNil(stats.totalDelta)
         XCTAssertNil(stats.focusDelta)

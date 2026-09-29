@@ -279,106 +279,49 @@ struct BudgetSettingsPane: View {
 /// (a not-currently-running app can't otherwise be picked). Saves straight
 /// to `SettingsStore.setFocusBlockedApps` and writes back through the
 /// `blockedApps` binding so the pane's chip row updates immediately.
-private struct FocusBlockedAppsEditor: View {
+struct FocusBlockedAppsEditor: View {
     let model: AppModel
+    var title = String(localized: "选择专注期间隐藏的应用")
+    var onSave: (([String]) -> Void)? = nil
     @Binding var blockedApps: [String]
-
     @Environment(\.dismiss) private var dismiss
     @State private var selected: Set<String> = []
-    @State private var manualBundleID = ""
-
-    /// Snapshotted once in `onAppear` (fold-in 9), not recomputed on every
-    /// render: as a computed property this re-enumerated
-    /// `NSWorkspace.shared.runningApplications` on every keystroke in the
-    /// manual-entry field, and row identity would churn if an app
-    /// launched/quit mid-edit.
-    @State private var runningApps: [(bundleID: String, name: String)] = []
-
-    /// `selected` entries with no row in `runningApps` -- a previously
-    /// hand-added (or since-quit) bundle ID has nowhere to be un-toggled
-    /// without this (I6): the checklist alone only ever covers apps running
-    /// right now.
-    private var offlineSelectedBundleIDs: [String] {
-        let runningIDs = Set(runningApps.map(\.bundleID))
-        return selected.subtracting(runningIDs).sorted()
-    }
-
-    private var isManualEntryValid: Bool {
-        let trimmed = manualBundleID.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Fold-in 10: `SettingsStore.focusBlockedApps` round-trips through a
-        // comma-joined string -- a comma surviving into a stored entry would
-        // silently split into bogus entries on the next read-back.
-        return !trimmed.isEmpty && !trimmed.contains(",")
-    }
-
+    @State private var search = ""
+    @State private var apps: [(id: String, name: String)] = []
     var body: some View {
-        Form {
-            Section("正在运行的应用") {
-                ForEach(runningApps, id: \.bundleID) { app in
-                    Toggle(app.name, isOn: toggleBinding(app.bundleID))
-                }
+        VStack(alignment: .leading, spacing: 14) {
+            Text(title).font(.system(size: 17, weight: .semibold))
+            TextField("搜索已安装的应用", text: $search).textFieldStyle(.roundedBorder)
+            List(apps.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) }, id: \.id) { app in
+                Toggle(isOn: Binding(get: { selected.contains(app.id) }, set: { value in
+                    if value { selected.insert(app.id) } else { selected.remove(app.id) }
+                })) {
+                    HStack(spacing: 10) { AppIcon(bundleID: app.id); Text(app.name) }
+                }.padding(.vertical, 3)
+            }.listStyle(.inset)
+            Text(onSave == nil ? "只在专注时隐藏，记录照常；修改从下一次专注开始生效。" : "选中的应用不会记录活动或保存屏幕画面。密码管理器始终不记录。").font(.system(size: 11)).foregroundStyle(.secondary)
+            HStack {
+                Text("已选择 \(selected.count) 个").font(.system(size: 12)).foregroundStyle(.secondary)
+                Spacer(); Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("保存") {
+                    blockedApps = selected.sorted(); if let onSave { onSave(blockedApps) } else { model.settings.setFocusBlockedApps(blockedApps) }; dismiss()
+                }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
             }
-            if !offlineSelectedBundleIDs.isEmpty {
-                Section("已添加但未运行") {
-                    ForEach(offlineSelectedBundleIDs, id: \.self) { bundleID in
-                        Toggle(bundleID, isOn: toggleBinding(bundleID))
+        }.padding(20).frame(width: 420, height: 480)
+        .onAppear {
+            selected = Set(blockedApps)
+            // Only inspect application bundles; never launch or request permissions.
+            var found: [String: String] = [:]
+            for root in ["/Applications", "/System/Applications", NSHomeDirectory() + "/Applications"] {
+                guard let enumerator = FileManager.default.enumerator(at: URL(fileURLWithPath: root), includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles, .skipsPackageDescendants]) else { continue }
+                for case let url as URL in enumerator where url.pathExtension == "app" {
+                    if let id = Bundle(url: url)?.bundleIdentifier, id != Bundle.main.bundleIdentifier {
+                        found[id] = FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: "")
                     }
                 }
             }
-            Section("手动添加 Bundle ID") {
-                HStack {
-                    TextField("com.example.app", text: $manualBundleID)
-                        .textFieldStyle(.roundedBorder)
-                    Button("添加") { addManual() }
-                        .disabled(!isManualEntryValid)
-                }
-            }
-            Section {
-                HStack {
-                    Spacer()
-                    Button("取消") { dismiss() }
-                    Button("保存") { save() }
-                        .keyboardShortcut(.defaultAction)
-                }
-            }
+            for id in blockedApps where found[id] == nil { found[id] = AppIcon.name(for: id) }
+            apps = found.map { (id: $0.key, name: $0.value) }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         }
-        .formStyle(.grouped)
-        .frame(minWidth: 360, minHeight: 320)
-        .padding()
-        .onAppear {
-            selected = Set(blockedApps)
-            runningApps = Self.snapshotRunningApps()
-        }
-    }
-
-    private static func snapshotRunningApps() -> [(bundleID: String, name: String)] {
-        NSWorkspace.shared.runningApplications
-            .filter { $0.activationPolicy == .regular }
-            .compactMap { app -> (String, String)? in
-                guard let bundleID = app.bundleIdentifier else { return nil }
-                return (bundleID, app.localizedName ?? bundleID)
-            }
-            .sorted { $0.1 < $1.1 }
-    }
-
-    private func toggleBinding(_ bundleID: String) -> Binding<Bool> {
-        Binding(
-            get: { selected.contains(bundleID) },
-            set: { newValue in
-                if newValue { selected.insert(bundleID) } else { selected.remove(bundleID) }
-            }
-        )
-    }
-
-    private func addManual() {
-        guard isManualEntryValid else { return }
-        selected.insert(manualBundleID.trimmingCharacters(in: .whitespacesAndNewlines))
-        manualBundleID = ""
-    }
-
-    private func save() {
-        blockedApps = Array(selected).sorted()
-        model.settings.setFocusBlockedApps(blockedApps)
-        dismiss()
     }
 }

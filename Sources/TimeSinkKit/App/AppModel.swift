@@ -4,14 +4,14 @@ import os
 
 /// Top-level sidebar destination.
 public enum SidebarItem: Hashable {
-    case stats, activities
+    case today, activities, stats, focus, organization
 }
 
 /// Settings window tab destination -- driven by `AppModel.settingsTab`, read
 /// by `SettingsView`'s `TabView(selection:)` and written by notification
 /// routing (`.settingsBudget` → `.budget`).
 public enum SettingsTab: Hashable {
-    case general, categories, rules, uncategorized, llm, budget, account
+    case general, categories, rules, uncategorized, llm, budget, account, privacy, permissions, notifications, about
 }
 
 /// App-wide observable state: the shared stores/engine, the current date-range
@@ -29,13 +29,30 @@ public final class AppModel {
     public let resolver: CategoryResolver
     public let engine: TrackerEngine
 
-    public var range: DateRangeSelection = .today()
-    public var sidebarSelection: SidebarItem = .stats
+    public var range: DateRangeSelection = .today() {
+        didSet {
+            if range.firstWeekday != firstWeekday { range.firstWeekday = firstWeekday }
+            if oldValue.interval != range.interval { clearActivityTimeFilter() }
+        }
+    }
+    public var activityTimeInterval: DateInterval?
+    public private(set) var heatmapReturnRange: DateRangeSelection?
+    public var sidebarSelection: SidebarItem = .today
     public var activityFilter: String?
 
     /// Selected Settings window tab -- default `.general`; notification
     /// routing (`.settingsBudget`) jumps this to `.budget`.
+    let popoverShortcut = PopoverShortcut()
+    public var popoverShortcutAvailable = false
+    public var accessibilityGranted = true { didSet { engine.setPermissionGranted(accessibilityGranted) } }
     public var settingsTab: SettingsTab = .general
+    public var organizationTab: SettingsTab = .uncategorized
+    public var organizationSearch = ""
+    public var pendingClassificationCount: Int {
+        Set(rangedSpans(for: DateRangeSelection(kind: .last30, anchor: Date()))
+            .filter { $0.categoryID == "uncategorized" }
+            .map { $0.span.domain ?? $0.span.appBundleID }).count
+    }
 
     /// A route decoded from a tapped notification, buffered here by
     /// `TimeSinkApp`'s `appDelegate.onRoute` assignment until `MenuBarLabel`
@@ -71,6 +88,13 @@ public final class AppModel {
     /// today" while under-reporting it ~3x. The focus figure is still shown,
     /// captioned, in the popover (`MenuBarDashboard`).
     public var menuTitle: String = "0m"
+    public var currentCategoryTitle: String {
+        _ = dataVersion
+        guard let span = engine.currentActivity else { return trackingPaused ? String(localized: "已暂停") : String(localized: "空闲") }
+        let category = resolver.categoryID(for: span)
+        let total = rangedSpans(for: .today()).filter { $0.categoryID == category }.reduce(0) { $0 + $1.span.duration }
+        return (resolver.categoriesByID[category]?.name ?? String(localized: "未分类")) + " " + Format.duration(total)
+    }
     /// Today's total tracked duration, for the menu bar dropdown.
     public var todayTotalTitle: String = "0m"
     /// Today's productivity score (0-100), for the menu bar dropdown. "--" if no data yet.
@@ -80,6 +104,38 @@ public final class AppModel {
     /// itself isn't observable, so the menu bar label reads this property
     /// instead; the General settings pane's toggle writes both in lockstep.
     public var menuTextEnabled: Bool
+    public var menuDisplayMode = "total"
+    public func setMenuDisplayMode(_ value: String) {
+        menuDisplayMode = value
+        menuTextEnabled = value != "icon"
+        settings.set("menuDisplayMode", value)
+        settings.setMenuBarTextEnabled(menuTextEnabled)
+    }
+    public var showScore: Bool = true {
+        didSet { settings.set("showScore", showScore ? "true" : "false") }
+    }
+    public var firstWeekday = 2 {
+        didSet { settings.set("firstWeekday", String(firstWeekday)); range.firstWeekday = firstWeekday }
+    }
+    public var timeFormat = "system" {
+        didSet { settings.set("timeFormat", timeFormat) }
+    }
+    public var displayCalendar: Calendar {
+        var calendar = Calendar.current
+        calendar.firstWeekday = firstWeekday
+        return calendar
+    }
+    public var displayLocale: Locale {
+        guard timeFormat != "system" else { return .current }
+        return Locale(identifier: Locale.current.identifier + (Locale.current.identifier.contains("@") ? ";" : "@") + "hours=" + (timeFormat == "24" ? "h23" : "h12"))
+    }
+    public func time(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = displayLocale
+        if timeFormat == "system" { formatter.timeStyle = .short }
+        else { formatter.dateFormat = timeFormat == "24" ? "HH:mm" : "h:mm a" }
+        return formatter.string(from: date)
+    }
 
     /// @Observable mirror of `engine.chromeCaptureDegraded` -- `TrackerEngine`
     /// is a plain `@MainActor` class, not `@Observable`, so a SwiftUI body
@@ -108,6 +164,41 @@ public final class AppModel {
 
     /// Mirrors `settings.screenCapturePaused`; the collector is told on toggle.
     public var screenCapturePaused: Bool
+
+    public private(set) var trackingPaused = false
+    public private(set) var trackingResumeAt: Date?
+    @ObservationIgnored private var trackingResumeTask: Task<Void, Never>?
+
+    public func pauseTracking(minutes: Int?) {
+        trackingResumeTask?.cancel()
+        trackingPaused = true
+        settings.set("trackingPaused", "true")
+        trackingResumeAt = minutes.map { Date().addingTimeInterval(Double($0) * 60) }
+        settings.set("trackingResumeAt", trackingResumeAt.map { String($0.timeIntervalSince1970) } ?? "manual")
+        engine.setUserPaused(true)
+        dataChanged()
+        if let minutes {
+            trackingResumeTask = Task { @MainActor [weak self] in
+                do { try await Task.sleep(for: .seconds(Double(minutes) * 60)) } catch { return }
+                self?.resumeTracking()
+            }
+        }
+    }
+
+    public func resumeTracking() {
+        trackingResumeTask?.cancel()
+        trackingResumeTask = nil
+        trackingPaused = false
+        settings.set("trackingPaused", "false")
+        settings.set("trackingResumeAt", "")
+        trackingResumeAt = nil
+        engine.setUserPaused(false)
+        dataChanged()
+    }
+    public func extendTrackingPause(minutes: Int) {
+        let remaining = max(0, trackingResumeAt?.timeIntervalSinceNow ?? 0)
+        pauseTracking(minutes: Int(ceil(remaining / 60)) + minutes)
+    }
 
     public var screenCollector: ScreenCollector?
     public var observationStore: ObservationStore?
@@ -189,8 +280,19 @@ public final class AppModel {
         self.resolver = resolver
         self.engine = engine
         self.menuTextEnabled = settings.menuBarTextEnabled
+        self.menuDisplayMode = settings.get("menuDisplayMode") ?? (settings.menuBarTextEnabled ? "total" : "icon")
+        self.showScore = settings.get("showScore") != "false"
+        self.firstWeekday = settings.get("firstWeekday") == "1" ? 1 : 2
+        self.timeFormat = settings.get("timeFormat") ?? "system"
         self.calendarOverlayEnabled = settings.calendarOverlayEnabled
         self.screenCapturePaused = settings.screenCapturePaused
+        self.range.firstWeekday = firstWeekday
+        if settings.get("trackingPaused") == "true" {
+            if let raw = settings.get("trackingResumeAt"), let until = Double(raw), until > Date().timeIntervalSince1970 {
+                pauseTracking(minutes: max(1, Int(ceil((until - Date().timeIntervalSince1970) / 60))))
+            } else if settings.get("trackingResumeAt") == "manual" { pauseTracking(minutes: nil) }
+            else { settings.set("trackingPaused", "false") }
+        }
         refreshMenu()
         // refreshMenu() just seeded rangeCache with a "today" snapshot taken
         // before any caller-visible dataChanged() boundary; drop it so the
@@ -199,6 +301,7 @@ public final class AppModel {
         rangeCache.removeAll()
         cacheOrder.removeAll()
         engine.onChange = { [weak self] in self?.scheduleEngineDataChanged() }
+        engine.llmCoordinator?.onSuggestion = { [weak self] in self?.dataChanged() }
     }
 
     /// Spans in the current `range`, clipped to it, and categorized.
@@ -208,11 +311,18 @@ public final class AppModel {
 
     // MARK: - C1+ navigation intents
 
+    public func openToday() {
+        clearActivityTimeFilter()
+        range = .today()
+        sidebarSelection = .today
+    }
+
     /// Points the main window at Stats for `range` -- shared by the
     /// popover's drill-down click routes (C1+) and notification routing.
     /// Sets state only; the caller does `openWindow(id: "main")` (a SwiftUI
     /// environment action `AppModel` itself never touches).
     public func openStats(range: DateRangeSelection) {
+        clearActivityTimeFilter()
         self.range = range
         sidebarSelection = .stats
     }
@@ -221,9 +331,30 @@ public final class AppModel {
     /// `category` (`nil` clears any existing filter). Same navigation-intent
     /// convention as `openStats(range:)`.
     public func openActivities(category: String?, range: DateRangeSelection) {
+        clearActivityTimeFilter()
         self.range = range
         sidebarSelection = .activities
         activityFilter = category
+    }
+
+    /// A heatmap cell aggregates several dates; navigation only happens after
+    /// the user chooses one concrete calendar-hour interval.
+    public func openHeatmapActivities(in interval: DateInterval) {
+        let returnRange = range
+        openActivities(category: nil, range: DateRangeSelection(kind: .day, anchor: interval.start))
+        activitySearch = ""
+        activityTimeInterval = interval
+        heatmapReturnRange = returnRange
+    }
+
+    public func clearActivityTimeFilter() {
+        activityTimeInterval = nil
+        heatmapReturnRange = nil
+    }
+
+    public func returnToHeatmap() {
+        guard let originalRange = heatmapReturnRange else { return }
+        openStats(range: originalRange)
     }
 
     public func todayFocusText() -> String {
@@ -391,44 +522,9 @@ public final class AppModel {
     /// (measured via sqlite3 on the same fixture: 134 ms for one grouped scan
     /// using it, versus 38 ms for these 30 per-day queries).
     public func dailyPulses(days: Int, endingAt: Date, calendar: Calendar) -> [Int?] {
-        // days + 1 ascending boundaries, built with the same
-        // `date(byAdding: .day)` walk `Aggregator.dailyPulses` uses for its
-        // per-day lookup keys, so bucket i is the same calendar day it would
-        // have looked up -- including DST days, which are 23 or 25 hours long
-        // here and in `Aggregator.split` alike.
-        let todayStart = calendar.startOfDay(for: endingAt)
-        let boundaries = ((-1)...(days - 1)).reversed().compactMap {
-            calendar.date(byAdding: .day, value: -$0, to: todayStart)
-        }
-        guard boundaries.count == days + 1 else { return Array(repeating: nil, count: days) }
-
         do {
-            let (totals, straddlers) = try spanStore.dailyTupleTotals(dayBoundaries: boundaries)
-            var byDay = Array(repeating: [String: TimeInterval](), count: days)
-            for total in totals {
-                // `CategoryResolver.categoryID(for:)` reads only these four
-                // fields (they are its memo key), so a probe span with
-                // placeholder timestamps classifies identically to the rows
-                // it stands for -- and the resolver's memo means each tuple
-                // costs a dictionary hit after its first day.
-                let probe = Span(start: todayStart, end: todayStart, appBundleID: total.appBundleID,
-                                 appName: "", title: total.title, url: total.url, domain: total.domain)
-                byDay[total.dayIndex][resolver.categoryID(for: probe), default: 0] += total.seconds
-            }
-            // Boundary-crossing spans, split across the buckets they touch.
-            // Clipping is implicit: a part outside [first, last] boundary
-            // never matches, which is what `rangedSpans`' clip-to-interval
-            // did at both ends of the window.
-            for span in straddlers {
-                let categoryID = resolver.categoryID(for: span)
-                for index in 0..<days {
-                    let start = max(span.start, boundaries[index])
-                    let end = min(span.end, boundaries[index + 1])
-                    guard end > start else { continue }
-                    byDay[index][categoryID, default: 0] += end.timeIntervalSince(start)
-                }
-            }
-            return byDay.map { Aggregator.pulse(durationByCategory: $0, categories: resolver.categoriesByID) }
+            return try DailyPulseSummary.compute(store: spanStore, days: days, endingAt: endingAt,
+                calendar: calendar, categories: resolver.categoriesByID, classify: resolver.categoryID(for:))
         } catch {
             // Matches the old path's failure mode: `rangedSpans` logged and
             // returned [], which `Aggregator.dailyPulses` turned into `days`
@@ -577,15 +673,9 @@ public final class AppModel {
             deltaClause = ""
         }
 
-        // Peak = the highest-total consecutive 2-hour window, per the brief.
-        var hourTotals = Array(repeating: 0.0, count: 24)
-        for (hour, seconds) in Aggregator.profileByHourOfDay(items, calendar: calendar) {
-            hourTotals[hour] = seconds
-        }
-        let peak = BudgetEngine.peakTwoHourWindow(hourTotals)
-
-        let body = String(localized: "专注 \(Format.duration(focus))，生产力分 \(pulse)\(deltaClause)。")
-            + String(localized: "最高峰在 \(peak.start) – \(peak.end) 时。")
+        let total = Aggregator.totalDuration(items.map(\.span))
+        let sessionCount = ((try? focusStore?.sessions(overlapping: DateRangeSelection.today().interval)) ?? []).filter(\.completed).count
+        let body = String(localized: "记录 \(Format.chineseDuration(total))，投入 \(Format.chineseDuration(focus))，完成 \(sessionCount) 次专注。评分 \(pulse)\(deltaClause)。")
         return (String(localized: "今日小结"), body)
     }
 

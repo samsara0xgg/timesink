@@ -10,12 +10,13 @@ import Observation
 struct ActivitiesView: View {
     let model: AppModel
 
-    @State private var activities = ActivitiesModel()
+    @Bindable var activities: ActivitiesModel
 
     /// Debounces search-driven recomputes only — see `scheduleSearchRecompute()`.
     /// Every other trigger (`dataVersion`/`range`/`activityFilter`) recomputes
     /// immediately, unrelated to this.
     @State private var pendingSearch: Task<Void, Never>?
+    @State private var showsInspector = true
 
     /// Tracks the in-flight `refreshCalendarOverlay()` Task spawned by the
     /// `didBecomeActive` handler below -- see that handler's doc comment for
@@ -43,28 +44,60 @@ struct ActivitiesView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            timeFilterBanner
             calendarBand
 
-            HStack(alignment: .top, spacing: 12) {
-                ActivityListView(model: model, groups: activities.groups,
+            HStack(alignment: .top, spacing: 0) {
+                ActivityListView(model: model, activities: activities, groups: activities.groups,
                                   matchCount: activities.matchCount, matchSeconds: activities.matchSeconds,
                                   meetingSeconds: activities.meetingSeconds)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-
                 if ActivitiesModel.showsTimeline(model.range) {
-                    DayTimelineView(blocks: activities.timelineBlocks,
-                                     events: activities.calendarBlocks,
-                                     allDay: activities.allDayTitles,
-                                     focusBlocks: activities.focusBlocks)
-                        .frame(width: 260)
+                    Divider()
+                    DayTimelineView(day: model.range.interval.start, blocks: activities.timelineBlocks,
+                                    events: activities.calendarBlocks, allDay: activities.allDayTitles,
+                                    focusBlocks: activities.focusBlocks,
+                                    selectedActivity: activities.selectedActivity,
+                                    selectedStart: activities.selectedStart,
+                                    isFiltered: model.activityTimeInterval != nil || model.activityFilter != nil || ActivitiesModel.normalizedQuery(model.activitySearch) != nil,
+                                    hourHeight: $activities.timelineHourHeight,
+                                    onSelect: selectTimelineBlock)
+                        .padding(10).frame(width: 230)
                 }
             }
         }
-        .padding()
+        .background(WorkspaceBackground())
+        .inspector(isPresented: $showsInspector) {
+            ActivityInspector(model: model, activities: activities)
+                .inspectorColumnWidth(min: 260, ideal: 272, max: 320)
+        }
         .searchable(text: searchBinding, prompt: "搜索应用、网址、标题")
-        .onAppear { activities.recompute(model: model, events: calendarEvents) }
+        .toolbar {
+            ToolbarItem {
+                Button { showsInspector.toggle() } label: { Image(systemName: "sidebar.right") }
+                    .help("显示活动检查器")
+            }
+            ToolbarItem {
+                Menu {
+                    Button("所有分类") { model.activityFilter = nil }
+                    Divider()
+                    ForEach(model.resolver.categoriesByID.values.sorted { $0.sortOrder < $1.sortOrder }, id: \.id) { category in
+                        Button(category.name) { model.activityFilter = category.id }
+                    }
+                } label: {
+                    Label(model.activityFilter.flatMap { model.resolver.categoriesByID[$0]?.name } ?? String(localized: "所有分类"), systemImage: "line.3.horizontal.decrease")
+                }
+                .help("按分类筛选活动")
+            }
+        }
+        .task {
+            await Task.yield()
+            activities.recompute(model: model, events: calendarEvents)
+        }
         .onChange(of: model.dataVersion) { _, _ in activities.recompute(model: model, events: calendarEvents) }
+        .onChange(of: activities.selectedActivity) { _, value in if value != nil { showsInspector = true } }
         .onChange(of: model.range) { _, _ in activities.recompute(model: model, events: calendarEvents) }
+        .onChange(of: model.activityTimeInterval) { _, _ in activities.recompute(model: model, events: calendarEvents) }
         .onChange(of: model.activityFilter) { _, _ in activities.recompute(model: model, events: calendarEvents) }
         .onChange(of: model.activitySearch) { _, _ in scheduleSearchRecompute() }
         .onDisappear {
@@ -98,6 +131,41 @@ struct ActivitiesView: View {
                 await refreshCalendarOverlay()
             }
         }
+    }
+
+    @ViewBuilder private var timeFilterBanner: some View {
+        if let interval = model.activityTimeInterval {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Label("热力图时段 · \(interval.start.formatted(.dateTime.month().day()))", systemImage: "square.grid.3x3")
+                    Text("\(interval.start.formatted(date: .omitted, time: .shortened))–\(interval.end.formatted(date: .omitted, time: .shortened))")
+                        .monospacedDigit()
+                    Spacer(minLength: 0)
+                }
+                HStack {
+                    Text("列表仅统计此时段；全天时间轴高亮命中记录。")
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 4)
+                    Button("返回热力图") { model.returnToHeatmap() }
+                    Button("显示全天") { model.clearActivityTimeFilter() }
+                }
+                .font(.caption)
+            }
+            .padding(10)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    private func selectTimelineBlock(_ block: TimelineBlock) {
+        guard let selection = block.activity else { return }
+        if !block.matchesFilter {
+            pendingSearch?.cancel()
+            model.activitySearch = ""
+            model.activityFilter = nil
+            model.clearActivityTimeFilter()
+            activities.recompute(model: model, events: calendarEvents)
+        }
+        activities.select(selection, start: block.start)
     }
 
     /// Three states (C3 interaction spec): overlay off or permission not yet
@@ -281,6 +349,7 @@ final class ActivitiesModel {
     }
 
     var groups: [CategoryGroup] = []
+    var displayedItems: [CategorizedSpan] = []
     var timelineBlocks: [TimelineBlock] = []
     /// C4 focus sessions overlapping the visible range (single-day-ish
     /// ranges only, same gate as `timelineBlocks`) -- `DayTimelineView`
@@ -303,7 +372,34 @@ final class ActivitiesModel {
     var matchCount: Int?
     var matchSeconds: TimeInterval?
 
-    private nonisolated static let titleTopCount = 20
+    var selectedActivity: ActivitySelection?
+    var selectedStart: Date?
+    var timelineHourHeight: CGFloat = 64
+    var expandedRows: Set<ActivitySelection> = []
+    var collapsedCategories: Set<String> = []
+    @ObservationIgnored private var selectionRange: DateInterval?
+    @ObservationIgnored private var selectionTimeInterval: DateInterval?
+
+    func select(_ activity: ActivitySelection, start: Date? = nil) {
+        selectedActivity = activity
+        expandedRows.insert(activity.row)
+        collapsedCategories.remove(activity.categoryID)
+        let matching = timelineBlocks.filter { $0.matchesFilter && ($0.activity.map(activity.matches) ?? false) }
+        selectedStart = start.flatMap { date in
+            matching.first { $0.start <= date && date < $0.end }?.start
+        } ?? matching.first?.start
+    }
+
+    nonisolated static func selection(for item: CategorizedSpan) -> ActivitySelection {
+        let span = item.span
+        let entity = span.domain.flatMap { domain in
+            span.url.flatMap { EntityParser.entity(urlString: $0, domain: domain) }
+        }
+        let rowID = span.document.map { "\(span.appBundleID)/\($0)" }
+            ?? entity?.key ?? span.domain ?? span.appBundleID
+        return ActivitySelection(categoryID: item.categoryID, rowID: rowID,
+                                 title: span.title?.isEmpty == false ? span.title! : String(localized: "(无标题)"))
+    }
 
     /// `events` (C3): the current range's calendar events, fetched
     /// asynchronously by `ActivitiesView` via `CalendarStore.events(on:)`
@@ -311,11 +407,22 @@ final class ActivitiesModel {
     /// `onChange` call sites are unaffected), so `events` defaults to `[]`
     /// for every call site that predates the calendar overlay.
     func recompute(model: AppModel, events: [CalendarEvent] = []) {
+        if selectionRange != model.range.interval || selectionTimeInterval != model.activityTimeInterval {
+            selectedActivity = nil
+            selectedStart = nil
+            selectionRange = model.range.interval
+            selectionTimeInterval = model.activityTimeInterval
+            expandedRows.removeAll()
+            collapsedCategories.removeAll()
+        }
         let all = model.rangedSpans()
         let categories = model.resolver.categoriesByID
 
         let query = Self.normalizedQuery(model.activitySearch)
-        let items = Self.filter(all, query: query)
+        let scoped = model.activityTimeInterval.map {
+            Aggregator.clippedToElapsed(all, windowStart: $0.start, elapsed: $0.duration)
+        } ?? all
+        let items = Self.filter(scoped, query: query)
 
         // R-T9a: the match-count row must agree with what `ActivityListView`
         // actually displays. `ActivityListView` narrows `groups` to one
@@ -332,8 +439,10 @@ final class ActivitiesModel {
         } else {
             matchedItems = items
         }
-        matchCount = query == nil ? nil : matchedItems.count
-        matchSeconds = query == nil ? nil : Aggregator.totalDuration(matchedItems.map(\.span))
+        displayedItems = matchedItems
+        let hasFilter = query != nil || model.activityTimeInterval != nil
+        matchCount = hasFilter ? matchedItems.count : nil
+        matchSeconds = hasFilter ? Aggregator.totalDuration(matchedItems.map(\.span)) : nil
 
         // R-T10a: `meetingSpanIDs` badges live on `groups`' rows, and `groups`
         // (like `matchCount`'s underlying `items`) stays category-UNFILTERED
@@ -381,7 +490,27 @@ final class ActivitiesModel {
         // Timeline keeps the unfiltered `all` so a narrowed list still shows
         // the full day's context (spec §7) rather than collapsing around
         // just the search hits.
-        timelineBlocks = showsTimeline ? Self.timelineBlocks(all, categories: categories) : []
+        let visibleSelections = Set(matchedItems.map(Self.selection))
+        let filterCategory = model.activityFilter
+        let timeInterval = model.activityTimeInterval
+        let timelineItems = Self.splitAtTimeFilter(all, interval: timeInterval)
+        timelineBlocks = showsTimeline ? Self.timelineBlocks(timelineItems, categories: categories) { item in
+            (filterCategory == nil || item.categoryID == filterCategory)
+                && (query.map { Self.matches(item, query: $0) } ?? true)
+                && (timeInterval.map { item.span.start < $0.end && item.span.end > $0.start } ?? true)
+        } : []
+        if let selectedActivity {
+            if !visibleSelections.contains(where: selectedActivity.matches) {
+                self.selectedActivity = nil
+                selectedStart = nil
+            } else if !timelineBlocks.contains(where: { $0.matchesFilter && $0.start == selectedStart && ($0.activity.map(selectedActivity.matches) ?? false) }) {
+                selectedStart = timelineBlocks.first { $0.matchesFilter && ($0.activity.map(selectedActivity.matches) ?? false) }?.start
+            }
+        }
+        if selectedActivity == nil, timeInterval != nil,
+           let first = timelineBlocks.first(where: \.matchesFilter), let activity = first.activity {
+            select(activity, start: first.start)
+        }
         calendarBlocks = showsTimeline ? Self.eventBlocks(events, dayInterval: model.range.interval) : []
         allDayTitles = showsTimeline ? events.filter { $0.isAllDay && !$0.isDeclined }.map(\.title) : []
 
@@ -391,6 +520,23 @@ final class ActivitiesModel {
                                                    dayInterval: model.range.interval)
         } else {
             focusBlocks = []
+        }
+    }
+
+    /// Split at the filter's exact edges so the timeline never highlights
+    /// the out-of-range part of an activity that crosses an hour boundary.
+    nonisolated static func splitAtTimeFilter(_ items: [CategorizedSpan], interval: DateInterval?) -> [CategorizedSpan] {
+        guard let interval else { return items }
+        return items.flatMap { item in
+            let edges = [item.span.start]
+                + [interval.start, interval.end].filter { $0 > item.span.start && $0 < item.span.end }
+                + [item.span.end]
+            return zip(edges, edges.dropFirst()).map { start, end in
+                var piece = item
+                piece.span.start = start
+                piece.span.end = end
+                return piece
+            }
         }
     }
 
@@ -497,7 +643,6 @@ final class ActivitiesModel {
                 .sorted { lhs, rhs in
                     lhs.seconds != rhs.seconds ? lhs.seconds > rhs.seconds : lhs.title < rhs.title
                 }
-                .prefix(titleTopCount)
             return ActivityRow(
                 id: key,
                 label: accum.label ?? key,
@@ -516,82 +661,28 @@ final class ActivitiesModel {
 
     // MARK: - Timeline blocks
 
-    /// Intermediate merge unit before conversion to `TimelineBlock`. `repSpan`
-    /// is the block's leading span (the one that started it), used for the
-    /// tooltip's app/title/url — a merged block only shows one activity's
-    /// detail, so we show whichever one opened it.
-    private struct MergedBlock {
-        var start: Date
-        var end: Date
-        var categoryID: String
-        var repSpan: Span
-    }
-
-    /// Max gap between a block's end and the next same-category block's start
-    /// for the two to still count as "adjacent". Without this guard, a
-    /// same-category span hours later (across an idle stretch, sleep,
-    /// overnight) would merge across the gap and paint it as active time.
-    private nonisolated static let mergeGapTolerance: TimeInterval = 30
-
-    /// Collapses consecutive same-category entries into single blocks, but
-    /// only when they're contiguous (gap <= `mergeGapTolerance`). Pure
-    /// (no actor-isolated state touched), so it's `nonisolated` — lets
-    /// `ActivitiesModelTests` call it synchronously without hopping to
-    /// `@MainActor`.
-    private nonisolated static func mergeAdjacentSameCategory(_ input: [MergedBlock]) -> [MergedBlock] {
-        var result: [MergedBlock] = []
-        for block in input {
-            if var last = result.last,
-               last.categoryID == block.categoryID,
-               block.start.timeIntervalSince(last.end) <= mergeGapTolerance {
-                last.end = max(last.end, block.end)
-                result[result.count - 1] = last
+    /// Keep app/title identity and short activities intact so a selected
+    /// interval always maps back to the row it describes. Only truly adjoining
+    /// intervals of the same activity can share a visual block.
+    nonisolated static func timelineBlocks(_ items: [CategorizedSpan], categories: [String: Category],
+                                          matching: (CategorizedSpan) -> Bool = { _ in true }) -> [TimelineBlock] {
+        var merged: [(item: CategorizedSpan, end: Date)] = []
+        for item in items.sorted(by: { $0.span.start < $1.span.start }) where item.span.duration > 0 {
+            if let last = merged.last,
+               selection(for: last.item) == selection(for: item),
+               matching(last.item) == matching(item),
+               item.span.start == last.end {
+                merged[merged.count - 1].end = item.span.end
             } else {
-                result.append(block)
+                merged.append((item, item.span.end))
             }
         }
-        return result
-    }
-
-    /// Not `private`, and `nonisolated`: pure function, exercised directly by
-    /// `ActivitiesModelTests` via `@testable import` (which sees `internal`,
-    /// not `private`, members) without needing a `@MainActor` hop.
-    nonisolated static func timelineBlocks(_ items: [CategorizedSpan], categories: [String: Category]) -> [TimelineBlock] {
-        let sorted = items.sorted { $0.span.start < $1.span.start }
-        let initial = sorted.map {
-            MergedBlock(start: $0.span.start, end: $0.span.end, categoryID: $0.categoryID, repSpan: $0.span)
-        }
-        let merged = mergeAdjacentSameCategory(initial)
-
-        // Absorb sub-30s blocks into the previous block only when contiguous
-        // with it (gap <= mergeGapTolerance) — a short block glued to a real
-        // activity is invisible noise, but the same short block hours later
-        // (after an idle gap) is dropped rather than teleporting the
-        // previous block's end forward to swallow it. Then re-coalesce:
-        // absorbing (or dropping) a sliver can newly juxtapose two
-        // same-category blocks that weren't touching before.
-        var absorbed: [MergedBlock] = []
-        for block in merged {
-            if block.end.timeIntervalSince(block.start) < 30 {
-                if var prev = absorbed.last, block.start.timeIntervalSince(prev.end) <= mergeGapTolerance {
-                    prev.end = max(prev.end, block.end)
-                    absorbed[absorbed.count - 1] = prev
-                }
-                continue
-            }
-            absorbed.append(block)
-        }
-        let coalesced = mergeAdjacentSameCategory(absorbed)
-
-        return coalesced.map { block in
-            let category = categories[block.categoryID]
-            return TimelineBlock(
-                start: block.start,
-                end: block.end,
-                color: Color(hex: category?.colorHex ?? "#98989D"),
-                label: category?.name ?? block.categoryID,
-                tooltip: tooltip(repSpan: block.repSpan, start: block.start, end: block.end)
-            )
+        return merged.map { item, end in
+            TimelineBlock(start: item.span.start, end: end,
+                          color: Color(hex: categories[item.categoryID]?.colorHex ?? "#98989D"),
+                          label: item.span.domain ?? item.span.appName,
+                          tooltip: tooltip(repSpan: item.span, start: item.span.start, end: end),
+                          activity: selection(for: item), matchesFilter: matching(item))
         }
     }
 

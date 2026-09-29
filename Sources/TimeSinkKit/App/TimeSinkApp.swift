@@ -88,6 +88,7 @@ public struct TimeSinkApp: App {
         let notifier = NotifierFactory.make()
         model.budgetStore = budgetStore
         model.notifier = notifier
+        (notifier as? SystemNotifier)?.soundEnabled = { settingsStore.notificationSound }
         model.budgetMonitor = BudgetMonitor(budgetStore: budgetStore, settings: settingsStore, notifier: notifier)
         let ninetyDaysAgo = Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? Date()
         try? budgetStore.pruneAlerts(before: BudgetEngine.dayStamp(ninetyDaysAgo, calendar: Calendar.current))
@@ -150,7 +151,7 @@ public struct TimeSinkApp: App {
             // alerts use deliberately; here every finished session is a
             // distinct event that deserves its own visible notification).
             let notificationID = running.map { "focus.finished.\($0.id)" } ?? "focus.finished"
-            notifier.post(id: notificationID, title: String(localized: "专注会话结束"), body: body, route: .activitiesToday)
+            if settingsStore.focusNotificationsEnabled { notifier.post(id: notificationID, title: completed ? String(localized: "\(plannedMinutes) 分钟专注完成") : String(localized: "专注提前结束"), body: body, route: .activitiesToday) }
             // Explicit user-visible completion -> direct dataChanged() call
             // (allowed per spec: this is the one non-debounced path) so the
             // timeline's focus block appears immediately.
@@ -158,6 +159,8 @@ public struct TimeSinkApp: App {
         }
         model.focusStore = focusStore
         model.focus = focusController
+        engine.llmCoordinator?.onSuggestion = { [weak model] in model?.dataChanged() }
+        if let collector = model.screenCollector { Task { await collector.setRetentionDays(settingsStore.captureRetentionDays) } }
         engine.focusInterceptor = { [weak focusController] sample, now in
             focusController?.intercept(sample: sample, at: now) ?? false
         }
@@ -165,6 +168,7 @@ public struct TimeSinkApp: App {
         let needsOnboarding = Bundle.main.bundleIdentifier == "com.alllllenshi.TimeSink"
             && !Permissions.accessibilityGranted(prompt: false)
         self.needsOnboarding = needsOnboarding
+        model.accessibilityGranted = !needsOnboarding
         _showOnboarding = State(initialValue: needsOnboarding)
 
         // Cloud account + sync -- post-init injection like the above. The
@@ -231,6 +235,17 @@ public struct TimeSinkApp: App {
                 }
         }
 
+        .defaultSize(width: 1200, height: 820)
+        .commands {
+            CommandMenu("导航") {
+                Button("今天") { model.openToday() }.keyboardShortcut("1")
+                Button("活动") { model.sidebarSelection = .activities }.keyboardShortcut("2")
+                Button("趋势") { model.openStats(range: DateRangeSelection(kind: .last7, anchor: Date())) }.keyboardShortcut("3")
+                Button("专注与限额") { model.sidebarSelection = .focus }.keyboardShortcut("4")
+                Button("分类与规则") { model.sidebarSelection = .organization }.keyboardShortcut("5")
+            }
+        }
+
         Settings {
             SettingsView(model: model)
                 .appWindow(.settings)
@@ -254,7 +269,7 @@ struct MenuBarLabel: View {
 
     var body: some View {
         HStack(spacing: 3) {
-            Image(systemName: model.chromeDegraded
+            Image(systemName: !model.accessibilityGranted ? "exclamationmark.triangle" : model.trackingPaused ? "pause.circle" : model.focus?.running != nil ? "scope" : model.chromeDegraded
                   ? "hourglass.badge.exclamationmark" : "hourglass")
                 .accessibilityLabel(model.chromeDegraded ? "Chrome 采集降级" : "TimeSink")
             // C4 (R-T12h, stands as reviewed): while a focus session is
@@ -266,13 +281,25 @@ struct MenuBarLabel: View {
             // both `@Observable` reads on `FocusSessionController` (itself
             // `@MainActor @Observable`), so this registers correctly
             // without the 1s countdown timer ever calling `dataChanged()`.
-            if let focus = model.focus, focus.running != nil {
+            if !model.accessibilityGranted { Text("未记录") }
+            else if model.trackingPaused {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Text(model.trackingResumeAt.map { String(localized: "已暂停 ") + Format.mmss($0.timeIntervalSince(context.date)) } ?? String(localized: "已暂停")).monospacedDigit()
+                }
+            } else if let focus = model.focus, focus.running != nil {
                 Text(Format.mmss(focus.remaining))
                     .monospacedDigit()
                     .foregroundStyle(.tint)
             } else if model.menuTextEnabled {
-                Text(model.menuTitle).monospacedDigit()
+                Text(model.menuDisplayMode == "category" ? model.currentCategoryTitle : model.menuTitle).monospacedDigit()
             }
+        }
+        .background(StatusButtonBridge { button in
+            model.popoverShortcut.action = { [weak button] in button?.performClick(nil) }
+            model.registerPopoverShortcut()
+        })
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            model.accessibilityGranted = Permissions.accessibilityGranted(prompt: false)
         }
         // C4: consumes a tapped notification's route. This label is the
         // menu bar's persistent view (unlike the popover content, which is
@@ -281,6 +308,17 @@ struct MenuBarLabel: View {
         .onChange(of: model.pendingRoute) { _, route in
             guard let route else { return }
             switch route {
+            case .today:
+                model.openToday(); openWindow(id: "main"); AppWindow.main.bringForward()
+            case .focusSetup, .repeatFocus:
+                model.sidebarSelection = .focus
+                if route == .repeatFocus, model.focus?.running == nil {
+                    do { try model.focus?.start(minutes: 25) }
+                    catch {
+                        let alert = NSAlert(); alert.messageText = String(localized: "无法开始专注"); alert.informativeText = error.localizedDescription; alert.runModal()
+                    }
+                }
+                openWindow(id: "main"); AppWindow.main.bringForward()
             case .statsToday:
                 // Fold-in 8 (R-T13e): routed through the same navigation
                 // helper the popover's drill-down click routes use (C1+
@@ -300,23 +338,9 @@ struct MenuBarLabel: View {
                 openWindow(id: "main")
                 AppWindow.main.bringForward()
             case .settingsBudget:
-                model.settingsTab = .budget
-                // R-T11c: `openSettings()` alone doesn't bring the app
-                // forward while running `.accessory` (no Dock icon, e.g. the
-                // main window isn't currently open) -- the Settings window
-                // could otherwise open behind whatever app was frontmost;
-                // `AppWindow.bringForward()` does that.
-                //
-                // R-T11g: activate ONLY -- do NOT flip
-                // `.setActivationPolicy(.regular)` here the way
-                // `MainWindowView.onAppear` does for its own window. That
-                // pairs with `.onDisappear` restoring `.accessory`; this
-                // branch never opens (or closes) the "main" window, so a
-                // policy flip here would have no matching restore path and
-                // the Dock icon would linger indefinitely -- violating the
-                // app's menubar-first `.accessory` design.
-                openSettings()
-                AppWindow.settings.bringForward()
+                model.sidebarSelection = .focus
+                openWindow(id: "main"); AppWindow.main.bringForward()
+                NSApp.activate(ignoringOtherApps: true)
             }
             model.pendingRoute = nil
         }
@@ -390,6 +414,11 @@ final class TimeSinkAppDelegate: NSObject, NSApplicationDelegate, @unchecked Sen
         }
     }
 
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        if !hasVisibleWindows { MainActor.assumeIsolated { route(.today) } }
+        return true
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         MainActor.assumeIsolated {
             engine?.stop()
@@ -422,8 +451,9 @@ final class TimeSinkAppDelegate: NSObject, NSApplicationDelegate, @unchecked Sen
                     guard let domain = URLComponents(url: url, resolvingAgainstBaseURL: false)?
                         .queryItems?.first(where: { $0.name == "domain" })?.value,
                         !domain.isEmpty else { continue }
-                    focus?.allowDomain(domain)
-                    blocker?.setActiveTabURL("https://\(domain)")
+                    if let destination = focus?.allowedDestination(for: domain) {
+                        blocker?.setActiveTabURL(destination)
+                    }
                 default:
                     break
                 }

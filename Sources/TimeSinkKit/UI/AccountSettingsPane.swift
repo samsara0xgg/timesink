@@ -16,7 +16,7 @@ struct AccountSettingsPane: View {
         Form {
             if !CloudConfig.isConfigured {
                 Section {
-                    Text("云端尚未配置：部署 cloud/infra 后把输出填进 CloudConfig.swift。")
+                    Text("此版本暂未提供云端同步。活动记录、截图与识别文字保留在这台 Mac 上。")
                         .foregroundStyle(.secondary)
                 }
             } else if let email {

@@ -283,12 +283,13 @@ struct CategoriesSettingsPane: View {
     @State private var categories: [Category] = []
 
     var body: some View {
-        List {
-            ForEach($categories, id: \.id) { $category in
-                CategoryEditRow(model: model, category: $category)
+        ScrollView {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 10)], spacing: 10) {
+                ForEach($categories, id: \.id) { $category in
+                    CategoryEditRow(model: model, category: $category)
+                }
             }
-        }
-        .onAppear { load() }
+        }.onAppear { load() }
     }
 
     private func load() {
@@ -324,25 +325,23 @@ private struct CategoryEditRow: View {
     private static let colorRefreshDebounce: Duration = .milliseconds(400)
 
     var body: some View {
-        HStack(spacing: 12) {
-            ColorPicker("", selection: colorBinding, supportsOpacity: false)
-                .labelsHidden()
-                .frame(width: 28)
-            TextField("名称", text: $category.name)
-                .textFieldStyle(.roundedBorder)
-                .frame(minWidth: 120)
-                .focused($isNameFocused)
-                .onSubmit { commitRefresh() }
-            Spacer()
-            Picker("生产力", selection: $category.productivity) {
-                ForEach(-2...2, id: \.self) { level in
-                    Text(Self.productivityLabel(level)).tag(level)
-                }
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                ColorPicker("分类颜色", selection: colorBinding, supportsOpacity: false).labelsHidden().fixedSize()
+                TextField("名称", text: $category.name)
+                    .textFieldStyle(.plain).font(.system(size: 13, weight: .semibold))
+                    .focused($isNameFocused).onSubmit { commitRefresh() }
+                let seconds = model.rangedSpans(for: .today()).filter { $0.categoryID == category.id }.reduce(0) { $0 + $1.span.duration }
+                Text(seconds == 0 ? "—" : Format.duration(seconds)).font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit().fixedSize()
             }
-            .labelsHidden()
-            .frame(width: 110)
-        }
-        .padding(.vertical, 2)
+            Picker("投入程度", selection: $category.productivity) {
+                ForEach(-2...2, id: \.self) { level in
+                    Text(level > 0 ? "+\(level)" : "\(level)").tag(level).help(Self.productivityLabel(level))
+                }
+            }.pickerStyle(.segmented).labelsHidden()
+            Text(Self.productivityLabel(category.productivity) + (category.productivity >= 1 ? String(localized: " · 计入投入时长") : ""))
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+        }.padding(.horizontal, 14).padding(.vertical, 12).workspacePanel()
         .onChange(of: category.name) { _, _ in persistOnly() }
         .onChange(of: isNameFocused) { _, focused in
             if !focused { commitRefresh() }
@@ -356,7 +355,7 @@ private struct CategoryEditRow: View {
 
     private var colorBinding: Binding<Color> {
         Binding(
-            get: { Color(hex: category.colorHex) },
+            get: { RefinedStyle.category(category.id, hex: category.colorHex) },
             set: { newColor in
                 category.colorHex = newColor.toHex()
                 persistOnly()
@@ -403,8 +402,8 @@ private struct CategoryEditRow: View {
         case -2: return String(localized: "非常分心")
         case -1: return String(localized: "分心")
         case 0: return String(localized: "中性")
-        case 1: return String(localized: "生产")
-        default: return String(localized: "非常生产")
+        case 1: return String(localized: "投入")
+        default: return String(localized: "非常投入")
         }
     }
 }
@@ -486,14 +485,14 @@ struct RulesSettingsPane: View {
             needsReload = true
             reloadIfVisibleAndStale()
         }
-        .onChange(of: model.settingsTab) { _, _ in reloadIfVisibleAndStale() }
+        .onChange(of: model.organizationTab) { _, _ in reloadIfVisibleAndStale() }
         .sheet(item: $pendingTitleRule) { pending in
             TitleRuleEditor(model: model, pending: pending)
         }
     }
 
     private func reloadIfVisibleAndStale() {
-        guard model.settingsTab == .rules, needsReload else { return }
+        guard model.organizationTab == .rules, needsReload else { return }
         needsReload = false
         load()
         loadTitleRules()
@@ -704,6 +703,9 @@ struct RulesSettingsPane: View {
 struct UncategorizedSettingsPane: View {
     let model: AppModel
     @State private var rows: [Row] = []
+    @State private var accepted: [String: String] = [:]
+    @State private var error: String?
+    @State private var suggestions: [String: ClassificationSuggestion] = [:]
 
     /// Set when `dataVersion` bumps while this pane is not the selected tab.
     /// `TabView` keeps every visited pane mounted, so its `.onChange`
@@ -730,11 +732,25 @@ struct UncategorizedSettingsPane: View {
             if rows.isEmpty {
                 emptyState
             } else {
-                List {
-                    ForEach(rows) { row in
-                        rowView(row)
+                VStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("近 30 天有 \(rows.filter { accepted[$0.id] == nil }.count) 项还没有分类，合计 \(Format.duration(rows.filter { accepted[$0.id] == nil }.reduce(0) { $0 + $1.seconds }))")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("按用时从多到少。建议只在你点接受后生效。")
+                            .font(.system(size: 12)).foregroundStyle(.secondary)
+                        if !suggestions.isEmpty {
+                            Button("接受全部建议") {
+                                for row in rows where accepted[row.id] == nil {
+                                    if let suggestion = suggestions[row.id] { assign(row: row, categoryID: suggestion.categoryID) }
+                                }
+                            }.controlSize(.small)
+                        }
+                        if let error { Text(error).foregroundStyle(.red) }
+                    }.frame(maxWidth: .infinity, alignment: .leading).padding(14)
+                    ScrollView {
+                        LazyVStack(spacing: 0) { ForEach(rows) { row in Divider(); rowView(row).padding(.horizontal, 14).frame(minHeight: 48) } }
                     }
-                }
+                }.workspacePanel()
             }
         }
         .onAppear { recomputeIfVisibleAndStale() }
@@ -742,14 +758,14 @@ struct UncategorizedSettingsPane: View {
             needsRecompute = true
             recomputeIfVisibleAndStale()
         }
-        .onChange(of: model.settingsTab) { _, _ in recomputeIfVisibleAndStale() }
+        .onChange(of: model.organizationTab) { _, _ in recomputeIfVisibleAndStale() }
     }
 
     /// `recompute()` reads 30 days of spans and classifies each one, so it
     /// runs only when this pane is actually on screen and something has
     /// changed since it last ran.
     private func recomputeIfVisibleAndStale() {
-        guard model.settingsTab == .uncategorized, needsRecompute else { return }
+        guard model.organizationTab == .uncategorized, needsRecompute else { return }
         needsRecompute = false
         recompute()
     }
@@ -765,21 +781,34 @@ struct UncategorizedSettingsPane: View {
     }
 
     private func rowView(_ row: Row) -> some View {
-        HStack {
-            Text(row.label)
-                .lineLimit(1)
-            Spacer(minLength: 8)
-            Text(Format.duration(row.seconds))
-                .foregroundStyle(.secondary)
-            Picker("分类", selection: pickerBinding(for: row)) {
-                Text("选择分类").tag(Optional<String>.none)
-                ForEach(sortedCategories, id: \.id) { category in
-                    Text(category.name).tag(Optional(category.id))
+        HStack(spacing: 12) {
+            if row.isDomain { Image(systemName: "globe").font(.system(size: 20)).foregroundStyle(.secondary).frame(width: 22) }
+            else { AppIcon(bundleID: row.id) }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(row.label).font(.system(size: 13)).lineLimit(1)
+                Text(row.isDomain ? "网站" : "应用").font(.system(size: 11)).foregroundStyle(.secondary)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(Format.duration(row.seconds)).font(.system(size: 12)).monospacedDigit()
+                ProgressView(value: row.seconds, total: max(1, rows.map(\.seconds).max() ?? 1)).tint(.secondary)
+            }.frame(width: 110)
+            if let category = accepted[row.id] {
+                CategoryChip(category: model.resolver.categoriesByID[category]).frame(width: 140)
+                Label("已归类", systemImage: "checkmark").font(.system(size: 12)).foregroundStyle(.green).frame(width: 90)
+            } else {
+                if let suggestion = suggestions[row.id] {
+                    VStack(alignment: .leading, spacing: 3) {
+                        CategoryChip(category: model.resolver.categoriesByID[suggestion.categoryID])
+                        Text("模型建议").font(.system(size: 11)).foregroundStyle(.secondary)
+                    }.frame(width: 100, alignment: .leading)
+                    Button("接受") { assign(row: row, categoryID: suggestion.categoryID) }.controlSize(.small)
                 }
+                Picker("分类", selection: pickerBinding(for: row)) {
+                    Text("选择分类").tag(Optional<String>.none)
+                    ForEach(sortedCategories, id: \.id) { Text($0.name).tag(Optional($0.id)) }
+                }.labelsHidden().frame(width: 130)
             }
-            .labelsHidden()
-            .frame(width: 140)
-        }
+        }.opacity(accepted[row.id] == nil ? 1 : 0.55)
     }
 
     private func pickerBinding(for row: Row) -> Binding<String?> {
@@ -799,10 +828,14 @@ struct UncategorizedSettingsPane: View {
             } else {
                 try model.categoryStore.setUserApp(row.id, categoryID: categoryID)
             }
+            try model.categoryStore.dismissSuggestion(key: row.id, kind: row.isDomain ? "domain" : "app")
+            suggestions[row.id] = nil
+            accepted[row.id] = categoryID
             model.resolver.refresh()
             model.dataChanged()
-            rows.removeAll { $0.id == row.id }
+            error = nil
         } catch {
+            self.error = String(localized: "分类未保存，请重试。")
             settingsLogger.error("assign failed for \(row.id, privacy: .public): \(String(describing: error), privacy: .public)")
         }
     }
@@ -810,7 +843,11 @@ struct UncategorizedSettingsPane: View {
     private func recompute() {
         let interval = DateRangeSelection(kind: .last30, anchor: Date()).interval
         do {
-            let spans = try model.spanStore.spans(overlapping: interval)
+            suggestions = Dictionary(uniqueKeysWithValues: try model.categoryStore.suggestions().map { ($0.key, $0) })
+            let spans = try model.spanStore.spans(overlapping: interval).compactMap { span -> Span? in
+                guard span.end > interval.start, span.start < interval.end else { return nil }
+                var clipped = span; clipped.start = max(span.start, interval.start); clipped.end = min(span.end, interval.end); return clipped
+            }
             let uncategorized = spans.filter { model.resolver.categoryID(for: $0) == "uncategorized" }
             var isDomainByKey: [String: Bool] = [:]
             for span in uncategorized {
@@ -818,9 +855,10 @@ struct UncategorizedSettingsPane: View {
                 isDomainByKey[key] = span.domain != nil
             }
             let items = uncategorized.map { CategorizedSpan(span: $0, categoryID: "uncategorized") }
+            let retained = rows.filter { accepted[$0.id] != nil }
             rows = Aggregator.durationByDomainOrApp(items).map { entry in
                 Row(id: entry.key, label: entry.label, seconds: entry.seconds, isDomain: isDomainByKey[entry.key] ?? false)
-            }
+            } + retained
         } catch {
             settingsLogger.error("uncategorized recompute failed: \(String(describing: error), privacy: .public)")
             rows = []
@@ -849,17 +887,19 @@ struct LLMSettingsPane: View {
     var body: some View {
         Form {
             Section {
-                Toggle("启用 LLM 分类兜底", isOn: $enabled)
+                VStack(alignment: .leading, spacing: 4) {
+                Toggle("用模型给没分类的网站提建议", isOn: $enabled)
                     .onChange(of: enabled) { _, newValue in
                         model.settings.setLLMEnabled(newValue)
                     }
-                Text("本地规则无法归类的活动，才会调用一次 LLM 做兜底分类。默认关闭，不影响其余功能。")
+                Text("只发送网站域名，不发送标题和网址路径。建议只在你接受后生效。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                }
             }
 
             Section("OpenAI 兼容服务") {
-                TextField("Endpoint", text: $endpoint)
+                TextField("地址", text: $endpoint)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit {
                         model.settings.setLLMEndpoint(endpoint)
@@ -871,7 +911,7 @@ struct LLMSettingsPane: View {
                         model.settings.setLLMModel(modelName)
                         model.engine.llmCoordinator?.invalidateService()
                     }
-                SecureField("API Key", text: $apiKeyInput)
+                SecureField("API 密钥", text: $apiKeyInput)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit { saveKey() }
                 if let apiKeyStatus {
@@ -935,7 +975,7 @@ struct LLMSettingsPane: View {
         Task { @MainActor in
             do {
                 let categoryID = try await classifier.classify(domain: "example-blog.net", title: nil)
-                testStatus = String(localized: "分类结果：\(categoryID)")
+                testStatus = "example-blog.net → \(model.resolver.categoriesByID[categoryID]?.name ?? categoryID)"
             } catch {
                 testStatus = String(localized: "测试失败：\(String(describing: error))")
             }

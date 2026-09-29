@@ -6,8 +6,8 @@ import Foundation
 /// customEnd]` span), `anchor` picks which day it ends on (or, for `.custom`,
 /// is kept in sync with `customEnd` for display purposes). `shift` moves the
 /// window by its own size and never moves it past today.
-public struct DateRangeSelection: Equatable {
-    public enum Kind: String, CaseIterable {
+public struct DateRangeSelection: Equatable, Sendable {
+    public enum Kind: String, CaseIterable, Sendable {
         case day, week, month, last7, last30, custom
     }
 
@@ -19,23 +19,24 @@ public struct DateRangeSelection: Equatable {
     /// Only read when `kind == .custom`; the interval includes the whole of
     /// this day (`interval.end` is the day after `customEnd`, at midnight).
     public var customEnd: Date?
+    public var firstWeekday: Int
 
-    public init(kind: Kind, anchor: Date, customStart: Date? = nil, customEnd: Date? = nil) {
+    public init(kind: Kind, anchor: Date, customStart: Date? = nil, customEnd: Date? = nil, firstWeekday: Int = 2) {
         self.kind = kind
         self.anchor = anchor
         self.customStart = customStart
         self.customEnd = customEnd
+        self.firstWeekday = firstWeekday == 1 ? 1 : 2
     }
 
     public static func today() -> DateRangeSelection {
         DateRangeSelection(kind: .day, anchor: Date())
     }
 
-    /// Pins the first day of the week to Monday (the "Monday=0" convention
-    /// used throughout the stats/aggregation code), independent of locale.
-    private var mondayCalendar: Calendar {
+    /// Week ranges follow the user's preference; aggregation keeps stable weekday keys.
+    private var weekCalendar: Calendar {
         var c = Calendar.current
-        c.firstWeekday = 2
+        c.firstWeekday = firstWeekday
         return c
     }
 
@@ -59,7 +60,7 @@ public struct DateRangeSelection: Equatable {
             let start = cal.date(byAdding: .day, value: -(windowDays - 1), to: dayStart) ?? dayStart
             return DateInterval(start: start, end: end)
         case .week:
-            return mondayCalendar.dateInterval(of: .weekOfYear, for: anchor) ?? fallbackDayInterval(cal)
+            return weekCalendar.dateInterval(of: .weekOfYear, for: anchor) ?? fallbackDayInterval(cal)
         case .month:
             return cal.dateInterval(of: .month, for: anchor) ?? fallbackDayInterval(cal)
         case .custom:
@@ -91,7 +92,7 @@ public struct DateRangeSelection: Equatable {
     public var previousInterval: DateInterval {
         switch kind {
         case .week:
-            let cal = mondayCalendar
+            let cal = weekCalendar
             guard let prevAnchor = cal.date(byAdding: .weekOfYear, value: -1, to: anchor),
                   let prevInterval = cal.dateInterval(of: .weekOfYear, for: prevAnchor) else {
                 return equalLengthPreceding
@@ -153,7 +154,7 @@ public struct DateRangeSelection: Equatable {
             if cal.isDateInToday(anchor) { return String(localized: "近 30 天") }
             return String(localized: "至 \(Self.monthDay(anchor, calendar: cal)) 的 30 天")
         case .week:
-            let mcal = mondayCalendar
+            let mcal = weekCalendar
             if mcal.isDate(anchor, equalTo: now, toGranularity: .weekOfYear) { return String(localized: "本周") }
             if let nextWeekAnchor = mcal.date(byAdding: .weekOfYear, value: 1, to: anchor),
                mcal.isDate(nextWeekAnchor, equalTo: now, toGranularity: .weekOfYear) {

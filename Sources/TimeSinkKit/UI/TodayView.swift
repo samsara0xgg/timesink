@@ -1,0 +1,439 @@
+import SwiftUI
+import AppKit
+
+struct TodayView: View {
+    let model: AppModel
+    @Bindable var dayModel: DayOverviewModel
+    let onSelect: (DayOverview.Piece) -> Void
+    @State private var dashboard = TodayDashboardModel()
+    @State private var visiblePieces = 9
+    @State private var events: [CalendarEvent] = []
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    if let overview = dayModel.overview {
+                        if overview.total == 0 {
+                            ContentUnavailableView {
+                                Label("今天，还没有记录", systemImage: "sun.max")
+                            } description: {
+                                Text(model.trackingPaused ? "记录已暂停。继续后，新的活动会出现在这里。" : "使用 Mac 后，应用和网站活动会出现在这里。空档不会计入总时长。")
+                            } actions: {
+                                if model.trackingPaused { Button("继续记录") { model.resumeTracking() } }
+                                else { SettingsLink { Text("检查记录与权限设置") } }
+                            }.frame(minHeight: 350)
+                        } else {
+                            summary(overview)
+                            if geometry.size.width >= 860 {
+                                HStack(alignment: .top, spacing: 16) {
+                                    pieces(overview).frame(maxWidth: .infinity)
+                                    context(overview).frame(width: 300)
+                                }
+                            } else {
+                                pieces(overview)
+                                context(overview)
+                            }
+                        }
+                    } else if dayModel.loadError == nil {
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("正在读取今天的记录").foregroundStyle(.secondary)
+                            ForEach(0..<5) { _ in RoundedRectangle(cornerRadius: 6).fill(.quaternary).frame(height: 40) }
+                        }.accessibilityLabel("正在读取今天的记录")
+                    }
+                    if let error = dayModel.loadError {
+                        HStack {
+                            Label(error, systemImage: "exclamationmark.triangle")
+                            Button("重试") { Task { await refresh() } }
+                        }.font(.callout)
+                    }
+                }
+                .padding(.horizontal, 24).padding(.top, 22).padding(.bottom, 28)
+                .frame(maxWidth: 1500).frame(maxWidth: .infinity)
+            }
+        }
+        .background(WorkspaceBackground())
+        .task(id: model.dataVersion) { await refresh() }
+        .task(id: model.calendarOverlayEnabled) {
+            events = model.calendarOverlayEnabled ? await model.calendarStore?.events(on: Date()) ?? [] : []
+        }
+        .task {
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(30)) } catch { return }
+                await refresh()
+            }
+        }
+    }
+
+    private func refresh() async {
+        await dayModel.refresh(model: model)
+        await dashboard.recompute(model: model, forceStreak: false)
+    }
+
+    private func summary(_ overview: DayOverview) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 18) { metrics(overview) }
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 18) { metrics(overview) }
+            }
+            DayRibbonView(overview: overview, events: events, onSelect: onSelect)
+        }
+        .padding(18).workspacePanel()
+    }
+
+    @ViewBuilder private func metrics(_ overview: DayOverview) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("已记录").font(.system(size: 12)).foregroundStyle(.secondary)
+            Text(Format.duration(overview.total)).font(.system(size: 34, weight: .semibold))
+                .tracking(-0.68).monospacedDigit().refinedNumberMotion(Format.duration(overview.total))
+            Text([overview.firstRecord.map { String(localized: "\(model.time($0)) 开始") },
+                  dashboard.totalDelta.map { String(localized: "比昨天同时段 \(Format.durationDelta($0))") }]
+                .compactMap { $0 }.joined(separator: " · "))
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+        }.fixedSize(horizontal: true, vertical: false)
+        metric(String(localized: "投入"), value: Format.duration(overview.engaged),
+               detail: String(localized: "占已记录 \(Int((overview.engaged / max(1, overview.total) * 100).rounded()))% · 按分类估算"))
+        metric(String(localized: "专注会话"), value: Format.duration(overview.sessionSeconds),
+               detail: String(localized: "\(overview.sessions.count) 次，\(overview.sessions.filter(\.completed).count) 次已完成"))
+        if model.showScore {
+            metric(String(localized: "评分"), value: dashboard.pulse.map { "\($0)" } ?? "—", detail: String(localized: "连续 \(dashboard.streakDays) 天 ≥ 70"), suffix: "/ 100")
+        }
+    }
+
+    private func metric(_ title: String, value: String, detail: String, suffix: String = "") -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title).font(.system(size: 12)).foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(value).font(.system(size: 22, weight: .semibold)).monospacedDigit().refinedNumberMotion(value)
+                if !suffix.isEmpty { Text(suffix).font(.system(size: 12)).foregroundStyle(.secondary) }
+            }
+            Text(detail).font(.system(size: 11)).foregroundStyle(.secondary)
+        }
+        .padding(.leading, 18)
+        .overlay(alignment: .leading) { Rectangle().fill(.quaternary).frame(width: 0.5) }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func pieces(_ overview: DayOverview) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("一天的片段").font(.system(size: 13, weight: .semibold))
+                Text("最近的在前 · 点按在活动中查看").font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                Spacer(minLength: 4)
+                Button("全部活动") { openActivities() }.buttonStyle(.link).font(.system(size: 12))
+            }.padding(14)
+            let recent = Array(overview.pieces.reversed())
+            ForEach(recent.prefix(visiblePieces)) { piece in
+                Divider().opacity(0.6)
+                if piece.item != nil {
+                    Button { onSelect(piece) } label: { pieceRow(piece, overview: overview) }
+                        .buttonStyle(RefinedRowButtonStyle()).help("在活动中查看此片段")
+                } else { pieceRow(piece, overview: overview).background { HatchFill().opacity(0.35) } }
+            }
+            if recent.count > visiblePieces {
+                Divider()
+                Button {
+                    withAnimation(RefinedStyle.motion(reduced: reduceMotion)) { visiblePieces += 20 }
+                } label: {
+                    HStack {
+                        Image(systemName: "chevron.down").font(.system(size: 11))
+                        Text("更早的 \(recent.count - visiblePieces) 段")
+                        if let first = overview.firstRecord { Text("· \(model.time(first)) 起") }
+                        Spacer()
+                    }.font(.system(size: 12)).foregroundStyle(.secondary).padding(14)
+                }.buttonStyle(RefinedRowButtonStyle())
+            }
+        }.workspacePanel().clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func pieceRow(_ piece: DayOverview.Piece, overview: DayOverview) -> some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(piece.start, format: .dateTime.hour().minute())
+                Text(piece.end, format: .dateTime.hour().minute()).foregroundStyle(.tertiary)
+            }.font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary).frame(width: 60, alignment: .leading)
+            if let item = piece.item {
+                AppIcon(bundleID: item.span.appBundleID)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 5) {
+                        Text(item.span.domain ?? item.span.appName).font(.system(size: 13)).lineLimit(1)
+                        if let session = overview.sessions.first(where: { $0.start < piece.end && $0.end > piece.start }) {
+                            Label("专注 \(session.plannedSeconds / 60) 分钟", systemImage: "scope")
+                                .font(.system(size: 11)).foregroundStyle(.tint).lineLimit(1)
+                        }
+                    }
+                    Text(item.span.document ?? item.span.title ?? categoryName(item.categoryID))
+                        .font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                }.frame(maxWidth: .infinity, alignment: .leading)
+                CategoryChip(category: model.resolver.categoriesByID[item.categoryID])
+                Text(Format.duration(piece.seconds)).font(.system(size: 13)).monospacedDigit().frame(minWidth: 45, alignment: .trailing)
+                Image(systemName: "chevron.right").font(.system(size: 11)).foregroundStyle(.tertiary)
+            } else {
+                Image(systemName: "moon").foregroundStyle(.secondary).frame(width: 22)
+                Text("未记录").font(.system(size: 13)).foregroundStyle(.secondary)
+                Spacer()
+                Text(Format.duration(piece.seconds)).font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary)
+            }
+        }.padding(.horizontal, 12).padding(.vertical, 8).frame(minHeight: 48).contentShape(Rectangle())
+    }
+
+    private func context(_ overview: DayOverview) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("时间的去向").font(.system(size: 13, weight: .semibold))
+                    Spacer()
+                    Text("\(overview.categories.count) 个分类").font(.system(size: 12)).foregroundStyle(.secondary)
+                }
+                CategoryVesselView(overview: overview) { model.openActivities(category: $0, range: .today()) }
+                Text("刻度：小时 · 容器按 \(Int(overview.vesselHours)) 小时绘制").font(.system(size: 11)).foregroundStyle(.secondary)
+            }.padding(.horizontal, 18).padding(.vertical, 16).workspacePanel()
+            if !dayModel.budgets.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("今日限额").font(.system(size: 13, weight: .semibold))
+                        Spacer()
+                        Button("编辑") { model.sidebarSelection = .focus }.buttonStyle(.link).font(.system(size: 12))
+                    }
+                    ForEach(dayModel.budgets, id: \.categoryID) { budget in
+                        let used = overview.categories.first { $0.id == budget.categoryID }?.seconds ?? 0
+                        RefinedBudgetRow(name: categoryName(budget.categoryID), color: categoryColor(budget.categoryID),
+                            spent: used, limit: Double(budget.dailySeconds), warningPercent: model.settings.budgetWarnPercent)
+                    }
+                    Text("限额只提醒，不会拦截。").font(.system(size: 11)).foregroundStyle(.secondary)
+                }.padding(.horizontal, 18).padding(.vertical, 16).workspacePanel()
+            }
+            if let unclassified = overview.categories.first(where: { $0.id == "uncategorized" }) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "tag").foregroundStyle(RefinedStyle.warning)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("今天还有活动没分类").font(.system(size: 13, weight: .semibold))
+                        Text("共 \(Format.duration(unclassified.seconds))。分好以后，以后自动归类。")
+                            .font(.system(size: 12)).foregroundStyle(.secondary)
+                        Button("去分类") { model.sidebarSelection = .organization }.controlSize(.small)
+                    }
+                }.padding(18).frame(maxWidth: .infinity, alignment: .leading).workspacePanel()
+            }
+        }
+    }
+
+    private func openActivities() { model.activitySearch = ""; model.openActivities(category: nil, range: .today()) }
+    private func categoryName(_ id: String) -> String { model.resolver.categoriesByID[id]?.name ?? String(localized: "未分类") }
+    private func categoryColor(_ id: String) -> Color { RefinedStyle.category(id, hex: model.resolver.categoriesByID[id]?.colorHex ?? "#C7C7CC") }
+}
+
+struct DayRibbonView: View {
+    let overview: DayOverview
+    var compact = false
+    var events: [CalendarEvent] = []
+    var onSelect: ((DayOverview.Piece) -> Void)?
+    private var interval: DateInterval {
+        let end = Calendar.current.date(bySettingHour: compact ? 18 : 20, minute: 0, second: 0, of: overview.now) ?? overview.displayInterval.end
+        return DateInterval(start: overview.displayInterval.start, end: max(end, overview.displayInterval.end))
+    }
+    @Environment(\.locale) private var locale
+    private struct Tick: Identifiable {
+        let id: Date
+        let text: String
+        let width: CGFloat
+        let x: CGFloat
+    }
+    private func ticks(width: CGFloat) -> [Tick] {
+        var candidates: [Date] = []
+        var time = interval.start
+        while time < interval.end {
+            candidates.append(time)
+            guard let next = Calendar.current.date(byAdding: .hour, value: compact ? 2 : 1, to: time) else { break }
+            time = next
+        }
+        candidates.append(interval.end)
+        var result: [Tick] = []
+        for date in candidates {
+            let text = date.formatted(.dateTime.hour().minute().locale(locale))
+            let labelWidth = min(width, ceil((text as NSString).size(withAttributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)]).width) + 2)
+            let x = max(0, min(width - labelWidth, bounds(start: date, end: date, width: width).minX - labelWidth / 2))
+            if date == interval.end {
+                while let last = result.last, x < last.x + last.width + 8 { result.removeLast() }
+            }
+            if result.last.map({ x >= $0.x + $0.width + 8 }) ?? true {
+                result.append(Tick(id: date, text: text, width: labelWidth, x: x))
+            }
+        }
+        return result
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            GeometryReader { geometry in
+                ZStack(alignment: .topLeading) {
+                    if !compact {
+                        ForEach(events.filter { !$0.isAllDay }) { event in
+                            let rect = bounds(start: event.start, end: event.end, width: geometry.size.width)
+                            Text(event.title).font(.system(size: 11)).lineLimit(1).padding(.horizontal, 4)
+                                .frame(width: rect.width, height: 16, alignment: .leading)
+                                .background(.quaternary, in: RoundedRectangle(cornerRadius: 3))
+                                .offset(x: rect.minX).help(event.title)
+                        }
+                    }
+                    ZStack(alignment: .topLeading) {
+                        RoundedRectangle(cornerRadius: 5).fill(.quaternary.opacity(0.5))
+                        ForEach(overview.pieces) { piece in
+                            let rect = bounds(start: piece.start, end: piece.end, width: geometry.size.width)
+                            Group {
+                                if let item = piece.item {
+                                    let category = overview.categories.first { $0.id == item.categoryID }
+                                    Rectangle().fill(RefinedStyle.category(item.categoryID, hex: category?.colorHex ?? "#C7C7CC"))
+                                        .overlay { if item.categoryID == "uncategorized" { HatchFill() } }
+                                } else { HatchFill() }
+                            }
+                            .frame(width: rect.width)
+                            .offset(x: rect.minX)
+                            .help("\(piece.item?.span.domain ?? piece.item?.span.appName ?? String(localized: "未记录")) · \(piece.start.formatted(date: .omitted, time: .shortened))–\(piece.end.formatted(date: .omitted, time: .shortened)) · \(Format.duration(piece.seconds))")
+                            .onTapGesture { if piece.item != nil { onSelect?(piece) } }
+                            .accessibilityHidden(true)
+                        }
+                    }.frame(height: compact ? 12 : 26).clipShape(RoundedRectangle(cornerRadius: 5)).offset(y: compact ? 0 : 20)
+                    Rectangle().fill(.primary).frame(width: 1.5, height: compact ? 18 : 32)
+                        .offset(x: bounds(start: overview.now, end: overview.now, width: geometry.size.width).minX, y: compact ? -3 : 17)
+                    if !compact {
+                        ForEach(Array(overview.sessions.enumerated()), id: \.offset) { _, session in
+                            let rect = bounds(start: session.start, end: session.end, width: geometry.size.width)
+                            Capsule().fill(.tint).frame(width: rect.width, height: 3).offset(x: rect.minX, y: 50)
+                        }
+                    }
+                }
+            }.frame(height: compact ? 12 : 54)
+            GeometryReader { geometry in
+                ForEach(ticks(width: geometry.size.width)) { tick in
+                    Text(tick.text).font(.system(size: 11)).monospacedDigit().foregroundStyle(.secondary)
+                        .fixedSize().frame(width: tick.width)
+                        .offset(x: tick.x)
+                }
+
+            }.frame(height: 14)
+            if !compact {
+                HStack(spacing: 14) {
+                    Label("专注会话", systemImage: "minus").foregroundStyle(.tint)
+                    Label("日程", systemImage: "rectangle")
+                    Label("未记录", systemImage: "rectangle.dashed")
+                    Text("现在 \(overview.now.formatted(date: .omitted, time: .shortened))")
+                }.font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("时间带，\(interval.start.formatted(date: .omitted, time: .shortened)) 至 \(interval.end.formatted(date: .omitted, time: .shortened))，已记录 \(Format.duration(overview.total))。片段详情见活动列表。")
+    }
+
+    private func bounds(start: Date, end: Date, width: CGFloat) -> CGRect {
+        let left = max(0, min(1, start.timeIntervalSince(interval.start) / interval.duration))
+        let right = max(left, min(1, end.timeIntervalSince(interval.start) / interval.duration))
+        return CGRect(x: width * left, y: 0, width: width * (right - left), height: 26)
+    }
+}
+
+struct CategoryVesselView: View {
+    let overview: DayOverview
+    let onSelect: (String) -> Void
+    @State private var hovered: String?
+    private let height: CGFloat = 230
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 14) {
+            VStack(alignment: .trailing, spacing: 0) {
+                ForEach((0...5).reversed(), id: \.self) { tick in
+                    Text((overview.vesselHours * Double(tick) / 5).formatted(.number.precision(.fractionLength(0...1))))
+                        .font(.system(size: 11)).monospacedDigit().foregroundStyle(.secondary)
+                    if tick > 0 { Spacer(minLength: 0) }
+                }
+            }.frame(width: 18, height: height)
+            ZStack(alignment: .bottom) {
+                Rectangle().fill(.quaternary.opacity(0.5))
+                VStack(spacing: 0) {
+                    ForEach(overview.categories.reversed()) { category in
+                        Rectangle().fill(RefinedStyle.category(category.id, hex: category.colorHex))
+                            .opacity(hovered == nil || hovered == category.id ? 1 : 0.4)
+                            .overlay { if category.id == "uncategorized" { HatchFill() } }
+                            .frame(height: height * category.seconds / (overview.vesselHours * 3600))
+                            .onHover { hovered = $0 ? category.id : nil }
+                            .onTapGesture { onSelect(category.id) }
+                            .help("\(category.name) · \(Format.duration(category.seconds))")
+                    }
+                }
+                ForEach(1..<10) { line in
+                    Rectangle().fill(.primary.opacity(line.isMultiple(of: 2) ? 0.2 : 0.1))
+                        .frame(height: 0.5).offset(y: -height * CGFloat(line) / 10)
+                }.allowsHitTesting(false)
+            }
+            .frame(width: 58, height: height)
+            .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 24, bottomTrailingRadius: 24))
+            .accessibilityLabel("已记录 \(Format.duration(overview.total))，刻度 \(Int(overview.vesselHours)) 小时")
+            VStack(alignment: .leading, spacing: 1) {
+                ForEach(overview.categories) { category in
+                    Button { onSelect(category.id) } label: {
+                        HStack(spacing: 6) {
+                            Circle().fill(RefinedStyle.category(category.id, hex: category.colorHex)).frame(width: 7, height: 7)
+                            Text(category.name).lineLimit(1)
+                            Spacer(minLength: 2)
+                            Text(Format.duration(category.seconds)).monospacedDigit().fixedSize()
+                        }.font(.system(size: 12)).frame(height: 24).padding(.horizontal, 3)
+                            .background(hovered == category.id ? Color.primary.opacity(0.07) : .clear, in: RoundedRectangle(cornerRadius: 5))
+                    }.buttonStyle(.plain).onHover { hovered = $0 ? category.id : nil }
+                }
+            }.frame(maxWidth: .infinity)
+        }
+    }
+}
+
+struct RefinedRowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        RefinedRowButtonBody(configuration: configuration)
+    }
+    private struct RefinedRowButtonBody: View {
+        let configuration: Configuration
+        @State private var hovered = false
+        var body: some View {
+            configuration.label.background(Color.primary.opacity(configuration.isPressed ? 0.10 : hovered ? 0.05 : 0))
+                .onHover { hovered = $0 }
+        }
+    }
+}
+
+struct RefinedBudgetRow: View {
+    let name: String
+    let color: Color
+    let spent: TimeInterval
+    let limit: TimeInterval
+    var warningPercent = 20
+    private var warning: Bool { limit - spent <= limit * Double(warningPercent) / 100 }
+    var body: some View {
+        VStack(spacing: 5) {
+            HStack {
+                Text(name)
+                Spacer()
+                Text(RefinedStyle.remaining(spent: spent, limit: limit)).monospacedDigit()
+                    .foregroundStyle(warning ? RefinedStyle.warning : .secondary)
+            }.font(.system(size: 12))
+            GeometryReader { geometry in
+                Capsule().fill(.quaternary)
+                Capsule().fill(warning ? RefinedStyle.warning : color)
+                    .frame(width: geometry.size.width * min(1, max(0, spent / max(1, limit))))
+            }.frame(height: 5)
+        }.accessibilityElement(children: .combine)
+    }
+}
+
+struct RecordingStatusView: View {
+    let model: AppModel
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 5)) { _ in
+            let running = model.engine.isRunning
+            let suspended = model.engine.isSuspended
+            let recording = running && !suspended && !model.trackingPaused && model.engine.currentActivity != nil
+            Label {
+                Text(!model.accessibilityGranted ? "未记录 · 需要权限" : model.trackingPaused ? "已暂停" : !running ? "记录未启动" : suspended ? "离开电脑" : recording ? "正在记录" : "等待活动")
+            } icon: {
+                Circle().fill(model.trackingPaused ? RefinedStyle.warning : recording ? Color.green : Color.secondary).frame(width: 7, height: 7)
+            }.font(.system(size: 11)).foregroundStyle(.secondary)
+        }
+    }
+}

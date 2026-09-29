@@ -7,8 +7,18 @@ import os
 /// `TimeSinkAppDelegate.userNotificationCenter(_:didReceive:)`.
 public enum NotificationRoute: String, Sendable {
     case settingsBudget   // 预算通知 → 设置·预算
-    case statsToday       // 每日小结 → 统计·今天
+    case statsToday       // 显式统计入口，保留旧路由兼容
     case activitiesToday  // 专注结束 → 活动·今天
+    case today
+    case focusSetup
+    case repeatFocus
+
+    static func destination(action: String, notificationID: String, storedRoute: String?) -> NotificationRoute? {
+        guard action != UNNotificationDismissActionIdentifier else { return nil }
+        if let explicit = NotificationRoute(rawValue: action) { return explicit }
+        if notificationID == "summary.daily" { return .today }
+        return storedRoute.flatMap(NotificationRoute.init(rawValue:))
+    }
 }
 
 @MainActor
@@ -30,6 +40,7 @@ public protocol Notifying: AnyObject {
 public final class SystemNotifier: Notifying {
     private let logger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "notifier")
 
+    public var soundEnabled: (() -> Bool)?
     public init() {}
 
     public func requestAuthorization() async -> Bool {
@@ -59,9 +70,14 @@ public final class SystemNotifier: Notifying {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
+        if soundEnabled?() == true { content.sound = .default }
         if let route {
             content.userInfo = ["route": route.rawValue]
         }
+        if id.hasPrefix("budget.warn.") { content.categoryIdentifier = "budget.warn" }
+        else if id.hasPrefix("budget.limit.") { content.categoryIdentifier = "budget.limit" }
+        else if id.hasPrefix("focus.finished") { content.categoryIdentifier = "focus.finished" }
+        else if id == "summary.daily" { content.categoryIdentifier = "summary.daily" }
         let request = UNNotificationRequest(identifier: id, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request) { [logger] error in
             if let error {
@@ -102,6 +118,15 @@ extension TimeSinkAppDelegate: UNUserNotificationCenterDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard Bundle.main.bundleIdentifier == "com.alllllenshi.TimeSink" else { return }
         UNUserNotificationCenter.current().delegate = self
+        let action: (NotificationRoute, String) -> UNNotificationAction = { route, title in
+            UNNotificationAction(identifier: route.rawValue, title: title, options: .foreground)
+        }
+        UNUserNotificationCenter.current().setNotificationCategories([
+            UNNotificationCategory(identifier: "budget.warn", actions: [action(.today, String(localized: "查看今天")), action(.focusSetup, String(localized: "开始专注"))], intentIdentifiers: []),
+            UNNotificationCategory(identifier: "budget.limit", actions: [action(.settingsBudget, String(localized: "调整限额"))], intentIdentifiers: []),
+            UNNotificationCategory(identifier: "focus.finished", actions: [action(.repeatFocus, String(localized: "再专注 25 分钟")), action(.activitiesToday, String(localized: "查看"))], intentIdentifiers: []),
+            UNNotificationCategory(identifier: "summary.daily", actions: [action(.today, String(localized: "打开今天"))], intentIdentifiers: [])
+        ])
     }
 
     /// Shows the banner even while the app is in the foreground.
@@ -110,7 +135,7 @@ extension TimeSinkAppDelegate: UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        completionHandler([.banner, .list])
+        completionHandler(notification.request.content.sound == nil ? [.banner, .list] : [.banner, .list, .sound])
     }
 
     /// Called on a background thread -- hops to the main actor before
@@ -124,8 +149,9 @@ extension TimeSinkAppDelegate: UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         defer { completionHandler() }
-        guard let raw = response.notification.request.content.userInfo["route"] as? String,
-              let route = NotificationRoute(rawValue: raw) else { return }
+        guard let route = NotificationRoute.destination(action: response.actionIdentifier,
+            notificationID: response.notification.request.identifier,
+            storedRoute: response.notification.request.content.userInfo["route"] as? String) else { return }
         Task { @MainActor in
             self.route(route)
         }
