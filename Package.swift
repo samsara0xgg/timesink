@@ -25,6 +25,7 @@ let package = Package(
             ]
         ),
         .executableTarget(name: "TimeSink", dependencies: ["TimeSinkKit"]),
+        .executableTarget(name: "TimeSinkSpace"),
         .executableTarget(name: "tsprobe", dependencies: ["TimeSinkKit"]),
         .testTarget(name: "TimeSinkKitTests", dependencies: ["TimeSinkKit"]),
     ]
