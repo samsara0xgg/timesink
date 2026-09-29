@@ -12,7 +12,22 @@ public enum RefinedPreview {
         guard !stage.started else { return }
         stage.started = true
         self.stage = stage
-        do { try await renderAll() }
+        do {
+            if CommandLine.arguments.contains("--perf-review") {
+                var waited = 0
+                while stage.window == nil, waited < 60 { try await Task.sleep(for: .milliseconds(50)); waited += 1 }
+                guard let window = stage.window else { throw CocoaError(.fileWriteUnknown) }
+                NSApp.appearance = NSAppearance(named: .darkAqua)
+                window.appearance = NSApp.appearance
+                stage.dark = true
+                try await PerfReview.run(window: window) { view in
+                    stage.size = mainSize
+                    stage.content = view
+                }
+            } else {
+                try await renderAll()
+            }
+        }
         catch { print("Preview failed: \(error)"); exit(1) }
         exit(0)
     }
@@ -40,7 +55,7 @@ public enum RefinedPreview {
                 if page == .activities, let item = model.rangedSpans().first(where: { $0.span.start >= midMorning }) {
                     selectedActivities.select(ActivitiesModel.selection(for: item), start: item.span.start)
                 }
-                try await render(MainWindowView(model: model, activities: selectedActivities), size: .init(width: 1200, height: 820), dark: dark, to: output.appendingPathComponent("\(name)-\(suffix).png"))
+                try await render(MainWindowView(model: model, activities: selectedActivities), size: mainSize, dark: dark, to: output.appendingPathComponent("\(name)-\(suffix).png"))
             }
             let activityModel = ActivitiesModel()
             model.range = .today()
@@ -56,7 +71,7 @@ public enum RefinedPreview {
             model.sidebarSelection = .organization
             for (name, tab) in [("categories", SettingsTab.categories), ("rules", .rules)] {
                 model.organizationTab = tab
-                try await render(MainWindowView(model: model), size: .init(width: 1200, height: 820), dark: dark, to: output.appendingPathComponent("\(name)-\(suffix).png"))
+                try await render(MainWindowView(model: model), size: mainSize, dark: dark, to: output.appendingPathComponent("\(name)-\(suffix).png"))
             }
             model.organizationTab = .uncategorized
             for (name, tab) in [("general", SettingsTab.general), ("privacy", .privacy), ("notifications", .notifications), ("account", .account), ("ai", .llm), ("about", .about)] {
@@ -73,6 +88,14 @@ public enum RefinedPreview {
                 try await render(FocusHUDContentView(appName: "信息", appKey: "com.apple.MobileSMS", hideCount: 1, controller: focus, onReturn: {}, onAllow: {}), size: .init(width: 312, height: 122), dark: dark, to: output.appendingPathComponent("focus-hud-\(suffix).png")) // l10n: data
             }
             model.focus?.finish(completed: false)
+            try await renderFlyouts(model: model, dark: dark, suffix: suffix, to: output)
+            model.sidebarSelection = .activities
+            model.range = DateRangeSelection(kind: .day, anchor: Calendar.current.date(byAdding: .day, value: -40, to: Date())!)
+            try await render(MainWindowView(model: model), size: mainSize, dark: dark, to: output.appendingPathComponent("activities-empty-\(suffix).png"))
+            model.sidebarSelection = .stats
+            model.range = DateRangeSelection(kind: .last30, anchor: Date())
+            try await render(MainWindowView(model: model), size: mainSize, dark: dark, to: output.appendingPathComponent("trends-30-\(suffix).png"))
+            model.range = .today()
             model.accessibilityGranted = false
             try await render(MenuBarDashboardView(model: model), size: .init(width: 340, height: 520), dark: dark, to: output.appendingPathComponent("menu-permission-\(suffix).png"))
             model.accessibilityGranted = true
@@ -85,7 +108,43 @@ public enum RefinedPreview {
         try FocusBlockPage.html.write(to: output.appendingPathComponent("blocked.html"), atomically: true, encoding: .utf8)
         print("Rendered native review surfaces to \(output.path)")
     }
+    static let only = ProcessInfo.processInfo.environment["TIMESINK_PREVIEW_ONLY"]
+    static let locale = Locale(identifier: ProcessInfo.processInfo.environment["TIMESINK_PREVIEW_LOCALE"] ?? "zh_CN")
+    /// Main window captures, `WIDTHxHEIGHT`; defaults to the scene's default size.
+    static let mainSize: NSSize = {
+        let parts = (ProcessInfo.processInfo.environment["TIMESINK_PREVIEW_MAIN"] ?? "1200x820").split(separator: "x").compactMap { Double($0) }
+        return parts.count == 2 ? NSSize(width: parts[0], height: parts[1]) : NSSize(width: 1200, height: 820)
+    }()
+    static func skips(_ url: URL) -> Bool { only.map { !url.lastPathComponent.contains($0) } ?? false }
+
+    /// Puts a preview window on the Mac's built-in display, off the external
+    /// screens someone is working on. With the lid closed it stays put.
+    @MainActor static func moveToBuiltInDisplay(_ window: NSWindow) {
+        let builtIn = NSScreen.screens.first { screen in
+            (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID).map { CGDisplayIsBuiltin($0) != 0 } ?? false
+        }
+        guard let visible = builtIn?.visibleFrame else { return }
+        window.setFrameTopLeftPoint(NSPoint(x: visible.minX, y: visible.maxY))
+    }
+
+    /// Sizes the stage window on the built-in display and brings it forward
+    /// for a capture.
+    @MainActor static func present(_ window: NSWindow, size: NSSize) {
+        window.setContentSize(size)
+        moveToBuiltInDisplay(window)
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// The size a flyout panel takes: `PanelHost` sizes it to fit.
+    @MainActor static func fitting<V: View>(_ view: V, dark: Bool) -> NSSize {
+        let host = NSHostingView(rootView: view.environment(\.colorScheme, dark ? .dark : .light).environment(\.locale, locale))
+        host.layout()
+        return host.fittingSize
+    }
+
     @MainActor private static func render<V: View>(_ view: V, size: NSSize, dark: Bool, to url: URL) async throws {
+        guard !skips(url) else { return }
         guard let stage else { throw CocoaError(.fileWriteUnknown) }
         NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         stage.window?.appearance = NSApp.appearance
@@ -97,9 +156,7 @@ public enum RefinedPreview {
         window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         // Wherever the pointer rests must not hover rows open mid-capture.
         window.ignoresMouseEvents = true
-        window.setContentSize(size)
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        present(window, size: size)
         try await Task.sleep(for: .milliseconds(250))
         guard let content = window.contentView else { throw CocoaError(.fileWriteUnknown) }
         // Main/settings captures include the real SwiftUI scene toolbar/titlebar.
@@ -112,6 +169,43 @@ public enum RefinedPreview {
         try png.write(to: url)
         FileHandle.standardError.write(Data(("Captured " + url.lastPathComponent + "\n").utf8))
     }
+    /// The popover's hover panes, built the way `MenuBarDashboardView`
+    /// builds them from its dashboard model.
+    @MainActor private static func renderFlyouts(model: AppModel, dark: Bool, suffix: String, to output: URL) async throws {
+        let dashboard = TodayDashboardModel()
+        await dashboard.recompute(model: model, forceStreak: true)
+        let categories = model.resolver.categoriesByID
+        let byCategory = Aggregator.durationByCategory(dashboard.todayItems)
+        let scoreRows = TodayDashboardModel.scoreContributions(byCategory: byCategory, categories: categories)
+            .map { ScoreBreakdownView.Row(id: $0.id, name: $0.name, colorHex: $0.colorHex, seconds: $0.seconds, points: $0.points, share: $0.share) }
+        var hourTotals: [String: TimeInterval] = [:]
+        for entry in Aggregator.stackedSeries(dashboard.todayItems, bucket: .hour, calendar: .current) {
+            hourTotals["\(Calendar.current.component(.hour, from: entry.bucketStart))|\(entry.categoryID)", default: 0] += entry.seconds
+        }
+        let bars = hourTotals.map { key, seconds in
+            let parts = key.split(separator: "|")
+            return HourlyBigView.Bar(hour: Int(parts[0])!, categoryID: String(parts[1]), colorHex: categories[String(parts[1])]?.colorHex ?? "#8E8E93", seconds: seconds)
+        }
+        let top = dashboard.topCategories.first!
+        let items = dashboard.todayItems.filter { $0.categoryID == top.id }
+        var hourBars = Array(repeating: 0.0, count: 24)
+        for (hour, seconds) in Aggregator.profileByHourOfDay(items, calendar: .current) { hourBars[hour] = seconds / 3600 }
+        let subs = Aggregator.durationByDomainOrApp(items).prefix(5).map { CategoryDetailView.SubEntry(id: $0.key, label: $0.label, seconds: $0.seconds) }
+        let panes: [(String, AnyView)] = [
+            ("score", AnyView(ScoreBreakdownView(rows: scoreRows, pulse: dashboard.pulse, pulseDelta: dashboard.pulseDelta))),
+            ("compare", AnyView(CompareBaseView(label: String(localized: "投入时长比较"), todayValue: dashboard.focus, delta: dashboard.focusDelta))),
+            ("streak", AnyView(StreakDotsView(dailyPulses: dashboard.streakLookbackPulses, threshold: TodayDashboardModel.streakThreshold, streakDays: dashboard.streakDays))),
+            ("category", AnyView(CategoryDetailView(categoryID: top.id, name: top.name, colorHex: top.colorHex, seconds: top.seconds, hourBars: hourBars, subs: Array(subs), onOpenActivities: {}))),
+            ("hourly", AnyView(HourlyBigView(categories: categories, todayBars: bars, loadLast7Bars: { bars }))),
+            ("budget", AnyView(BudgetProgressView(rows: dashboard.allBudgetRows.map { BudgetProgressView.Row(id: $0.id, name: $0.name, colorHex: $0.colorHex, spent: $0.spent, limit: $0.limit) }, warnPercent: dashboard.budgetWarnPercent))),
+        ]
+        for (name, pane) in panes {
+            // The panel is transparent; the pane draws its own card and shadow.
+            let size = fitting(pane, dark: dark)
+            try await render(pane.padding(24), size: NSSize(width: size.width + 48, height: size.height + 48), dark: dark, to: output.appendingPathComponent("flyout-\(name)-\(suffix).png"))
+        }
+    }
+
     @MainActor private static func renderMotion(to output: URL) async throws {
         guard let stage else { return }
         let frames = output.appendingPathComponent("number-motion-frames")
@@ -158,7 +252,7 @@ public enum RefinedPreview {
             FileHandle.standardError.write(Data(("Captured blocked-" + suffix + ".png\n").utf8))
         }
     }
-    @MainActor private static func fixture() throws -> AppModel {
+    @MainActor static func fixture() throws -> AppModel {
         let db = try AppDatabase.openInMemory()
         let categories = CategoryStore(db), spans = SpanStore(db), settings = SettingsStore(db)
         SeedImporter.importIfNeeded(categoryStore: categories, settings: settings)
@@ -344,7 +438,7 @@ private struct RefinedBlockProof: NSViewRepresentable {
                 .frame(width: stage.size.width, height: stage.size.height)
                 .environment(\.colorScheme, stage.dark ? .dark : .light)
                 .preferredColorScheme(stage.dark ? .dark : .light)
-                .environment(\.locale, Locale(identifier: "zh_CN"))
+                .environment(\.locale, RefinedPreview.locale)
                 .background(RefinedWindowProbe(window: $stage.window))
                 .task { NSApp.setActivationPolicy(.regular); await RefinedPreview.start(stage: stage) }
         }.windowResizability(.contentSize)
@@ -354,7 +448,16 @@ private struct RefinedWindowProbe: NSViewRepresentable {
     @Binding var window: NSWindow?
     func makeNSView(context: Context) -> NSView { NSView() }
     func updateNSView(_ view: NSView, context: Context) {
-        DispatchQueue.main.async { if self.window !== view.window { self.window = view.window } }
+        DispatchQueue.main.async {
+            guard self.window !== view.window else { return }
+            self.window = view.window
+            guard let window = view.window else { return }
+            // Captures keep sRGB on any display, not the built-in panel's P3.
+            // Timing runs keep the display's own space, as the app does:
+            // converting every frame would inflate the render cost.
+            if !CommandLine.arguments.contains("--perf-review") { window.colorSpace = .sRGB }
+            RefinedPreview.moveToBuiltInDisplay(window)
+        }
     }
 }
 #endif
