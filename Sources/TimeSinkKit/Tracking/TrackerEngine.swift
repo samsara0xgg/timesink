@@ -163,6 +163,32 @@ public final class TrackerEngine {
     private var throttle = ChromeThrottle()
 
     public private(set) var currentRowID: Int64?
+    /// Read-only presentation state; reading this never starts sampling.
+    public var currentActivity: Span? { builder.current }
+    public var isRunning: Bool { timer != nil }
+    public private(set) var userPaused = false
+    private var permissionGranted = true
+    public func setPermissionGranted(_ granted: Bool, at date: Date = Date()) {
+        guard granted != permissionGranted else { return }
+        permissionGranted = granted; suspensionEpoch += 1
+        if !granted, let closed = builder.close(at: date) { persist(closed) }
+        interruptCollector()
+    }
+
+    /// Keep the timer and lock state alive, but stop every sampling path.
+    /// In-flight samples are invalidated by the same epoch as lock and sleep.
+    public func setUserPaused(_ paused: Bool, at date: Date = Date()) {
+        guard userPaused != paused else { return }
+        userPaused = paused
+        suspensionEpoch += 1
+        if paused, let closed = builder.close(at: date) { persist(closed) }
+        throttle = ChromeThrottle()
+        chromeTabState = .none
+        chatSession = nil
+        lastChatFetch = .distantPast
+        observations?.logState(paused ? "tracking_pause" : "tracking_resume", at: date)
+        interruptCollector()
+    }
     private var lastHeartbeat = Date.distantPast
 
     /// Chrome tab capture state. `.none` (fetch failed / never fetched) never
@@ -401,14 +427,11 @@ public final class TrackerEngine {
         ) else { return }
         guard suspensionEpoch == epochBeforeSample else { return }
 
-        // Idle: no span, but the screen collector still gets its look.
-        if phase == .idle {
-            offerToCollector(sample, now: now, spanID: nil)
-            return
-        }
-
         if sample.appBundleID == Self.chromeBundleID {
-            if shouldFetchChromeTab(title: sample.windowTitle, at: now) {
+            if settings.get("chromeTrackingEnabled") == "false" {
+                chromeTabState = .none
+                cachedChromeAutomationAuthorized = false
+            } else if shouldFetchChromeTab(title: sample.windowTitle, at: now) {
                 // Refresh the cached authorization answer once per attempt,
                 // regardless of whether the fetch itself succeeds -- this is
                 // the only place that ever calls the real TCC check.
@@ -434,6 +457,19 @@ public final class TrackerEngine {
             sample.document = chatSession?.title
         }
 
+        let privateChrome: Bool
+        if case .incognito = chromeTabState { privateChrome = sample.appBundleID == Self.chromeBundleID }
+        else { privateChrome = false }
+        if privateChrome || settings.excludes(sample) {
+            if let closed = builder.close(at: now) { persist(closed) }
+            latestSample = nil
+            interruptCollector()
+            return
+        }
+        if phase == .idle {
+            offerToCollector(sample, now: now, spanID: nil)
+            return
+        }
         finishTick(sample, now: now)
         offerToCollector(sample, now: now, spanID: currentRowID)
     }
@@ -441,7 +477,10 @@ public final class TrackerEngine {
     /// Fire-and-forget: the collector paces and dedupes itself, and a tick
     /// must never wait on a screenshot or OCR.
     private func offerToCollector(_ sample: Sample, now: Date, spanID: Int64?) {
-        guard let screenCollector else { return }
+        guard let screenCollector, !settings.excludes(sample) else { return }
+        if sample.appBundleID == Self.chromeBundleID {
+            guard case .tab = chromeTabState else { return }
+        }
         let idleSeconds = idleSeconds
         Task { await screenCollector.tick(now: now, sample: sample, spanID: spanID, idleSeconds: idleSeconds) }
     }
@@ -493,6 +532,7 @@ public final class TrackerEngine {
     /// idle/lock/sleep suspension state machine. `.active` samples as
     /// normal, `.idle` samples for the screen collector only.
     private func beginTick(now: Date) -> TickPhase {
+        guard !userPaused, permissionGranted else { return .suspended }
         let rawIdle = idleSecondsProvider?() ?? idleMonitor.idleSeconds()
         let isInMeetingNow = isInMeetingProvider?() == true
         if wasInMeeting, !isInMeetingNow {

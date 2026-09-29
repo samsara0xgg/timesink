@@ -28,6 +28,10 @@ public final class ObservationStore: Sendable {
     }
 
     /// Forgets image paths older than `cutoff`; rows and text stay.
+    public func forgetImage(id: Int64) throws {
+        try writer.write { try $0.execute(sql: "UPDATE capture SET imagePath = NULL WHERE id = ?", arguments: [id]) }
+    }
+
     public func forgetImages(before cutoff: Date) throws {
         try writer.write { db in
             try db.execute(sql: "UPDATE capture SET imagePath = NULL WHERE at < ? AND imagePath IS NOT NULL",

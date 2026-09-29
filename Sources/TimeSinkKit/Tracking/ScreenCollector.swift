@@ -53,6 +53,8 @@ public actor ScreenCollector {
     private var frameProvider: FrameProvider?
     private var permissionLogged = false
     private var lastPrune = Date.distantPast
+    private var retentionDays = 7
+    public func setRetentionDays(_ days: Int) { retentionDays = max(1, min(30, days)); lastPrune = .distantPast }
     public private(set) var paused: Bool
     /// Counters for the current health window; flushed as one `captureHealth`
     /// row every `healthWindow` seconds and on every interruption.
@@ -143,7 +145,7 @@ public actor ScreenCollector {
         } else {
             frame = await look(at: key).map { ($0, nil) }
         }
-        guard let frame else { return }
+        guard let frame, segment == policy.segment, !paused else { return }
         let signature = Self.signature(of: frame.image)
         var text: String?
         if let current, current.segment == segment, current.title == sample.windowTitle {
@@ -158,7 +160,7 @@ public actor ScreenCollector {
                 return
             }
             text = await read(frame)
-            guard let read = text else { return }
+            guard let read = text, segment == policy.segment, !paused else { return }
             if moved < ScreenSignature.changedFraction && drifted < ScreenSignature.changedFraction
                 && read == current.text {
                 health.textSame += 1
@@ -172,7 +174,7 @@ public actor ScreenCollector {
         } else {
             text = await read(frame)
         }
-        guard let text else { return }
+        guard let text, segment == policy.segment, !paused else { return }
         let imagePath = writeJPEG(frame.image, at: now)
         let capture = Capture(at: now, lastSeenAt: now, appBundleID: sample.appBundleID,
                               appName: sample.appName, windowID: Int64(key.windowID),
@@ -313,14 +315,30 @@ public actor ScreenCollector {
         }
     }
 
+    /// User-confirmed image removal leaves activity spans and OCR text intact.
+    public func deleteImages(in interval: DateInterval) throws -> Int {
+        interrupt()
+        let captures = try store.captures(overlapping: interval)
+        var count = 0
+        for capture in captures {
+            guard let path = capture.imagePath, let id = capture.id else { continue }
+            let url = imagesRoot.appendingPathComponent(path).standardizedFileURL
+            guard url.path.hasPrefix(imagesRoot.standardizedFileURL.path + "/") else { continue }
+            if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+            try store.forgetImage(id: id)
+            count += 1
+        }
+        return count
+    }
+
     /// Deletes day folders older than the retention window and forgets
     /// their paths; capture rows and text stay.
     private func prune(now: Date) {
         let fm = FileManager.default
         let days = (try? fm.contentsOfDirectory(atPath: imagesRoot.path)) ?? []
-        for day in days where CaptureRetention.isExpired(dayFolder: day, now: now) {
+        for day in days where CaptureRetention.isExpired(dayFolder: day, now: now, days: retentionDays) {
             try? fm.removeItem(at: imagesRoot.appendingPathComponent(day))
         }
-        try? store.forgetImages(before: CaptureRetention.cutoff(now: now))
+        try? store.forgetImages(before: CaptureRetention.cutoff(now: now, days: retentionDays))
     }
 }

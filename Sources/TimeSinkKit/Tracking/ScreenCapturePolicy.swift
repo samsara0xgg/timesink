@@ -149,11 +149,11 @@ public enum CaptureRetention {
         return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
     }
 
-    public static func cutoff(now: Date, calendar: Calendar = .current) -> Date {
+    public static func cutoff(now: Date, calendar: Calendar = .current, days: Int = CaptureRetention.days) -> Date {
         calendar.date(byAdding: .day, value: -days, to: calendar.startOfDay(for: now)) ?? now
     }
 
-    public static func isExpired(dayFolder: String, now: Date, calendar: Calendar = .current) -> Bool {
-        dayFolder < dayStamp(cutoff(now: now, calendar: calendar), calendar: calendar)
+    public static func isExpired(dayFolder: String, now: Date, calendar: Calendar = .current, days: Int = CaptureRetention.days) -> Bool {
+        dayFolder < dayStamp(cutoff(now: now, calendar: calendar, days: days), calendar: calendar)
     }
 }
