@@ -25,7 +25,7 @@ struct RefinedRulesPane: View {
         var enabled: Bool
         /// What a person reads: an app's name rather than its bundle ID.
         var scopeLabel = ""
-        var displayPattern: String { pattern.hasPrefix("re:") ? pattern : pattern.replacingOccurrences(of: "|", with: "、") }
+        var displayPattern: String { pattern.hasPrefix("re:") ? pattern : pattern.replacingOccurrences(of: "|", with: String(localized: "、")) }
     }
 
     /// A URL rule is one substring (or `re:` expression) tested against the

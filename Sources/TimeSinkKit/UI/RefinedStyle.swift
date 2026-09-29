@@ -47,6 +47,13 @@ enum RefinedStyle {
 
     static func shippedHex(_ id: String) -> String? { shipped[id]?.hex }
 
+    /// One width for a column of names: the widest name, capped so the bar
+    /// beside it keeps room. Fixed widths clipped English category names.
+    static func nameColumn(_ names: [String], font: NSFont, cap: CGFloat) -> CGFloat {
+        let widest = names.map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
+        return min(cap, ceil(widest))
+    }
+
     static func remaining(spent: TimeInterval, limit: TimeInterval) -> String {
         let remaining = limit - spent
         if spent == 0 { return String(localized: "0 / \(Int(limit / 60)) 分钟") }

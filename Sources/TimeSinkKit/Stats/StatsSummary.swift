@@ -74,14 +74,17 @@ struct StatsSummary: Sendable {
 
         // Websites and native apps share the same non-overlapping ranking.
         var appCategorySeconds: [String: [String: TimeInterval]] = [:]
+        var domains: Set<String> = []
         for item in items {
             let key = item.span.domain ?? item.span.appBundleID
+            if item.span.domain != nil { domains.insert(key) }
             appCategorySeconds[key, default: [:]][item.categoryID, default: 0] += item.span.duration
         }
         appRows = StatsModel.distributionRows(Aggregator.durationByDomainOrApp(items).map { entry in
             let dominant = appCategorySeconds[entry.key]?.max { $0.value < $1.value }?.key
             let colorHex = dominant.flatMap { categories[$0]?.colorHex } ?? "#98989D"
-            return RankingRow(id: entry.key, name: entry.label, colorHex: colorHex, seconds: entry.seconds)
+            return RankingRow(id: entry.key, name: entry.label, colorHex: colorHex, seconds: entry.seconds,
+                              categoryID: dominant, isDomain: domains.contains(entry.key))
         })
         categoryRows = StatsModel.distributionRows(byCategory.map { categoryID, seconds in
             let category = categories[categoryID]

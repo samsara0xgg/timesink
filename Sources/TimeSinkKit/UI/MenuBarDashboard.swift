@@ -900,7 +900,7 @@ struct MenuBarDashboardView: View {
     // requests `DrillWidths.compact` instead of the pane's normal panel
     // width -- passed `true` only by the `ExpandedDrillView` (in-popover
     // degraded) call sites, since that path is bounded by the popover's own
-    // 268pt content width, unlike the floating `NSPanel`.
+    // content width, unlike the floating `NSPanel`.
 
     private func scoreBreakdownContent(compact: Bool = false) -> ScoreBreakdownView {
         let byCategory = Aggregator.durationByCategory(dashboard.todayItems)
@@ -934,7 +934,7 @@ struct MenuBarDashboardView: View {
         }
         let subs = Aggregator.durationByDomainOrApp(items).prefix(5)
             .map { CategoryDetailView.SubEntry(id: $0.key, label: $0.label, seconds: $0.seconds) }
-        return CategoryDetailView(name: entry.name, colorHex: entry.colorHex, seconds: entry.seconds,
+        return CategoryDetailView(categoryID: entry.id, name: entry.name, colorHex: entry.colorHex, seconds: entry.seconds,
                                    hourBars: bars, subs: Array(subs),
                                    width: compact ? DrillWidths.compact : DrillWidths.category,
                                    onOpenActivities: {

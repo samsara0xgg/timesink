@@ -57,10 +57,12 @@ struct ScoreBreakdownView: View {
                         .font(.caption).monospacedDigit().foregroundStyle(.secondary)
                 }
             }
+            // Bar keeps at least 48pt beside the 114pt of dot, spacing and numbers.
+            let nameWidth = RefinedStyle.nameColumn(rows.map(\.name), font: .preferredFont(forTextStyle: .caption1), cap: width - 162)
             ForEach(rows) { row in
                 HStack(spacing: 8) {
                     Circle().fill(RefinedStyle.category(row.id, hex: row.colorHex)).frame(width: 8, height: 8)
-                    Text(row.name).font(.caption).frame(width: 56, alignment: .leading)
+                    Text(row.name).font(.caption).lineLimit(1).frame(width: nameWidth, alignment: .leading)
                     GeometryReader { geo in
                         Capsule().fill(RefinedStyle.category(row.id, hex: row.colorHex))
                             .frame(width: max(4, geo.size.width * row.share))
@@ -176,6 +178,7 @@ struct CategoryDetailView: View {
         let seconds: TimeInterval
     }
 
+    let categoryID: String
     let name: String
     let colorHex: String
     let seconds: TimeInterval
@@ -191,7 +194,7 @@ struct CategoryDetailView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Circle().fill(Color(hex: colorHex)).frame(width: 8, height: 8)
+                Circle().fill(RefinedStyle.category(categoryID, hex: colorHex)).frame(width: 8, height: 8)
                 Text(name).font(.headline)
                 Spacer()
                 Text("今日 \(Format.duration(seconds))").font(.caption).foregroundStyle(.secondary)
@@ -302,7 +305,7 @@ struct HourlyBigView: View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), alignment: .leading)], alignment: .leading, spacing: 6) {
             ForEach(ids, id: \.self) { id in
                 HStack(spacing: 3) {
-                    Circle().fill(Color(hex: categories[id]?.colorHex ?? "#8E8E93")).frame(width: 6, height: 6)
+                    Circle().fill(RefinedStyle.category(id, hex: categories[id]?.colorHex ?? "#8E8E93")).frame(width: 6, height: 6)
                     Text(categories[id]?.name ?? id).font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -334,10 +337,12 @@ struct BudgetProgressView: View {
                 Spacer()
                 Text("\(rows.count) 项启用").font(.caption).foregroundStyle(.secondary)
             }
+            // Bar keeps at least 48pt beside the 124pt of dot, spacing and totals.
+            let nameWidth = RefinedStyle.nameColumn(rows.map(\.name), font: .preferredFont(forTextStyle: .caption1), cap: width - 172)
             ForEach(rows) { row in
                 HStack(spacing: 8) {
                     Circle().fill(RefinedStyle.category(row.id, hex: row.colorHex)).frame(width: 8, height: 8)
-                    Text(row.name).font(.caption).frame(width: 56, alignment: .leading)
+                    Text(row.name).font(.caption).lineLimit(1).frame(width: nameWidth, alignment: .leading)
                     GeometryReader { geo in
                         let ratio = row.limit > 0 ? min(1, row.spent / row.limit) : 0
                         Capsule().fill(RefinedStyle.category(row.id, hex: row.colorHex))
@@ -365,11 +370,10 @@ struct BudgetProgressView: View {
 /// the pane in its own floating `NSPanel` -- no width constraint there
 /// beyond looking reasonable) -- and `compact`, the one width every pane's
 /// degraded in-popover expansion (`ExpandedDrillView` in
-/// `MenuBarDashboard.swift`) uses instead. The popover's own content width
-/// is 268pt (`.frame(width: 300)` minus `.padding(16)` per side); `compact`
-/// (240) plus `FlyoutCard`'s 14pt/side padding (28) is exactly 268, so the
-/// inline expansion never clips its trailing edge (F1 fix -- panel widths
-/// alone overflowed by 20-60pt for four of the six pane types).
+/// `MenuBarDashboard.swift`) uses instead: the popover width minus
+/// `FlyoutCard`'s 14pt/side padding and the popover's own 14pt margins, so
+/// the inline expansion lines up with the sections around it and never
+/// clips its trailing edge.
 enum DrillWidths {
     static let score: CGFloat = 280
     static let compare: CGFloat = 240
@@ -377,5 +381,5 @@ enum DrillWidths {
     static let category: CGFloat = 340
     static let hourly: CGFloat = 340
     static let budget: CGFloat = 280
-    static let compact: CGFloat = 240
+    static let compact: CGFloat = RefinedStyle.popoverWidth - 56
 }

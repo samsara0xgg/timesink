@@ -52,7 +52,7 @@ struct HourlyActivityChart: View {
                                   yStart: .value("分钟", segment.startMinutes),
                                   yEnd: .value("分钟", segment.endMinutes))
                         .cornerRadius(2)
-                        .foregroundStyle(Color(hex: bar.colorHex))
+                        .foregroundStyle(RefinedStyle.category(bar.categoryID, hex: bar.colorHex))
                         .accessibilityLabel(String(format: "%02d:00–%02d:00", bar.hour, bar.hour + 1))
                         .accessibilityValue(Format.duration(bar.seconds))
                 }

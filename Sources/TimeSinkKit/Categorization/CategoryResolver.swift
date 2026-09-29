@@ -277,7 +277,7 @@ public final class CategoryResolver {
     }
 
     func explanation(for span: Span) -> String {
-        if let id = span.id, overrides[id] != nil { return String(localized: "你单独调整了这一段，其他活动不受影响。") }
+        if let id = span.id, overrides[id] != nil { return String(localized: "你单独调整了这条记录，其他活动不受影响。") }
         let scope = span.domain ?? span.appBundleID
         func titleReason(user: Bool) -> String? {
             guard let title = span.title else { return nil }

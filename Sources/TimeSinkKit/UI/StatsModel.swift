@@ -30,6 +30,9 @@ final class StatsModel {
         let name: String
         let colorHex: String
         let seconds: TimeInterval
+        /// The category its color comes from, so the adaptive palette applies.
+        var categoryID: String? = nil
+        var isDomain = false
     }
 
     /// The ranking may be shortened; the chart's denominator must never be.

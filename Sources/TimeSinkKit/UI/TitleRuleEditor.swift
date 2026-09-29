@@ -219,7 +219,7 @@ struct TitleRuleEditor: View {
             }.font(.system(size: 12))
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text("会影响 \(affectedPreview.count) 段 · \(Format.duration(affectedPreview.seconds))").fontWeight(.semibold)
+                    Text("会影响 \(affectedPreview.count) 条记录 · \(Format.duration(affectedPreview.seconds))").fontWeight(.semibold)
                     Spacer()
                     Text("近 30 天").foregroundStyle(.secondary)
                 }

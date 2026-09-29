@@ -92,11 +92,12 @@ struct StatsView: View {
                 Text("\(model.range.label) · 与上期差").font(.system(size: 11)).foregroundStyle(.secondary)
             }
             if stats.categoryRows.isEmpty { Text("这段时间还没有记录。").font(.system(size: 12)).foregroundStyle(.secondary) }
+            let nameWidth = RefinedStyle.nameColumn(stats.categoryRows.map(\.name), font: .systemFont(ofSize: 12), cap: 140)
             ForEach(stats.categoryRows) { row in
                 Button { model.openActivities(category: row.id, range: model.range) } label: {
                     HStack(spacing: 8) {
                         Circle().fill(RefinedStyle.category(row.id, hex: row.colorHex)).frame(width: 8, height: 8)
-                        Text(row.name).frame(width: 64, alignment: .leading).lineLimit(1)
+                        Text(row.name).frame(width: nameWidth, alignment: .leading).lineLimit(1)
                         GeometryReader { geo in
                             Capsule().fill(.quaternary)
                             Capsule().fill(RefinedStyle.category(row.id, hex: row.colorHex))
@@ -115,11 +116,11 @@ struct StatsView: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 330), spacing: 28)], spacing: 4) {
                 ForEach(stats.appRows) { row in
                     HStack(spacing: 10) {
-                        AppIcon(bundleID: row.id)
+                        ActivityIcon(bundleID: row.id, domain: row.isDomain ? row.id : nil)
                         Text(row.name).font(.system(size: 13)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                         GeometryReader { geo in
                             Capsule().fill(.quaternary)
-                            Capsule().fill(Color(hex: row.colorHex)).frame(width: geo.size.width * row.seconds / max(1, stats.appRows.first?.seconds ?? 1))
+                            Capsule().fill(RefinedStyle.category(row.categoryID ?? "", hex: row.colorHex)).frame(width: geo.size.width * row.seconds / max(1, stats.appRows.first?.seconds ?? 1))
                         }.frame(width: 90, height: 5)
                         Text(Format.duration(row.seconds)).font(.system(size: 12)).monospacedDigit().frame(width: 52, alignment: .trailing)
                     }.frame(height: 32)
