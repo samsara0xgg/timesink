@@ -251,11 +251,17 @@ public final class CategoryResolver {
     func matchingRuleKey(for span: Span) -> String? {
         if let id = span.id, overrides[id] != nil { return nil }
         let scope = span.domain ?? span.appBundleID
+        // The compiled rules sit index for index beside the raw ones: the
+        // rules pane asks this for every span of the day, and the raw
+        // patterns re-split keywords and recompile regexes on every call.
         func title(_ user: Bool) -> String? {
-            guard let text = span.title, let rule = context.titleRules.first(where: {
-                ($0.source == "user") == user && Classifier.scopeMatches(ruleScopeKey: $0.scopeKey, scopeKey: scope) && Classifier.titleMatches(pattern: $0.pattern, title: text)
-            }), let id = rule.id else { return nil }
-            return "title:\(id)"
+            guard let text = span.title else { return nil }
+            let lowered = text.lowercased()
+            for (rule, compiled) in zip(context.titleRules, context.compiledTitleRules) where (rule.source == "user") == user
+                && Classifier.scopeMatches(ruleScopeKey: rule.scopeKey, scopeKey: scope) && compiled.matches(title: text, loweredTitle: lowered) {
+                return rule.id.map { "title:\($0)" }
+            }
+            return nil
         }
         func domain(_ source: String) -> String? {
             guard let domain = span.domain else { return nil }
@@ -268,8 +274,13 @@ public final class CategoryResolver {
             return nil
         }
         func url(_ user: Bool) -> String? {
-            guard let value = span.url, let rule = context.urlRules.first(where: { ($0.source == "user") == user && Classifier.matches(pattern: $0.pattern, in: value) }), let id = rule.id else { return nil }
-            return "url:\(id)"
+            guard let value = span.url else { return nil }
+            let lowered = value.lowercased()
+            for (rule, compiled) in zip(context.urlRules, context.compiledURLRules) where (rule.source == "user") == user
+                && compiled.matches(url: value, loweredURL: lowered) {
+                return rule.id.map { "url:\($0)" }
+            }
+            return nil
         }
         if let key = title(true) ?? domain("user") ?? url(true) ?? title(false) ?? url(false) ?? domain("curated") ?? domain("seed") { return key }
         if span.domain == nil, context.appMap[span.appBundleID] != nil { return "app:" + span.appBundleID }

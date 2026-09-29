@@ -32,6 +32,20 @@ import os
         XCTAssertNil(resolver.matchingRuleKey(for: span))
     }
 
+    func testWinningRuleCreditsURLAndRegexRules() throws {
+        let db = try AppDatabase.openInMemory(), categories = CategoryStore(db), store = SpanStore(db)
+        try categories.addUserURLRule(pattern: "Example.org/Docs", categoryID: "learning", priority: 1000)
+        try categories.upsertUserTitleRule(pattern: "re:^Draft \\d+", scopeKey: "", categoryID: "writing")
+        let page = try store.insert(Span(start: ts(0), end: ts(60), appBundleID: "browser", appName: "Browser", title: "Guide",
+                                         url: "https://example.org/docs/intro", domain: "example.org"))
+        let draft = try store.insert(Span(start: ts(60), end: ts(120), appBundleID: "editor", appName: "Editor", title: "Draft 12", url: nil, domain: nil))
+        let resolver = CategoryResolver(categoryStore: categories)
+        let urlRule = try XCTUnwrap(try categories.urlRules().first { $0.source == "user" }?.id)
+        let titleRule = try XCTUnwrap(try categories.titleRules().first { $0.source == "user" }?.id)
+        XCTAssertEqual(resolver.matchingRuleKey(for: page), "url:\(urlRule)")
+        XCTAssertEqual(resolver.matchingRuleKey(for: draft), "title:\(titleRule)")
+    }
+
     func testCSVPreservesTextAndDiagnosticsContainNoContent() throws {
         let db = try AppDatabase.openInMemory(), store = SpanStore(db)
         try store.insert(Span(start: ts(0), end: ts(90), appBundleID: "private.editor", appName: "应用", title: "=secret,\"quoted\"\nline", url: "https://private.example/account", domain: "private.example"))

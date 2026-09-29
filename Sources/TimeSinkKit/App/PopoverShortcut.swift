@@ -52,7 +52,7 @@ extension AppModel {
         guard popoverShortcut.available else { registerPopoverShortcut(); return false }
         settings.set("popoverShortcutKey", String(event.keyCode)); settings.set("popoverShortcutModifiers", String(modifiers)); settings.set("popoverShortcutLabel", label + character)
         popoverShortcutAvailable = true
-        dataChanged()
+        settingsChanged()
         return true
     }
 }

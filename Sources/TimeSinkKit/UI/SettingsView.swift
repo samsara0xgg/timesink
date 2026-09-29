@@ -202,7 +202,7 @@ struct RefinedPrivacyPane: View {
                 Task {
                     do {
                         let count = try await model.screenCollector?.deleteImages(in: DateRangeSelection.today().interval) ?? 0
-                        status = String(localized: "已删除 \(count) 张截图。"); model.dataChanged()
+                        status = String(localized: "已删除 \(count) 张截图。"); model.settingsChanged()
                     } catch { status = String(localized: "截图未能全部删除，请重试。") }
                 }
             }

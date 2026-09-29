@@ -412,6 +412,14 @@ public final class AppModel {
         invalidateAndBump()
     }
 
+    /// A setting changed that no span's category depends on (budgets, focus
+    /// blocks, the popover shortcut, deleted captures). Views refresh from the
+    /// caches; the cache and the 30-day aggregates keyed on
+    /// `dataEditVersion` are left alone.
+    public func settingsChanged() {
+        bump()
+    }
+
     /// The tracker wrote a span. Same invalidation, but deliberately does not
     /// touch `dataEditVersion`: this fires about every 1.5s while tracking
     /// and must not drag a once-a-day aggregation along with it.

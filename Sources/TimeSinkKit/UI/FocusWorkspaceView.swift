@@ -48,7 +48,7 @@ struct FocusWorkspaceView: View {
                     Toggle(isOn: Binding(get: { model.settings.focusBlockedCategories.contains(category.id) }, set: { enabled in
                         var ids = Set(model.settings.focusBlockedCategories)
                         if enabled { ids.insert(category.id) } else { ids.remove(category.id) }
-                        model.settings.setFocusBlockedCategories(ids.sorted()); model.dataChanged()
+                        model.settings.setFocusBlockedCategories(ids.sorted()); model.settingsChanged()
                     })) { CategoryChip(category: category) }
                 }
                 Text("修改从下一次专注开始生效。").font(.system(size: 11)).foregroundStyle(.secondary)
@@ -205,7 +205,7 @@ struct FocusWorkspaceView: View {
             .contextMenu { Button("删除限额", role: .destructive) { writeBudget { try model.budgetStore?.deleteBudget(categoryID: budget.categoryID) } } }
     }
     private func writeBudget(_ action: () throws -> Void) {
-        do { try action(); load(); model.dataChanged(); error = nil }
+        do { try action(); load(); model.settingsChanged(); error = nil }
         catch { self.error = String(localized: "限额未保存：\(error.localizedDescription)") }
     }
     private func start() {
