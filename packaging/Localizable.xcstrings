@@ -1,22 +1,72 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
-    "%@ %lld 时 · 平均分 %@": {
+    "\n点击后清除筛选并定位此活动": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ %lld:00 · average %@"
+            "value": "\nClick to clear filters and locate this activity"
           }
         }
       }
     },
-    "%@ %lld 时 · 样本不足": {
+    " · 在时间轴中定位": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ %lld:00 · not enough data"
+            "value": " · Locate on timeline"
+          }
+        }
+      }
+    },
+    " · 本次第 %lld 次打开": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " · Opened %lld times this session"
+          }
+        }
+      }
+    },
+    " · 计入投入时长": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " · Counts toward productive time"
+          }
+        }
+      }
+    },
+    " 分": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " pts"
+          }
+        }
+      }
+    },
+    "%@\n%@\n点击固定并查看具体日期": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@\n%@\nClick to pin and view dates"
+          }
+        }
+      }
+    },
+    "%@ · %@ · %lld 段": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %@ · %lld segments"
           }
         }
       }
@@ -31,12 +81,82 @@
         }
       }
     },
-    "%@ 分": {
+    "%@ · %lld 段 · %lld 个分类": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ pts"
+            "value": "%@ · %lld segments · %lld categories"
+          }
+        }
+      }
+    },
+    "%@ · 与上期差": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · Change from previous period"
+          }
+        }
+      }
+    },
+    "%@ · 与前一时段比较": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · Compared with previous period"
+          }
+        }
+      }
+    },
+    "%@ 分钟": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ minutes"
+          }
+        }
+      }
+    },
+    "%@ 在专注期间已隐藏": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ is hidden during focus"
+          }
+        }
+      }
+    },
+    "%@ 在专注期间被拦截": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ is blocked during focus"
+          }
+        }
+      }
+    },
+    "%@ 开始": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Started %@"
+          }
+        }
+      }
+    },
+    "%@ 结束": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ends %@"
           }
         }
       }
@@ -51,12 +171,62 @@
         }
       }
     },
+    "%@–%@ · 每格汇总同一星期、同一小时的记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@–%@ · Each cell combines the same weekday and hour"
+          }
+        }
+      }
+    },
+    "%@会影响 %lld 段 · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ affects %lld segments · %@"
+          }
+        }
+      }
+    },
     "%@已到今日上限": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "%@ reached today's limit"
+          }
+        }
+      }
+    },
+    "%@应用分类 · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ app category · %@"
+          }
+        }
+      }
+    },
+    "%@标题规则 · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ title rule · %@"
+          }
+        }
+      }
+    },
+    "%@网址规则 · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ URL rule · %@"
           }
         }
       }
@@ -71,32 +241,22 @@
         }
       }
     },
-    "%@（整个应用）": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ (whole app)"
-          }
-        }
-      }
-    },
-    "%@（整站）": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ (whole site)"
-          }
-        }
-      }
-    },
     "%@（无法拦截该浏览器的网站）": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "%@ (sites in this browser can't be blocked)"
+          }
+        }
+      }
+    },
+    "%@，%@，占 %lld%%，有详情": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@, %@, %lld%%, details available"
           }
         }
       }
@@ -111,12 +271,92 @@
         }
       }
     },
+    "%@，累计 %@，每个%@平均 %@，%lld 天中有 %lld 天记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@, %@ total, %@ average: %@, %lld days with %lld recorded"
+          }
+        }
+      }
+    },
+    "%@：": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@:"
+          }
+        }
+      }
+    },
+    "%lld / %lld 分钟": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld / %lld minutes"
+          }
+        }
+      }
+    },
+    "%lld / %lld 段": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld / %lld segments"
+          }
+        }
+      }
+    },
     "%lld · 较昨日 %@": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "%lld · %@ vs. yesterday"
+          }
+        }
+      }
+    },
+    "%lld 个分类": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld categories"
+          }
+        }
+      }
+    },
+    "%lld 分": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld pts"
+          }
+        }
+      }
+    },
+    "%lld 分钟": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld minutes"
+          }
+        }
+      }
+    },
+    "%lld 分钟专注完成": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld-minute focus completed"
           }
         }
       }
@@ -131,6 +371,16 @@
         }
       }
     },
+    "%lld 天": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld days"
+          }
+        }
+      }
+    },
     "%lld 天 · 达标线 %lld 分": {
       "localizations": {
         "en": {
@@ -141,22 +391,82 @@
         }
       }
     },
-    "%lld 时 · %@": {
+    "%lld 小时": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld:00 · %@"
+            "value": "%lld hours"
           }
         }
       }
     },
-    "%lld 时 · %@ · 分 %@": {
+    "%lld 小时 %lld 分钟": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld:00 · %@ · score %@"
+            "value": "%lld hours %lld minutes"
+          }
+        }
+      }
+    },
+    "%lld 张": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld images"
+          }
+        }
+      }
+    },
+    "%lld 条": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld rules"
+          }
+        }
+      }
+    },
+    "%lld 次 · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld sessions · %@"
+          }
+        }
+      }
+    },
+    "%lld 次采集": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld captures"
+          }
+        }
+      }
+    },
+    "%lld 次，%lld 次已完成": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld sessions, %lld completed"
+          }
+        }
+      }
+    },
+    "%lld 段": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld segments"
           }
         }
       }
@@ -167,6 +477,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Enabled: %lld"
+          }
+        }
+      }
+    },
+    "%lld 项待分类": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld items to categorize"
+          }
+        }
+      }
+    },
+    "%lld:00 平均 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld:00 average %@"
           }
         }
       }
@@ -211,12 +541,62 @@
         }
       }
     },
-    "0 – 24 时": {
+    "0 / %lld 分钟": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "0 – 24 h"
+            "value": "0 / %lld minutes"
+          }
+        }
+      }
+    },
+    "0 分钟": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "0 minutes"
+          }
+        }
+      }
+    },
+    "00:00 至 24:00": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "00:00 to 24:00"
+          }
+        }
+      }
+    },
+    "1 小时后恢复": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume in 1 hour"
+          }
+        }
+      }
+    },
+    "12 小时": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "12-hour"
+          }
+        }
+      }
+    },
+    "24 小时": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "24-hour"
           }
         }
       }
@@ -231,6 +611,26 @@
         }
       }
     },
+    "24 小时活动分布，单位分钟": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "24-hour activity distribution, in minutes"
+          }
+        }
+      }
+    },
+    "API 密钥": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API key"
+          }
+        }
+      }
+    },
     "Chrome 未运行": {
       "localizations": {
         "en": {
@@ -241,12 +641,22 @@
         }
       }
     },
-    "Chrome 网页读取已降级，请检查自动化权限": {
+    "Chrome 网址": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Chrome page reading is degraded. Check the Automation permission."
+            "value": "Chrome URLs"
+          }
+        }
+      }
+    },
+    "Chrome 网页读取已降级 · 检查权限": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chrome capture limited · Check permissions"
           }
         }
       }
@@ -257,6 +667,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Chrome Automation"
+          }
+        }
+      }
+    },
+    "Chrome 自动化 · 推荐": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chrome Automation · Recommended"
           }
         }
       }
@@ -291,12 +711,52 @@
         }
       }
     },
+    "TimeSink · 示例数据验收": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TimeSink · Sample data preview"
+          }
+        }
+      }
+    },
+    "TimeSink 住在菜单栏右上角。点一下看今天，悬停看细节。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TimeSink lives in the menu bar at the top right. Click to see today; hover for details."
+          }
+        }
+      }
+    },
     "TimeSink 拦截页": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "TimeSink Block Page"
+          }
+        }
+      }
+    },
+    "TimeSink 诊断信息\n系统：%@\n活动条数：%lld\n数据库版本：%@\n\n不含窗口标题、网址、应用清单、截图、识别文字、密钥或账号。\n": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TimeSink diagnostics\nSystem: %@\nActivity count: %lld\nDatabase version: %@\n\nExcludes window titles, URLs, app lists, screenshots, recognized text, keys and accounts.\n"
+          }
+        }
+      }
+    },
+    "TimeSink 靠它看到最前面的应用和窗口标题。关闭期间不会记录任何时间。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TimeSink uses this permission to read the frontmost app and window title. No time is recorded while it is off."
           }
         }
       }
@@ -321,6 +781,76 @@
         }
       }
     },
+    "macOS 需要你亲自打开这个开关，TimeSink 才能看到最前面的应用。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS requires you to enable this permission so TimeSink can see the frontmost app."
+          }
+        }
+      }
+    },
+    "· %@ 起": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "· Since %@"
+          }
+        }
+      }
+    },
+    "、": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": ", "
+          }
+        }
+      }
+    },
+    "一周从哪天开始": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Week starts on"
+          }
+        }
+      }
+    },
+    "一天的片段": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moments of the day"
+          }
+        }
+      }
+    },
+    "上一个时段": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Previous period"
+          }
+        }
+      }
+    },
+    "上一段活动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Previous activity"
+          }
+        }
+      }
+    },
     "上传每段活动的应用、窗口标题、网址和起止时间。截图和识别出的文字只留在本机。": {
       "localizations": {
         "en": {
@@ -337,6 +867,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Last Week"
+          }
+        }
+      }
+    },
+    "上期暂无记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No records in the previous period"
           }
         }
       }
@@ -381,6 +921,96 @@
         }
       }
     },
+    "下一个时段": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next period"
+          }
+        }
+      }
+    },
+    "下一段活动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next activity"
+          }
+        }
+      }
+    },
+    "下一段活动会显示在这里。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your next activity will appear here."
+          }
+        }
+      }
+    },
+    "不到 1 分钟": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Less than 1 minute"
+          }
+        }
+      }
+    },
+    "不可用，请重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unavailable, please try again"
+          }
+        }
+      }
+    },
+    "不开也能用：浏览时间会记成「Chrome」，不区分网站。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Optional: browser time will be recorded as Chrome without identifying websites."
+          }
+        }
+      }
+    },
+    "不记录这些应用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exclude these apps"
+          }
+        }
+      }
+    },
+    "不记录这些网站": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exclude these websites"
+          }
+        }
+      }
+    },
+    "不读取网页内容、输入和文件。屏幕采集可单独开启。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Does not read page contents, typing or files. Screen capture is optional."
+          }
+        }
+      }
+    },
     "与内置规则重复，可在规则面板中启用/停用该内置规则": {
       "localizations": {
         "en": {
@@ -411,52 +1041,32 @@
         }
       }
     },
-    "专注 %@，生产力分 %lld%@。": {
+    "专注 %lld 分钟": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Focus %@, productivity score %lld%@. "
+            "value": "Focus for %lld minutes"
           }
         }
       }
     },
-    "专注中 %@ · %@": {
+    "专注与限额": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Focusing %@ · %@"
+            "value": "Focus & Limits"
           }
         }
       }
     },
-    "专注中 %@ · %@ 已被隐藏（第 %lld 次）": {
+    "专注会话": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Focusing %@ · %@ hidden (#%lld)"
-          }
-        }
-      }
-    },
-    "专注中，此站点已被拦截": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Focusing: this site is blocked"
-          }
-        }
-      }
-    },
-    "专注会话结束": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Focus Session Ended"
+            "value": "Focus sessions"
           }
         }
       }
@@ -481,6 +1091,16 @@
         }
       }
     },
+    "专注提前结束": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Focus ended early"
+          }
+        }
+      }
+    },
     "专注时长": {
       "localizations": {
         "en": {
@@ -491,12 +1111,32 @@
         }
       }
     },
-    "专注时长比较": {
+    "专注期间拦截此类网站 · 放行后回到原来的页面": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Focus Time Comparison"
+            "value": "This website category is blocked during focus · Allow to return to the original page"
+          }
+        }
+      }
+    },
+    "专注结束": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Focus finished"
+          }
+        }
+      }
+    },
+    "专注记录暂时无法读取。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Focus history is temporarily unavailable."
           }
         }
       }
@@ -521,6 +1161,36 @@
         }
       }
     },
+    "为什么是这个分类": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Why this category"
+          }
+        }
+      }
+    },
+    "主要分类": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Top categories"
+          }
+        }
+      }
+    },
+    "主要应用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Top apps"
+          }
+        }
+      }
+    },
     "事务": {
       "localizations": {
         "en": {
@@ -541,16 +1211,6 @@
         }
       }
     },
-    "云端备份（可选）": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cloud Backup (Optional)"
-          }
-        }
-      }
-    },
     "云端尚未配置": {
       "localizations": {
         "en": {
@@ -561,22 +1221,22 @@
         }
       }
     },
-    "云端尚未配置：部署 cloud/infra 后把输出填进 CloudConfig.swift。": {
+    "什么时候在用电脑": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cloud is not configured: deploy cloud/infra and put its outputs in CloudConfig.swift."
+            "value": "When you use your Mac"
           }
         }
       }
     },
-    "仅 %@": {
+    "仅检查记录中的网址；不访问网页。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Only %@"
+            "value": "Checks recorded URLs only; does not visit websites."
           }
         }
       }
@@ -591,12 +1251,102 @@
         }
       }
     },
-    "今天已用 %@ / %@。到达上限前会再提醒一次。": {
+    "今天 %@ · %@": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Used %@ of %@ today. You'll be reminded once more at the limit."
+            "value": "Today %@ · %@"
+          }
+        }
+      }
+    },
+    "今天 %lld 次专注 · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld focus sessions today · %@"
+          }
+        }
+      }
+    },
+    "今天 · 00:00–24:00": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Today · 00:00–24:00"
+          }
+        }
+      }
+    },
+    "今天命中": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Matches today"
+          }
+        }
+      }
+    },
+    "今天已用 %@ / %@。到达上限时会再提醒一次。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Used %@ / %@ today. You will be reminded again at the limit."
+          }
+        }
+      }
+    },
+    "今天已记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recorded today"
+          }
+        }
+      }
+    },
+    "今天的记录暂时无法读取。请重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Today's records are temporarily unavailable. Please try again."
+          }
+        }
+      }
+    },
+    "今天记录了多久、投入多少、评分。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Today's recorded time, productive time and score."
+          }
+        }
+      }
+    },
+    "今天还有活动没分类": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Some activities still need a category"
+          }
+        }
+      }
+    },
+    "今天，还没有记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No records yet today"
           }
         }
       }
@@ -621,36 +1371,6 @@
         }
       }
     },
-    "今日 %lld 张 · 最近 %@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Today: %lld · latest %@"
-          }
-        }
-      }
-    },
-    "今日 0 张": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Today: 0"
-          }
-        }
-      }
-    },
-    "今日分布": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Today's Distribution"
-          }
-        }
-      }
-    },
     "今日命中 %@": {
       "localizations": {
         "en": {
@@ -671,12 +1391,42 @@
         }
       }
     },
+    "今日已记录时长": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recorded time today"
+          }
+        }
+      }
+    },
+    "今日限额": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Daily limit"
+          }
+        }
+      }
+    },
     "今日预算": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Today's Budgets"
+          }
+        }
+      }
+    },
+    "会影响 %lld 段 · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Affects %lld segments · %@"
           }
         }
       }
@@ -697,6 +1447,96 @@
           "stringUnit": {
             "state": "translated",
             "value": "Meetings %@"
+          }
+        }
+      }
+    },
+    "会记录什么": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What gets recorded"
+          }
+        }
+      }
+    },
+    "你": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You"
+          }
+        }
+      }
+    },
+    "你单独调整了这一段，其他活动不受影响。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You changed this segment individually. Other activities are unaffected."
+          }
+        }
+      }
+    },
+    "你的": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your"
+          }
+        }
+      }
+    },
+    "你的数据": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your data"
+          }
+        }
+      }
+    },
+    "你的网站规则": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your website rule"
+          }
+        }
+      }
+    },
+    "你离开了电脑，这段时间不计入。回来后会自动继续。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You are away from your Mac. This time is excluded; recording resumes when you return."
+          }
+        }
+      }
+    },
+    "使用 Mac 后，应用和网站活动会出现在这里。空档不会计入总时长。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App and website activity will appear here as you use your Mac. Gaps are excluded from the total."
+          }
+        }
+      }
+    },
+    "例如 accounts.google.com": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "e.g. accounts.google.com"
           }
         }
       }
@@ -731,6 +1571,126 @@
         }
       }
     },
+    "保存并重新归类": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save and recategorize"
+          }
+        }
+      }
+    },
+    "保留": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep"
+          }
+        }
+      }
+    },
+    "修改从下一次专注开始生效。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Changes apply to the next focus session."
+          }
+        }
+      }
+    },
+    "修改打开弹出层的快捷键": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Change the menu bar shortcut"
+          }
+        }
+      }
+    },
+    "允许": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow"
+          }
+        }
+      }
+    },
+    "允许 5 分钟": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow for 5 minutes"
+          }
+        }
+      }
+    },
+    "允许…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow…"
+          }
+        }
+      }
+    },
+    "允许「辅助功能」": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow Accessibility"
+          }
+        }
+      }
+    },
+    "先看清楚，再决定开哪些。可选功能以后都能在设置里改。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Review what each feature does. Optional features can be changed later in Settings."
+          }
+        }
+      }
+    },
+    "全天 · 筛选命中已高亮": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Full day · Filter matches highlighted"
+          }
+        }
+      }
+    },
+    "全天日程：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All-day event: %@"
+          }
+        }
+      }
+    },
+    "全天时间轴": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Full-day timeline"
+          }
+        }
+      }
+    },
     "全局": {
       "localizations": {
         "en": {
@@ -741,12 +1701,32 @@
         }
       }
     },
-    "关键词": {
+    "全部活动": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Keywords"
+            "value": "All activity"
+          }
+        }
+      }
+    },
+    "共 %@。分好以后，以后自动归类。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ in total. Categorize them once to apply the same rules in future."
+          }
+        }
+      }
+    },
+    "关于": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "About"
           }
         }
       }
@@ -761,6 +1741,26 @@
         }
       }
     },
+    "其余（%lld 项）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Other (%lld items)"
+          }
+        }
+      }
+    },
+    "具体日期 · 选择一天查看该时段活动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a date to view activity in this hour"
+          }
+        }
+      }
+    },
     "内置": {
       "localizations": {
         "en": {
@@ -771,12 +1771,52 @@
         }
       }
     },
+    "内置网站分类": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Built-in website category"
+          }
+        }
+      }
+    },
+    "再专注 25 分钟": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Focus for another 25 minutes"
+          }
+        }
+      }
+    },
+    "再加 15 分钟": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add 15 minutes"
+          }
+        }
+      }
+    },
     "写作创作": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Writing"
+          }
+        }
+      }
+    },
+    "减弱动态效果 · 150ms 淡变": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reduced motion · 150 ms fade"
           }
         }
       }
@@ -821,6 +1861,26 @@
         }
       }
     },
+    "分类与规则": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Categories & Rules"
+          }
+        }
+      }
+    },
+    "分类已再次更改，不能撤销覆盖较新的修改。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The category has changed again. Undo cannot replace a newer edit."
+          }
+        }
+      }
+    },
     "分类时长": {
       "localizations": {
         "en": {
@@ -831,12 +1891,12 @@
         }
       }
     },
-    "分类结果：%@": {
+    "分类未保存，请重试。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Result: %@"
+            "value": "Category was not saved. Please try again."
           }
         }
       }
@@ -847,6 +1907,116 @@
           "stringUnit": {
             "state": "translated",
             "value": "Category Budgets"
+          }
+        }
+      }
+    },
+    "分类颜色": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Category color"
+          }
+        }
+      }
+    },
+    "分组": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Group"
+          }
+        }
+      }
+    },
+    "分组方式": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Group by"
+          }
+        }
+      }
+    },
+    "分钟": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Minutes"
+          }
+        }
+      }
+    },
+    "分钟 · %@ → %@ 结束": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Minutes · %@ → Ends %@"
+          }
+        }
+      }
+    },
+    "切回被隐藏的应用时会提示你；网站在 Chrome 中拦截，需要时可以放行 5 分钟。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switching to a hidden app shows a reminder. Websites are blocked in Chrome and can be allowed for 5 minutes."
+          }
+        }
+      }
+    },
+    "列表仅统计此时段；全天时间轴高亮命中记录。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The list includes only this period; matching records are highlighted on the full-day timeline."
+          }
+        }
+      }
+    },
+    "删除今天保存的截图？": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete screenshots saved today?"
+          }
+        }
+      }
+    },
+    "删除今天的截图…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete today's screenshots…"
+          }
+        }
+      }
+    },
+    "删除截图": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete screenshots"
+          }
+        }
+      }
+    },
+    "删除规则": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete rule"
           }
         }
       }
@@ -881,12 +2051,22 @@
         }
       }
     },
-    "剩 %lld%% 时提醒": {
+    "删除限额": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Warn at %lld%% left"
+            "value": "Delete limit"
+          }
+        }
+      }
+    },
+    "刻度：小时 · 容器按 %lld 小时绘制": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scale: hours · Container represents %lld hours"
           }
         }
       }
@@ -901,22 +2081,52 @@
         }
       }
     },
-    "剩余": {
+    "剩余 %lld%% 时提醒": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "left"
+            "value": "Remind when %lld%% remains"
           }
         }
       }
     },
-    "加权净值按当日总时长归一化到 0 – 100，按贡献降序排列": {
+    "匹配标题 · 以后自动归类": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Weighted net time, normalized to 0–100 by the day's total, sorted by contribution"
+            "value": "Match title · Categorize future activity"
+          }
+        }
+      }
+    },
+    "占 %lld%% · 按分类估算": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld%% · Estimated by category"
+          }
+        }
+      }
+    },
+    "占已记录 %lld%% · 按分类估算": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld%% of recorded time · Estimated by category"
+          }
+        }
+      }
+    },
+    "去分类": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Categorize"
           }
         }
       }
@@ -941,6 +2151,146 @@
         }
       }
     },
+    "取消固定时段": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unpin period"
+          }
+        }
+      }
+    },
+    "取消固定时段（Esc）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unpin period (Esc)"
+          }
+        }
+      }
+    },
+    "叠加日程，只读取标题、时间与人数。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Overlay calendar events; reads only titles, times and attendee counts."
+          }
+        }
+      }
+    },
+    "另外 %lld 个分类 · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld other categories · %@"
+          }
+        }
+      }
+    },
+    "只发送网站域名，不发送标题和网址路径。建议只在你接受后生效。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only website domains are sent, without titles or URL paths. Suggestions apply only after you accept them."
+          }
+        }
+      }
+    },
+    "只在 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only in %@"
+          }
+        }
+      }
+    },
+    "只在专注时隐藏，记录照常；修改从下一次专注开始生效。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apps are hidden only during focus; recording continues. Changes apply to the next session."
+          }
+        }
+      }
+    },
+    "只在本机": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On this Mac only"
+          }
+        }
+      }
+    },
+    "只截取最前面的窗口，保存在本机。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Captures only the frontmost window and saves it locally."
+          }
+        }
+      }
+    },
+    "只改这一段 · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This segment only · %@"
+          }
+        }
+      }
+    },
+    "只显示图标": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Icon only"
+          }
+        }
+      }
+    },
+    "只读取当前标签页的网址": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reads only the current tab's URL"
+          }
+        }
+      }
+    },
+    "合计 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Total %@"
+          }
+        }
+      }
+    },
+    "同时适用于子域名。不会保存这些网站的活动、标题或截图。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Also applies to subdomains. Activity, titles and screenshots from these websites will not be saved."
+          }
+        }
+      }
+    },
     "同步": {
       "localizations": {
         "en": {
@@ -961,7 +2311,27 @@
         }
       }
     },
+    "同步失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync failed"
+          }
+        }
+      }
+    },
     "同步已关闭": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync is off"
+          }
+        }
+      }
+    },
+    "同步未开启": {
       "localizations": {
         "en": {
           "stringUnit": {
@@ -981,6 +2351,16 @@
         }
       }
     },
+    "后恢复": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "until resume"
+          }
+        }
+      }
+    },
     "启用": {
       "localizations": {
         "en": {
@@ -991,12 +2371,12 @@
         }
       }
     },
-    "启用 LLM 分类兜底": {
+    "启用屏幕采集": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Use an LLM as a fallback classifier"
+            "value": "Enable screen capture"
           }
         }
       }
@@ -1007,6 +2387,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Enable daily summary"
+          }
+        }
+      }
+    },
+    "启用规则": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enable rule"
+          }
+        }
+      }
+    },
+    "启用限额": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enable limit"
+          }
+        }
+      }
+    },
+    "周": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Week"
           }
         }
       }
@@ -1091,6 +2501,66 @@
         }
       }
     },
+    "回到 TimeSink 时自动重新检查。其他浏览器目前只按应用记录。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permissions are checked again when you return to TimeSink. Other browsers are currently recorded at app level only."
+          }
+        }
+      }
+    },
+    "回到上一页": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Go back"
+          }
+        }
+      }
+    },
+    "回到原来的页面": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Return to the original page"
+          }
+        }
+      }
+    },
+    "回到工作": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Back to work"
+          }
+        }
+      }
+    },
+    "回看当时在做什么 · 保存 %lld 天": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Review what you were doing · Keep for %lld days"
+          }
+        }
+      }
+    },
+    "在弹出层和「今天」显示评分与连续达标；关闭后只在「趋势」里出现。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show score and streak in the popover and Today. When off, they appear only in Trends."
+          }
+        }
+      }
+    },
     "在时间轴上叠加你的日历日程，自动标注会议时间；会议期间空闲不会触发挂起。": {
       "localizations": {
         "en": {
@@ -1101,37 +2571,67 @@
         }
       }
     },
-    "坚持专注": {
+    "在时间轴上显示日程": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Stay Focused"
+            "value": "Show calendar events on timeline"
           }
         }
       }
     },
-    "多个关键词用逗号分隔；`re:` 前缀为正则": {
+    "在时间轴中定位这项活动": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Separate keywords with commas; prefix with `re:` for a regular expression"
+            "value": "Locate this activity on the timeline"
+          }
+        }
+      }
+    },
+    "在活动中查看此片段": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View this segment in Activity"
+          }
+        }
+      }
+    },
+    "在菜单栏一键暂停，暂停期间什么都不记。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause from the menu bar. Nothing is recorded while paused."
+          }
+        }
+      }
+    },
+    "地址": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "URL"
+          }
+        }
+      }
+    },
+    "天": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Day"
           }
         }
       }
     },
     "好": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "OK"
-          }
-        }
-      }
-    },
-    "好的": {
       "localizations": {
         "en": {
           "stringUnit": {
@@ -1147,6 +2647,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Always Categorize This Title As…"
+          }
+        }
+      }
+    },
+    "始终把这类标题归为…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Always categorize this title as…"
           }
         }
       }
@@ -1171,12 +2681,42 @@
         }
       }
     },
+    "它在后台记录你用了哪些应用和网站、各用了多久。你只需要偶尔看一眼菜单栏。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TimeSink records the apps and websites you use and how long you use them. Check the menu bar whenever you like."
+          }
+        }
+      }
+    },
+    "安排时间": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plan your time"
+          }
+        }
+      }
+    },
     "安装到 /Applications 后可用": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Available once installed in /Applications"
+          }
+        }
+      }
+    },
+    "安装到应用程序文件夹后可设置登录时启动。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Install in Applications to enable launch at login."
           }
         }
       }
@@ -1191,12 +2731,132 @@
         }
       }
     },
-    "将影响当前范围内 %lld 项 · %@": {
+    "完成第一段专注后，在这里回看。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Affects in this range: %lld · %@"
+            "value": "Completed focus sessions will appear here."
+          }
+        }
+      }
+    },
+    "导出…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export…"
+          }
+        }
+      }
+    },
+    "导出为 CSV…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export as CSV…"
+          }
+        }
+      }
+    },
+    "导出全部记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export all records"
+          }
+        }
+      }
+    },
+    "导出失败：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export failed: %@"
+          }
+        }
+      }
+    },
+    "导航": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Navigate"
+          }
+        }
+      }
+    },
+    "将隐藏 %lld 个应用 · 拦截 %lld 类网站": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide %lld apps · Block %lld website categories"
+          }
+        }
+      }
+    },
+    "小时": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hours"
+          }
+        }
+      }
+    },
+    "少": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Less"
+          }
+        }
+      }
+    },
+    "屏幕回看": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Screen history"
+          }
+        }
+      }
+    },
+    "屏幕录制 · 屏幕采集": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Screen Recording · Screen capture"
+          }
+        }
+      }
+    },
+    "屏幕画面": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Screen captures"
+          }
+        }
+      }
+    },
+    "屏幕画面只保存在本机。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Screen captures stay on this Mac."
           }
         }
       }
@@ -1211,12 +2871,42 @@
         }
       }
     },
+    "屏幕采集 · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Screen capture · %@"
+          }
+        }
+      }
+    },
+    "展开详情": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show details"
+          }
+        }
+      }
+    },
     "工具": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Utilities"
+          }
+        }
+      }
+    },
+    "已专注 %lld 分钟": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Focused for %lld minutes"
           }
         }
       }
@@ -1231,12 +2921,102 @@
         }
       }
     },
+    "已允许": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allowed"
+          }
+        }
+      }
+    },
+    "已关闭；Chrome 只记录应用时长。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Off; Chrome records app time only."
+          }
+        }
+      }
+    },
+    "已删除 %lld 张截图。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deleted %lld screenshots."
+          }
+        }
+      }
+    },
+    "已到上限": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limit reached"
+          }
+        }
+      }
+    },
     "已取消登录": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Sign-in was cancelled"
+          }
+        }
+      }
+    },
+    "已启用 · 今日 %lld 张 · 最近 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On · %lld captures today · Latest %@"
+          }
+        }
+      }
+    },
+    "已启用 · 等待首张画面": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On · Waiting for the first capture"
+          }
+        }
+      }
+    },
+    "已固定 · 点选其他格子可切换，Esc 取消": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pinned · Choose another cell to switch; Esc to unpin"
+          }
+        }
+      }
+    },
+    "已归为「%@」": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Categorized as “%@”"
+          }
+        }
+      }
+    },
+    "已归类": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Categorized"
           }
         }
       }
@@ -1271,22 +3051,22 @@
         }
       }
     },
-    "已添加但未运行": {
+    "已暂停 ": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Added, Not Running"
+            "value": "Paused "
           }
         }
       }
     },
-    "已用 %@ / %@。今天不会再提醒；上限可在设置中调整。": {
+    "已用 %@ / %@。今天不会再提醒；可在「专注与限额」中调整。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Used %@ of %@. No more reminders today; you can change the limit in Settings."
+            "value": "Used %@ / %@. No more reminders today; adjust in Focus & Limits."
           }
         }
       }
@@ -1301,12 +3081,112 @@
         }
       }
     },
-    "已登录 %@。同步开关在 设置 › 账号。": {
+    "已经准备好记录": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Signed in as %@. Sync is under Settings › Account."
+            "value": "Ready to record"
+          }
+        }
+      }
+    },
+    "已经完成的时间会保留在历史记录中。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Time already completed will remain in your history."
+          }
+        }
+      }
+    },
+    "已记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recorded"
+          }
+        }
+      }
+    },
+    "已记录 %@，刻度 %lld 小时": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recorded %@, %lld-hour scale"
+          }
+        }
+      }
+    },
+    "已识别的无痕窗口不记录；无法识别时，只记录应用时长，不保存标题、网址或截图。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recognized incognito windows are excluded. When privacy cannot be determined, only app time is recorded, without titles, URLs or screenshots."
+          }
+        }
+      }
+    },
+    "已超出 %lld 分钟": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld minutes over"
+          }
+        }
+      }
+    },
+    "已选择 %lld 个": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld selected"
+          }
+        }
+      }
+    },
+    "已选活动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selected activity"
+          }
+        }
+      }
+    },
+    "平均 / 日": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Daily average"
+          }
+        }
+      }
+    },
+    "平均分钟": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Average minutes"
+          }
+        }
+      }
+    },
+    "平均含无记录日，不含尚未到来的时段；分数按活动时长加权。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Averages include days with no records and exclude future hours. Scores are weighted by activity duration."
           }
         }
       }
@@ -1321,12 +3201,92 @@
         }
       }
     },
+    "应用与网站": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apps & Websites"
+          }
+        }
+      }
+    },
+    "应用到": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apply to"
+          }
+        }
+      }
+    },
+    "应用和窗口标题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apps and window titles"
+          }
+        }
+      }
+    },
+    "应用范围": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App scope"
+          }
+        }
+      }
+    },
+    "延长 10 分钟": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Extend by 10 minutes"
+          }
+        }
+      }
+    },
+    "开发版": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Development build"
+          }
+        }
+      }
+    },
+    "开发版不检查更新。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Development builds do not check for updates."
+          }
+        }
+      }
+    },
     "开始": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Start"
+          }
+        }
+      }
+    },
+    "开始 %lld 分钟专注": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start %lld-minute focus"
           }
         }
       }
@@ -1341,12 +3301,72 @@
         }
       }
     },
+    "开始,结束,应用,应用标识,标题,网址,域名\r\n": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start,End,App,App Identifier,Title,URL,Domain\r\n"
+          }
+        }
+      }
+    },
+    "开始一段专注": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start a focus session"
+          }
+        }
+      }
+    },
     "开始专注": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Start Focus"
+          }
+        }
+      }
+    },
+    "开始设置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set up"
+          }
+        }
+      }
+    },
+    "归为": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Category"
+          }
+        }
+      }
+    },
+    "当前不会保存屏幕画面": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Screen captures are not being saved"
+          }
+        }
+      }
+    },
+    "当前分类与时长": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current category and duration"
           }
         }
       }
@@ -1381,6 +3401,46 @@
         }
       }
     },
+    "待传 %lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld pending"
+          }
+        }
+      }
+    },
+    "待分类": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uncategorized"
+          }
+        }
+      }
+    },
+    "必需": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Required"
+          }
+        }
+      }
+    },
+    "快捷键当前不可用，可点按上方重新设置。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This shortcut is unavailable. Click above to change it."
+          }
+        }
+      }
+    },
     "总时长": {
       "localizations": {
         "en": {
@@ -1391,12 +3451,12 @@
         }
       }
     },
-    "总计": {
+    "总时长比较": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Total"
+            "value": "Total time comparison"
           }
         }
       }
@@ -1411,22 +3471,82 @@
         }
       }
     },
-    "所有活动": {
+    "悬停预览 · 点击查看日期 · 方向键浏览，回车固定": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "All activity"
+            "value": "Hover to preview · Click for dates · Arrow keys to browse, Return to pin"
           }
         }
       }
     },
-    "手动添加 Bundle ID": {
+    "截图删除后无法恢复。活动记录和已识别的文字会保留。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Add Bundle ID Manually"
+            "value": "Deleted screenshots cannot be recovered. Activity records and recognized text will remain."
+          }
+        }
+      }
+    },
+    "截图到期自动删除；识别文字保留。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Screenshots are deleted when they expire; recognized text is kept."
+          }
+        }
+      }
+    },
+    "截图未能全部删除，请重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Some screenshots could not be deleted. Please try again."
+          }
+        }
+      }
+    },
+    "所有 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All %@"
+          }
+        }
+      }
+    },
+    "所有分类": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All categories"
+          }
+        }
+      }
+    },
+    "所有应用和网站": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All apps and websites"
+          }
+        }
+      }
+    },
+    "所选范围内这个时段尚未到来。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This hour has not yet occurred in the selected range."
           }
         }
       }
@@ -1441,12 +3561,122 @@
         }
       }
     },
+    "打开今天": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Today"
+          }
+        }
+      }
+    },
+    "打开开关后回到这里，会自动进入下一步。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enable the switch and return here to continue automatically."
+          }
+        }
+      }
+    },
+    "打开弹出层": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open popover"
+          }
+        }
+      }
+    },
+    "打开本机截图": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open local screenshot"
+          }
+        }
+      }
+    },
     "打开系统设置": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Open System Settings"
+          }
+        }
+      }
+    },
+    "打开系统设置…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open System Settings…"
+          }
+        }
+      }
+    },
+    "投入": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Productive"
+          }
+        }
+      }
+    },
+    "投入 · 占 %lld%%": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Productive · %lld%%"
+          }
+        }
+      }
+    },
+    "投入时长": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Productive time"
+          }
+        }
+      }
+    },
+    "投入时长比较": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Productive time comparison"
+          }
+        }
+      }
+    },
+    "投入程度": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Productivity"
+          }
+        }
+      }
+    },
+    "拦下 %lld 次": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blocked %lld times"
           }
         }
       }
@@ -1461,12 +3691,82 @@
         }
       }
     },
+    "拦截网站": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Block websites"
+          }
+        }
+      }
+    },
     "拦截网站分类": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Block Site Categories"
+          }
+        }
+      }
+    },
+    "拦截这些分类的网站": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Block websites in these categories"
+          }
+        }
+      }
+    },
+    "指向柱形查看具体时段与时长": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Point at a bar for its period and duration"
+          }
+        }
+      }
+    },
+    "按下快捷键…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Press a shortcut…"
+          }
+        }
+      }
+    },
+    "按优先级匹配；拖动可调整同一范围的标题规则顺序。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rules match by priority. Drag title rules to reorder them within the same scope."
+          }
+        }
+      }
+    },
+    "按分类": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By category"
+          }
+        }
+      }
+    },
+    "按分类筛选活动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filter activity by category"
           }
         }
       }
@@ -1491,12 +3791,162 @@
         }
       }
     },
-    "授权": {
+    "按应用": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Grant"
+            "value": "By app"
+          }
+        }
+      }
+    },
+    "按应用、网站和窗口标题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By app, website and window title"
+          }
+        }
+      }
+    },
+    "按所选时段已过的天数": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Based on elapsed days in the selected period"
+          }
+        }
+      }
+    },
+    "按时间": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By time"
+          }
+        }
+      }
+    },
+    "按星期和小时汇总的生产力热力图": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Productivity heatmap by weekday and hour"
+          }
+        }
+      }
+    },
+    "按用时从多到少。建议只在你点接受后生效。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sorted by time spent. Suggestions apply only when you accept them."
+          }
+        }
+      }
+    },
+    "按网站分类": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Categorize by website"
+          }
+        }
+      }
+    },
+    "按网站分类需 Chrome 自动化权限。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Website categories require Chrome Automation permission."
+          }
+        }
+      }
+    },
+    "按网站记录 Chrome": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Record Chrome websites"
+          }
+        }
+      }
+    },
+    "按网站记录 Chrome（可选）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Record Chrome websites (optional)"
+          }
+        }
+      }
+    },
+    "按高效分类统计，非专注会话时长": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Based on productive categories, not focus session duration"
+          }
+        }
+      }
+    },
+    "接受": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Accept"
+          }
+        }
+      }
+    },
+    "接受全部建议": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Accept all suggestions"
+          }
+        }
+      }
+    },
+    "接近上限和达到上限时各提醒一次。限额只提醒，不会拦截。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remind once near the limit and once at the limit. Limits send reminders; they do not block activity."
+          }
+        }
+      }
+    },
+    "提前结束": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "End early"
+          }
+        }
+      }
+    },
+    "提前结束这段专注？": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "End this focus session early?"
           }
         }
       }
@@ -1521,6 +3971,26 @@
         }
       }
     },
+    "提醒声音": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reminder sound"
+          }
+        }
+      }
+    },
+    "搜索已安装的应用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search installed apps"
+          }
+        }
+      }
+    },
     "搜索应用、网址、标题": {
       "localizations": {
         "en": {
@@ -1531,12 +4001,62 @@
         }
       }
     },
+    "搜索活动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search activity"
+          }
+        }
+      }
+    },
+    "搜索规则": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search rules"
+          }
+        }
+      }
+    },
+    "撤销": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Undo"
+          }
+        }
+      }
+    },
     "收起": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Collapse"
+          }
+        }
+      }
+    },
+    "改为": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Change to"
+          }
+        }
+      }
+    },
+    "放大时间轴": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zoom in on timeline"
           }
         }
       }
@@ -1561,12 +4081,62 @@
         }
       }
     },
+    "新建网址规则": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New URL rule"
+          }
+        }
+      }
+    },
+    "新建规则": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New rule"
+          }
+        }
+      }
+    },
+    "新的一天刚开始。离开电脑和锁屏的时间不会计入。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A new day has begun. Time away from your Mac or with the screen locked is excluded."
+          }
+        }
+      }
+    },
     "新闻": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "News"
+          }
+        }
+      }
+    },
+    "方向键选择时段，回车查看具体日期，Escape 取消固定": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use arrow keys to choose an hour, Return for dates, Escape to unpin"
+          }
+        }
+      }
+    },
+    "无标题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Untitled"
           }
         }
       }
@@ -1597,6 +4167,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Couldn't turn on launch at login: %@"
+          }
+        }
+      }
+    },
+    "无法开始专注": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unable to start focus"
+          }
+        }
+      }
+    },
+    "无法开始专注，请重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unable to start focus. Please try again."
+          }
+        }
+      }
+    },
+    "无法开始专注：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unable to start focus: %@"
           }
         }
       }
@@ -1641,12 +4241,32 @@
         }
       }
     },
+    "日历 · 可选": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Calendar · Optional"
+          }
+        }
+      }
+    },
     "日历叠加": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Calendar Overlay"
+          }
+        }
+      }
+    },
+    "日历日程": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Calendar events"
           }
         }
       }
@@ -1661,6 +4281,16 @@
         }
       }
     },
+    "日均": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Daily average"
+          }
+        }
+      }
+    },
     "日期": {
       "localizations": {
         "en": {
@@ -1671,12 +4301,12 @@
         }
       }
     },
-    "时": {
+    "日程": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hour"
+            "value": "Events"
           }
         }
       }
@@ -1701,12 +4331,52 @@
         }
       }
     },
+    "时间带，%@ 至 %@，已记录 %@。片段详情见活动列表。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Time band, %@ to %@, %@ recorded. See Activity for segment details."
+          }
+        }
+      }
+    },
+    "时间格式": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Time format"
+          }
+        }
+      }
+    },
+    "时间的去向": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Where time went"
+          }
+        }
+      }
+    },
     "昨天": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Yesterday"
+          }
+        }
+      }
+    },
+    "昨天只算到现在。时长多少不评判好坏。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yesterday is counted only up to this time. More or less time is not a judgment."
           }
         }
       }
@@ -1731,12 +4401,152 @@
         }
       }
     },
+    "显示": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View"
+          }
+        }
+      }
+    },
+    "显示全天": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show full day"
+          }
+        }
+      }
+    },
+    "显示活动检查器": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show activity inspector"
+          }
+        }
+      }
+    },
+    "显示评分": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show score"
+          }
+        }
+      }
+    },
+    "普通模式 · 280ms 数字滚动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Standard motion · 280 ms number transition"
+          }
+        }
+      }
+    },
     "智能分类": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Smart Categorization"
+          }
+        }
+      }
+    },
+    "智能分类 · 根据网站域名识别": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Smart classification · Based on website domain"
+          }
+        }
+      }
+    },
+    "暂停": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause"
+          }
+        }
+      }
+    },
+    "暂停 1 小时": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause for 1 hour"
+          }
+        }
+      }
+    },
+    "暂停 15 分钟": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause for 15 minutes"
+          }
+        }
+      }
+    },
+    "暂停应用、网站、标题和屏幕采集": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause app, website, title and screen capture"
+          }
+        }
+      }
+    },
+    "暂停所有记录；暂停期间不补记": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause all recording; paused time stays unrecorded"
+          }
+        }
+      }
+    },
+    "暂停期间不记录、不采集，也不补记。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "While paused, nothing is recorded or captured, including retroactively."
+          }
+        }
+      }
+    },
+    "暂停期间不记录应用、网站、窗口标题和屏幕画面。这段时间在时间带里留空，不会补记。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apps, websites, window titles and screen captures are not recorded while paused. This time remains a gap and is not filled in later."
+          }
+        }
+      }
+    },
+    "暂停记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause recording"
           }
         }
       }
@@ -1751,6 +4561,26 @@
         }
       }
     },
+    "暂无活动记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No activity records yet"
+          }
+        }
+      }
+    },
+    "更多统计": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "More statistics"
+          }
+        }
+      }
+    },
     "更新": {
       "localizations": {
         "en": {
@@ -1761,62 +4591,42 @@
         }
       }
     },
-    "最活跃的时段": {
+    "更新于 %@": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Busiest Hours"
+            "value": "Updated %@"
           }
         }
       }
     },
-    "最活跃的星期": {
+    "更早的 %lld 段": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Busiest Weekday"
+            "value": "%lld earlier segments"
           }
         }
       }
     },
-    "最高峰在 %lld – %lld 时。": {
+    "最前面的窗口画面与识别文字只保存在本机。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Peak hours: %lld:00 – %lld:00."
+            "value": "Only the frontmost window is captured. Images and recognized text stay on this Mac."
           }
         }
       }
     },
-    "最高效的时段": {
+    "最近的在前 · 点按在活动中查看": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Most Productive Hours"
-          }
-        }
-      }
-    },
-    "最高效的星期": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Most Productive Weekday"
-          }
-        }
-      }
-    },
-    "有点分心": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "A bit distracted"
+            "value": "Most recent first · Click to view in Activity"
           }
         }
       }
@@ -1837,6 +4647,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "The server returned %lld"
+          }
+        }
+      }
+    },
+    "期间隐藏应用、拦截网站": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide apps and block websites during focus"
           }
         }
       }
@@ -1891,12 +4711,62 @@
         }
       }
     },
+    "未能准备导出：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unable to prepare export: %@"
+          }
+        }
+      }
+    },
+    "未能延长专注，请重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unable to extend focus. Please try again."
+          }
+        }
+      }
+    },
+    "未记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unrecorded"
+          }
+        }
+      }
+    },
+    "未记录 · 需要权限": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not recording · Permission required"
+          }
+        }
+      }
+    },
     "未设置": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Not set"
+          }
+        }
+      }
+    },
+    "未选择": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not selected"
           }
         }
       }
@@ -1911,12 +4781,12 @@
         }
       }
     },
-    "本地规则无法归类的活动，才会调用一次 LLM 做兜底分类。默认关闭，不影响其余功能。": {
+    "本周的专注": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The LLM is called only for activity the local rules can't categorize. Off by default; nothing else depends on it."
+            "value": "This week's focus"
           }
         }
       }
@@ -1941,12 +4811,232 @@
         }
       }
     },
+    "条件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Condition"
+          }
+        }
+      }
+    },
+    "来源": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source"
+          }
+        }
+      }
+    },
+    "查看": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View"
+          }
+        }
+      }
+    },
+    "查看 %@ %@ 的活动，%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View activity on %@ at %@, %@"
+          }
+        }
+      }
+    },
+    "查看今天": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View Today"
+          }
+        }
+      }
+    },
+    "查看分类来源、调整分类，或回看当时的屏幕。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "See why this category was chosen, change it or review the screen at the time."
+          }
+        }
+      }
+    },
+    "查看权限…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View permissions…"
+          }
+        }
+      }
+    },
+    "查看记录与隐私": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View Recording & Privacy"
+          }
+        }
+      }
+    },
+    "查看该分类的全部活动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View all activity in this category"
+          }
+        }
+      }
+    },
+    "查看贡献此格的具体日期和活动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View the dates and activities behind this cell"
+          }
+        }
+      }
+    },
+    "查看趋势": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View Trends"
+          }
+        }
+      }
+    },
+    "查看这一天此时段的活动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View this hour's activity on this date"
+          }
+        }
+      }
+    },
+    "标出会议时间": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mark meeting times"
+          }
+        }
+      }
+    },
+    "标出会议时间；开会时不会因没碰键盘而算作空闲。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mark meetings so you are not considered idle while attending without using the keyboard."
+          }
+        }
+      }
+    },
+    "标题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Title"
+          }
+        }
+      }
+    },
+    "标题包含": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Title contains"
+          }
+        }
+      }
+    },
+    "标题包含，至少两个字": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Title contains, at least two characters"
+          }
+        }
+      }
+    },
     "标题规则": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Title Rules"
+          }
+        }
+      }
+    },
+    "标题规则…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Title rule…"
+          }
+        }
+      }
+    },
+    "样本不足": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not enough data"
+          }
+        }
+      }
+    },
+    "样本不足：累计不足 15 分钟": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not enough data: less than 15 minutes total"
+          }
+        }
+      }
+    },
+    "核心功能": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Core feature"
+          }
+        }
+      }
+    },
+    "检查并调整分类…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inspect and change category…"
           }
         }
       }
@@ -1961,6 +5051,16 @@
         }
       }
     },
+    "检查记录与权限设置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check recording and permission settings"
+          }
+        }
+      }
+    },
     "模型": {
       "localizations": {
         "en": {
@@ -1971,12 +5071,32 @@
         }
       }
     },
-    "欢迎使用 TimeSink": {
+    "模型建议": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Welcome to TimeSink"
+            "value": "Model suggestion"
+          }
+        }
+      }
+    },
+    "正在准备…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparing…"
+          }
+        }
+      }
+    },
+    "正在同步": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Syncing"
           }
         }
       }
@@ -2011,12 +5131,92 @@
         }
       }
     },
-    "正在运行的应用": {
+    "正在记录": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Running Apps"
+            "value": "Recording"
+          }
+        }
+      }
+    },
+    "正在读取今天的记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading today's records"
+          }
+        }
+      }
+    },
+    "正在读取趋势": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading trends"
+          }
+        }
+      }
+    },
+    "正在读取趋势…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading trends…"
+          }
+        }
+      }
+    },
+    "此日期的样本不足 15 分钟，暂不显示分数": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This date has less than 15 minutes of data; no score is shown yet"
+          }
+        }
+      }
+    },
+    "此时段没有记录，不代表生产力为零。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No records in this period does not mean zero productivity."
+          }
+        }
+      }
+    },
+    "此版本暂未提供云端同步。活动记录、截图与识别文字保留在这台 Mac 上。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cloud sync is unavailable in this build. Activity records, screenshots and recognized text stay on this Mac."
+          }
+        }
+      }
+    },
+    "此网站": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This website"
+          }
+        }
+      }
+    },
+    "此网站在专注期间被拦截": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This website is blocked during focus"
           }
         }
       }
@@ -2027,6 +5227,96 @@
           "stringUnit": {
             "state": "translated",
             "value": "Run"
+          }
+        }
+      }
+    },
+    "每个%@平均 %@ · %lld 天中有 %lld 天记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Average per %@: %@ · %lld days with %lld recorded"
+          }
+        }
+      }
+    },
+    "每个%@平均记录时长": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Average recorded time per %@"
+          }
+        }
+      }
+    },
+    "每个词至少 2 个字。以 re: 开头按正则匹配。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Each keyword needs at least 2 characters. Start with re: for a regular expression."
+          }
+        }
+      }
+    },
+    "每分钟按分类的投入程度计分，全天取平均。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Each minute is scored by its category's productivity, then averaged across the day."
+          }
+        }
+      }
+    },
+    "每周的分类时长": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weekly time by category"
+          }
+        }
+      }
+    },
+    "每天 %lld:00": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every day at %lld:00"
+          }
+        }
+      }
+    },
+    "每天 %lld:00 发一条通知：记录时长、投入、专注次数和评分。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send a daily notification at %lld:00 with recorded time, productive time, focus sessions and score."
+          }
+        }
+      }
+    },
+    "每天的分类时长": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Daily time by category"
+          }
+        }
+      }
+    },
+    "每小时活动时长 · 分钟": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hourly activity · Minutes"
           }
         }
       }
@@ -2061,12 +5351,32 @@
         }
       }
     },
-    "比较基准 = 昨日裁剪到与今日相同的已过时长，而非昨日全天。": {
+    "每日限额": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Compared with yesterday cut to the same elapsed time as today, not the whole of yesterday."
+            "value": "Daily limits"
+          }
+        }
+      }
+    },
+    "比上期 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ compared with previous period"
+          }
+        }
+      }
+    },
+    "比昨天同时段 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ compared with this time yesterday"
           }
         }
       }
@@ -2077,6 +5387,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Communication"
+          }
+        }
+      }
+    },
+    "没有分心": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No distractions"
           }
         }
       }
@@ -2097,6 +5417,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Activities"
+          }
+        }
+      }
+    },
+    "活动记录保存在这台 Mac。云端同步、智能分类与屏幕采集分别控制。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Activity records stay on this Mac. Cloud sync, smart classification and screen capture have separate controls."
           }
         }
       }
@@ -2131,22 +5461,112 @@
         }
       }
     },
-    "生产": {
+    "添加一个分类的每日时长上限。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Productive"
+            "value": "Add a daily time limit for a category."
           }
         }
       }
     },
-    "生产力": {
+    "添加规则": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Productivity"
+            "value": "Add rule"
+          }
+        }
+      }
+    },
+    "添加限额": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add limit"
+          }
+        }
+      }
+    },
+    "满分 100 分 · 按分类估算": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Out of 100 · Estimated by category"
+          }
+        }
+      }
+    },
+    "满分 100 分 · 继续保持": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Out of 100 · Keep it up"
+          }
+        }
+      }
+    },
+    "点击后按住 Control、Option 或 Command，再按字母或数字；Esc 取消。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Click, hold Control, Option or Command, then press a letter or number. Esc cancels."
+          }
+        }
+      }
+    },
+    "热力图指标": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Heatmap metric"
+          }
+        }
+      }
+    },
+    "热力图时段 · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Heatmap period · %@"
+          }
+        }
+      }
+    },
+    "版本 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Version %@"
+          }
+        }
+      }
+    },
+    "现在": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Now"
+          }
+        }
+      }
+    },
+    "现在 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Now %@"
           }
         }
       }
@@ -2161,42 +5581,12 @@
         }
       }
     },
-    "生产力热力图": {
+    "生产力趋势 · 近 30 天": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Productivity Heatmap"
-          }
-        }
-      }
-    },
-    "生产力趋势": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Productivity Trend"
-          }
-        }
-      }
-    },
-    "用于读取 Chrome 当前标签页的网址，以便按网站对浏览时间分类。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Reads the URL of Chrome's current tab so browsing time can be categorized by site."
-          }
-        }
-      }
-    },
-    "用于读取当前活跃窗口所属的应用与标题，据此统计你在各应用上花费的时间。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Reads the app and title of the active window to measure the time you spend in each app."
+            "value": "Productivity trend · Last 30 days"
           }
         }
       }
@@ -2211,6 +5601,16 @@
         }
       }
     },
+    "用模型给没分类的网站提建议": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suggest categories for uncategorized websites"
+          }
+        }
+      }
+    },
     "由日历事件自动标注": {
       "localizations": {
         "en": {
@@ -2221,12 +5621,12 @@
         }
       }
     },
-    "登录": {
+    "画面已到期删除，以下为当时识别的文字。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sign In"
+            "value": "This image has expired and been deleted. Recognized text from that time appears below."
           }
         }
       }
@@ -2237,16 +5637,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Sign In / Sign Up"
-          }
-        }
-      }
-    },
-    "登录后可以在多台 Mac 之间合并记录，换机时恢复历史。也可以稍后在 设置 › 账号 里登录。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sign in to merge records across Macs and restore your history on a new one. You can also sign in later under Settings › Account."
           }
         }
       }
@@ -2301,6 +5691,26 @@
         }
       }
     },
+    "登录账号后可以选择备份，默认不上传。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign in to enable backups. Nothing is uploaded by default."
+          }
+        }
+      }
+    },
+    "登录项无法更新：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unable to update login item: %@"
+          }
+        }
+      }
+    },
     "登录项设置失败": {
       "localizations": {
         "en": {
@@ -2311,12 +5721,32 @@
         }
       }
     },
-    "确定": {
+    "直到我恢复": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Apply"
+            "value": "Until I resume"
+          }
+        }
+      }
+    },
+    "直到手动恢复": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Until manually resumed"
+          }
+        }
+      }
+    },
+    "看到最前面的应用和窗口标题。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read the frontmost app and window title."
           }
         }
       }
@@ -2331,12 +5761,62 @@
         }
       }
     },
-    "稍后设置": {
+    "离开多久算空闲": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Set Up Later"
+            "value": "Idle after"
+          }
+        }
+      }
+    },
+    "离开电脑": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Away from Mac"
+          }
+        }
+      }
+    },
+    "移除 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove %@"
+          }
+        }
+      }
+    },
+    "移除关键词 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove keyword %@"
+          }
+        }
+      }
+    },
+    "空闲": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Idle"
+          }
+        }
+      }
+    },
+    "空闲的时间不计入，回来自动继续。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Idle time is excluded. Recording resumes when you return."
           }
         }
       }
@@ -2361,12 +5841,82 @@
         }
       }
     },
+    "第 %lld 步，共 5 步": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Step %lld of 5"
+          }
+        }
+      }
+    },
+    "等待你在系统设置中打开": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for you to enable it in System Settings"
+          }
+        }
+      }
+    },
+    "等待活动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for activity"
+          }
+        }
+      }
+    },
     "筛选：%@": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Filter: %@"
+          }
+        }
+      }
+    },
+    "管理": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manage"
+          }
+        }
+      }
+    },
+    "类型": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Type"
+          }
+        }
+      }
+    },
+    "系统设置 › 隐私与安全性 › 辅助功能 › TimeSink": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System Settings › Privacy & Security › Accessibility › TimeSink"
+          }
+        }
+      }
+    },
+    "累计 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Total %@"
           }
         }
       }
@@ -2391,22 +5941,52 @@
         }
       }
     },
-    "统计": {
+    "统计暂时无法读取，请重试。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Stats"
+            "value": "Statistics are temporarily unavailable. Please try again."
           }
         }
       }
     },
-    "继续保持": {
+    "继续": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Keep it up"
+            "value": "Continue"
+          }
+        }
+      }
+    },
+    "继续专注": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep focusing"
+          }
+        }
+      }
+    },
+    "继续记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume recording"
+          }
+        }
+      }
+    },
+    "编辑": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit"
           }
         }
       }
@@ -2421,12 +6001,82 @@
         }
       }
     },
-    "缺少屏幕录制权限": {
+    "编辑不记录的应用": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Screen Recording permission missing"
+            "value": "Edit excluded apps"
+          }
+        }
+      }
+    },
+    "编辑不记录的网站": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit excluded websites"
+          }
+        }
+      }
+    },
+    "缩小时间轴": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zoom out of timeline"
+          }
+        }
+      }
+    },
+    "网址": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "URL"
+          }
+        }
+      }
+    },
+    "网址包含，或 re: 正则表达式": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "URL contains, or re: regular expression"
+          }
+        }
+      }
+    },
+    "网址规则…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "URL rule…"
+          }
+        }
+      }
+    },
+    "网站": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Website"
+          }
+        }
+      }
+    },
+    "自 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Since %@"
           }
         }
       }
@@ -2491,6 +6141,16 @@
         }
       }
     },
+    "菜单栏显示": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Menu bar display"
+          }
+        }
+      }
+    },
     "菜单栏显示今日专注时长": {
       "localizations": {
         "en": {
@@ -2511,12 +6171,192 @@
         }
       }
     },
+    "规则暂时无法读取。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rules are temporarily unavailable."
+          }
+        }
+      }
+    },
+    "规则未保存：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rule was not saved: %@"
+          }
+        }
+      }
+    },
+    "让 TimeSink 替你记住时间": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Let TimeSink keep track of your time"
+          }
+        }
+      }
+    },
+    "让时间的去向更清楚。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "See where your time goes."
+          }
+        }
+      }
+    },
+    "记录 %@，投入 %@，完成 %lld 次专注。评分 %lld%@。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recorded %@, productive %@, completed %lld focus sessions. Score %lld%@."
+          }
+        }
+      }
+    },
+    "记录与隐私": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recording & Privacy"
+          }
+        }
+      }
+    },
+    "记录与隐私设置…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recording & Privacy settings…"
+          }
+        }
+      }
+    },
+    "记录只保存在这台 Mac": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Records stay on this Mac"
+          }
+        }
+      }
+    },
+    "记录已暂停。继续后，新的活动会出现在这里。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recording is paused. New activity will appear here after you resume."
+          }
+        }
+      }
+    },
+    "记录未启动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recording has not started"
+          }
+        }
+      }
+    },
     "设置": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Settings"
+          }
+        }
+      }
+    },
+    "设置… ⌘,": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Settings… ⌘,"
+          }
+        }
+      }
+    },
+    "评分": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Score"
+          }
+        }
+      }
+    },
+    "评分 %@ · 连续 %lld 天达标": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Score %@ · %lld-day streak"
+          }
+        }
+      }
+    },
+    "评分与连续记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Score and streak"
+          }
+        }
+      }
+    },
+    "评分明细": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Score details"
+          }
+        }
+      }
+    },
+    "诊断信息": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnostics"
+          }
+        }
+      }
+    },
+    "诊断信息预览": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnostics preview"
+          }
+        }
+      }
+    },
+    "诊断信息默认不含窗口标题、网址、截图和识别文字。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnostics exclude window titles, URLs, screenshots and recognized text by default."
           }
         }
       }
@@ -2551,12 +6391,62 @@
         }
       }
     },
+    "请输入至少两个字的有效标题关键词。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a valid title keyword with at least two characters."
+          }
+        }
+      }
+    },
+    "读取当前标签页的网址，按网站分类。不读网页内容。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read the current tab's URL to categorize by website. Page contents are not read."
+          }
+        }
+      }
+    },
+    "调整限额": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adjust limits"
+          }
+        }
+      }
+    },
     "账号": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Account"
+          }
+        }
+      }
+    },
+    "账号与同步": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Account & Sync"
+          }
+        }
+      }
+    },
+    "账号与同步…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Account & Sync…"
           }
         }
       }
@@ -2571,12 +6461,32 @@
         }
       }
     },
-    "路径级条目来自轻量实体分组（C3）。点击 = 打开活动页并按该分类筛选。": {
+    "趋势": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Path-level entries come from lightweight entity grouping. Click to open Activities filtered to that category."
+            "value": "Trends"
+          }
+        }
+      }
+    },
+    "跟随系统": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System default"
+          }
+        }
+      }
+    },
+    "跳过，只按应用记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skip; record app time only"
           }
         }
       }
@@ -2601,6 +6511,36 @@
         }
       }
     },
+    "辅助功能 · 必需": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Accessibility · Required"
+          }
+        }
+      }
+    },
+    "辅助功能权限已关闭": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Accessibility permission is off"
+          }
+        }
+      }
+    },
+    "输入后按回车…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Type and press Return…"
+          }
+        }
+      }
+    },
     "近 30 天": {
       "localizations": {
         "en": {
@@ -2611,12 +6551,42 @@
         }
       }
     },
+    "近 30 天 · ": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last 30 days · "
+          }
+        }
+      }
+    },
+    "近 30 天 · 按星期汇总": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last 30 days · By weekday"
+          }
+        }
+      }
+    },
     "近 30 天 · 达标 %lld 天，当前连续 %lld 天": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Last 30 days · on target %lld d, current streak %lld d"
+          }
+        }
+      }
+    },
+    "近 30 天有 %lld 项还没有分类，合计 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld uncategorized items in the last 30 days, totaling %@"
           }
         }
       }
@@ -2641,12 +6611,72 @@
         }
       }
     },
-    "返回工作": {
+    "近 7 天 · 按小时累计": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Back to Work"
+            "value": "Last 7 days · By hour"
+          }
+        }
+      }
+    },
+    "返回": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Back"
+          }
+        }
+      }
+    },
+    "返回热力图": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Back to heatmap"
+          }
+        }
+      }
+    },
+    "还剩": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remaining"
+          }
+        }
+      }
+    },
+    "还剩 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ remaining"
+          }
+        }
+      }
+    },
+    "还剩 %lld 分钟": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld minutes remaining"
+          }
+        }
+      }
+    },
+    "还没有匹配的应用、网站或标题规则。选择分类后可以为以后自动归类。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No matching app, website or title rule yet. Choose a category to apply it automatically in future."
           }
         }
       }
@@ -2661,6 +6691,76 @@
         }
       }
     },
+    "这一天此时段没有记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No records for this hour on this date"
+          }
+        }
+      }
+    },
+    "这一天没有活动记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No activity records on this date"
+          }
+        }
+      }
+    },
+    "这个条件已有内置规则，请在分类与规则中编辑。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A built-in rule already matches this condition. Edit it in Categories & Rules."
+          }
+        }
+      }
+    },
+    "这段时间没有保存的画面。可在「记录与隐私」中查看采集状态。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No screen captures were saved for this period. Check capture status in Recording & Privacy."
+          }
+        }
+      }
+    },
+    "这段时间还没有记录。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No records in this period yet."
+          }
+        }
+      }
+    },
+    "这段活动还未保存，请稍后重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This activity has not been saved yet. Please try again shortly."
+          }
+        }
+      }
+    },
+    "进行中": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In progress"
+          }
+        }
+      }
+    },
     "连续 %lld 天 ≥ %lld 分": {
       "localizations": {
         "en": {
@@ -2671,12 +6771,22 @@
         }
       }
     },
-    "连续 %lld 天保持 %lld 分以上": {
+    "连续 %lld 天 ≥ 70": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld-day streak above %lld"
+            "value": "%lld days in a row ≥ 70"
+          }
+        }
+      }
+    },
+    "连续 %lld 天达标": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld-day streak"
           }
         }
       }
@@ -2691,12 +6801,22 @@
         }
       }
     },
-    "退出": {
+    "退出 TimeSink": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Quit"
+            "value": "Quit TimeSink"
+          }
+        }
+      }
+    },
+    "退出 TimeSink ⌘Q": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quit TimeSink ⌘Q"
           }
         }
       }
@@ -2711,12 +6831,52 @@
         }
       }
     },
+    "选中的应用不会记录活动或保存屏幕画面。密码管理器始终不记录。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selected apps will not have activity or screen captures recorded. Password managers are always excluded."
+          }
+        }
+      }
+    },
+    "选择一段活动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select an activity"
+          }
+        }
+      }
+    },
+    "选择专注期间隐藏的应用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose apps to hide during focus"
+          }
+        }
+      }
+    },
     "选择分类": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Choose Category"
+          }
+        }
+      }
+    },
+    "选择起止日期": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose start and end dates"
           }
         }
       }
@@ -2741,12 +6901,42 @@
         }
       }
     },
+    "通知 · 可选": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notifications · Optional"
+          }
+        }
+      }
+    },
     "邮箱": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Email"
+          }
+        }
+      }
+    },
+    "重新打开后会自动继续，不需要重启。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recording resumes automatically when enabled. No restart is needed."
+          }
+        }
+      }
+    },
+    "重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry"
           }
         }
       }
@@ -2761,12 +6951,102 @@
         }
       }
     },
-    "需要以下两项系统权限才能自动追踪你的时间。数据默认只保存在本机；登录账号后可以选择备份到云端。": {
+    "限额只发提醒，不拦截任何东西；拦截只在专注会话里发生。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "TimeSink needs the two permissions below to track your time automatically. Data stays on this Mac by default; after signing in you can choose to back it up to the cloud."
+            "value": "Limits only send reminders. Blocking happens only during focus sessions."
+          }
+        }
+      }
+    },
+    "限额只提醒，不会拦截。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limits only send reminders; they do not block activity."
+          }
+        }
+      }
+    },
+    "限额提醒": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limit reminders"
+          }
+        }
+      }
+    },
+    "限额提醒、每日小结、专注结束。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limit reminders, daily summaries and focus completion."
+          }
+        }
+      }
+    },
+    "限额未保存：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limit was not saved: %@"
+          }
+        }
+      }
+    },
+    "随时暂停": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause anytime"
+          }
+        }
+      }
+    },
+    "隐藏应用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide apps"
+          }
+        }
+      }
+    },
+    "隔离预览 · 示例数据": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Isolated preview · Sample data"
+          }
+        }
+      }
+    },
+    "需屏幕录制权限 · 未采集": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Screen Recording permission needed · No captures"
+          }
+        }
+      }
+    },
+    "需要屏幕录制权限": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Screen Recording permission required"
           }
         }
       }
@@ -2791,22 +7071,52 @@
         }
       }
     },
-    "非常生产": {
+    "非常投入": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Very productive"
+            "value": "Highly productive"
           }
         }
       }
     },
-    "预算": {
+    "预览并导出…": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Budgets"
+            "value": "Preview and export…"
+          }
+        }
+      }
+    },
+    "颜色表示评分；样本不足不显示分数。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Color represents score. Scores are hidden when there is not enough data."
+          }
+        }
+      }
+    },
+    "颜色越深，平均活动时长越长。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Darker color means a longer average activity duration."
+          }
+        }
+      }
+    },
+    "首条记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "First record"
           }
         }
       }
@@ -2817,6 +7127,36 @@
           "stringUnit": {
             "state": "translated",
             "value": " (%@ vs. yesterday)"
+          }
+        }
+      }
+    },
+    "，": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": ", "
+          }
+        }
+      }
+    },
+    "，%@ 结束。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": ", ends at %@."
+          }
+        }
+      }
+    },
+    "，这段专注已结束。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": ", this focus session has ended."
           }
         }
       }
