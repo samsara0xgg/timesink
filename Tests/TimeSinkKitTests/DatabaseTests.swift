@@ -13,6 +13,41 @@ final class DatabaseTests: XCTestCase {
         XCTAssertEqual(cats.first?.id, "softwareDev")   // sortOrder 排序
         XCTAssertEqual(cats.first?.productivity, 2)
     }
+    func testUpgradeFromDistributedV9CreatesRefinedTablesWithoutLosingData() throws {
+        let db = try DatabaseQueue()
+        try AppDatabase.migrator.migrate(db, upTo: "v8")
+        let store = SpanStore(db)
+        let span = try store.insert(Span(start: ts(0), end: ts(100), appBundleID: "test.app", appName: "Test", title: "Keep", url: nil, domain: nil))
+        try db.write { db in
+            try db.execute(sql: "CREATE TABLE legacyV9Feature (value TEXT)")
+            try db.execute(sql: "INSERT INTO legacyV9Feature VALUES ('preserve')")
+            try db.execute(sql: "INSERT INTO grdb_migrations VALUES ('v9')")
+        }
+        try AppDatabase.migrator.migrate(db)
+        try db.read { db in
+            for name in ["spanCategoryOverride", "classificationSuggestion", "disabledClassificationRule"] {
+                XCTAssertTrue(try db.tableExists(name))
+            }
+            XCTAssertEqual(try String.fetchOne(db, sql: "SELECT value FROM legacyV9Feature"), "preserve")
+        }
+        XCTAssertEqual(try store.spans(overlapping: DateInterval(start: ts(0), end: ts(200))).first?.id, span.id)
+    }
+
+    func testRefinedRepairMigrationPreservesExistingOverrides() throws {
+        let db = try DatabaseQueue()
+        try AppDatabase.migrator.migrate(db, upTo: "v10")
+        let span = try SpanStore(db).insert(Span(start: ts(0), end: ts(100), appBundleID: "test.app", appName: "Test", title: nil, url: nil, domain: nil))
+        try db.write { db in
+            try db.execute(sql: "INSERT INTO spanCategoryOverride VALUES (?, 'learning')", arguments: [span.id])
+            try db.execute(sql: "INSERT INTO disabledClassificationRule VALUES ('keep-disabled')")
+        }
+        try AppDatabase.migrator.migrate(db)
+        try AppDatabase.migrator.migrate(db)
+        try db.read { db in
+            XCTAssertEqual(try String.fetchOne(db, sql: "SELECT categoryID FROM spanCategoryOverride WHERE spanID = ?", arguments: [span.id]), "learning")
+            XCTAssertEqual(try String.fetchOne(db, sql: "SELECT ruleKey FROM disabledClassificationRule"), "keep-disabled")
+        }
+    }
     func testSpanRoundtrip() throws {
         let db = try makeDB()
         let store = SpanStore(db)

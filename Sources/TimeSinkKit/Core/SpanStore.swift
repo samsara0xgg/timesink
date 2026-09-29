@@ -55,6 +55,7 @@ public final class SpanStore: Sendable {
     /// classifies each of these ONCE instead of once per span row.
     public struct DailyTupleTotal: Sendable {
         public let dayIndex: Int
+        public let categoryOverride: String?
         public let appBundleID: String
         public let title: String?
         public let url: String?
@@ -78,11 +79,11 @@ public final class SpanStore: Sendable {
     /// Dates are stored by GRDB with millisecond precision, so the ROUND
     /// recovers the exact stored value and the SUM is integer-exact.
     static let dayTupleTotalsSQL = """
-        SELECT appBundleID, title, url, domain, \
+        SELECT appBundleID, title, url, domain, override.categoryID AS categoryOverride, \
         SUM(CAST(ROUND((julianday(end) - julianday(start)) * 86400000) AS INTEGER)) AS ms \
-        FROM span \
+        FROM span LEFT JOIN spanCategoryOverride AS override ON override.spanID = span.id \
         WHERE start >= ? AND start < ? AND end <= ? AND end > start \
-        GROUP BY appBundleID, title, url, domain
+        GROUP BY appBundleID, title, url, domain, override.categoryID
         """
 
     /// The spans a bucket hands forward: they start inside it but run past
@@ -130,6 +131,7 @@ public final class SpanStore: Sendable {
                 for row in rows {
                     let ms: Int64 = row["ms"]
                     totals.append(DailyTupleTotal(dayIndex: index,
+                                                  categoryOverride: row["categoryOverride"],
                                                   appBundleID: row["appBundleID"],
                                                   title: row["title"],
                                                   url: row["url"],

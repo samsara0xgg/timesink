@@ -267,6 +267,45 @@ public enum AppDatabase {
                 """)
         }
 
+        migrator.registerMigration("v9") { db in
+            try db.create(table: "spanCategoryOverride") { t in
+                t.column("spanID", .integer).primaryKey().references("span", onDelete: .cascade)
+                t.column("categoryID", .text).notNull().references("category")
+            }
+        }
+
+        migrator.registerMigration("v10") { db in
+            try db.create(table: "classificationSuggestion") { t in
+                t.column("key", .text).notNull()
+                t.column("kind", .text).notNull()
+                t.column("categoryID", .text).notNull().references("category")
+                t.column("source", .text).notNull()
+                t.column("createdAt", .datetime).notNull()
+                t.primaryKey(["key", "kind"])
+            }
+            try db.create(table: "disabledClassificationRule") { t in t.column("ruleKey", .text).primaryKey() }
+        }
+
+        // The distributed 0.2.1 app already used the generic identifier v9
+        // for another feature. A named, additive migration repairs upgrades
+        // from that branch and preserves databases that have these tables.
+        migrator.registerMigration("refined_20260928_classification_support") { db in
+            try db.create(table: "spanCategoryOverride", options: .ifNotExists) { t in
+                t.column("spanID", .integer).primaryKey().references("span", onDelete: .cascade)
+                t.column("categoryID", .text).notNull().references("category")
+            }
+            try db.create(table: "classificationSuggestion", options: .ifNotExists) { t in
+                t.column("key", .text).notNull()
+                t.column("kind", .text).notNull()
+                t.column("categoryID", .text).notNull().references("category")
+                t.column("source", .text).notNull()
+                t.column("createdAt", .datetime).notNull()
+                t.primaryKey(["key", "kind"])
+            }
+            try db.create(table: "disabledClassificationRule", options: .ifNotExists) { t in
+                t.column("ruleKey", .text).primaryKey()
+            }
+        }
         return migrator
     }
 }

@@ -10,9 +10,12 @@ final class LLMClassifierTests: XCTestCase {
         let json = #"{"choices":[{"message":{"content":"garbage"}}]}"#.data(using: .utf8)!
         XCTAssertThrowsError(try OpenAIDomainClassifier.parse(response: json))
     }
-    func testCoordinatorWritesCache() async throws {
+    func testCoordinatorQueuesSuggestionWithoutChangingClassification() async throws {
         struct Fake: DomainClassifying {
-            func classify(domain: String, title: String?) async throws -> String { "news" }
+            func classify(domain: String, title: String?) async throws -> String {
+                XCTAssertNil(title, "Window titles must not be sent to the model")
+                return "news"
+            }
         }
         let db = try AppDatabase.openInMemory()
         let cs = CategoryStore(db); let ss = SettingsStore(db)
@@ -23,7 +26,9 @@ final class LLMClassifierTests: XCTestCase {
                         appName: "Chrome", title: "t", url: "https://unknown-site.xyz/", domain: "unknown-site.xyz")
         await co.noteSpanClosed(span)
         try await Task.sleep(for: .milliseconds(300))
-        XCTAssertEqual(try cs.domainMap()["unknown-site.xyz"],
-                       DomainEntry(categoryID: "news", source: "llm"))
+        XCTAssertNil(try cs.domainMap()["unknown-site.xyz"])
+        XCTAssertEqual(try cs.suggestions().first?.categoryID, "news")
+        let category = await resolver.categoryID(for: span)
+        XCTAssertEqual(category, "uncategorized")
     }
 }

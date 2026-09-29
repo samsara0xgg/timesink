@@ -34,7 +34,7 @@ public final class CategoryResolver {
     /// The four fields `Classifier.categoryID` actually reads. Holds
     /// references to the span's existing strings, so building one is a few
     /// retains -- no copying, no joined-key allocation.
-    private struct MemoKey: Hashable {
+    fileprivate struct MemoKey: Hashable, Sendable {
         let appBundleID: String
         let url: String?
         let domain: String?
@@ -61,6 +61,7 @@ public final class CategoryResolver {
     /// `testMemoIsInvalidatedByRefresh` and
     /// `testRefreshCategoriesKeepsMemoAndClassification`.
     private var memo: [MemoKey: String] = [:]
+    private var overrides: [Int64: String] = [:]
 
     /// Bounds memory: on reaching the cap the memo is cleared wholesale and
     /// starts refilling.
@@ -89,7 +90,7 @@ public final class CategoryResolver {
     /// materialization are the real ceiling, not the memo policy. The fix
     /// there is aggregating in SQL instead of classifying row by row, not a
     /// smarter cache.
-    private static let memoCap = 20_000
+    nonisolated private static let memoCap = 20_000
 
     /// Test-visible mirror of `memoCap`, so the cap test can't silently
     /// drift out of sync with the constant it is checking.
@@ -102,10 +103,11 @@ public final class CategoryResolver {
 
     public func refresh() {
         do {
+            let disabled = try categoryStore.disabledRules()
             let categories = try categoryStore.allCategories()
-            let domainMap = try categoryStore.domainMap()
-            let appMap = try categoryStore.appMap()
-            let sortedRules = try categoryStore.urlRules().sorted { lhs, rhs in
+            let domainMap = try categoryStore.domainMap().filter { !disabled.contains("domain:" + $0.key) }
+            let appMap = try categoryStore.appMap().filter { !disabled.contains("app:" + $0.key) }
+            let sortedRules = try categoryStore.urlRules().filter { !disabled.contains("url:" + String($0.id ?? 0)) }.sorted { lhs, rhs in
                 let lhsUser = lhs.source == "user"
                 let rhsUser = rhs.source == "user"
                 if lhsUser != rhsUser { return lhsUser }
@@ -119,7 +121,9 @@ public final class CategoryResolver {
                 return (lhs.id ?? 0) > (rhs.id ?? 0)    // 新规则优先（交互稿语义）
             }
 
+            let overrides = try categoryStore.segmentOverrides()
             categoriesByID = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
+            self.overrides = overrides
             context = ClassificationContext(domainMap: domainMap, appMap: appMap, urlRules: sortedRules,
                                              titleRules: titleRules)
             memo.removeAll(keepingCapacity: true)
@@ -163,6 +167,27 @@ public final class CategoryResolver {
     var memoEntryCount: Int { memo.count }
 
     public func categoryID(for span: Span) -> String {
+        if let id = span.id, let override = overrides[id] { return override }
+        return Self.categoryID(for: span, context: context, memo: &memo)
+    }
+
+    /// A worker owns its copy of the memo; no database or main-actor reference
+    /// crosses the boundary. Rule edits replace the snapshot before the next run.
+    struct Snapshot: Sendable {
+        fileprivate let context: ClassificationContext
+        fileprivate var memo: [MemoKey: String]
+        fileprivate let overrides: [Int64: String]
+
+        mutating func categoryID(for span: Span) -> String {
+            if let id = span.id, let override = overrides[id] { return override }
+            return CategoryResolver.categoryID(for: span, context: context, memo: &memo)
+        }
+    }
+
+    func snapshot() -> Snapshot { Snapshot(context: context, memo: memo, overrides: overrides) }
+
+    nonisolated private static func categoryID(for span: Span, context: ClassificationContext,
+                                               memo: inout [MemoKey: String]) -> String {
         let key = MemoKey(appBundleID: span.appBundleID, url: span.url,
                           domain: span.domain, title: span.title)
         if let hit = memo[key] { return hit }
@@ -176,6 +201,100 @@ public final class CategoryResolver {
         if memo.count >= Self.memoCap { memo.removeAll(keepingCapacity: true) }
         memo[key] = resolved
         return resolved
+    }
+
+    func previewEdit(span: Span, scope: ReclassificationEdit.Scope, categoryID: String,
+                     pattern: String, items: [CategorizedSpan], titleScope: String? = nil, titlePriority: Int = 100) -> [CategorizedSpan] {
+        var domains = context.domainMap
+        var apps = context.appMap
+        var titles = context.titleRules
+        switch scope {
+        case .segment: return items.filter { $0.span.id == span.id && $0.categoryID != categoryID }
+        case .activity:
+            if let domain = span.domain { domains[domain] = DomainEntry(categoryID: categoryID, source: "user") }
+            else { apps[span.appBundleID] = DomainEntry(categoryID: categoryID, source: "user") }
+        case .title:
+            guard let pattern = TitleRuleInput.normalizedPattern(pattern) else { return [] }
+            let key = titleScope ?? span.domain ?? span.appBundleID
+            let old = (try? categoryStore.titleRules())?.first { $0.pattern == pattern && $0.scopeKey == key }
+            guard old?.source != "builtin" else { return [] }
+            titles.removeAll { $0.pattern == pattern && $0.scopeKey == key }
+            titles.append(TitleRule(id: old?.id ?? Int64.max, pattern: pattern, scopeKey: key, categoryID: categoryID, priority: old?.priority ?? titlePriority, source: "user"))
+            titles.sort {
+                if $0.scopeKey.isEmpty != $1.scopeKey.isEmpty { return !$0.scopeKey.isEmpty }
+                if $0.priority != $1.priority { return $0.priority > $1.priority }
+                return ($0.id ?? 0) > ($1.id ?? 0)
+            }
+        }
+        let preview = ClassificationContext(domainMap: domains, appMap: apps, urlRules: context.urlRules, titleRules: titles)
+        var memo: [MemoKey: String] = [:]
+        return items.filter { item in
+            if let id = item.span.id, overrides[id] != nil { return false }
+            return Self.categoryID(for: item.span, context: preview, memo: &memo) != item.categoryID
+        }
+    }
+
+    /// The winning rule only, matching the classifier's tier order. Segment
+    /// corrections are intentionally not credited to an unrelated rule.
+    func matchingRuleKey(for span: Span) -> String? {
+        if let id = span.id, overrides[id] != nil { return nil }
+        let scope = span.domain ?? span.appBundleID
+        func title(_ user: Bool) -> String? {
+            guard let text = span.title, let rule = context.titleRules.first(where: {
+                ($0.source == "user") == user && Classifier.scopeMatches(ruleScopeKey: $0.scopeKey, scopeKey: scope) && Classifier.titleMatches(pattern: $0.pattern, title: text)
+            }), let id = rule.id else { return nil }
+            return "title:\(id)"
+        }
+        func domain(_ source: String) -> String? {
+            guard let domain = span.domain else { return nil }
+            var labels = domain.split(separator: ".")
+            while labels.count >= 2 {
+                let candidate = labels.joined(separator: ".")
+                if context.domainMap[candidate]?.source == source { return "domain:" + candidate }
+                labels.removeFirst()
+            }
+            return nil
+        }
+        func url(_ user: Bool) -> String? {
+            guard let value = span.url, let rule = context.urlRules.first(where: { ($0.source == "user") == user && Classifier.matches(pattern: $0.pattern, in: value) }), let id = rule.id else { return nil }
+            return "url:\(id)"
+        }
+        if let key = title(true) ?? domain("user") ?? url(true) ?? title(false) ?? url(false) ?? domain("curated") ?? domain("seed") { return key }
+        if span.url == nil, context.appMap[span.appBundleID] != nil { return "app:" + span.appBundleID }
+        if let domain = span.domain, context.domainMap[domain]?.source == "llm" { return "domain:" + domain }
+        return nil
+    }
+
+    func explanation(for span: Span) -> String {
+        if let id = span.id, overrides[id] != nil { return String(localized: "你单独调整了这一段，其他活动不受影响。") }
+        let scope = span.domain ?? span.appBundleID
+        func titleReason(user: Bool) -> String? {
+            guard let title = span.title else { return nil }
+            guard let rule = context.titleRules.first(where: {
+                ($0.source == "user") == user && Classifier.scopeMatches(ruleScopeKey: $0.scopeKey, scopeKey: scope)
+                    && Classifier.titleMatches(pattern: $0.pattern, title: title)
+            }) else { return nil }
+            return String(localized: "\(user ? String(localized: "你的") : String(localized: "内置"))标题规则 · \(rule.pattern)")
+        }
+        func domainReason(_ source: String) -> String? {
+            guard let domain = span.domain else { return nil }
+            var suffix = domain
+            while suffix.split(separator: ".").count >= 2 {
+                if let entry = context.domainMap[suffix], entry.source == source { return "\(source == "user" ? String(localized: "你的网站规则") : String(localized: "内置网站分类")) · \(suffix)" }
+                guard let dot = suffix.firstIndex(of: ".") else { break }
+                suffix = String(suffix[suffix.index(after: dot)...])
+            }
+            return nil
+        }
+        func urlReason(user: Bool) -> String? {
+            guard let url = span.url, let rule = context.urlRules.first(where: { ($0.source == "user") == user && Classifier.matches(pattern: $0.pattern, in: url) }) else { return nil }
+            return String(localized: "\(user ? String(localized: "你的") : String(localized: "内置"))网址规则 · \(rule.pattern)")
+        }
+        if let reason = titleReason(user: true) ?? domainReason("user") ?? urlReason(user: true)
+            ?? titleReason(user: false) ?? urlReason(user: false) ?? domainReason("curated") ?? domainReason("seed") { return reason }
+        if span.url == nil, let entry = context.appMap[span.appBundleID] { return String(localized: "\(entry.source == "user" ? String(localized: "你的") : String(localized: "内置"))应用分类 · \(span.appName)") }
+        if let domain = span.domain, context.domainMap[domain]?.source == "llm" { return String(localized: "智能分类 · 根据网站域名识别") }
+        return String(localized: "还没有匹配的应用、网站或标题规则。选择分类后可以为以后自动归类。")
     }
 
     public func categorized(_ spans: [Span]) -> [CategorizedSpan] {

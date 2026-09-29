@@ -51,7 +51,7 @@ public struct OpenAIDomainClassifier: DomainClassifying {
             "max_tokens": 10,
             "messages": [
                 ["role": "system", "content": Self.systemPrompt],
-                ["role": "user", "content": "domain: \(domain)\ntitle: \(title ?? "")"],
+                ["role": "user", "content": "domain: \(domain)"],
             ],
         ])
 
@@ -100,6 +100,7 @@ public final class LLMCoordinator {
     /// Domains classification has already been attempted for this session,
     /// win or lose. Never persisted -- resets on app relaunch.
     private var attemptedDomains: Set<String> = []
+    public var onSuggestion: (() -> Void)?
 
     private let logger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "llmCoordinator")
 
@@ -114,17 +115,18 @@ public final class LLMCoordinator {
         guard settings.llmEnabled else { return }
         guard let domain = span.domain else { return }
         guard resolver.categoryID(for: span) == "uncategorized" else { return }
+        guard (try? categoryStore.suggestions().contains { $0.key == domain && $0.kind == "domain" }) != true else { return }
         guard !attemptedDomains.contains(domain) else { return }
         guard let classifier = resolveService() else { return }
 
         attemptedDomains.insert(domain)
-        let title = span.title
 
         Task { @MainActor in
             do {
-                let categoryID = try await classifier.classify(domain: domain, title: title)
-                try categoryStore.insertLLMDomain(domain, categoryID: categoryID)
-                resolver.refresh()
+                let categoryID = try await classifier.classify(domain: domain, title: nil)
+                guard settings.llmEnabled else { return }
+                try categoryStore.suggestDomain(domain, categoryID: categoryID)
+                onSuggestion?()
             } catch {
                 logger.error("classify failed for \(domain, privacy: .public): \(String(describing: error), privacy: .public)")
             }
