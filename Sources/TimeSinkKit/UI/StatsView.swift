@@ -36,6 +36,7 @@ struct StatsView: View {
                                     ranking.frame(maxWidth: .infinity)
                                 }.fixedSize(horizontal: false, vertical: true)
                             } else { categoryHistory; ranking }
+                            InterruptionRadarCard(model: model)
                             if let heatmap = stats.heatmapData {
                                 HeatmapCard(data: heatmap, interaction: $stats.heatmapInteraction) { model.openHeatmapActivities(in: $0) }.id("heatmap")
                             }

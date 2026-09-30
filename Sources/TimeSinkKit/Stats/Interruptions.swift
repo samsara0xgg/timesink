@@ -48,6 +48,8 @@ public struct SwitchEpisode: Sendable, Equatable, Identifiable {
     public var destination: String
     public var destinationLabel: String
     public var destinationBundleID: String
+    /// The site, when the destination was a web page.
+    public var destinationDomain: String?
     public var destinationCategoryID: String
     /// Category of the productive window that was left.
     public var originCategoryID: String
@@ -77,7 +79,7 @@ public enum InterruptionClassifier {
             var end: Date
             var dwell: TimeInterval = 0
             var keySeconds = 0
-            var byDestination: [String: (seconds: TimeInterval, label: String, bundleID: String, categoryID: String)] = [:]
+            var byDestination: [String: (seconds: TimeInterval, label: String, bundleID: String, domain: String?, categoryID: String)] = [:]
         }
         let sorted = items.filter { $0.span.end > $0.span.start }.sorted { $0.span.start < $1.span.start }
         var result: [SwitchEpisode] = []
@@ -96,7 +98,7 @@ public enum InterruptionClassifier {
             result.append(SwitchEpisode(
                 start: episode.start, end: episode.end, dwell: episode.dwell, keySeconds: episode.keySeconds,
                 destination: lead.key, destinationLabel: lead.value.label, destinationBundleID: lead.value.bundleID,
-                destinationCategoryID: lead.value.categoryID, originCategoryID: origin, kind: kind,
+                destinationDomain: lead.value.domain, destinationCategoryID: lead.value.categoryID, originCategoryID: origin, kind: kind,
                 reason: kind == .interruption ? (typed ? .typed : .stayed) : nil, visits: 1, returned: returned))
         }
 
@@ -122,7 +124,7 @@ public enum InterruptionClassifier {
             open!.dwell += span.duration
             open!.keySeconds += span.keySeconds
             let prior = open!.byDestination[key]?.seconds ?? 0
-            open!.byDestination[key] = (prior + span.duration, identity.rowLabel, span.appBundleID, item.categoryID)
+            open!.byDestination[key] = (prior + span.duration, identity.rowLabel, span.appBundleID, span.domain, item.categoryID)
         }
         finish(returned: false)
         return mergingRepeats(result)
@@ -176,8 +178,11 @@ public struct DayInterruptions: Sendable, Equatable {
         public var destination: String
         public var label: String
         public var bundleID: String
+        public var domain: String?
         public var categoryID: String
         public var count: Int
+        /// Typed or stayed, per interruption, and when each began.
+        public var starts: [Date] = []
         public var typed: Int
         public var seconds: TimeInterval
         public var peeks: Int
@@ -189,9 +194,11 @@ public struct DayInterruptions: Sendable, Equatable {
         for episode in interruptions {
             var source = byKey[episode.destination] ?? Source(destination: episode.destination, label: episode.destinationLabel,
                                                               bundleID: episode.destinationBundleID,
+                                                              domain: episode.destinationDomain,
                                                               categoryID: episode.destinationCategoryID,
                                                               count: 0, typed: 0, seconds: 0, peeks: 0)
             source.count += 1
+            source.starts.append(episode.start)
             source.seconds += episode.dwell
             if episode.reason == .typed { source.typed += 1 }
             byKey[episode.destination] = source
