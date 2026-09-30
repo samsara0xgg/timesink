@@ -203,8 +203,10 @@ private struct KeptPage<Content: View>: View {
             .environment(visibility)
             .frame(width: active ? nil : size?.width, height: active ? nil : size?.height)
             .onGeometryChange(for: CGSize.self, of: \.size) { if active { size = $0 } }
+            // Opacity 0 already keeps clicks out. `allowsHitTesting(false)`
+            // would also detach the page's AppKit views (the Activities list)
+            // and reattach them on every return, ~40% of a switch.
             .opacity(active ? 1 : 0)
-            .allowsHitTesting(active)
             .accessibilityHidden(!active)
     }
 }
