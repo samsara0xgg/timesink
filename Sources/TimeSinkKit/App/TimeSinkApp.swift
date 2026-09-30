@@ -204,6 +204,8 @@ public struct TimeSinkApp: App {
     public var body: some Scene {
         MenuBarExtra {
             MenuBarDashboardView(model: model)
+                // Text grows with the system size up to about 1.3x; the popover widens with it.
+                .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         } label: {
             MenuBarLabel(model: model)
                 .onAppear {

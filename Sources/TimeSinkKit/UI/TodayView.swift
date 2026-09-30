@@ -292,7 +292,8 @@ struct DayRibbonView: View {
         // rather than hourly labels with gaps where collisions dropped some.
         let widest = hours(every: 1).map { label($0).width }.max() ?? 0
         let perHour = width / max(1, interval.duration / 3600)
-        let step: Int = [1, 2, 3, 4, 6].first(where: { CGFloat($0) * perHour >= widest * 1.5 + 8 }) ?? 6
+        // The popover's band reads at a glance: 8:00, 11:00, 14:00, 17:00.
+        let step: Int = [1, 2, 3, 4, 6].first(where: { (!compact || $0 >= 3) && CGFloat($0) * perHour >= widest * 1.5 + 8 }) ?? 6
         var result: [Tick] = []
         // The right edge gets a label only on the step's grid; an off-grid
         // edge label would crowd out the last even tick.
@@ -328,6 +329,7 @@ struct DayRibbonView: View {
                                 .offset(x: rect.minX).help(event.title)
                         }
                     }
+                    let nowX = bounds(start: overview.now, end: overview.now, width: geometry.size.width).minX
                     ZStack(alignment: .topLeading) {
                         let past = bounds(start: interval.start, end: overview.now, width: geometry.size.width)
                         Rectangle().fill(.quaternary.opacity(0.5)).frame(width: past.width)
@@ -352,7 +354,7 @@ struct DayRibbonView: View {
                         }
                     }.frame(height: compact ? 12 : 26).clipShape(RoundedRectangle(cornerRadius: 5)).offset(y: compact ? 0 : 20)
                     Rectangle().fill(.primary).frame(width: 1.5, height: compact ? 18 : 32)
-                        .offset(x: bounds(start: overview.now, end: overview.now, width: geometry.size.width).minX, y: compact ? -3 : 17)
+                        .offset(x: nowX, y: compact ? -3 : 17)
                     if !compact {
                         ForEach(Array(overview.sessions.enumerated()), id: \.offset) { _, session in
                             let rect = bounds(start: session.start, end: session.end, width: geometry.size.width)

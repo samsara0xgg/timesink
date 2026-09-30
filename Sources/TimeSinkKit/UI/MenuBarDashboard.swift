@@ -291,7 +291,7 @@ private func zip2<A, B>(_ a: A?, _ b: B?) -> (A, B)? {
 /// method to call. `category(id)` carries the row's category id so every
 /// category row shares one case.
 private enum DrillKind: Equatable {
-    case score, compareFocus, compareTotal, streak, category(String), spark, budget
+    case score, compareTotal, category(String), spark, budget
 }
 
 /// A zero-size probe view, flipped to match SwiftUI's own top-left-origin,
@@ -510,27 +510,27 @@ private struct ExpandedDrillView<Content: View>: View {
     }
 }
 
-/// The menu-bar popover dashboard (preview C1). Replaces the old
-/// three-line text dropdown.
+/// The menu-bar popover (2.0): a status row, today, categories, and focus
+/// with limits, as platters on the popover's own glass; a row of icon
+/// buttons at the foot. Every number comes from `TodayDashboardModel`,
+/// which stays resident, so the first frame is already at its final height.
 struct MenuBarDashboardView: View {
     let model: AppModel
     /// Kept on the model: SwiftUI builds the popover window afresh on every
     /// open, and a model created with it would open empty, then grow.
     private var dashboard: TodayDashboardModel { model.dashboard }
-    /// C4: switches the popover between the normal dashboard and the focus
-    /// duration/block-list configuration screen. Superseded entirely by
-    /// `FocusRunningView` whenever a session is actually running, regardless
-    /// of this mode -- see `body`'s top-level `if`.
     @State private var focusError: String?
     @State private var categoriesExpanded = false
     @FocusState private var keyboardCategory: String?
     @State private var focusMinutes = 25
-    @State private var showsCapture = false
-    @State private var showsSync = false
     @State private var captureSummary = ObservationStore.Summary(count: 0, latestAt: nil)
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
+    /// Grows with the text size, so larger text widens the popover instead of truncating.
+    @ScaledMetric(relativeTo: .body) private var width: CGFloat = RefinedStyle.popoverWidth
+    @ScaledMetric(relativeTo: .largeTitle) private var heroSize: CGFloat = 34
+    @ScaledMetric(relativeTo: .title) private var scoreSize: CGFloat = 24
 
     /// C1+ hover drill-down: one reused `PanelHost` (see its own doc
     /// comment for why it isn't `FocusHUDController`), the popover's own
@@ -544,80 +544,71 @@ struct MenuBarDashboardView: View {
     @State private var shownKind: DrillKind?
     @State private var expandedDrill: DrillKind?
 
-    private var focusRunning: Bool { model.focus?.running != nil }
+    /// What the popover is showing, in the order the states win.
+    private enum Kind: Equatable { case focus, permission, paused, morning, idle, recording }
+
+    private var kind: Kind {
+        if model.focus?.running != nil { return .focus }
+        if !model.accessibilityGranted { return .permission }
+        if model.trackingPaused { return .paused }
+        if dashboard.total < 300 { return .morning }
+        if model.engine.isSuspended { return .idle }
+        return .recording
+    }
+
+    private var transition: AnyTransition { reduceMotion ? .opacity : AnyTransition(.blurReplace) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            section {
-                dashboardHeader
-                if model.accessibilityGranted && !model.trackingPaused && !focusRunning { currentActivity }
-            }
-            if focusRunning {
-                section { FocusRunningView(model: model) }
-                section {
-                    HStack {
-                        Text("今天已记录").foregroundStyle(.secondary)
-                        Text(Format.duration(dashboard.total)).fontWeight(.semibold).monospacedDigit()
-                        Spacer()
-                        Button("查看今天", action: openToday).buttonStyle(.link)
-                    }.font(.system(size: 12))
-                    if let overview = dashboard.overview { DayRibbonView(overview: overview, compact: true) }
-                }
-            } else {
-                if !model.accessibilityGranted {
-                    section {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Label("辅助功能权限已关闭", systemImage: "exclamationmark.triangle").font(.system(size: 13, weight: .semibold)).foregroundStyle(.red)
-                            Text("TimeSink 靠它看到最前面的应用和窗口标题。关闭期间不会记录任何时间。")
-                                .font(.system(size: 12)).foregroundStyle(.secondary)
-                            Button("打开系统设置…") { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!) }.buttonStyle(.borderedProminent)
-                            Text("重新打开后会自动继续，不需要重启。").font(.system(size: 11)).foregroundStyle(.secondary)
-                        }.padding(10).background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 9))
-                    }
-                }
-                if model.trackingPaused { section { pausedContent } }
-                section { todaySummary }
-                if model.accessibilityGranted && !model.trackingPaused {
-                    if !dashboard.topCategories.isEmpty { section { categoryList } }
-                    if !dashboard.budgetRows.isEmpty {
-                        section {
-                            Button(action: openBudgetSettings) { budgetSection }
-                                .buttonStyle(.plain)
-                                .drillDown(host: panelHost, kind: .budget, hostWindow: hostWindow, anchorView: anchorView,
-                                    expandedDrill: $expandedDrill, shownKind: $shownKind) { budgetProgressContent() }
-                        }
-                    }
-                    section { quickFocus }
+        let kind = kind
+        VStack(alignment: .leading, spacing: 8) {
+            statusRow(kind)
+            Group {
+                switch kind {
+                case .focus:
+                    FocusRunningView(model: model).padding(14).frame(maxWidth: .infinity, alignment: .leading).glassPlatter()
+                    focusTodayRow
+                case .permission:
+                    permissionPlatter
+                    chromeRow
+                    todayPlatter(dim: true)
+                case .paused:
+                    pausedPlatter
+                    todayPlatter(dim: true)
+                case .morning:
+                    morningPlatter
+                    chromeRow
+                    focusPlatter(withLimits: false)
+                case .idle:
+                    platterRow { Label("你离开了电脑，这段时间不计入。回来后会自动继续。", systemImage: "moon").foregroundStyle(.secondary) }
+                    chromeRow
+                    todayPlatter(dim: false)
+                    categoriesPlatter
+                    focusPlatter(withLimits: true)
+                case .recording:
+                    chromeRow
+                    todayPlatter(dim: false)
+                    categoriesPlatter
+                    focusPlatter(withLimits: true)
                 }
             }
-            if model.chromeDegraded {
-                section {
-                    Button {
-                        model.settingsTab = .permissions
-                        NSApp.activate(ignoringOtherApps: true)
-                        openSettings(); AppWindow.settings.bringForward()
-                    } label: {
-                        Label("Chrome 网页读取已降级 · 检查权限", systemImage: "exclamationmark.triangle")
-                            .font(.system(size: 11)).foregroundStyle(RefinedStyle.warning)
-                    }.buttonStyle(.plain)
-                }
-            }
-            if let focusError { Text(focusError).font(.system(size: 11)).foregroundStyle(.red).padding(14) }
+            .transition(transition)
+            if let focusError { Text(focusError).font(.subheadline).foregroundStyle(.red).padding(.horizontal, 4) }
             expandedContent
-            section { footer }
+            footer
         }
-        .frame(width: RefinedStyle.popoverWidth)
+        .padding(10)
+        .frame(width: width)
         .environment(\.locale, model.displayLocale)
         .environment(\.calendar, model.displayCalendar)
-        .background(RefinedStyle.panel, in: RoundedRectangle(cornerRadius: 12))
         .background(WindowAccessor(window: $hostWindow, anchorView: $anchorView))
-        .animation(RefinedStyle.motion(reduced: reduceMotion), value: model.trackingPaused)
+        .animation(RefinedStyle.motion(reduced: reduceMotion), value: kind)
         .animation(RefinedStyle.motion(reduced: reduceMotion), value: categoriesExpanded)
         .task(id: model.dataVersion) {
             await refresh(forceStreak: false)
             guard !Task.isCancelled else { return }
             panelHost.prewarm()
             captureSummary = model.observationStore?.summary(since: Calendar.current.startOfDay(for: Date())) ?? captureSummary
+            model.sync?.refreshPending()
         }
         .onAppear { focusMinutes = model.settings.focusDurationMinutes }
         .onDisappear {
@@ -625,87 +616,344 @@ struct MenuBarDashboardView: View {
         }
     }
 
-    private func section<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 10, content: content)
-            .padding(.horizontal, 14).padding(.vertical, 12)
+    private func platterRow<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        HStack(spacing: 10, content: content)
+            .font(.callout)
+            .padding(.horizontal, 12).padding(.vertical, 9)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .overlay(alignment: .bottom) { Divider().opacity(0.65) }
+            .glassPlatter()
     }
 
-    private var todaySummary: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .bottom, spacing: 4) {
-                Button(action: openToday) {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(Format.duration(dashboard.total)).font(.system(size: 34, weight: .semibold))
-                            .tracking(-0.8).monospacedDigit().refinedNumberMotion(Format.duration(dashboard.total))
-                        Text("今天已记录").font(.system(size: 12)).foregroundStyle(.secondary)
-                    }
-                }.buttonStyle(.plain)
-                .drillDown(host: panelHost, kind: .compareTotal, hostWindow: hostWindow, anchorView: anchorView,
-                    expandedDrill: $expandedDrill, shownKind: $shownKind) { compareBaseContent(focus: false) }
-                Spacer(minLength: 2)
-                VStack(alignment: .trailing, spacing: 3) {
-                    Text(Format.duration(dashboard.focus)).font(.system(size: 17, weight: .semibold)).monospacedDigit().refinedNumberMotion(Format.duration(dashboard.focus))
-                    Text("投入 · 占 \(Int((dashboard.focus / max(1, dashboard.total) * 100).rounded()))%")
-                        .font(.system(size: 11)).foregroundStyle(.secondary)
-                }
-                .drillDown(host: panelHost, kind: .compareFocus, hostWindow: hostWindow, anchorView: anchorView,
-                    expandedDrill: $expandedDrill, shownKind: $shownKind) { compareBaseContent(focus: true) }
+    // MARK: - 1 Status
+
+    private func statusRow(_ kind: Kind) -> some View {
+        HStack(spacing: 10) {
+            TimelineView(.periodic(from: .now, by: 10)) { context in
+                statusText(kind, now: context.date)
             }
-            if let delta = dashboard.totalDelta {
-                Text("比昨天同时段 \(Format.durationDelta(delta))").font(.system(size: 11)).foregroundStyle(.secondary)
-                    .padding(.top, -7).monospacedDigit()
-            } else if dashboard.total < 300 {
-                Text("新的一天刚开始。离开电脑和锁屏的时间不会计入。")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
-            }
-            if let overview = dashboard.overview {
-                Button(action: openToday) { DayRibbonView(overview: overview, compact: true) }.buttonStyle(.plain)
-                    .drillDown(host: panelHost, kind: .spark, hostWindow: hostWindow, anchorView: anchorView,
-                        expandedDrill: $expandedDrill, shownKind: $shownKind) { hourlyBigContent() }
-            }
-            HStack(spacing: 6) {
-                if model.showScore {
-                    Button { expandedDrill = expandedDrill == .score ? nil : .score } label: {
-                        Label("评分 \(dashboard.pulse.map(String.init) ?? "—") · 连续 \(dashboard.streakDays) 天达标", systemImage: "chart.bar")
-                    }
-                    .drillDown(host: panelHost, kind: .score, hostWindow: hostWindow, anchorView: anchorView,
-                        expandedDrill: $expandedDrill, shownKind: $shownKind) { scoreBreakdownContent() }
-                }
-                Button { expandedDrill = expandedDrill == .spark ? nil : .spark } label: {
-                    Label("24 小时分布", systemImage: "clock")
-                }
-            }.font(.system(size: 11)).controlSize(.mini)
-        }.opacity(model.trackingPaused ? 0.55 : 1)
+            statusButtons(kind)
+        }
+        .padding(.leading, 12).padding(.trailing, 8).padding(.vertical, 8)
+        .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
+        .glassPlatter()
     }
 
-    private var categoryList: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(dashboard.topCategories.prefix(categoriesExpanded ? dashboard.topCategories.count : 5)), id: \.id) { entry in
-                Button { openActivities(category: entry.id) } label: { categoryRow(entry) }
-                    .buttonStyle(RefinedRowButtonStyle())
-                    .background(shownKind == .category(entry.id) ? Color.primary.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: 6))
-                    .drillDown(host: panelHost, kind: .category(entry.id), hostWindow: hostWindow, anchorView: anchorView,
-                        expandedDrill: $expandedDrill, shownKind: $shownKind) { categoryDetailContent(entry) }
-                    .focused($keyboardCategory, equals: entry.id)
-                    .onKeyPress(.upArrow) { moveCategory(-1, from: entry.id); return .handled }
-                    .onKeyPress(.downArrow) { moveCategory(1, from: entry.id); return .handled }
-                    .onKeyPress(.rightArrow) { expandedDrill = .category(entry.id); return .handled }
-                    .onKeyPress(.leftArrow) { expandedDrill = nil; panelHost.closeNow(); return .handled }
-                    .accessibilityLabel("\(entry.name)，\(Format.duration(entry.seconds))，占 \(Int((entry.seconds / max(1, dashboard.total) * 100).rounded()))%，有详情")
+    @ViewBuilder private func statusText(_ kind: Kind, now: Date) -> some View {
+        switch kind {
+        case .focus:
+            if let running = model.focus?.running {
+                let end = running.start.addingTimeInterval(Double(running.plannedSeconds))
+                statusLines(dot: nil) {
+                    Label("专注中 · \(running.plannedSeconds / 60) 分钟", systemImage: "scope")
+                } detail: { Text("\(model.time(running.start)) 开始 · \(model.time(end)) 结束") }
             }
-            if dashboard.topCategories.count > 5 {
-                let rest = dashboard.topCategories.dropFirst(5)
-                Button { categoriesExpanded.toggle() } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: categoriesExpanded ? "chevron.up" : "chevron.down")
-                        Text(categoriesExpanded ? "收起" : "另外 \(rest.count) 个分类 · \(Format.duration(rest.reduce(0) { $0 + $1.seconds }))")
-                        Spacer()
-                    }.font(.system(size: 12)).foregroundStyle(.secondary).frame(height: 26)
-                }.buttonStyle(.plain)
+        case .permission:
+            statusLines(dot: .red) { Text("没有在记录") } detail: { Text("辅助功能已关闭") }
+        case .paused:
+            statusLines(dot: RefinedStyle.warning) { Text("已暂停") } detail: {
+                if let until = model.trackingResumeAt { Text("\(model.time(until)) 自动恢复") } else { Text("直到我恢复") }
+            }
+        case .idle:
+            statusLines(dot: .secondary) { Text("离开中") } detail: { Text("没有活动，不计入") }
+        case .morning:
+            statusLines(dot: .green) { Text("正在记录") } detail: {
+                let date = now.formatted(.dateTime.weekday().month().day().locale(model.displayLocale))
+                if let first = dashboard.overview?.firstRecord { Text("\(date) · \(model.time(first)) 开始") } else { Text(date) }
+            }
+        case .recording:
+            if let current = model.engine.currentActivity, model.engine.isRunning {
+                statusLines(dot: .green) {
+                    Text(current.document ?? current.title ?? current.appName)
+                } detail: {
+                    Text("正在记录 · \(current.domain ?? current.appName) · 自 \(model.time(current.start))")
+                }
+                Text("\(Int(max(0, now.timeIntervalSince(current.start)) / 60)) 分钟")
+                    .font(.body.weight(.semibold)).monospacedDigit().fixedSize()
+            } else {
+                statusLines(dot: .secondary) { Text(model.engine.isRunning ? "等待活动" : "记录未启动") } detail: {
+                    Text("下一段活动会显示在这里。")
+                }
             }
         }
+    }
+
+    private func statusLines<Title: View, Detail: View>(
+        dot: Color?, @ViewBuilder title: () -> Title, @ViewBuilder detail: () -> Detail
+    ) -> some View {
+        HStack(spacing: 10) {
+            if let dot { Circle().fill(dot).frame(width: 8, height: 8).accessibilityHidden(true) }
+            VStack(alignment: .leading, spacing: 2) {
+                title().font(.body.weight(.semibold))
+                detail().font(.callout).foregroundStyle(.secondary)
+            }
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder private func statusButtons(_ kind: Kind) -> some View {
+        switch kind {
+        case .paused:
+            Button { model.resumeTracking() } label: { Label("恢复记录", systemImage: "play.fill") }
+                .glassProminentButton()
+        case .focus, .permission:
+            moreMenu
+        default:
+            circleButton("pause.fill", label: "暂停记录") { model.pauseTracking(minutes: 15) }
+                .help("暂停 15 分钟")
+            moreMenu
+        }
+    }
+
+    private func circleButton(_ symbol: String, label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.callout.weight(.semibold))
+                .frame(width: 28, height: 28)
+                .background(Circle().fill(.primary.opacity(0.07)))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+
+    /// The ⋯ menu: every item carries an icon; capture and sync report here.
+    private var moreMenu: some View {
+        Menu {
+            Button(action: openToday) { Label("打开 TimeSink", systemImage: "macwindow") }
+                .keyboardShortcut("o")
+            Divider()
+            if model.trackingPaused {
+                Button { model.resumeTracking() } label: { Label("恢复记录", systemImage: "play.circle") }
+            } else {
+                Menu {
+                    Button { model.pauseTracking(minutes: 15) } label: { Label("15 分钟", systemImage: "clock") }
+                    Button { model.pauseTracking(minutes: 60) } label: { Label("1 小时", systemImage: "clock") }
+                    Button { model.pauseTracking(minutes: Self.minutesUntilMorning()) } label: { Label("直到明天早上", systemImage: "moon") }
+                    Button { model.pauseTracking(minutes: nil) } label: { Label("直到我恢复", systemImage: "pause.circle") }
+                } label: { Label("暂停记录", systemImage: "pause.circle") }
+            }
+            Button {} label: { Label("回到刚才", systemImage: "arrow.uturn.backward") }
+                .keyboardShortcut(.leftArrow, modifiers: [.control, .option])
+                .disabled(true)
+            Divider()
+            Button {} label: { Label(captureStatus, systemImage: "viewfinder") }.disabled(true)
+            Button {} label: { Label(syncStatus, systemImage: "icloud") }.disabled(true)
+            Divider()
+            Button(action: showSettings) { Label("设置…", systemImage: "gearshape") }
+                .keyboardShortcut(",")
+            Button(action: quit) { Label("退出 TimeSink", systemImage: "power") }
+                .keyboardShortcut("q")
+        } label: {
+            Image(systemName: "ellipsis").font(.callout.weight(.semibold))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .frame(width: 28, height: 28)
+        .background(Circle().fill(.primary.opacity(0.07)))
+        .accessibilityLabel("更多")
+    }
+
+    /// 08:00 tomorrow, in whole minutes from now.
+    static func minutesUntilMorning(now: Date = Date(), calendar: Calendar = .current) -> Int {
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now)) ?? now
+        let morning = calendar.date(bySettingHour: 8, minute: 0, second: 0, of: tomorrow) ?? tomorrow
+        return max(1, Int(ceil(morning.timeIntervalSince(now) / 60)))
+    }
+
+    private var captureStatus: String {
+        if model.trackingPaused || model.screenCapturePaused { return String(localized: "屏幕采集 · \(String(localized: "已暂停"))") }
+        if model.screenCollector == nil { return String(localized: "屏幕采集 · \(String(localized: "未开启"))") }
+        return String(localized: "屏幕采集 · \(captureSummary.count) 张 · 只在本机")
+    }
+
+    private var syncStatus: String {
+        guard model.settings.cloudSyncEnabled, let sync = model.sync else { return String(localized: "同步未开启") }
+        if sync.isSyncing { return String(localized: "正在同步") }
+        if sync.lastError != nil { return String(localized: "同步失败") }
+        guard let last = sync.lastSyncAt else { return String(localized: "还没有同步过") }
+        return String(localized: "已同步 \(model.time(last)) · 待上传 \(sync.pending) 条")
+    }
+
+    // MARK: - 2 Today
+
+    private func todayPlatter(dim: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Button(action: openToday) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("今天已记录").font(.callout).foregroundStyle(.secondary)
+                        hero(dashboard.total, size: heroSize)
+                        compareLine
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .drillDown(host: panelHost, kind: .compareTotal, hostWindow: hostWindow, anchorView: anchorView,
+                    expandedDrill: $expandedDrill, shownKind: $shownKind) { compareBaseContent() }
+                HStack(alignment: .top, spacing: 12) {
+                    engagedRing
+                    if model.showScore {
+                        VStack(spacing: 0) {
+                            Text(dashboard.pulse.map(String.init) ?? "—")
+                                .font(.system(size: scoreSize, weight: .semibold)).monospacedDigit()
+                            Text("评分").font(.subheadline).foregroundStyle(.secondary)
+                        }
+                        .frame(minWidth: 44).padding(.top, 6)
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+                .drillDown(host: panelHost, kind: .score, hostWindow: hostWindow, anchorView: anchorView,
+                    expandedDrill: $expandedDrill, shownKind: $shownKind) { scoreContent() }
+            }
+            ribbon
+                .drillDown(host: panelHost, kind: .spark, hostWindow: hostWindow, anchorView: anchorView,
+                    expandedDrill: $expandedDrill, shownKind: $shownKind) { hourlyBigContent() }
+        }
+        .padding(12)
+        .glassPlatter()
+        .opacity(dim ? 0.5 : 1)
+    }
+
+    /// Hours and minutes with small units, rounded like every difference beside it.
+    private func hero(_ seconds: TimeInterval, size: CGFloat) -> some View {
+        let minutes = Format.minutes(seconds)
+        let unit = Font.system(size: size * 0.42, weight: .medium)
+        return HStack(alignment: .firstTextBaseline, spacing: 2) {
+            if minutes >= 60 {
+                Text(minutes / 60, format: .number)
+                Text("小时").font(unit).foregroundStyle(.secondary)
+            }
+            if minutes < 60 || minutes % 60 > 0 {
+                Text(minutes % 60, format: .number)
+                Text("分钟").font(unit).foregroundStyle(.secondary)
+            }
+        }
+        .font(.system(size: size, weight: .semibold)).tracking(-0.5).monospacedDigit()
+        .refinedNumberMotion("\(minutes)")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Format.chineseDuration(Double(minutes) * 60))
+    }
+
+    /// Always one line, so the platter has the same height with or without yesterday.
+    @ViewBuilder private var compareLine: some View {
+        if let delta = dashboard.totalDelta {
+            let minutes = Int(delta / 60)
+            let text = CompareBaseView.text(abs(minutes))
+            Text(minutes >= 0 ? "比昨天此时多 \(text)" : "比昨天此时少 \(text)")
+                .font(.callout).foregroundStyle(.green)
+        } else {
+            Text("昨天此时没有记录").font(.callout).foregroundStyle(.secondary)
+        }
+    }
+
+    private var engagedRing: some View {
+        let fraction = dashboard.total > 0 ? min(1, dashboard.focus / dashboard.total) : 0
+        let color = RefinedStyle.category("softwareDev", hex: RefinedStyle.shippedHex("softwareDev") ?? "#2F6BE4")
+        return VStack(spacing: 2) {
+            ZStack {
+                Circle().stroke(.quaternary, lineWidth: 7)
+                Circle().trim(from: 0, to: fraction)
+                    .stroke(color, style: StrokeStyle(lineWidth: 7, lineCap: .round)).rotationEffect(.degrees(-90))
+                Text(verbatim: "\(Int((fraction * 100).rounded()))%").font(.callout.weight(.bold)).monospacedDigit()
+            }
+            .frame(width: 56, height: 56)
+            Text("投入").font(.subheadline).foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// Reserved at its full height even before the first overview exists.
+    private var ribbon: some View {
+        Button(action: openToday) {
+            Group {
+                if let overview = dashboard.overview { DayRibbonView(overview: overview, compact: true) } else { Color.clear }
+            }
+            .frame(height: 31)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var morningPlatter: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("今天已记录").font(.callout).foregroundStyle(.secondary)
+            hero(dashboard.total, size: heroSize)
+            Text("新的一天刚开始。离开和锁屏的时间不会计入。").font(.callout).foregroundStyle(.secondary)
+            ribbon.padding(.top, 6)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassPlatter()
+    }
+
+    private var focusTodayRow: some View {
+        HStack(spacing: 10) {
+            hero(dashboard.total, size: 16)
+            Text("今天").font(.subheadline).foregroundStyle(.secondary)
+            ribbon
+        }
+        .padding(.horizontal, 12).padding(.vertical, 9)
+        .glassPlatter()
+    }
+
+    // MARK: - 3 Categories
+
+    @ViewBuilder private var categoriesPlatter: some View {
+        let all = dashboard.topCategories
+        if !all.isEmpty {
+            let shown = Array(all.prefix(categoriesExpanded ? all.count : 5))
+            let nameWidth = RefinedStyle.nameColumn(shown.map(\.name), font: .systemFont(ofSize: NSFont.systemFontSize), cap: width * 0.34)
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(shown, id: \.id) { entry in
+                    Button { openActivities(category: entry.id) } label: { categoryRow(entry, nameWidth: nameWidth) }
+                        .buttonStyle(RefinedRowButtonStyle())
+                        .background(shownKind == .category(entry.id) ? Color.primary.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: 8))
+                        .drillDown(host: panelHost, kind: .category(entry.id), hostWindow: hostWindow, anchorView: anchorView,
+                            expandedDrill: $expandedDrill, shownKind: $shownKind) { categoryDetailContent(entry) }
+                        .focused($keyboardCategory, equals: entry.id)
+                        .onKeyPress(.upArrow) { moveCategory(-1, from: entry.id); return .handled }
+                        .onKeyPress(.downArrow) { moveCategory(1, from: entry.id); return .handled }
+                        .onKeyPress(.rightArrow) { expandedDrill = .category(entry.id); return .handled }
+                        .onKeyPress(.leftArrow) { expandedDrill = nil; panelHost.closeNow(); return .handled }
+                        .accessibilityLabel("\(entry.name)，\(Format.duration(entry.seconds))，占 \(Int((entry.seconds / max(1, dashboard.total) * 100).rounded()))%，有详情")
+                }
+                if all.count > 5 {
+                    let rest = all.dropFirst(5)
+                    Button { categoriesExpanded.toggle() } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: categoriesExpanded ? "chevron.up" : "chevron.down")
+                                .font(.caption).foregroundStyle(.tertiary).frame(width: 10)
+                            Text(categoriesExpanded ? "收起" : "还有 \(rest.count) 个分类").foregroundStyle(.secondary)
+                            Spacer()
+                            if !categoriesExpanded {
+                                Text(Format.duration(rest.reduce(0) { $0 + $1.seconds })).monospacedDigit().foregroundStyle(.tertiary)
+                            }
+                        }
+                        .font(.callout).frame(minHeight: 28).padding(.horizontal, 6).contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                }
+            }
+            .padding(6)
+            .glassPlatter()
+        }
+    }
+
+    private func categoryRow(_ entry: (id: String, name: String, colorHex: String, seconds: TimeInterval), nameWidth: CGFloat) -> some View {
+        let color = RefinedStyle.category(entry.id, hex: entry.colorHex)
+        let ratio = entry.seconds / max(1, dashboard.maxCategorySeconds)
+        return HStack(spacing: 8) {
+            Circle().fill(color).frame(width: 8, height: 8)
+            Text(entry.name).font(.body).lineLimit(1).frame(width: nameWidth, alignment: .leading)
+            GeometryReader { geo in
+                Capsule().fill(.quaternary)
+                Capsule().fill(color).frame(width: geo.size.width * min(1, ratio))
+            }.frame(height: 5)
+            Text(Format.duration(entry.seconds)).font(.callout).monospacedDigit().fixedSize()
+        }
+        .padding(.horizontal, 6)
+        .frame(minHeight: 28).contentShape(Rectangle())
     }
 
     private func moveCategory(_ step: Int, from id: String) {
@@ -714,98 +962,154 @@ struct MenuBarDashboardView: View {
         keyboardCategory = ids[(index + step + ids.count) % ids.count]
     }
 
-    private var quickFocus: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 5) {
+    // MARK: - 4 Focus and limits
+
+    private func focusPlatter(withLimits: Bool) -> some View {
+        let rows = dashboard.allBudgetRows.map {
+            BudgetProgressView.Row(id: $0.id, name: $0.name, colorHex: $0.colorHex, spent: $0.spent, limit: $0.limit)
+        }
+        let fold = LimitState.fold(rows, warnPercent: dashboard.budgetWarnPercent)
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
                 Picker("专注时长", selection: $focusMinutes) {
-                    ForEach(FocusPresets.minutes, id: \.self) { Text("\($0)").tag($0) }
-                }.pickerStyle(.segmented).labelsHidden().frame(width: 158)
-                Text("分钟").font(.system(size: 11)).foregroundStyle(.secondary)
-                Spacer(minLength: 0)
+                    ForEach(FocusPresets.minutes, id: \.self) { Text(verbatim: "\($0)").tag($0) }
+                }
+                .pickerStyle(.segmented).labelsHidden().fixedSize()
+                .onChange(of: focusMinutes) { _, value in model.settings.setFocusDurationMinutes(value) }
                 // No bare-Space shortcut: the popover has no text field to
                 // absorb it, so any Space press would start blocking apps.
-                Button("开始专注") { startFocus(minutes: focusMinutes) }
-                    .buttonStyle(.borderedProminent).controlSize(.small).disabled(model.focus == nil)
+                Button { startFocus(minutes: focusMinutes) } label: {
+                    Label("开始专注", systemImage: "scope").frame(maxWidth: .infinity)
+                }
+                .glassProminentButton().controlSize(.large)
+                .disabled(model.focus == nil)
             }
-            HStack(spacing: 4) {
-                Text("将隐藏 \(model.settings.focusAppBlockEnabled ? model.settings.focusBlockedApps.count : 0) 个应用 · 拦截 \(model.settings.focusSiteBlockEnabled ? model.settings.focusBlockedCategories.count : 0) 类网站")
-                    .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
-                Spacer(minLength: 0)
-                Button("编辑…", action: openBudgetSettings).buttonStyle(.link).font(.system(size: 11))
+            if withLimits && !rows.isEmpty {
+                Divider().padding(.horizontal, 2)
+                Button(action: openBudgetSettings) {
+                    VStack(alignment: .leading, spacing: 9) {
+                        ForEach(fold.shown) { LimitRowView(row: $0, warnPercent: dashboard.budgetWarnPercent) }
+                        if !fold.fine.isEmpty {
+                            Label("\(fold.fine.map(\.name).joined(separator: String(localized: "、")))限额还很宽裕", systemImage: "checkmark")
+                                .font(.callout).foregroundStyle(.secondary).lineLimit(2)
+                        }
+                    }
+                    .padding(.horizontal, 2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .drillDown(host: panelHost, kind: .budget, hostWindow: hostWindow, anchorView: anchorView,
+                    expandedDrill: $expandedDrill, shownKind: $shownKind) { budgetProgressContent() }
             }
-        }.onChange(of: focusMinutes) { _, value in model.settings.setFocusDurationMinutes(value) }
+        }
+        .padding(10)
+        .glassPlatter()
     }
 
-    private var pausedContent: some View {
+    // MARK: - Paused, permission
+
+    private var pausedPlatter: some View {
         VStack(alignment: .leading, spacing: 10) {
             if let until = model.trackingResumeAt {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(Format.mmss(until.timeIntervalSince(context.date))).font(.system(size: 34, weight: .semibold)).monospacedDigit()
-                        Text("后恢复").font(.system(size: 12)).foregroundStyle(.secondary)
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(Format.mmss(until.timeIntervalSince(context.date)))
+                            .font(.system(size: heroSize * 1.3, weight: .semibold)).monospacedDigit()
+                        Text("后恢复").font(.callout).foregroundStyle(.secondary)
                     }
                 }
             }
-            Text("暂停期间不记录应用、网站、窗口标题和屏幕画面。这段时间在时间带里留空，不会补记。")
-                .font(.system(size: 12)).foregroundStyle(.secondary)
-            HStack {
-                Button("再加 15 分钟") { model.extendTrackingPause(minutes: 15) }
-                Button("1 小时后恢复") { model.pauseTracking(minutes: 60) }
+            Text("暂停期间不记录应用、网站、窗口标题和屏幕画面。这段时间在时间带里留空，也不会问你补记。")
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 6) {
+                Button("+15 分钟") { model.extendTrackingPause(minutes: 15) }
+                Button("+1 小时") { model.extendTrackingPause(minutes: 60) }
                 Button("直到我恢复") { model.pauseTracking(minutes: nil) }
             }.controlSize(.small)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassPlatter()
+    }
+
+    private var permissionPlatter: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                    .frame(width: 38, height: 38)
+                    .background(Color.red.opacity(0.16), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("辅助功能已关闭").font(.body.weight(.semibold))
+                    Text("关闭期间不会记录任何时间").font(.callout).foregroundStyle(.secondary)
+                }
+            }
+            Button {
+                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+            } label: { Text("打开系统设置…").frame(maxWidth: .infinity) }
+            .glassProminentButton().controlSize(.large)
+            Text("重新打开后自动继续，不用重启 TimeSink。").font(.subheadline).foregroundStyle(.tertiary)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassPlatter()
+    }
+
+    @ViewBuilder private var chromeRow: some View {
+        if model.chromeDegraded {
+            platterRow {
+                Image(systemName: "globe").foregroundStyle(.secondary).accessibilityHidden(true)
+                Text("Chrome 的网站暂时只记为「Chrome」").foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                Button("允许…") {
+                    model.settingsTab = .permissions
+                    showSettings()
+                }.controlSize(.small)
+            }
         }
     }
 
     @ViewBuilder private var expandedContent: some View {
         if expandedDrill == .spark { ExpandedDrillView(content: hourlyBigContent(compact: true)) { expandedDrill = nil } }
-        if expandedDrill == .score { ExpandedDrillView(content: scoreBreakdownContent(compact: true)) { expandedDrill = nil } }
-        if expandedDrill == .compareFocus { ExpandedDrillView(content: compareBaseContent(focus: true, compact: true)) { expandedDrill = nil } }
-        if expandedDrill == .compareTotal { ExpandedDrillView(content: compareBaseContent(focus: false, compact: true)) { expandedDrill = nil } }
-        if expandedDrill == .streak { ExpandedDrillView(content: streakDotsContent(compact: true)) { expandedDrill = nil } }
+        if expandedDrill == .score { ExpandedDrillView(content: scoreContent(compact: true)) { expandedDrill = nil } }
+        if expandedDrill == .compareTotal { ExpandedDrillView(content: compareBaseContent(compact: true)) { expandedDrill = nil } }
         if expandedDrill == .budget { ExpandedDrillView(content: budgetProgressContent(compact: true)) { expandedDrill = nil } }
         if case .category(let id) = expandedDrill, let entry = dashboard.topCategories.first(where: { $0.id == id }) {
             ExpandedDrillView(content: categoryDetailContent(entry, compact: true)) { expandedDrill = nil }
         }
     }
 
+    // MARK: - Footer
+
     private var footer: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 6) {
-                Button { showsCapture.toggle() } label: {
-                    // Its own width, so the longer status is never cut; sync takes the rest.
-                    Label(String(localized: "屏幕采集 · \(model.trackingPaused || model.screenCapturePaused ? String(localized: "已暂停") : model.screenCollector == nil ? String(localized: "未开启") : String(localized: "\(captureSummary.count) 张"))"), systemImage: "viewfinder")
-                        .fixedSize()
-                }.popover(isPresented: $showsCapture) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        ScreenCaptureRow(model: model)
-                        Text("屏幕画面只保存在本机。").font(.system(size: 11)).foregroundStyle(.secondary)
-                        Button("记录与隐私设置…") { model.settingsTab = .privacy; openSettings(); AppWindow.settings.bringForward() }
-                    }.padding(16).frame(width: 280)
-                }
-                Button { showsSync.toggle() } label: {
-                    Label(model.sync?.isSyncing == true ? "正在同步" : model.sync?.lastError != nil ? "同步失败" : model.settings.cloudSyncEnabled ? "待传 \(model.sync?.pending ?? 0)" : "同步未开启", systemImage: "icloud")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }.popover(isPresented: $showsSync) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        CloudSyncRow(model: model)
-                        Button("账号与同步…") { model.settingsTab = .account; openSettings(); AppWindow.settings.bringForward() }
-                    }.padding(16).frame(width: 240)
-                }
-            }.font(.system(size: 11)).controlSize(.mini)
-            HStack(spacing: 6) {
-                Button(action: openToday) {
-                    HStack(spacing: 6) { Image(systemName: "macwindow"); Text("打开 TimeSink"); Text("⌘O").foregroundStyle(.secondary) }
-                }.controlSize(.small).keyboardShortcut("o")
-                Spacer()
-                // Same route as the other Settings entries: a bare SettingsLink
-                // can open the window behind the frontmost app.
-                Button { openSettings(); AppWindow.settings.bringForward() } label: { Image(systemName: "gearshape") }
-                    .buttonStyle(.plain).help("设置… ⌘,").accessibilityLabel("设置")
-                Button { model.engine.stop(); NSApp.terminate(nil) } label: { Image(systemName: "power") }
-                    .buttonStyle(.plain).help("退出 TimeSink ⌘Q").accessibilityLabel("退出 TimeSink")
-            }.foregroundStyle(.secondary)
+        HStack(spacing: 2) {
+            footerButton("macwindow", label: "打开 TimeSink", help: "打开 TimeSink ⌘O", action: openToday)
+                .keyboardShortcut("o")
+            footerButton("gearshape", label: "设置…", help: "设置… ⌘,", action: showSettings)
+                .keyboardShortcut(",")
+            Spacer()
+            if model.popoverShortcutAvailable {
+                Text(verbatim: model.popoverShortcutLabel).font(.subheadline).foregroundStyle(.tertiary)
+                    .padding(.trailing, 4).accessibilityHidden(true)
+            }
+            footerButton("power", label: "退出 TimeSink", help: "退出 ⌘Q", action: quit)
+                .keyboardShortcut("q")
         }
+        .padding(.horizontal, 2)
     }
+
+    private func footerButton(_ symbol: String, label: LocalizedStringKey, help: LocalizedStringKey, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.body)
+                .frame(width: 32, height: 28).contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(.secondary)
+        .help(help)
+        .accessibilityLabel(label)
+    }
+
+    // MARK: - Actions
 
     /// Starts the session; the popover then shows `FocusRunningView`. A
     /// `start(minutes:)` failure (DB write error) is shown instead of being
@@ -825,68 +1129,22 @@ struct MenuBarDashboardView: View {
         await dashboard.recompute(model: model, forceStreak: forceStreak)
     }
 
-    private var dashboardHeader: some View {
-        HStack(spacing: 6) {
-            // The date gives way first.
-            RecordingStatusView(model: model).layoutPriority(1)
-            ViewThatFits(in: .horizontal) {
-                Text(Date(), format: .dateTime.month().day().weekday(.abbreviated))
-                Text(Date(), format: .dateTime.month().day())
-            }.font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
-            Spacer(minLength: 0)
-            RecordingPauseMenu(model: model)
-            Menu {
-                Button("评分明细") { expandedDrill = .score }
-                Button("投入时长比较") { expandedDrill = .compareFocus }
-                Button("总时长比较") { expandedDrill = .compareTotal }
-                Button("连续达标") { expandedDrill = .streak }
-                Button("24 小时分布") { expandedDrill = .spark }
-                Divider()
-                Button("查看趋势", action: openStatsTrend)
-            } label: { Image(systemName: "ellipsis") }
-            .menuStyle(.borderlessButton).fixedSize().accessibilityLabel("更多统计")
-        }.frame(height: 22)
-    }
-
-    private var currentActivity: some View {
-        TimelineView(.periodic(from: .now, by: 2)) { context in
-            if let current = model.engine.currentActivity, model.engine.isRunning, !model.engine.isSuspended {
-                HStack(spacing: 10) {
-                    AppIcon(bundleID: current.appBundleID, size: 32)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(current.document ?? current.title ?? current.appName).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                        HStack(spacing: 5) {
-                            Text(current.domain ?? current.appName).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
-                            CategoryChip(category: model.resolver.categoriesByID[model.resolver.categoryID(for: current)])
-                        }
-                    }.frame(maxWidth: .infinity, alignment: .leading)
-                    VStack(alignment: .trailing, spacing: 3) {
-                        Text(Format.duration(max(0, context.date.timeIntervalSince(current.start)))).font(.system(size: 13, weight: .semibold)).monospacedDigit()
-                        Text("自 \(model.time(current.start))").font(.system(size: 11)).foregroundStyle(.secondary)
-                    }
-                }
-            } else {
-                Label(model.engine.isSuspended ? "你离开了电脑，这段时间不计入。回来后会自动继续。" : "下一段活动会显示在这里。", systemImage: model.engine.isSuspended ? "moon" : "sun.max")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
-                    .padding(9).frame(maxWidth: .infinity, alignment: .leading).background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
-            }
-        }
-    }
-
     private func openToday() {
         model.openToday()
         openWindow(id: "main"); AppWindow.main.bringForward()
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    // MARK: - C1+ click-through routes
+    /// Same route as the other Settings entries: a bare SettingsLink can
+    /// open the window behind the frontmost app.
+    private func showSettings() {
+        NSApp.activate(ignoringOtherApps: true)
+        openSettings(); AppWindow.settings.bringForward()
+    }
 
-    /// 连续达标行 deepens to 统计 anchored on the same 30-day window its
-    /// hover pane (`StreakDotsView`) shows.
-    private func openStatsTrend() {
-        model.openStats(range: DateRangeSelection(kind: .last30, anchor: Date()))
-        openWindow(id: "main")
-        AppWindow.main.bringForward()
+    private func quit() {
+        model.engine.stop()
+        NSApp.terminate(nil)
     }
 
     private func openActivities(category: String) {
@@ -918,26 +1176,24 @@ struct MenuBarDashboardView: View {
     // degraded) call sites, since that path is bounded by the popover's own
     // content width, unlike the floating `NSPanel`.
 
-    private func scoreBreakdownContent(compact: Bool = false) -> ScoreBreakdownView {
+    /// The score and the streak it keeps, one droplet.
+    private func scoreContent(compact: Bool = false) -> some View {
         let byCategory = Aggregator.durationByCategory(dashboard.todayItems)
         let rows = TodayDashboardModel.scoreContributions(byCategory: byCategory, categories: model.resolver.categoriesByID)
             .map { ScoreBreakdownView.Row(id: $0.id, name: $0.name, colorHex: $0.colorHex,
                                            seconds: $0.seconds, points: $0.points, share: $0.share) }
-        return ScoreBreakdownView(rows: rows, pulse: dashboard.pulse, pulseDelta: dashboard.pulseDelta,
-                                   width: compact ? DrillWidths.compact : DrillWidths.score)
+        return VStack(alignment: .leading, spacing: 8) {
+            ScoreBreakdownView(rows: rows, pulse: dashboard.pulse, pulseDelta: dashboard.pulseDelta,
+                               width: compact ? DrillWidths.compact : DrillWidths.score)
+            StreakDotsView(dailyPulses: dashboard.streakLookbackPulses,
+                           threshold: TodayDashboardModel.streakThreshold, streakDays: dashboard.streakDays,
+                           width: compact ? DrillWidths.compact : DrillWidths.score)
+        }
     }
 
-    private func compareBaseContent(focus: Bool, compact: Bool = false) -> CompareBaseView {
-        let width = compact ? DrillWidths.compact : DrillWidths.compare
-        return focus
-            ? CompareBaseView(label: String(localized: "投入时长比较"), todayValue: dashboard.focus, delta: dashboard.focusDelta, width: width)
-            : CompareBaseView(label: String(localized: "总计时长比较"), todayValue: dashboard.total, delta: dashboard.totalDelta, width: width)
-    }
-
-    private func streakDotsContent(compact: Bool = false) -> StreakDotsView {
-        StreakDotsView(dailyPulses: dashboard.streakLookbackPulses,
-                        threshold: TodayDashboardModel.streakThreshold, streakDays: dashboard.streakDays,
-                        width: compact ? DrillWidths.compact : DrillWidths.streak)
+    private func compareBaseContent(compact: Bool = false) -> CompareBaseView {
+        CompareBaseView(label: String(localized: "和昨天此时比"), todayValue: dashboard.total, delta: dashboard.totalDelta,
+                        width: compact ? DrillWidths.compact : DrillWidths.compare)
     }
 
     private func categoryDetailContent(
@@ -998,36 +1254,6 @@ struct MenuBarDashboardView: View {
         return BudgetProgressView(rows: rows, warnPercent: dashboard.budgetWarnPercent,
                                    width: compact ? DrillWidths.compact : DrillWidths.budget)
     }
-
-    private func categoryRow(_ entry: (id: String, name: String, colorHex: String, seconds: TimeInterval)) -> some View {
-        let ratio = entry.seconds / max(1, dashboard.total)
-        let color = RefinedStyle.category(entry.id, hex: entry.colorHex)
-        return HStack(spacing: 8) {
-            Circle().fill(color).frame(width: 8, height: 8)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(entry.name).font(.system(size: 13)).lineLimit(1)
-                GeometryReader { geo in
-                    Capsule().fill(.quaternary)
-                    Capsule().fill(color).frame(width: geo.size.width * ratio)
-                }.frame(height: 3)
-            }
-            Spacer(minLength: 0)
-            Text(Format.duration(entry.seconds)).font(.system(size: 12)).monospacedDigit().frame(minWidth: 45, alignment: .trailing)
-            Text("\(Int((ratio * 100).rounded()))%").font(.system(size: 11)).monospacedDigit().foregroundStyle(.secondary).frame(width: 30, alignment: .trailing)
-            Image(systemName: "chevron.right").font(.system(size: 11)).foregroundStyle(.tertiary)
-        }.frame(height: 30).contentShape(Rectangle())
-    }
-
-    private var budgetSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ForEach(dashboard.budgetRows, id: \.id) { row in
-                RefinedBudgetRow(name: row.name, color: RefinedStyle.category(row.id, hex: row.colorHex),
-                    spent: row.spent, limit: row.limit, warningPercent: dashboard.budgetWarnPercent)
-            }
-        }
-    }
-
-
 }
 
 /// Refresh only while this status is visible, including the Settings round trip.
@@ -1107,41 +1333,5 @@ struct ScreenCaptureStatusView: View {
         guard isEnabled else { return String(localized: "已暂停") }
         guard let latestAt else { return String(localized: "已启用 · 等待首张画面") }
         return String(localized: "已启用 · 今日 \(count) 张 · 最近 \(latestAt.formatted(.dateTime.hour().minute().locale(locale)))")
-    }
-}
-
-/// Cloud sync at a glance, only once an account is signed in. `SyncEngine`
-/// is `@Observable`, so the line follows a running pass; the signed-in
-/// check is a Keychain read, taken when the popover opens.
-struct CloudSyncRow: View {
-    let model: AppModel
-    @State private var signedIn = false
-
-    var body: some View {
-        Group {
-            if signedIn, let sync = model.sync {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("云端同步").font(.callout)
-                        Text(statusLine(sync)).font(.caption2)
-                            .foregroundStyle(sync.lastError == nil ? Color.secondary : Color.orange)
-                    }
-                    Spacer()
-                    if sync.isSyncing { ProgressView().controlSize(.mini) }
-                }
-            }
-        }
-        .onAppear {
-            signedIn = CloudConfig.isConfigured && model.cloudAuth?.isSignedIn == true
-            model.sync?.refreshPending()
-        }
-    }
-
-    private func statusLine(_ sync: SyncEngine) -> String {
-        if !model.settings.cloudSyncEnabled { return String(localized: "未开启") }
-        if sync.isSyncing { return String(localized: "正在同步 · 已上传 \(sync.passPushed) 条") }
-        if sync.lastError != nil { return String(localized: "上次同步失败") }
-        guard let last = sync.lastSyncAt else { return String(localized: "还没有同步过") }
-        return String(localized: "上次 \(model.time(last)) · 待上传 \(sync.pending) 条")
     }
 }
