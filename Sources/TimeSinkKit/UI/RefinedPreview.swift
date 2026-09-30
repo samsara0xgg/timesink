@@ -88,6 +88,12 @@ public enum RefinedPreview {
             model.resumeTracking()
             try model.focus?.start(minutes: 25)
             try await render(MenuBarDashboardView(model: model), size: .init(width: 340, height: 510), dark: dark, to: output.appendingPathComponent("menu-focus-\(suffix).png"))
+            try await render(HStack(spacing: 16) {
+                Image(nsImage: FocusCapsule.image(remaining: 26 * 60 + 12, planned: 45 * 60))
+                Image(nsImage: FocusCapsule.image(remaining: 3 * 60, planned: 45 * 60))
+                Image(systemName: "hourglass"); Text(verbatim: "6:42")
+            }.frame(maxWidth: .infinity, maxHeight: .infinity).background(.bar), size: .init(width: 340, height: 44), dark: dark,
+                             to: output.appendingPathComponent("menubar-focus-\(suffix).png"))
             if let focus = model.focus {
                 try await render(FocusHUDContentView(appName: "信息", appKey: "com.apple.MobileSMS", hideCount: 1, controller: focus, onReturn: {}, onAllow: {}), size: .init(width: 312, height: 122), dark: dark, to: output.appendingPathComponent("focus-hud-\(suffix).png")) // l10n: data
             }
