@@ -17,9 +17,11 @@ struct InterruptionRadarCard: View {
     init(model: AppModel, period: Period = .today) {
         self.model = model
         _period = State(initialValue: period)
-        // The last result, when it still holds, so the page's first frame is
-        // final instead of laid out again when the load lands.
-        if let last = Self.last, last.key == LoadKey(model: model, period: period) {
+        // The last result for this period and day, so the page's first frame
+        // is laid out already; the load replaces it if a write came since.
+        // No model reads here: an init runs inside the parent's body, so a
+        // read would make the whole page redraw on every tracker write.
+        if let last = Self.last, last.key.period == period, last.key.day == Calendar.current.startOfDay(for: Date()) {
             _data = State(initialValue: last.data)
             _longest = State(initialValue: last.longest)
             _runs = State(initialValue: last.runs)
