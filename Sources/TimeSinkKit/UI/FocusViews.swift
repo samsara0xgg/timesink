@@ -228,21 +228,27 @@ struct FocusHUDContentView: View {
     let controller: FocusSessionController
     let onReturn: () -> Void
     let onAllow: () -> Void
+    /// One capsule under the menu bar, as the design draws it: the hidden app,
+    /// the time left, and a way to let it through. Clicking the rest dismisses.
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                AppIcon(bundleID: appKey, size: 32)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(hideCount == 0 ? appName : String(localized: "\(appName) 在专注期间已隐藏")).font(.system(size: 13, weight: .semibold)).lineLimit(2)
-                    Text(String(localized: "还剩 \(Format.mmss(controller.remaining))") + (hideCount > 0 ? String(localized: " · 本次第 \(hideCount) 次打开") : ""))
-                        .font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit()
-                }
+        HStack(spacing: 8) {
+            Button(action: onReturn) {
+                HStack(spacing: 8) {
+                    AppIcon(bundleID: appKey, size: 18)
+                    Text(hideCount == 0 ? appName : String(localized: "\(appName) 已隐藏")).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                    Text(Format.mmss(controller.remaining)).font(.system(size: 13)).foregroundStyle(.secondary).monospacedDigit()
+                }.contentShape(Capsule())
+            }.buttonStyle(.plain)
+            if hideCount > 0 {
+                Button(action: onAllow) { Text("允许 5 分钟").font(.system(size: 12, weight: .medium)).padding(.horizontal, 10).padding(.vertical, 4) }
+                    .buttonStyle(.plain).glassSurface(interactive: true)
             }
-            HStack(spacing: 6) {
-                Button(action: onReturn) { Text("回到工作").frame(maxWidth: .infinity) }.buttonStyle(.borderedProminent)
-                if hideCount > 0 { Button("允许 5 分钟", action: onAllow) }
-            }.controlSize(.large)
-        }.padding(14).frame(width: 312).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        }
+        .padding(.leading, 8).padding(.trailing, hideCount > 0 ? 4 : 12).padding(.vertical, 4)
+        .fixedSize()
+        .glassSurface()
+        .padding(8)
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -315,20 +321,19 @@ public final class FocusHUDController {
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces]
         panel.isReleasedWhenClosed = false
-        panel.hasShadow = true
+        panel.hasShadow = false
         panel.isOpaque = false
         panel.backgroundColor = .clear
         return panel
     }
 
-    /// Top-right of the screen containing the mouse (falls back to the main
-    /// screen), with a small inset.
+    /// Centred just under the menu bar of the screen containing the mouse
+    /// (falls back to the main screen), clear of the notch and menu items.
     private func position(_ panel: NSPanel) {
         guard let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) })
             ?? NSScreen.main else { return }
-        let frame = screen.visibleFrame
         let size = panel.frame.size
-        let origin = NSPoint(x: frame.maxX - size.width - 16, y: frame.maxY - size.height - 16)
+        let origin = NSPoint(x: screen.frame.midX - size.width / 2, y: screen.visibleFrame.maxY - size.height)
         panel.setFrameOrigin(origin)
     }
 }

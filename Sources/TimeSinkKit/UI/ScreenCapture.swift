@@ -167,7 +167,7 @@ import WebKit
             try await shoot("onboarding-1", OnboardingView(model: model, checksPermissions: false), size: NSSize(width: 500, height: 520), dark: dark)
             if let focus = model.focus {
                 try await shoot("focus-hud", FocusHUDContentView(appName: "信息", appKey: "com.apple.MobileSMS", hideCount: 1, controller: focus, onReturn: {}, onAllow: {}), // l10n: data
-                                size: NSSize(width: 312, height: 122), dark: dark, host: .clear)
+                                size: NSSize(width: 300, height: 52), dark: dark, host: .clear)
             }
         }
     }

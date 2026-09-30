@@ -43,28 +43,6 @@
         }
       }
     },
-    " · 本次第 %lld 次打开": {
-      "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": " · Opened %lld time this session"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": " · Opened %lld times this session"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     " · 计入投入时长": {
       "localizations": {
         "en": {
@@ -261,22 +239,22 @@
         }
       }
     },
-    "%@ 在专注期间已隐藏": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ is hidden during focus"
-          }
-        }
-      }
-    },
     "%@ 在专注期间被拦截": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "%@ is blocked during focus"
+          }
+        }
+      }
+    },
+    "%@ 已隐藏": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ hidden"
           }
         }
       }
@@ -3101,16 +3079,6 @@
         }
       }
     },
-    "回到工作": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Back to work"
-          }
-        }
-      }
-    },
     "回来打开了 %@": {
       "localizations": {
         "en": {
@@ -5401,6 +5369,16 @@
         }
       }
     },
+    "月": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Month"
+          }
+        }
+      }
+    },
     "服务器没有确认任何记录": {
       "localizations": {
         "en": {
@@ -7565,16 +7543,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Remaining"
-          }
-        }
-      }
-    },
-    "还剩 %@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ remaining"
           }
         }
       }
