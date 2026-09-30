@@ -338,7 +338,11 @@ private struct WindowAccessor: NSViewRepresentable {
     }
 }
 
-/// Converts a SwiftUI `.global`-space rect to AppKit screen coordinates:
+/// The popover's own coordinate space: rows measure themselves in it, and
+/// the probe view that converts to screen coordinates spans exactly it.
+enum DrillSpace { static let name = "popover" }
+
+/// Converts a rect in `DrillSpace` to AppKit screen coordinates:
 /// `anchorView.convert(_:to:)` (source view's own bounds space -> the
 /// window's base coordinate system), then `window.convertToScreen(_:)`
 /// (window base -> screen). `anchorView` must be a `FlippedProbeView` so
@@ -389,7 +393,7 @@ private struct DrillDownModifier<DrillContent: View>: ViewModifier {
             .background(
                 GeometryReader { geo in
                     Color.clear
-                        .onChange(of: geo.frame(in: .global), initial: true) { _, newValue in
+                        .onChange(of: geo.frame(in: .named(DrillSpace.name)), initial: true) { _, newValue in
                             frame = newValue
                         }
                 }
@@ -464,7 +468,10 @@ private struct DrillDownModifier<DrillContent: View>: ViewModifier {
         // row's own left edge) and whose Y-extent is this row's frame
         // (vertical alignment stays row-anchored).
         let windowFrame = hostWindow.frame
-        let anchorFrame = CGRect(x: windowFrame.minX, y: rowFrame.minY,
+        // Kept inside the popover's own frame, so a row measured a little
+        // off never sends the pane off every screen (and into the popover).
+        let y = min(max(rowFrame.minY, windowFrame.minY), windowFrame.maxY - rowFrame.height)
+        let anchorFrame = CGRect(x: windowFrame.minX, y: y,
                                   width: windowFrame.width, height: rowFrame.height)
         if host.show(content(), near: anchorFrame) {
             shownKind = kind
@@ -614,6 +621,7 @@ struct MenuBarDashboardView: View {
         .frame(width: width)
         .environment(\.locale, model.displayLocale)
         .environment(\.calendar, model.displayCalendar)
+        .coordinateSpace(.named(DrillSpace.name))
         .background(WindowAccessor(window: $hostWindow, anchorView: $anchorView))
         .animation(RefinedStyle.motion(reduced: reduceMotion), value: kind)
         .animation(RefinedStyle.motion(reduced: reduceMotion), value: categoriesExpanded)
@@ -676,13 +684,19 @@ struct MenuBarDashboardView: View {
             }
         case .recording:
             if let current = model.engine.currentActivity, model.engine.isRunning {
-                statusLines(dot: .green) {
-                    Text(current.document ?? current.title ?? current.appName)
-                } detail: {
-                    Text("正在记录 · \(current.domain ?? current.appName) · 自 \(model.time(current.start))")
+                let elapsed = max(0, now.timeIntervalSince(current.start))
+                HStack(spacing: 10) {
+                    statusLines(dot: .green) {
+                        Text(current.document ?? current.title ?? current.appName)
+                    } detail: {
+                        Text("正在记录 · \(current.domain ?? current.appName) · 自 \(model.time(current.start))")
+                    }
+                    // A span under a minute old has nothing worth showing yet.
+                    if elapsed >= 60 {
+                        Text(Format.duration(elapsed)).font(.body.weight(.semibold)).monospacedDigit().fixedSize()
+                            .contentTransition(.numericText())
+                    }
                 }
-                Text("\(Int(max(0, now.timeIntervalSince(current.start)) / 60)) 分钟")
-                    .font(.body.weight(.semibold)).monospacedDigit().fixedSize()
             } else {
                 statusLines(dot: .secondary) { Text(model.engine.isRunning ? "等待活动" : "记录未启动") } detail: {
                     Text("下一段活动会显示在这里。")
@@ -835,16 +849,18 @@ struct MenuBarDashboardView: View {
 
     private func hero(_ seconds: TimeInterval, size: CGFloat) -> some View { DurationHero(seconds: seconds, size: size) }
 
-    /// Always one line, so the platter has the same height with or without yesterday.
+    /// Wraps rather than truncating: English runs longer than the design's line.
     @ViewBuilder private var compareLine: some View {
-        if let delta = dashboard.totalDelta {
-            let minutes = Int(delta / 60)
-            let text = CompareBaseView.text(abs(minutes))
-            Text(minutes >= 0 ? "比昨天此时多 \(text)" : "比昨天此时少 \(text)")
-                .font(.callout).foregroundStyle(.green)
-        } else {
-            Text("昨天此时没有记录").font(.callout).foregroundStyle(.secondary)
+        Group {
+            if let delta = dashboard.totalDelta {
+                let minutes = Int(delta / 60)
+                let text = CompareBaseView.text(abs(minutes))
+                Text(minutes >= 0 ? "比昨天此时多 \(text)" : "比昨天此时少 \(text)").foregroundStyle(.green)
+            } else {
+                Text("昨天此时没有记录").foregroundStyle(.secondary)
+            }
         }
+        .font(.callout).fixedSize(horizontal: false, vertical: true)
     }
 
     private var engagedRing: some View {
@@ -902,7 +918,7 @@ struct MenuBarDashboardView: View {
         let all = dashboard.topCategories
         if !all.isEmpty {
             let shown = Array(all.prefix(categoriesExpanded ? all.count : 5))
-            let nameWidth = RefinedStyle.nameColumn(shown.map(\.name), font: .systemFont(ofSize: NSFont.systemFontSize), cap: width * 0.34)
+            let nameWidth = RefinedStyle.nameColumn(shown.map(\.name), font: .systemFont(ofSize: NSFont.systemFontSize), cap: width * 0.46)
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(shown, id: \.id) { entry in
                     Button { openActivities(category: entry.id) } label: { categoryRow(entry, nameWidth: nameWidth) }
@@ -969,11 +985,9 @@ struct MenuBarDashboardView: View {
         let fold = LimitState.fold(rows, warnPercent: dashboard.budgetWarnPercent)
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Picker("专注时长", selection: $focusMinutes) {
-                    ForEach(FocusPresets.minutes, id: \.self) { Text(verbatim: "\($0)").tag($0) }
-                }
-                .pickerStyle(.segmented).labelsHidden().fixedSize()
-                .onChange(of: focusMinutes) { _, value in model.settings.setFocusDurationMinutes(value) }
+                LensPicker(options: FocusPresets.minutes, selection: $focusMinutes) { Text(verbatim: "\($0)") }
+                    .accessibilityLabel("专注时长")
+                    .onChange(of: focusMinutes) { _, value in model.settings.setFocusDurationMinutes(value) }
                 // No bare-Space shortcut: the popover has no text field to
                 // absorb it, so any Space press would start blocking apps.
                 Button { startFocus(minutes: focusMinutes) } label: {

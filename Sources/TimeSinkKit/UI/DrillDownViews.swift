@@ -390,9 +390,9 @@ struct LimitRowView: View {
                 }
                 Spacer(minLength: 4)
                 Text("\(Format.minutes(row.spent)) / \(Format.minutes(row.limit)) 分钟")
-                    .monospacedDigit().foregroundStyle(.secondary)
+                    .monospacedDigit().foregroundStyle(.secondary).lineLimit(1).fixedSize()
             }
-            .lineLimit(1)
+            .fixedSize(horizontal: false, vertical: true)
             GeometryReader { geo in
                 Capsule().fill(.quaternary)
                 Capsule().fill(color).frame(width: geo.size.width * (row.limit > 0 ? min(1, row.spent / row.limit) : 0))

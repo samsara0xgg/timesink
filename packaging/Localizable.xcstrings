@@ -3116,7 +3116,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "came back to %@"
+            "value": "back to %@"
           }
         }
       }
@@ -6630,7 +6630,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Before: %@"
+            "value": "Before you left: %@"
           }
         }
       }
