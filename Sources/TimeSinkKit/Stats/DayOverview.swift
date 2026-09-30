@@ -87,10 +87,12 @@ struct DayOverview: Sendable {
     }
 
     /// Folded activity with the unrecorded stretches between it, in time order.
+    /// `forDrawing`: see `TimelineSegmenter`.
     static func pieces(_ items: [CategorizedSpan], resolution: TimeInterval,
-                       grouping: TimelineSegmenter.Grouping) -> [Piece] {
+                       grouping: TimelineSegmenter.Grouping, forDrawing: Bool = false) -> [Piece] {
         var result: [Piece] = []
-        for segment in TimelineSegmenter.segments(items, resolution: resolution, grouping: grouping) {
+        for segment in TimelineSegmenter.segments(items, resolution: resolution, grouping: grouping,
+                                                  forDrawing: forDrawing) {
             if let previous = result.last, segment.start > previous.end {
                 result.append(Piece(start: previous.end, end: segment.start, segment: nil))
             }

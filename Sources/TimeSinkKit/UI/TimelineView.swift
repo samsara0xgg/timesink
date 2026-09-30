@@ -162,7 +162,7 @@ struct DayTimelineView: View {
                 .buttonStyle(.bordered).controlSize(.small)
                 Text(TimelineZoom.resolutionLabel(for: hourHeight))
                     .font(.caption2).foregroundStyle(.tertiary)
-                    .help("缩小时，短于这个时长的切换并入相邻片段；放大可以看到更细的记录。")
+                    .help("缩小时，短于这个时长的切换并入所在的任务，零星的短暂记录不单独画出；放大可以看到更细的记录。")
                 selectionSummary
                 if !allDay.isEmpty {
                     Text(String(localized: "全天日程：\(allDay.joined(separator: String(localized: "、")))"))
@@ -322,6 +322,8 @@ struct DayTimelineView: View {
                         .padding(.trailing, block.mix.isEmpty ? 0 : 6)
                     }
                 }
+                // A seam between abutting blocks instead of notched corners.
+                .padding(.bottom, blockHeight > 4 ? 1 : 0)
                 .frame(width: width, height: blockHeight)
                 .contentShape(Rectangle())
         }

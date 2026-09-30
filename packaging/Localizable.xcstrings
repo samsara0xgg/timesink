@@ -6055,12 +6055,12 @@
         }
       }
     },
-    "缩小时，短于这个时长的切换并入相邻片段；放大可以看到更细的记录。": {
+    "缩小时，短于这个时长的切换并入所在的任务，零星的短暂记录不单独画出；放大可以看到更细的记录。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "When zoomed out, switches shorter than this merge into neighboring segments. Zoom in to see finer records."
+            "value": "When zoomed out, switches shorter than this fold into the task around them, and scattered moments aren’t drawn on their own. Zoom in to see finer records."
           }
         }
       }

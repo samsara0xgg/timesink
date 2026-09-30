@@ -787,7 +787,8 @@ final class ActivitiesModel {
                                      segment: segment, mix: mix, isHighlight: highlight)
             }
         }
-        let base = blocks(TimelineSegmenter.segments(items, resolution: resolution), highlight: false, live: matching == nil)
+        let base = blocks(TimelineSegmenter.segments(items, resolution: resolution, forDrawing: true),
+                          highlight: false, live: matching == nil)
         guard let matching else { return base }
         let hits = TimelineSegmenter.segments(items.filter(matching), resolution: resolution,
                                               bridge: max(TimelineSegmenter.defaultBridge, resolution))

@@ -92,12 +92,19 @@ struct ActivityIdentity: Sendable {
 ///    unrecorded time and is never painted over.
 /// 2. Consecutive spans with the same grouping key form runs (titles never
 ///    split a run).
-/// 3. A run at least `resolution` long stands on its own. Shorter runs are
-///    gathered into chunks of about `resolution`, labelled by whichever row
-///    holds the most time; a leftover sliver joins its neighbour.
+/// 3. The shortest piece under `resolution` joins the neighbour it most
+///    resembles (same leading row, then same leading category, then the
+///    longer one), until every piece reaches the resolution. Brief switches
+///    fold into the task around them; a stretch of back-and-forth becomes
+///    one mixed segment, labelled by whichever row holds the most time.
 /// 4. Neighbours with the same leading key merge.
 ///
-/// Linear in the number of spans, so it can rerun on every zoom step.
+/// `forDrawing` is for timelines drawn to scale: gaps under half the
+/// resolution are closed, so one task reads as one block, and a stretch of
+/// recording still too short to see is left out instead of drawn as a
+/// hairline. Lists keep every recorded second and leave it off.
+///
+/// O(n log n) in the number of spans, so it can rerun on every zoom step.
 enum TimelineSegmenter {
     enum Grouping: Sendable {
         /// Row level: document, URL entity, site or app -- the activity list's rows.
@@ -111,6 +118,7 @@ enum TimelineSegmenter {
 
     static func segments(_ items: [CategorizedSpan], resolution: TimeInterval,
                          bridge: TimeInterval = defaultBridge, grouping: Grouping = .activity,
+                         forDrawing: Bool = false,
                          matching: ((CategorizedSpan) -> Bool)? = nil) -> [TimelineSegment] {
         struct Entry {
             let item: CategorizedSpan
@@ -121,6 +129,7 @@ enum TimelineSegmenter {
             var start: Date
             var end: Date
             let key: String
+            let category: String
             var entries: [Int]
             var duration: TimeInterval { end.timeIntervalSince(start) }
         }
@@ -138,6 +147,7 @@ enum TimelineSegmenter {
         }
 
         // 1-2: islands of continuous recording, each a list of runs.
+        let bridge = forDrawing ? max(bridge, resolution / 2) : bridge
         var islands: [[Run]] = []
         var current: [Run] = []
         var coveredUntil = Date.distantPast
@@ -155,47 +165,115 @@ enum TimelineSegmenter {
             } else {
                 // Overlapping spans start where the previous run ends.
                 let start = current.last.map { max(span.start, $0.end) } ?? span.start
-                current.append(Run(start: start, end: max(span.end, start), key: entryKey, entries: [index]))
+                current.append(Run(start: start, end: max(span.end, start), key: entryKey,
+                                   category: entries[index].identity.selection.categoryID, entries: [index]))
             }
             coveredUntil = max(coveredUntil, span.end)
         }
         if !current.isEmpty { islands.append(current) }
 
+        func extent(_ runs: [Run]) -> TimeInterval {
+            guard let first = runs.first, let last = runs.last else { return 0 }
+            return last.end.timeIntervalSince(first.start)
+        }
+        if forDrawing { islands.removeAll { extent($0) < resolution } }
+
+        func longest(_ seconds: [String: TimeInterval]) -> String {
+            seconds.max { $0.value == $1.value ? $0.key > $1.key : $0.value < $1.value }!.key
+        }
         func leadingKey(_ runs: [Run]) -> String {
-            var seconds: [String: TimeInterval] = [:]
-            for run in runs { seconds[run.key, default: 0] += run.duration }
-            return seconds.max { $0.value == $1.value ? $0.key > $1.key : $0.value < $1.value }!.key
+            longest(runs.reduce(into: [:]) { $0[$1.key, default: 0] += $1.duration })
+        }
+
+        // 3: shortest piece first, into the neighbour it most resembles.
+        func smoothed(_ island: [Run]) -> [[Run]] {
+            struct Piece {
+                var runs: [Run]
+                var seconds: [String: TimeInterval]
+                var categorySeconds: [String: TimeInterval]
+                var previous: Int?
+                var next: Int?
+                var version = 0
+                var alive = true
+                var extent: TimeInterval { runs[runs.count - 1].end.timeIntervalSince(runs[0].start) }
+            }
+            var pieces = island.indices.map { index in
+                Piece(runs: [island[index]], seconds: [island[index].key: island[index].duration],
+                      categorySeconds: [island[index].category: island[index].duration],
+                      previous: index > 0 ? index - 1 : nil, next: index + 1 < island.count ? index + 1 : nil)
+            }
+            // A binary min-heap of (extent, piece, version); stale entries are skipped.
+            var heap: [(extent: TimeInterval, index: Int, version: Int)] = []
+            func before(_ a: (extent: TimeInterval, index: Int, version: Int), _ b: (extent: TimeInterval, index: Int, version: Int)) -> Bool {
+                a.extent == b.extent ? a.index < b.index : a.extent < b.extent
+            }
+            func push(_ index: Int) {
+                heap.append((pieces[index].extent, index, pieces[index].version))
+                var child = heap.count - 1
+                while child > 0, before(heap[child], heap[(child - 1) / 2]) {
+                    heap.swapAt(child, (child - 1) / 2)
+                    child = (child - 1) / 2
+                }
+            }
+            func pop() -> (extent: TimeInterval, index: Int, version: Int)? {
+                guard !heap.isEmpty else { return nil }
+                heap.swapAt(0, heap.count - 1)
+                let top = heap.removeLast()
+                var parent = 0
+                while true {
+                    var smallest = parent
+                    for child in [2 * parent + 1, 2 * parent + 2] where child < heap.count && before(heap[child], heap[smallest]) {
+                        smallest = child
+                    }
+                    guard smallest != parent else { return top }
+                    heap.swapAt(parent, smallest)
+                    parent = smallest
+                }
+            }
+            func resemblance(_ a: Piece, _ b: Piece) -> Int {
+                if longest(a.seconds) == longest(b.seconds) { return 2 }
+                return longest(a.categorySeconds) == longest(b.categorySeconds) ? 1 : 0
+            }
+
+            pieces.indices.forEach(push)
+            while let top = pop() {
+                let piece = pieces[top.index]
+                guard piece.alive, piece.version == top.version else { continue }
+                guard piece.extent < resolution, piece.previous != nil || piece.next != nil else { break }
+                let target: Int = {
+                    guard let previous = piece.previous else { return piece.next! }
+                    guard let next = piece.next else { return previous }
+                    let (a, b) = (resemblance(piece, pieces[previous]), resemblance(piece, pieces[next]))
+                    if a != b { return a > b ? previous : next }
+                    return pieces[next].extent > pieces[previous].extent ? next : previous
+                }()
+                if target == piece.previous {
+                    pieces[target].runs += piece.runs
+                    pieces[target].next = piece.next
+                    if let next = piece.next { pieces[next].previous = target }
+                } else {
+                    pieces[target].runs = piece.runs + pieces[target].runs
+                    pieces[target].previous = piece.previous
+                    if let previous = piece.previous { pieces[previous].next = target }
+                }
+                pieces[target].seconds.merge(piece.seconds, uniquingKeysWith: +)
+                pieces[target].categorySeconds.merge(piece.categorySeconds, uniquingKeysWith: +)
+                pieces[target].version += 1
+                pieces[top.index].alive = false
+                push(target)
+            }
+            var blocks: [[Run]] = []
+            var cursor = pieces.firstIndex { $0.alive && $0.previous == nil }
+            while let index = cursor {
+                blocks.append(pieces[index].runs)
+                cursor = pieces[index].next
+            }
+            return blocks
         }
 
         var segments: [TimelineSegment] = []
         for island in islands {
-            // 3: anchors stand alone; slivers gather into chunks.
-            var blocks: [[Run]] = []
-            var pending: [Run] = []
-            func pendingDuration() -> TimeInterval {
-                guard let first = pending.first, let last = pending.last else { return 0 }
-                return last.end.timeIntervalSince(first.start)
-            }
-            for run in island {
-                if run.duration >= resolution {
-                    if !pending.isEmpty {
-                        if blocks.isEmpty { blocks.append(pending + [run]) }
-                        else { blocks[blocks.count - 1] += pending; blocks.append([run]) }
-                        pending = []
-                    } else {
-                        blocks.append([run])
-                    }
-                } else {
-                    pending.append(run)
-                    if pendingDuration() >= resolution {
-                        blocks.append(pending)
-                        pending = []
-                    }
-                }
-            }
-            if !pending.isEmpty {
-                if blocks.isEmpty { blocks.append(pending) } else { blocks[blocks.count - 1] += pending }
-            }
+            let blocks = smoothed(island)
 
             // 4: neighbours led by the same key become one.
             var merged: [(runs: [Run], lead: String)] = []

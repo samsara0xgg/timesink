@@ -61,4 +61,45 @@ final class TimelineSegmenterTests: XCTestCase {
         XCTAssertTrue(segment.isMixed)
         XCTAssertEqual(segment.leadingCategoryID, "work")
     }
+
+    /// A glance at chat in the middle of an hour of editing is not a block.
+    func testBriefSwitchFoldsIntoTheTaskAroundIt() {
+        let items = [item(0, 1200), item(1200, 1260, app: "chat", category: "chat"), item(1260, 2460)]
+        let segments = TimelineSegmenter.segments(items, resolution: 450)
+        XCTAssertEqual(segments.count, 1)
+        XCTAssertEqual(segments[0].parts.map(\.appName), ["editor", "chat"])
+    }
+
+    /// Back-and-forth reads as one mixed stretch, not a stack of slices.
+    func testBackAndForthIsOneStretch() {
+        let items: [CategorizedSpan] = (0..<40).map { index in
+            let start = Double(index) * 60
+            return item(start, start + 60, app: index % 2 == 0 ? "editor" : "terminal")
+        }
+        XCTAssertEqual(TimelineSegmenter.segments(items, resolution: 450).count, 1)
+    }
+
+    /// Ten minutes spent mostly elsewhere stay visible between two long tasks,
+    /// even when no single run in them reaches the resolution.
+    func testStretchOfAnotherCategoryStandsOut() {
+        var items = [item(0, 1800)]
+        for index in 0..<6 {
+            let start = 1800 + Double(index) * 100
+            items += [item(start, start + 90, app: index % 2 == 0 ? "chat" : "mail", category: "chat"),
+                      item(start + 90, start + 100)]
+        }
+        items.append(item(2400, 4200))
+        let segments = TimelineSegmenter.segments(items, resolution: 450)
+        XCTAssertEqual(segments.map(\.leadingCategoryID), ["work", "chat", "work"])
+    }
+
+    /// Drawn to scale, stray seconds are left out and a short break does not
+    /// split one task; lists keep both.
+    func testDrawingLeavesOutStraySecondsAndClosesShortBreaks() {
+        let items = [item(0, 1200), item(1320, 2520), item(4320, 4340, app: "chat", category: "chat")]
+        let drawn = TimelineSegmenter.segments(items, resolution: 450, forDrawing: true)
+        XCTAssertEqual(drawn.map(\.recorded), [2400])
+        XCTAssertEqual(drawn[0].end, items[1].span.end)
+        XCTAssertEqual(TimelineSegmenter.segments(items, resolution: 450).count, 3)
+    }
 }

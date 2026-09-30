@@ -369,7 +369,7 @@ struct DayRibbonView: View {
     private func ribbonPieces(width: CGFloat) -> [DayOverview.Piece] {
         let hours = max(interval.duration / 3600, 1)
         let resolution = TimelineSegmenter.resolution(points: compact ? 3 : 4, pointsPerHour: width / hours)
-        return DayOverview.pieces(overview.items, resolution: resolution, grouping: .category)
+        return DayOverview.pieces(overview.items, resolution: resolution, grouping: .category, forDrawing: true)
     }
 
     private func categoryHex(_ id: String) -> String {
