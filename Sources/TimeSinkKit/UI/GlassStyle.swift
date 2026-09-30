@@ -164,6 +164,15 @@ struct GlassButton: ViewModifier {
 }
 
 extension View {
+    /// m4: content fades out under the toolbar instead of meeting a hard line.
+    @ViewBuilder func softScrollEdges() -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26, *) { scrollEdgeEffectStyle(.soft, for: .top) } else { self }
+        #else
+        self
+        #endif
+    }
+
     func glassProminentButton() -> some View { modifier(GlassProminentButton()) }
     func glassButton() -> some View { modifier(GlassButton()) }
 }

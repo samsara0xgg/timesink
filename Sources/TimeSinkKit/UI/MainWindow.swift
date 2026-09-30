@@ -28,6 +28,7 @@ struct MainWindowView: View {
         } detail: {
             detailContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .softScrollEdges()
                 .modifier(WindowTitles(model: model, activities: activities))
                 .toolbar {
                     if model.sidebarSelection == .stats || model.sidebarSelection == .activities { rangeToolbar }
@@ -111,6 +112,15 @@ struct MainWindowView: View {
 
     @ToolbarContentBuilder
     private var rangeToolbar: some ToolbarContent {
+        if model.sidebarSelection == .stats {
+            ToolbarItem {
+                Picker("时段", selection: Binding(get: { model.range.kind }, set: { model.range = DateRangeSelection(kind: $0, anchor: Date()) })) {
+                    Text("日").tag(DateRangeSelection.Kind.day)
+                    Text("周").tag(DateRangeSelection.Kind.week)
+                    Text("月").tag(DateRangeSelection.Kind.month)
+                }.pickerStyle(.segmented).labelsHidden().fixedSize()
+            }
+        }
         ToolbarItemGroup {
             Button {
                 model.range.shift(-1)
