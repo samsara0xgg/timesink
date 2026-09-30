@@ -83,9 +83,7 @@ public enum RefinedPreview {
                 try await render(ActivityInspector(model: model, activities: activityModel), size: .init(width: 272, height: 760), dark: dark, to: output.appendingPathComponent("inspector-\(suffix).png"))
             }
             try await render(TitleRuleEditor(model: model, pending: .init(prefill: "SwiftUI", scopeKey: "stackoverflow.com", scopeLabel: "stackoverflow.com", categoryID: "learning")), size: .init(width: 460, height: 380), dark: dark, to: output.appendingPathComponent("title-rule-\(suffix).png"))
-            for step in 0..<5 {
-                try await render(OnboardingView(model: model, initialStep: step, checksPermissions: false), size: .init(width: 500, height: 470), dark: dark, to: output.appendingPathComponent("onboarding-\(step + 1)-\(suffix).png"))
-            }
+            try await render(OnboardingView(model: model, checksPermissions: false), size: .init(width: 500, height: 520), dark: dark, to: output.appendingPathComponent("onboarding-1-\(suffix).png"))
             model.sidebarSelection = .organization
             for (name, tab) in [("categories", SettingsTab.categories), ("rules", .rules)] {
                 model.organizationTab = tab

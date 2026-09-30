@@ -164,10 +164,7 @@ import WebKit
             }.frame(maxWidth: .infinity, maxHeight: .infinity).background(.bar), size: NSSize(width: 520, height: 40), dark: dark, host: .clear)
             let lunch = DateInterval(start: calendar.startOfDay(for: Date()).addingTimeInterval(12 * 3600 + 120), duration: 48 * 60)
             try await shoot("away-prompt", AwayPrompt(model: model, interval: lunch).padding(12), size: NSSize(width: 360, height: 300), dark: dark, host: .glass(28))
-            for step in 0..<5 {
-                try await shoot("onboarding-\(step + 1)", OnboardingView(model: model, initialStep: step, checksPermissions: false),
-                                size: NSSize(width: 500, height: 470), dark: dark)
-            }
+            try await shoot("onboarding-1", OnboardingView(model: model, checksPermissions: false), size: NSSize(width: 500, height: 520), dark: dark)
             if let focus = model.focus {
                 try await shoot("focus-hud", FocusHUDContentView(appName: "信息", appKey: "com.apple.MobileSMS", hideCount: 1, controller: focus, onReturn: {}, onAllow: {}), // l10n: data
                                 size: NSSize(width: 312, height: 122), dark: dark, host: .clear)
