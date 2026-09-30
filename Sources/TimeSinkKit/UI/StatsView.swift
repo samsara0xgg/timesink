@@ -91,6 +91,16 @@ struct StatsView: View {
                     .accessibilityValue(Format.duration(point.hours * 3600))
             }
             .chartYAxis { AxisMarks(position: .leading) { value in AxisGridLine(); AxisValueLabel { if let hours = value.as(Double.self) { Text("\(hours.formatted())h").font(.system(size: 11)) } } } }
+            .chartXAxis {
+                // A week has room to name every day under its bar.
+                if granularity == .day && Set(stats.stackedByDay.map(\.bucketStart)).count <= 7 {
+                    AxisMarks(values: .stride(by: .day)) { _ in
+                        AxisGridLine(); AxisTick(); AxisValueLabel(format: .dateTime.month(.abbreviated).day(), centered: true)
+                    }
+                } else {
+                    AxisMarks()
+                }
+            }
             .frame(minHeight: 200, maxHeight: .infinity)
         }.frame(maxHeight: .infinity, alignment: .top).padding(18).workspacePanel()
     }

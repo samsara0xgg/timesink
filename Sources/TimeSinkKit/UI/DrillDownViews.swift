@@ -138,8 +138,8 @@ struct CompareBaseView: View {
 // MARK: - 连续达标行: StreakDotsView
 
 /// 连续达标行 hover pane: 30-day dot pattern (`dailyPulses`, tail = today) --
-/// filled/tinted at >= `threshold`, hollow otherwise; a `nil` entry (no
-/// tracked day) renders the same as a miss.
+/// filled/tinted at >= `threshold`, grey otherwise; a `nil` entry (no
+/// tracked day) is only outlined, so a day off does not read as a miss.
 struct StreakDotsView: View {
     let dailyPulses: [Int?]
     let threshold: Int
@@ -158,10 +158,14 @@ struct StreakDotsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             LazyVGrid(columns: columns, spacing: 4) {
-                ForEach(Array(dailyPulses.enumerated()), id: \.offset) { _, pulse in
+                ForEach(Array(dailyPulses.enumerated()), id: \.offset) { index, pulse in
+                    let day = Calendar.current.date(byAdding: .day, value: index - dailyPulses.count + 1, to: .now) ?? .now
+                    let date = day.formatted(.dateTime.month().day())
                     RoundedRectangle(cornerRadius: 2)
-                        .fill((pulse ?? 0) >= threshold ? Color.green.opacity(0.85) : Color.secondary.opacity(0.2))
+                        .fill(pulse.map { $0 >= threshold ? Color.green.opacity(0.85) : Color.secondary.opacity(0.2) } ?? .clear)
+                        .overlay { if pulse == nil { RoundedRectangle(cornerRadius: 2).strokeBorder(Color.secondary.opacity(0.25)) } }
                         .aspectRatio(1, contentMode: .fit)
+                        .help(pulse.map { String(localized: "\(date) · \($0) 分") } ?? String(localized: "\(date) · 无记录"))
                 }
             }
             Text("近 30 天 · 达标 \(metDaysCount) 天，当前连续 \(streakDays) 天")
@@ -339,25 +343,27 @@ struct BudgetProgressView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
-                Text("今日预算").font(.headline)
+                Text("今日限额").font(.headline)
                 Spacer()
                 Text("\(rows.count) 项启用").font(.caption).foregroundStyle(.secondary)
             }
             // Bar keeps at least 48pt beside the 124pt of dot, spacing and totals.
             let nameWidth = RefinedStyle.nameColumn(rows.map(\.name), font: .preferredFont(forTextStyle: .caption1), cap: width - 172)
             ForEach(rows) { row in
+                // Warned the same way as the popover's limit rows.
+                let warning = row.limit - row.spent <= row.limit * Double(warnPercent) / 100
                 HStack(spacing: 8) {
                     Circle().fill(RefinedStyle.category(row.id, hex: row.colorHex)).frame(width: 8, height: 8)
                     Text(row.name).font(.caption).lineLimit(1).frame(width: nameWidth, alignment: .leading)
                     GeometryReader { geo in
                         let ratio = row.limit > 0 ? min(1, row.spent / row.limit) : 0
-                        Capsule().fill(RefinedStyle.category(row.id, hex: row.colorHex))
+                        Capsule().fill(warning ? RefinedStyle.warning : RefinedStyle.category(row.id, hex: row.colorHex))
                             .frame(width: max(4, geo.size.width * ratio))
                             .frame(maxHeight: .infinity, alignment: .center)
                     }
                     .frame(height: 6)
                     Text("\(Format.duration(row.spent)) / \(Format.duration(row.limit))")
-                        .font(.caption2).monospacedDigit().foregroundStyle(.secondary)
+                        .font(.caption2).monospacedDigit().foregroundStyle(warning ? AnyShapeStyle(RefinedStyle.warning) : AnyShapeStyle(.secondary))
                         .frame(width: 92, alignment: .trailing)
                 }
             }

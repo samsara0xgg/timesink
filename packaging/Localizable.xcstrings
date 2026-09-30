@@ -211,6 +211,16 @@
         }
       }
     },
+    "%@ · 无记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · No records"
+          }
+        }
+      }
+    },
     "%@ · 用的是输入框里还没保存的密钥，按回车保存": {
       "localizations": {
         "en": {
@@ -994,7 +1004,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Enabled: %lld"
+            "value": "%lld enabled"
           }
         }
       }
@@ -1924,17 +1934,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Daily limit"
-          }
-        }
-      }
-    },
-    "今日预算": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Today's Budgets"
+            "value": "Daily limits"
           }
         }
       }
