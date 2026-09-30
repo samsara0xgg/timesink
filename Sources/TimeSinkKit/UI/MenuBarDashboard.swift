@@ -32,8 +32,12 @@ final class TodayDashboardModel {
     var focusDelta: TimeInterval?
     var total: TimeInterval = 0
     var overview: DayOverview?
-    /// Same "same time-of-day" semantics as `focusDelta`; see its doc comment.
-    var totalDelta: TimeInterval?
+    /// Yesterday's recorded time up to the same time of day (see
+    /// `focusDelta`); nil when yesterday has no records.
+    var yesterdayTotal: TimeInterval?
+    /// Same "same time-of-day" semantics as `focusDelta`, in whole minutes
+    /// (`Format.minuteDelta`) so it matches the two durations shown.
+    var totalDelta: TimeInterval? { yesterdayTotal.map { Format.minuteDelta(total, $0) } }
     var streakDays = 0
     var topCategories: [(id: String, name: String, colorHex: String, seconds: TimeInterval)] = []
     var maxCategorySeconds: TimeInterval = 0
@@ -124,8 +128,8 @@ final class TodayDashboardModel {
         let clippedYByCategory = Aggregator.durationByCategory(clippedYesterday)
         let clippedYFocus = Aggregator.focusTime(durationByCategory: clippedYByCategory, categories: categories)
         let clippedYTotal = Aggregator.totalDuration(clippedYesterday.map(\.span))
-        focusDelta = yesterday.isEmpty ? nil : focus - clippedYFocus
-        totalDelta = yesterday.isEmpty ? nil : total - clippedYTotal
+        focusDelta = yesterday.isEmpty ? nil : Format.minuteDelta(focus, clippedYFocus)
+        yesterdayTotal = yesterday.isEmpty ? nil : clippedYTotal
         if headlineOnly {
             await refreshStreakIfDayChanged(model: model, calendar: calendar, force: forceStreak)
             return

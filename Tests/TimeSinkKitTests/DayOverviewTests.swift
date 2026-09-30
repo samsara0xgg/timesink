@@ -93,4 +93,16 @@ final class DayOverviewTests: XCTestCase {
         XCTAssertNil(overview.firstRecord)
         XCTAssertLessThanOrEqual(overview.displayInterval.start, date(7))
     }
+
+    /// "6h 36m" today and "5h 49m" yesterday read as 47 minutes more, even
+    /// when the raw seconds differ by 46m 20s.
+    func testMinuteDeltaAgreesWithTheDurationsShown() {
+        let today: TimeInterval = 6 * 3600 + 36 * 60 + 10
+        let yesterday: TimeInterval = 5 * 3600 + 49 * 60 + 50
+        XCTAssertEqual(Format.duration(today), "6h 36m")
+        XCTAssertEqual(Format.duration(yesterday), "5h 49m")
+        XCTAssertEqual(Format.minuteDelta(today, yesterday), 47 * 60)
+        XCTAssertEqual(Format.minuteDelta(yesterday, today), -47 * 60)
+        XCTAssertEqual(Format.minuteDelta(59, 0), 0)
+    }
 }

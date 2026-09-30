@@ -115,7 +115,11 @@ struct TodayView: View {
             Text(Format.duration(overview.total)).font(.system(size: 34, weight: .semibold))
                 .tracking(-0.68).monospacedDigit().refinedNumberMotion(Format.duration(overview.total))
             Text([overview.firstRecord.map { String(localized: "\(model.time($0)) 开始") },
-                  dashboard.totalDelta.map { String(localized: "比昨天同时段 \(Format.durationDelta($0))") }]
+                  dashboard.yesterdayTotal.map { yesterday in
+                      let delta = Format.minuteDelta(overview.total, yesterday)
+                      return delta >= 0 ? String(localized: "比昨天此时多 \(Format.chineseDuration(delta))")
+                          : String(localized: "比昨天此时少 \(Format.chineseDuration(-delta))")
+                  }]
                 .compactMap { $0 }.joined(separator: " · "))
                 .font(.system(size: 11)).foregroundStyle(.secondary)
         }.fixedSize(horizontal: fixed, vertical: !fixed)
