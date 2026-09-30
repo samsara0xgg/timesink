@@ -20,6 +20,12 @@ struct StatsSummary: Sendable {
     var stackedByDay: [StackedPoint] = []
     var stackedByWeek: [StackedPoint] = []
     var stackedDomainNames: [String] = []
+    /// Every day of the selected range, the daily chart's x domain.
+    var chartDays: [Date] = []
+    /// Labelled days (thinned for long ranges), placed at midday so the label sits under its bar.
+    var dayMarks: [(midday: Date, label: String, isToday: Bool)] = []
+    var dayHourScale = ChartAxis.hourScale(maxHours: 0)
+    var weekHourScale = ChartAxis.hourScale(maxHours: 0)
     var stackedDomainColorHex: [String] = []
 
     var appRows: [RankingRow] = []
@@ -48,6 +54,13 @@ struct StatsSummary: Sendable {
         let weekStacks = Aggregator.stackedSeries(items, bucket: .weekOfYear, calendar: calendar)
         stackedByDay = Self.stackedPoints(dayStacks, categories: categories)
         stackedByWeek = Self.stackedPoints(weekStacks, categories: categories)
+        chartDays = ChartAxis.days(in: range.interval, calendar: calendar)
+        dayMarks = ChartAxis.labeledDays(chartDays).map { day in
+            (day.addingTimeInterval(12 * 3600), ChartAxis.dayLabel(day, now: now, calendar: calendar),
+             calendar.isDate(day, inSameDayAs: now))
+        }
+        dayHourScale = Self.hourScale(stackedByDay)
+        weekHourScale = Self.hourScale(stackedByWeek)
 
         let presentCategoryIDs = Set(dayStacks.map(\.categoryID)).union(weekStacks.map(\.categoryID))
         let orderedCategories = presentCategoryIDs
@@ -108,6 +121,11 @@ struct StatsSummary: Sendable {
         let prevDurationByCategory = Aggregator.durationByCategory(durationPrevItems)
         focusDelta = focus - Aggregator.focusTime(durationByCategory: prevDurationByCategory, categories: categories)
         categoryDeltas = Dictionary(uniqueKeysWithValues: categoryRows.map { ($0.id, $0.seconds - (prevDurationByCategory[$0.id] ?? 0)) })
+    }
+
+    private static func hourScale(_ points: [StackedPoint]) -> (top: Double, step: Double) {
+        let totals = Dictionary(grouping: points, by: \.bucketStart).values.map { $0.reduce(0) { $0 + $1.hours } }
+        return ChartAxis.hourScale(maxHours: totals.max() ?? 0)
     }
 
     private static func stackedPoints(

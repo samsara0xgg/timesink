@@ -5,7 +5,6 @@ import Charts
 /// can be compact; a detail chart must reveal both the time and the quantity.
 struct HourlyActivityChart: View {
     let bars: [HourlyBigView.Bar]
-    var minimumScale: Double = 60
     @State private var selectedHour: Int?
     @Environment(\.locale) private var locale
 
@@ -33,17 +32,16 @@ struct HourlyActivityChart: View {
         Dictionary(grouping: bars, by: \.hour).mapValues { $0.reduce(0) { $0 + $1.seconds } }
     }
 
-    /// Whole hours of minutes; an hour a few seconds over 60 minutes (spans
-    /// meeting at the boundary) does not double the axis.
-    private var ceiling: Double {
-        max(minimumScale, ceil((totals.values.max() ?? 0) / 3600 - 0.02) * 60)
-    }
+    private var scale: (top: Double, step: Double) { ChartAxis.minuteScale(maxMinutes: (totals.values.max() ?? 0) / 60) }
+    /// Only the hours that have data, e.g. 7:00–18:00 rather than 0–24.
+    private var span: Range<Int> { ChartAxis.hourSpan(totals.filter { $0.value > 0 }.keys) ?? 0..<24 }
 
     private func description(_ hour: Int) -> String {
         HeatmapData.Key(weekday: 0, hour: hour).timeLabel(locale) + " · " + Format.duration(totals[hour] ?? 0)
     }
 
     var body: some View {
+        let span = span, scale = scale
         VStack(alignment: .leading, spacing: 6) {
             Text("每小时活动时长 · 分钟")
                 .font(.caption).foregroundStyle(.secondary)
@@ -63,20 +61,20 @@ struct HourlyActivityChart: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .chartXScale(domain: 0.0...24.0)
-            .chartYScale(domain: 0...ceiling)
+            .chartXScale(domain: Double(span.lowerBound)...Double(span.upperBound))
+            .chartYScale(domain: 0...scale.top)
             .chartXAxis {
-                AxisMarks(values: [0.0, 6.0, 12.0, 18.0, 24.0]) { value in
+                AxisMarks(values: Array(stride(from: Double(span.lowerBound), through: Double(span.upperBound), by: 3))) { value in
                     let hour = Int(value.as(Double.self) ?? 0)
                     AxisTick()
-                    AxisValueLabel(anchor: hour == 24 ? .topTrailing : (hour == 0 ? .topLeading : .top),
+                    AxisValueLabel(anchor: hour == span.upperBound ? .topTrailing : (hour == span.lowerBound ? .topLeading : .top),
                                    collisionResolution: .disabled) {
-                        Text(String(format: "%02d", hour)).monospacedDigit()
+                        Text("\(hour):00").monospacedDigit()
                     }
                 }
             }
             .chartYAxis {
-                AxisMarks(position: .leading, values: [0, ceiling / 2, ceiling]) {
+                AxisMarks(position: .leading, values: Array(stride(from: 0, through: scale.top, by: scale.step))) {
                     AxisGridLine()
                     AxisValueLabel()
                 }
@@ -94,7 +92,7 @@ struct HourlyActivityChart: View {
                                     selectedHour = nil
                                     return
                                 }
-                                selectedHour = min(23, max(0, Int(hour)))
+                                selectedHour = min(span.upperBound - 1, max(span.lowerBound, Int(hour)))
                             case .ended: selectedHour = nil
                             }
                         }
@@ -106,11 +104,11 @@ struct HourlyActivityChart: View {
         }
         .focusable()
         .onKeyPress(.leftArrow) {
-            selectedHour = max(0, (selectedHour ?? 1) - 1)
+            selectedHour = max(span.lowerBound, (selectedHour ?? span.lowerBound + 1) - 1)
             return .handled
         }
         .onKeyPress(.rightArrow) {
-            selectedHour = min(23, (selectedHour ?? -1) + 1)
+            selectedHour = min(span.upperBound - 1, (selectedHour ?? span.lowerBound - 1) + 1)
             return .handled
         }
         .accessibilityElement(children: .contain)
@@ -118,7 +116,7 @@ struct HourlyActivityChart: View {
         .accessibilityValue(selectedHour.map(description) ?? String(localized: "全天 24 小时"))
         .accessibilityAdjustableAction { direction in
             let step = direction == .increment ? 1 : -1
-            selectedHour = min(23, max(0, (selectedHour ?? 0) + step))
+            selectedHour = min(span.upperBound - 1, max(span.lowerBound, (selectedHour ?? span.lowerBound) + step))
         }
     }
 }

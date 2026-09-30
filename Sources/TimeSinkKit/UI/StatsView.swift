@@ -84,25 +84,38 @@ struct StatsView: View {
                 Picker("分组", selection: $granularity) { Text("天").tag(StatsModel.Granularity.day); Text("周").tag(StatsModel.Granularity.week) }
                     .pickerStyle(.segmented).labelsHidden().frame(width: 90)
             }
-            Chart(granularity == .day ? stats.stackedByDay : stats.stackedByWeek) { point in
-                BarMark(x: .value("日期", point.bucketStart, unit: granularity == .day ? .day : .weekOfYear), y: .value("小时", point.hours))
-                    .foregroundStyle(RefinedStyle.category(point.categoryID, hex: point.colorHex))
-                    .accessibilityLabel("\(point.bucketStart.formatted(.dateTime.month().day())) · \(point.categoryName)")
-                    .accessibilityValue(Format.duration(point.hours * 3600))
-            }
-            .chartYAxis { AxisMarks(position: .leading) { value in AxisGridLine(); AxisValueLabel { if let hours = value.as(Double.self) { Text("\(hours.formatted())h").font(.system(size: 11)) } } } }
-            .chartXAxis {
-                // A week has room to name every day under its bar.
-                if granularity == .day && Set(stats.stackedByDay.map(\.bucketStart)).count <= 7 {
-                    AxisMarks(values: .stride(by: .day)) { _ in
-                        AxisGridLine(); AxisTick(); AxisValueLabel(format: .dateTime.month(.abbreviated).day(), centered: true)
+            Group { if granularity == .day {
+                historyChart(stats.stackedByDay, unit: .day, scale: stats.dayHourScale)
+                    .chartXScale(domain: (stats.days.first ?? .now)...(stats.days.last?.addingTimeInterval(86400) ?? .now))
+                    .chartXAxis {
+                        AxisMarks(values: stats.dayMarks.map(\.midday)) { value in
+                            AxisValueLabel(collisionResolution: .disabled) {
+                                if let date = value.as(Date.self), let mark = stats.dayMarks.first(where: { $0.midday == date }) {
+                                    Text(mark.label).font(.system(size: 11, weight: mark.isToday ? .bold : .regular))
+                                        .foregroundStyle(mark.isToday ? .primary : .secondary)
+                                }
+                            }
+                        }
                     }
-                } else {
-                    AxisMarks()
-                }
-            }
+            } else {
+                historyChart(stats.stackedByWeek, unit: .weekOfYear, scale: stats.weekHourScale)
+            } }
             .frame(minHeight: 200, maxHeight: .infinity)
         }.frame(maxHeight: .infinity, alignment: .top).padding(18).workspacePanel()
+    }
+    private func historyChart(_ points: [StatsModel.StackedPoint], unit: Calendar.Component, scale: (top: Double, step: Double)) -> some View {
+        Chart(points) { point in
+            BarMark(x: .value("日期", point.bucketStart, unit: unit), y: .value("小时", point.hours))
+                .foregroundStyle(RefinedStyle.category(point.categoryID, hex: point.colorHex))
+                .accessibilityLabel("\(point.bucketStart.formatted(.dateTime.month().day())) · \(point.categoryName)")
+                .accessibilityValue(Format.duration(point.hours * 3600))
+        }
+        .chartYScale(domain: 0...scale.top)
+        .chartYAxis {
+            AxisMarks(position: .leading, values: Array(stride(from: 0, through: scale.top, by: scale.step))) { value in
+                AxisGridLine(); AxisValueLabel { if let hours = value.as(Double.self) { Text("\(hours.formatted())h").font(.system(size: 11)) } }
+            }
+        }
     }
     private var ranking: some View {
         VStack(alignment: .leading, spacing: 12) {

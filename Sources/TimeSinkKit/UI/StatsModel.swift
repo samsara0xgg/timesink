@@ -54,6 +54,10 @@ final class StatsModel {
     var stackedByDay: [StackedPoint] { summary.stackedByDay }
     var stackedByWeek: [StackedPoint] { summary.stackedByWeek }
     var stackedDomainNames: [String] { summary.stackedDomainNames }
+    var days: [Date] { summary.chartDays }
+    var dayMarks: [(midday: Date, label: String, isToday: Bool)] { summary.dayMarks }
+    var dayHourScale: (top: Double, step: Double) { summary.dayHourScale }
+    var weekHourScale: (top: Double, step: Double) { summary.weekHourScale }
     var stackedDomainColorHex: [String] { summary.stackedDomainColorHex }
     var appRows: [RankingRow] { summary.appRows }
     var categoryRows: [RankingRow] { summary.categoryRows }
