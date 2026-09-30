@@ -1277,16 +1277,6 @@
         }
       }
     },
-    "TimeSink 住在菜单栏右上角。点一下看今天，悬停看细节。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "TimeSink lives in the menu bar at the top right. Click to see today; hover for details."
-          }
-        }
-      }
-    },
     "TimeSink 拦截页": {
       "localizations": {
         "en": {
@@ -1303,16 +1293,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "TimeSink diagnostics\nSystem: %@\nActivity count: %lld\nDatabase version: %@\n\nExcludes window titles, URLs, app lists, screenshots, recognized text, keys and accounts.\n"
-          }
-        }
-      }
-    },
-    "macOS 需要你亲自打开这个开关，TimeSink 才能看到最前面的应用。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "macOS requires you to enable this permission so TimeSink can see the frontmost app."
           }
         }
       }
@@ -1537,16 +1517,6 @@
         }
       }
     },
-    "不开也能用：浏览时间会记成「Chrome」，不区分网站。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Optional: browser time will be recorded as Chrome without identifying websites."
-          }
-        }
-      }
-    },
     "不用了": {
       "localizations": {
         "en": {
@@ -1603,16 +1573,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Exclude these websites"
-          }
-        }
-      }
-    },
-    "不读取网页内容、输入和文件。屏幕采集可单独开启。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Does not read page contents, typing or files. Screen capture is optional."
           }
         }
       }
@@ -2053,16 +2013,6 @@
         }
       }
     },
-    "会记录什么": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "What gets recorded"
-          }
-        }
-      }
-    },
     "你": {
       "localizations": {
         "en": {
@@ -2233,16 +2183,6 @@
         }
       }
     },
-    "允许": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Allow"
-          }
-        }
-      }
-    },
     "允许 5 分钟": {
       "localizations": {
         "en": {
@@ -2259,36 +2199,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Allow…"
-          }
-        }
-      }
-    },
-    "允许「辅助功能」": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Allow Accessibility"
-          }
-        }
-      }
-    },
-    "先打开 Chrome，再回到这里允许": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Open Chrome first, then come back here to allow"
-          }
-        }
-      }
-    },
-    "先看清楚，再决定开哪些。可选功能以后都能在设置里改。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Review what each feature does. Optional features can be changed later in Settings."
           }
         }
       }
@@ -2955,6 +2865,26 @@
         }
       }
     },
+    "可选": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Optional"
+          }
+        }
+      }
+    },
+    "可选项以后都能在设置里打开。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You can turn the optional ones on later in Settings."
+          }
+        }
+      }
+    },
     "合并短于 %lld 分钟的切换": {
       "localizations": {
         "en": {
@@ -3275,28 +3205,6 @@
         }
       }
     },
-    "回看当时在做什么 · 保存 %lld 天": {
-      "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "Review what you were doing · Keep for %lld day"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "Review what you were doing · Keep for %lld days"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "图标": {
       "localizations": {
         "en": {
@@ -3373,16 +3281,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "View this segment in Activity"
-          }
-        }
-      }
-    },
-    "在菜单栏一键暂停，暂停期间什么都不记。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pause from the menu bar. Nothing is recorded while paused."
           }
         }
       }
@@ -3487,12 +3385,12 @@
         }
       }
     },
-    "它在后台记录你用了哪些应用和网站、各用了多久。你只需要偶尔看一眼菜单栏。": {
+    "它在菜单栏里安静地记下你的时间，把一天连成片。所有记录都留在这台 Mac 上。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "TimeSink records the apps and websites you use and how long you use them. Check the menu bar whenever you like."
+            "value": "It quietly keeps track of your time from the menu bar and joins your day into stretches. Everything stays on this Mac."
           }
         }
       }
@@ -3627,22 +3525,32 @@
         }
       }
     },
+    "屏幕回看，只存 %lld 天": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Screen replay, kept for %lld days"
+          }
+        }
+      }
+    },
+    "屏幕录制": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Screen Recording"
+          }
+        }
+      }
+    },
     "屏幕录制 · 屏幕采集": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Screen Recording · Screen capture"
-          }
-        }
-      }
-    },
-    "屏幕画面": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Screen captures"
           }
         }
       }
@@ -3765,16 +3673,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Allowed"
-          }
-        }
-      }
-    },
-    "已允许 · 只读取当前标签页的网址": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Allowed · reads only the current tab's URL"
           }
         }
       }
@@ -3913,16 +3811,6 @@
         }
       }
     },
-    "已拒绝 · 需在系统设置 › 自动化中打开": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Denied · turn it on in System Settings › Automation"
-          }
-        }
-      }
-    },
     "已拦下 %lld 次分心": {
       "localizations": {
         "en": {
@@ -3989,16 +3877,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Removed. Suggestions will stop."
-          }
-        }
-      }
-    },
-    "已经准备好记录": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ready to record"
           }
         }
       }
@@ -4115,6 +3993,16 @@
         }
       }
     },
+    "应用 · 近 30 天 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App · %@ in the last 30 days"
+          }
+        }
+      }
+    },
     "应用与网站": {
       "localizations": {
         "en": {
@@ -4131,16 +4019,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Apply to"
-          }
-        }
-      }
-    },
-    "应用和窗口标题": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Apps and window titles"
           }
         }
       }
@@ -4171,6 +4049,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Extend by 10 minutes"
+          }
+        }
+      }
+    },
+    "建议": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suggested"
           }
         }
       }
@@ -4245,16 +4133,6 @@
         }
       }
     },
-    "开始设置": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Set up"
-          }
-        }
-      }
-    },
     "归为": {
       "localizations": {
         "en": {
@@ -4311,16 +4189,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Couldn't load uncategorized items"
-          }
-        }
-      }
-    },
-    "必需": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Required"
           }
         }
       }
@@ -4525,22 +4393,22 @@
         }
       }
     },
+    "打开「辅助功能」后才能开始记录。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recording starts once Accessibility is on."
+          }
+        }
+      }
+    },
     "打开今天": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Open Today"
-          }
-        }
-      }
-    },
-    "打开开关后回到这里，会自动进入下一步。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enable the switch and return here to continue automatically."
           }
         }
       }
@@ -4775,16 +4643,6 @@
         }
       }
     },
-    "按应用、网站和窗口标题": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "By app, website and window title"
-          }
-        }
-      }
-    },
     "按所选时段已过的天数": {
       "localizations": {
         "en": {
@@ -4845,16 +4703,6 @@
         }
       }
     },
-    "按网站分类": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Categorize by website"
-          }
-        }
-      }
-    },
     "按网站分类需 Chrome 自动化权限。": {
       "localizations": {
         "en": {
@@ -4871,16 +4719,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Record Chrome websites"
-          }
-        }
-      }
-    },
-    "按网站记录 Chrome（可选）": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Record Chrome websites (optional)"
           }
         }
       }
@@ -5191,16 +5029,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Calendar Overlay"
-          }
-        }
-      }
-    },
-    "日历日程": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Calendar events"
           }
         }
       }
@@ -5969,16 +5797,6 @@
         }
       }
     },
-    "标出会议时间": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Mark meeting times"
-          }
-        }
-      }
-    },
     "标出会议时间；开会时不会因没碰键盘而算作空闲。": {
       "localizations": {
         "en": {
@@ -6059,16 +5877,6 @@
         }
       }
     },
-    "核心功能": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Core feature"
-          }
-        }
-      }
-    },
     "检查并调整分类…": {
       "localizations": {
         "en": {
@@ -6109,12 +5917,12 @@
         }
       }
     },
-    "模型建议": {
+    "欢迎使用 TimeSink": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Model suggestion"
+            "value": "Welcome to TimeSink"
           }
         }
       }
@@ -6701,16 +6509,6 @@
         }
       }
     },
-    "登录账号后可以选择备份，默认不上传。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sign in to enable backups. Nothing is uploaded by default."
-          }
-        }
-      }
-    },
     "登录项无法更新：%@": {
       "localizations": {
         "en": {
@@ -6981,26 +6779,6 @@
         }
       }
     },
-    "第 %lld 步，共 5 步": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Step %lld of 5"
-          }
-        }
-      }
-    },
-    "等待你在系统设置中打开": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Waiting for you to enable it in System Settings"
-          }
-        }
-      }
-    },
     "等待活动": {
       "localizations": {
         "en": {
@@ -7037,16 +6815,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Type"
-          }
-        }
-      }
-    },
-    "系统设置 › 隐私与安全性 › 辅助功能 › TimeSink": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "System Settings › Privacy & Security › Accessibility › TimeSink"
           }
         }
       }
@@ -7221,6 +6989,16 @@
         }
       }
     },
+    "网站 · 近 30 天 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Website · %@ in the last 30 days"
+          }
+        }
+      }
+    },
     "自动检查更新": {
       "localizations": {
         "en": {
@@ -7311,6 +7089,16 @@
         }
       }
     },
+    "补记离开时间时给出建议": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suggestions when you fill in time away"
+          }
+        }
+      }
+    },
     "补记：%@ · 不计入评分": {
       "localizations": {
         "en": {
@@ -7357,16 +7145,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Rule was not saved: %@"
-          }
-        }
-      }
-    },
-    "让 TimeSink 替你记住时间": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Let TimeSink keep track of your time"
           }
         }
       }
@@ -7419,16 +7197,6 @@
                 }
               }
             }
-          }
-        }
-      }
-    },
-    "记录只保存在这台 Mac": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Records stay on this Mac"
           }
         }
       }
@@ -7593,6 +7361,16 @@
         }
       }
     },
+    "读取前台应用和窗口标题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reads the front app and window titles"
+          }
+        }
+      }
+    },
     "读取当前标签页的网址，按网站分类。不读网页内容。": {
       "localizations": {
         "en": {
@@ -7663,22 +7441,22 @@
         }
       }
     },
-    "跳过，只按应用记录": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Skip; record app time only"
-          }
-        }
-      }
-    },
     "软件开发": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Software Development"
+          }
+        }
+      }
+    },
+    "辅助功能": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Accessibility"
           }
         }
       }
@@ -7801,16 +7579,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Last 7 days · By hour"
-          }
-        }
-      }
-    },
-    "返回": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Back"
           }
         }
       }
@@ -8319,16 +8087,6 @@
         }
       }
     },
-    "随时暂停": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pause anytime"
-          }
-        }
-      }
-    },
     "隐私": {
       "localizations": {
         "en": {
@@ -8375,6 +8133,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Screen Recording permission needed · No captures"
+          }
+        }
+      }
+    },
+    "需要": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Required"
           }
         }
       }

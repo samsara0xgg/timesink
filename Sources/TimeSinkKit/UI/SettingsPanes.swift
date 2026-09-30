@@ -215,26 +215,30 @@ struct UncategorizedSettingsPane: View {
             } else if rows.isEmpty {
                 emptyState
             } else {
-                VStack(spacing: 0) {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("近 30 天有 \(rows.filter { accepted[$0.id] == nil }.count) 项还没有分类，合计 \(Format.duration(rows.filter { accepted[$0.id] == nil }.reduce(0) { $0 + $1.seconds }))")
-                            .font(.system(size: 13, weight: .semibold))
-                        Text("按用时从多到少。建议只在你点接受后生效。")
-                            .font(.system(size: 12)).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("近 30 天有 \(rows.filter { accepted[$0.id] == nil }.count) 项还没有分类，合计 \(Format.duration(rows.filter { accepted[$0.id] == nil }.reduce(0) { $0 + $1.seconds }))")
+                                .font(.system(size: 13))
+                            Text("按用时从多到少。建议只在你点接受后生效。").font(.system(size: 12)).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 8)
                         if !suggestions.isEmpty {
                             Button("接受全部建议") {
                                 for row in rows where accepted[row.id] == nil {
                                     if let suggestion = suggestions[row.id] { assign(row: row, categoryID: suggestion.categoryID, publish: false) }
                                 }
                                 publishAssignments()
-                            }.controlSize(.small)
+                            }.glassButton().controlSize(.small)
                         }
-                        if let error { Text(error).foregroundStyle(.red) }
-                    }.frame(maxWidth: .infinity, alignment: .leading).padding(14)
-                    ScrollView {
-                        LazyVStack(spacing: 0) { ForEach(rows) { row in Divider(); rowView(row).padding(.horizontal, 14).frame(minHeight: 48) } }
                     }
-                }.workspacePanel()
+                    if let error { Text(error).foregroundStyle(.red) }
+                    ScrollView {
+                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+                            ForEach(rows) { row in card(row) }
+                        }
+                    }
+                }
             }
         }
         .onAppear { recomputeIfVisibleAndStale() }
@@ -268,44 +272,41 @@ struct UncategorizedSettingsPane: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func rowView(_ row: Row) -> some View {
-        HStack(spacing: 12) {
-            ActivityIcon(bundleID: row.id, domain: row.isDomain ? row.id : nil)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(row.label).font(.system(size: 13)).lineLimit(1)
-                Text(row.isDomain ? "网站" : "应用").font(.system(size: 11)).foregroundStyle(.secondary)
-            }.frame(maxWidth: .infinity, alignment: .leading)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(Format.duration(row.seconds)).font(.system(size: 12)).monospacedDigit()
-                ProgressView(value: row.seconds, total: max(1, rows.map(\.seconds).max() ?? 1)).tint(.secondary)
-            }.frame(width: 110)
-            if let category = accepted[row.id] {
-                CategoryChip(category: model.resolver.categoriesByID[category]).frame(width: max(140, chipWidth), alignment: .leading)
-                Label("已归类", systemImage: "checkmark").font(.system(size: 12)).foregroundStyle(.green).frame(width: 90)
-            } else {
-                if let suggestion = suggestions[row.id] {
-                    VStack(alignment: .leading, spacing: 3) {
-                        CategoryChip(category: model.resolver.categoriesByID[suggestion.categoryID])
-                        Text("模型建议").font(.system(size: 11)).foregroundStyle(.secondary)
-                    }.frame(width: chipWidth, alignment: .leading)
-                    Button("接受") { assign(row: row, categoryID: suggestion.categoryID) }.controlSize(.small)
+    /// One app or site: what it is and how long, the suggestion, 其他… and 接受.
+    private func card(_ row: Row) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                ActivityIcon(bundleID: row.id, domain: row.isDomain ? row.id : nil, size: 32)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(row.label).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                    Text(row.isDomain ? "网站 · 近 30 天 \(Format.duration(row.seconds))" : "应用 · 近 30 天 \(Format.duration(row.seconds))")
+                        .font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit()
                 }
-                Picker("分类", selection: pickerBinding(for: row)) {
-                    Text("选择分类").tag(Optional<String>.none)
-                    ForEach(sortedCategories.filter { $0.id != "uncategorized" }, id: \.id) { Text($0.name).tag(Optional($0.id)) }
-                }.labelsHidden().frame(minWidth: 130).fixedSize()
             }
-        }.opacity(accepted[row.id] == nil ? 1 : 0.55)
-    }
-
-    private func pickerBinding(for row: Row) -> Binding<String?> {
-        Binding(
-            get: { nil },
-            set: { newValue in
-                guard let categoryID = newValue else { return }
-                assign(row: row, categoryID: categoryID)
+            HStack(spacing: 8) {
+                if let category = accepted[row.id] {
+                    CategoryChip(category: model.resolver.categoriesByID[category])
+                    Spacer(minLength: 4)
+                    Label("已归类", systemImage: "checkmark").font(.system(size: 12)).foregroundStyle(.green)
+                } else {
+                    if let suggestion = suggestions[row.id] {
+                        Label("建议", systemImage: "sparkles").font(.system(size: 12)).foregroundStyle(.secondary)
+                        CategoryChip(category: model.resolver.categoriesByID[suggestion.categoryID])
+                    }
+                    Spacer(minLength: 4)
+                    Menu(suggestions[row.id] == nil ? "选择分类" : "其他…") {
+                        ForEach(sortedCategories.filter { $0.id != "uncategorized" }, id: \.id) { category in
+                            Button(category.name) { assign(row: row, categoryID: category.id) }
+                        }
+                    }.fixedSize().controlSize(.small)
+                    if let suggestion = suggestions[row.id] {
+                        Button("接受") { assign(row: row, categoryID: suggestion.categoryID) }.glassProminentButton().controlSize(.small)
+                    }
+                }
             }
-        )
+        }
+        .padding(14).frame(maxWidth: .infinity, alignment: .leading).workspacePanel()
+        .opacity(accepted[row.id] == nil ? 1 : 0.55)
     }
 
     /// `publish: false` lets 接受全部建议 refresh the classifier once for the
