@@ -98,11 +98,7 @@ struct ActivityListView: View {
                         }
                     }
                     .listStyle(.inset)
-                    .task(id: activities.selectedActivity) {
-                        guard let selection = activities.selectedActivity else { return }
-                        await Task.yield()
-                        proxy.scrollTo(selection, anchor: .center)
-                    }
+                    .modifier(FollowSelection(activities: activities, proxy: proxy))
                 }
             }
         }
@@ -189,6 +185,21 @@ struct ActivityListView: View {
             return String(localized: "该分类下没有命中的活动（其他分类还有命中，可清除分类筛选查看）")
         }
         return String(localized: "没有命中的活动（隐身窗口与未授权时段无记录）")
+    }
+}
+
+/// Scrolls the list to the selected row. Its own view, so a selection
+/// redraws only this and the rows, not the header's controls.
+private struct FollowSelection: ViewModifier {
+    let activities: ActivitiesModel
+    let proxy: ScrollViewProxy
+
+    func body(content: Content) -> some View {
+        content.task(id: activities.selectedActivity) {
+            guard let selection = activities.selectedActivity else { return }
+            await Task.yield()
+            proxy.scrollTo(selection, anchor: .center)
+        }
     }
 }
 

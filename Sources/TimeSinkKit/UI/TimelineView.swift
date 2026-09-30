@@ -129,6 +129,8 @@ struct DayTimelineView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pinchBase: CGFloat?
+    /// The block under a mouse press, which the canvas dims.
+    @State private var pressedBlock: String?
     private let labelWidth: CGFloat = 44
     private var dayStart: Date { Calendar.current.startOfDay(for: day) }
     private var hours: [Date] { TimelineNavigation.hourAnchors(day: day) }
@@ -266,8 +268,13 @@ struct DayTimelineView: View {
                 let width = max(0, geometry.size.width - labelWidth - 4)
                 let activityWidth = events.isEmpty ? width : width * 0.58
                 ZStack(alignment: .topLeading) {
+                    TimelineBlocksCanvas(blocks: blocks, dayStart: dayStart, hourHeight: hourHeight,
+                                         x: labelWidth + 4, width: activityWidth,
+                                         selectedActivity: selectedActivity, selectedStart: selectedStart,
+                                         isFiltered: isFiltered, pressed: pressedBlock)
                     ForEach(blocks) { block in
-                        activityButton(block, width: activityWidth)
+                        hitTarget(block)
+                            .frame(width: activityWidth, height: height(block.duration))
                             .offset(x: labelWidth + 4, y: offset(block.start))
                     }
                     ForEach(focusBlocks) { block in
@@ -289,73 +296,116 @@ struct DayTimelineView: View {
         }
     }
 
-    private func activityButton(_ block: TimelineBlock, width: CGFloat) -> some View {
-        let selected = block.matchesFilter && (selectedActivity.map(block.contains) ?? false)
-        let current = selected && block.covers(selectedStart)
-        let blockHeight = height(block.duration)
-        let dimmed = isFiltered && !block.isHighlight
-        return Button { onSelect(block) } label: {
-            RoundedRectangle(cornerRadius: 3)
-                .fill(block.color.opacity(selected ? 0.95 : (dimmed ? 0.18 : 0.72)))
-                .overlay(alignment: .trailing) {
-                    if !block.mix.isEmpty, blockHeight >= 10, !dimmed {
-                        VStack(spacing: 1) {
-                            ForEach(block.mix) { share in
-                                Rectangle().fill(share.color)
-                                    .frame(height: max(1, (blockHeight - 4 - CGFloat(block.mix.count - 1)) * share.fraction))
-                            }
-                        }
-                        .frame(width: 3).padding(.vertical, 2).padding(.trailing, 2)
-                    }
-                }
-                .overlay(alignment: .topLeading) {
-                    if !block.ticks.isEmpty, blockHeight >= 10, !dimmed { ticks(block, height: blockHeight) }
-                }
-                .overlay {
-                    if current {
-                        RoundedRectangle(cornerRadius: 3).strokeBorder(Color.primary, lineWidth: 2)
-                    }
-                }
-                .overlay(alignment: .topLeading) {
-                    if blockHeight >= TimelineZoom.labelPoints, !dimmed {
-                        HStack(spacing: 4) {
-                            Text(block.label).lineLimit(1)
-                            if let segment = block.segment, segment.parts.count > 1 {
-                                Text("+\(segment.parts.count - 1)").foregroundStyle(.secondary)
-                            }
-                        }
-                        .font(.caption2).padding(.horizontal, 5).padding(.top, 3)
-                        .padding(.trailing, block.mix.isEmpty ? 0 : 6)
-                    }
-                }
-                // A seam between abutting blocks instead of notched corners.
-                .padding(.bottom, blockHeight > 4 ? 1 : 0)
-                .frame(width: width, height: blockHeight)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(block.tooltip + (block.matchesFilter ? "" : String(localized: "\n点击后清除筛选并定位此活动")))
-        .accessibilityLabel(block.tooltip)
-        .accessibilityAddTraits(current ? .isSelected : [])
-    }
-
-    /// Short marks on the left edge where the block's time went elsewhere;
-    /// marks closer than 3 pt read as one.
-    private func ticks(_ block: TimelineBlock, height blockHeight: CGFloat) -> some View {
-        var marks: [(y: CGFloat, color: Color)] = []
-        for tick in block.ticks {
-            let y = min(blockHeight - 3, max(1, tick.offset / 3600 * hourHeight))
-            if let last = marks.last, y - last.y < 3 { continue }
-            marks.append((y, tick.color))
-        }
-        return ZStack(alignment: .topLeading) {
-            ForEach(marks.indices, id: \.self) { index in
-                Capsule().fill(marks[index].color).frame(width: 6, height: 2).offset(x: 1, y: marks[index].y)
-            }
-        }
-        .allowsHitTesting(false)
+    /// Where a block takes clicks, tooltips and VoiceOver; the canvas draws it.
+    private func hitTarget(_ block: TimelineBlock) -> some View {
+        let current = block.matchesFilter && (selectedActivity.map(block.contains) ?? false) && block.covers(selectedStart)
+        return Button { onSelect(block) } label: { Color.clear.contentShape(Rectangle()) }
+            .buttonStyle(PressTracking(id: block.id, pressed: $pressedBlock))
+            .help(block.tooltip + (block.matchesFilter ? "" : String(localized: "\n点击后清除筛选并定位此活动")))
+            .accessibilityLabel(block.tooltip)
+            .accessibilityAddTraits(current ? .isSelected : [])
     }
 
     private func offset(_ date: Date) -> CGFloat { max(0, date.timeIntervalSince(dayStart) / 3600 * hourHeight) }
     private func height(_ duration: TimeInterval) -> CGFloat { max(2, duration / 3600 * hourHeight) }
+}
+
+/// Draws nothing itself; the canvas shows the press the way a plain button would.
+private struct PressTracking: ButtonStyle {
+    let id: String
+    @Binding var pressed: String?
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.onChange(of: configuration.isPressed) { _, isPressed in
+            if isPressed { pressed = id } else if pressed == id { pressed = nil }
+        }
+    }
+}
+
+/// Every activity block as one drawing. A view per block made the timeline
+/// the costliest part of changing day, zooming and selecting.
+private struct TimelineBlocksCanvas: View, Animatable {
+    let blocks: [TimelineBlock]
+    let dayStart: Date
+    var hourHeight: CGFloat
+    let x: CGFloat
+    let width: CGFloat
+    let selectedActivity: ActivitySelection?
+    let selectedStart: Date?
+    let isFiltered: Bool
+    let pressed: String?
+
+    nonisolated var animatableData: CGFloat {
+        get { hourHeight }
+        set { hourHeight = newValue }
+    }
+
+    var body: some View {
+        Canvas { context, _ in
+            // Category colours adapt to the appearance; resolve each once per pass.
+            var resolved: [Color: Color] = [:]
+            let resolve = { (color: Color) -> Color in
+                if let hit = resolved[color] { return hit }
+                let flat = Color(color.resolve(in: context.environment))
+                resolved[color] = flat
+                return flat
+            }
+            for block in blocks { draw(block, in: context, resolve: resolve) }
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func draw(_ block: TimelineBlock, in context: GraphicsContext, resolve: (Color) -> Color) {
+        var context = context
+        let selected = block.matchesFilter && (selectedActivity.map(block.contains) ?? false)
+        let current = selected && block.covers(selectedStart)
+        let dimmed = isFiltered && !block.isHighlight
+        let blockHeight = max(2, block.duration / 3600 * hourHeight)
+        // A seam between abutting blocks instead of notched corners.
+        let shape = CGRect(x: x, y: max(0, block.start.timeIntervalSince(dayStart) / 3600 * hourHeight),
+                           width: width, height: blockHeight - (blockHeight > 4 ? 1 : 0))
+        if block.id == pressed { context.opacity = 0.75 }
+        context.fill(RoundedRectangle(cornerRadius: 3).path(in: shape),
+                     with: .color(resolve(block.color).opacity(selected ? 0.95 : (dimmed ? 0.18 : 0.72))))
+        guard !dimmed else { return }
+
+        if !block.mix.isEmpty, blockHeight >= 10 {
+            let gaps = CGFloat(block.mix.count - 1)
+            let heights = block.mix.map { max(1, (blockHeight - 4 - gaps) * $0.fraction) }
+            var y = shape.minY + (shape.height - heights.reduce(gaps, +)) / 2
+            for (share, height) in zip(block.mix, heights) {
+                context.fill(Path(CGRect(x: shape.maxX - 5, y: y, width: 3, height: height)), with: .color(resolve(share.color)))
+                y += height + 1
+            }
+        }
+        if !block.ticks.isEmpty, blockHeight >= 10 {
+            // Marks closer than 3 pt read as one.
+            var last: CGFloat?
+            for tick in block.ticks {
+                let y = min(blockHeight - 3, max(1, tick.offset / 3600 * hourHeight))
+                if let last, y - last < 3 { continue }
+                last = y
+                context.fill(Capsule().path(in: CGRect(x: shape.minX + 1, y: shape.minY + y, width: 6, height: 2)),
+                             with: .color(resolve(tick.color)))
+            }
+        }
+        if current {
+            context.stroke(RoundedRectangle(cornerRadius: 3).inset(by: 1).path(in: shape), with: .color(.primary), lineWidth: 2)
+        }
+        if blockHeight >= TimelineZoom.labelPoints {
+            let label = context.resolve(Text(block.label).font(.caption2))
+            let more = block.segment.flatMap { $0.parts.count > 1 ? $0.parts.count - 1 : nil }
+                .map { context.resolve(Text(verbatim: "+\($0)").font(.caption2).foregroundStyle(.secondary)) }
+            let available = shape.width - 10 - (block.mix.isEmpty ? 0 : 6)
+            let unbounded = CGSize(width: CGFloat.infinity, height: .infinity)
+            let moreSize = more?.measure(in: unbounded) ?? .zero
+            let labelSize = label.measure(in: unbounded)
+            let labelWidth = max(0, min(labelSize.width, available - (more == nil ? 0 : moreSize.width + 4)))
+            let origin = CGPoint(x: shape.minX + 5, y: shape.minY + 3)
+            context.draw(label, in: CGRect(origin: origin, size: CGSize(width: labelWidth, height: labelSize.height)))
+            if let more {
+                context.draw(more, in: CGRect(origin: CGPoint(x: origin.x + labelWidth + 4, y: origin.y), size: moreSize))
+            }
+        }
+    }
 }
