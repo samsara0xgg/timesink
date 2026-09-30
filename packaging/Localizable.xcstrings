@@ -1654,7 +1654,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Blocked during focus %lld times"
+            "value": "Blocked during focus: %lld"
           }
         }
       }
@@ -2500,7 +2500,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Switched away %lld times"
+            "value": "Switched away: %lld"
           }
         }
       }
@@ -2510,7 +2510,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Switched away %lld times · %lld interruptions"
+            "value": "Switched away: %lld · interruptions: %lld"
           }
         }
       }
@@ -2730,7 +2730,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "plus %lld pass-throughs under 3 s"
+            "value": "pass-throughs under 3 s: %lld"
           }
         }
       }
@@ -4380,7 +4380,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld interruptions"
+            "value": "Interruptions: %lld"
           }
         }
       }
@@ -6538,7 +6538,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld peeks aren't drawn and don't count as interruptions"
+            "value": "Peeks (%lld) aren't drawn and don't count as interruptions"
           }
         }
       }
@@ -7554,7 +7554,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld more"
+            "value": "+%lld more"
           }
         }
       }

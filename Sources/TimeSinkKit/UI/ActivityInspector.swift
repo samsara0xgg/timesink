@@ -227,12 +227,12 @@ struct ActivityInspector: View {
         let parts = segment.parts.filter { $0.seconds >= 20 }.prefix(4)
         return VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("构成").fontWeight(.semibold)
+                Text("构成").fontWeight(.semibold).fixedSize()
                 Spacer()
                 Text(outs.isEmpty ? String(localized: "没有切出")
                      : interruptions > 0 ? String(localized: "切出 \(outs.count) 次 · 打断 \(interruptions) 次")
                      : String(localized: "切出 \(outs.count) 次"))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.85)
             }.font(.system(size: 12))
             VStack(spacing: 7) {
                 ForEach(parts.isEmpty ? Array(segment.parts.prefix(1)) : Array(parts)) { part in
@@ -265,12 +265,12 @@ struct ActivityInspector: View {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(outs.prefix(6), id: \.start) { out in
                         HStack(spacing: 7) {
-                            Text(model.time(out.start)).monospacedDigit().foregroundStyle(.tertiary).frame(width: 40, alignment: .leading)
+                            Text(model.time(out.start)).monospacedDigit().foregroundStyle(.tertiary).fixedSize()
                             ActivityIcon(bundleID: out.bundleID, domain: nil, size: 14)
                             (Text(out.label) + Text(" ") + Text(Format.duration(out.seconds)).foregroundStyle(.tertiary))
                                 .lineLimit(1).truncationMode(.middle)
                             Spacer(minLength: 4)
-                            Text(out.tag).font(.system(size: 10.5, weight: .semibold))
+                            Text(out.tag).font(.system(size: 10.5, weight: .semibold)).fixedSize()
                                 .foregroundStyle(out.isInterruption ? Color.red : Color.secondary)
                         }
                         .font(.system(size: 12)).frame(height: 22)
