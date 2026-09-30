@@ -9,6 +9,8 @@ struct ReturnTracker {
         let bundleID: String
         let appName: String
         let title: String?
+        /// The page, when the window was a browser tab.
+        var url: String? = nil
     }
 
     static let offerLifetime: TimeInterval = 120
@@ -31,7 +33,7 @@ struct ReturnTracker {
             return
         }
         if productivity >= InterruptionRule.productiveFloor {
-            origin = Origin(bundleID: current.appBundleID, appName: current.appName, title: current.title)
+            origin = Origin(bundleID: current.appBundleID, appName: current.appName, title: current.title, url: current.url)
             offer = nil; offeredAt = nil; outStart = nil; offeredThisTrip = false
             return
         }

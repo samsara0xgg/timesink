@@ -47,11 +47,17 @@ extension AppModel {
     }
 
     /// Activates the app and, with Accessibility (already granted for
-    /// recording), raises the window by its title. No scroll position.
+    /// recording), raises the window by its title; in Chrome, the tab by its
+    /// page. No scroll position.
     func goBack() {
         guard let offer = returnOffer,
               let app = NSRunningApplication.runningApplications(withBundleIdentifier: offer.bundleID).first else { return }
         app.activate()
+        if offer.bundleID == "com.google.Chrome", let url = offer.url, ChromeBlocker().activateTab(url: url) {
+            returnTracker.clearOffer()
+            setReturnOffer(nil)
+            return
+        }
         if let title = offer.title, !title.isEmpty, AXIsProcessTrusted() {
             let element = AXUIElementCreateApplication(app.processIdentifier)
             var windows: CFTypeRef?

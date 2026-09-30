@@ -59,6 +59,27 @@ public final class ChromeBlocker {
     /// `eventDidFail` for this write (R-T12f) -- otherwise `true`.
     /// ScriptingBridge doesn't surface a stronger success signal than "no
     /// failure event fired", so this is still best-effort, not a guarantee.
+    /// F3 回到刚才: brings the tab showing `urlString` to the front of its
+    /// window, and that window to the front. Best effort, like
+    /// `setActiveTabURL`; false when no tab shows the page any more.
+    @discardableResult
+    public func activateTab(url urlString: String) -> Bool {
+        guard let sb = SBApplication(bundleIdentifier: "com.google.Chrome"),
+              sb.isRunning else { return false }
+        sb.timeout = 60
+        sb.delegate = delegate
+        delegate.reset()
+        let windows = ((sb as ChromeBlockerApplication).windows?() ?? []).compactMap { $0 as? SBObject }
+        for window in windows {
+            guard let tabs = window.value(forKey: "tabs") as? SBElementArray,
+                  let index = (tabs.value(forKey: "URL") as? [String])?.firstIndex(of: urlString) else { continue }
+            window.setValue(index + 1, forKey: "activeTabIndex")
+            window.setValue(1, forKey: "index")
+            return !delegate.didFail
+        }
+        return false
+    }
+
     @discardableResult
     public func setActiveTabURL(_ urlString: String) -> Bool {
         guard let sb = SBApplication(bundleIdentifier: "com.google.Chrome"),
