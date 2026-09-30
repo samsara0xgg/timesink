@@ -8,7 +8,7 @@ extension AppModel {
     public var returnEnabled: Bool { settings.get("returnOfferEnabled") != "false" }
 
     func observeForReturn(_ span: Span?, now: Date) {
-        guard returnEnabled else { if returnOffer != nil { returnOffer = nil }; return }
+        guard returnEnabled else { if returnOffer != nil { setReturnOffer(nil) }; return }
         var productivity = 0, distracting = false
         if let span {
             // Categorize once per window, not once per second.
@@ -24,12 +24,19 @@ extension AppModel {
         }
         returnTracker.observe(current: span, productivity: productivity, distracting: distracting, now: now,
                               rule: interruptionRule, focusing: focus?.running != nil)
-        if returnTracker.offer != returnOffer { returnOffer = returnTracker.offer }
+        if returnTracker.offer != returnOffer { setReturnOffer(returnTracker.offer) }
     }
 
-    func registerReturnShortcut() {
-        returnShortcut.action = { [weak self] in self?.goBack() }
-        returnShortcut.register(keyCode: UInt32(kVK_LeftArrow), modifiers: UInt32(controlKey | optionKey))
+    /// ⌃⌥← is taken only while there is somewhere to go back to, so other
+    /// apps keep the combination the rest of the time.
+    func setReturnOffer(_ offer: ReturnTracker.Origin?) {
+        returnOffer = offer
+        if offer == nil {
+            returnShortcut.unregister()
+        } else {
+            returnShortcut.action = { [weak self] in self?.goBack() }
+            returnShortcut.register(keyCode: UInt32(kVK_LeftArrow), modifiers: UInt32(controlKey | optionKey))
+        }
     }
 
     /// Activates the app and, with Accessibility (already granted for
@@ -53,6 +60,6 @@ extension AppModel {
             }
         }
         returnTracker.clearOffer()
-        returnOffer = nil
+        setReturnOffer(nil)
     }
 }

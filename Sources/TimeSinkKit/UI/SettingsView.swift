@@ -322,7 +322,7 @@ struct RefinedNotificationsPane: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle("回到刚才", isOn: $returnOffer).onChange(of: returnOffer) { _, value in
                         model.settings.set("returnOfferEnabled", value ? "true" : "false")
-                        if !value { model.returnOffer = nil }
+                        if !value { model.setReturnOffer(nil) }
                     }
                     Text("打了字或停留满 \(Int(model.interruptionRule.dwell)) 秒时在菜单栏出现，⌃⌥← 回去").font(.system(size: 11)).foregroundStyle(.secondary)
                 }

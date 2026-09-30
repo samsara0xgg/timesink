@@ -319,7 +319,6 @@ struct MenuBarLabel: View {
         .background(StatusButtonBridge { button in
             model.popoverShortcut.action = { [weak button] in button?.performClick(nil) }
             model.registerPopoverShortcut()
-            model.registerReturnShortcut()
         })
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             model.accessibilityGranted = Permissions.accessibilityGranted(prompt: false)
