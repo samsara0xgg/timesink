@@ -36,6 +36,13 @@ extension AppModel {
         } else {
             returnShortcut.action = { [weak self] in self?.goBack() }
             returnShortcut.register(keyCode: UInt32(kVK_LeftArrow), modifiers: UInt32(controlKey | optionKey))
+            // Ticks stop while you are away; the capsule still leaves on time.
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(ReturnTracker.offerLifetime))
+                guard let self, self.returnOffer == offer else { return }
+                self.returnTracker.clearOffer()
+                self.setReturnOffer(nil)
+            }
         }
     }
 
