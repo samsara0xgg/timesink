@@ -185,7 +185,7 @@ struct MainWindowView: View {
 
 /// A page kept alive while another one is shown. It is transparent and
 /// takes no input or focus, and it keeps the size it last had on screen, so
-/// the inspector opening beside another page does not lay it out again.
+/// resizing the window lays it out once on return rather than while hidden.
 private struct KeptPage<Content: View>: View {
     let active: Bool
     let content: Content

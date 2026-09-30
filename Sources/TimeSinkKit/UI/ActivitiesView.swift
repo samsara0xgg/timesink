@@ -55,36 +55,43 @@ struct ActivitiesView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            timeFilterBanner
-            calendarBand
+        // The inspector is part of the page rather than a window inspector
+        // column: a column that opens and closes with the page would resize
+        // every page on each switch to or from Activities.
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 12) {
+                timeFilterBanner
+                calendarBand
 
-            HStack(alignment: .top, spacing: 0) {
-                ActivityListView(model: model, activities: activities, groups: activities.groups,
-                                  matchCount: activities.matchCount, matchSeconds: activities.matchSeconds,
-                                  meetingSeconds: activities.meetingSeconds)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                // The range the list was built for, so a hidden page does not
-                // redraw when another page moves the range.
-                let range = activities.shownRange ?? model.range
-                if ActivitiesModel.showsTimeline(range) {
-                    Divider()
-                    DayTimelineView(day: range.interval.start, blocks: activities.timelineBlocks,
-                                    events: activities.calendarBlocks, allDay: activities.allDayTitles,
-                                    focusBlocks: activities.focusBlocks,
-                                    selectedActivity: activities.selectedActivity,
-                                    selectedStart: activities.selectedStart,
-                                    isFiltered: model.activityTimeInterval != nil || model.activityFilter != nil || ActivitiesModel.normalizedQuery(model.activitySearch) != nil,
-                                    hourHeight: $activities.timelineHourHeight,
-                                    onSelect: selectTimelineBlock)
-                        .padding(10).frame(width: 230)
+                HStack(alignment: .top, spacing: 0) {
+                    ActivityListView(model: model, activities: activities, groups: activities.groups,
+                                      matchCount: activities.matchCount, matchSeconds: activities.matchSeconds,
+                                      meetingSeconds: activities.meetingSeconds)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // The range the list was built for, so a hidden page does not
+                    // redraw when another page moves the range.
+                    let range = activities.shownRange ?? model.range
+                    if ActivitiesModel.showsTimeline(range) {
+                        Divider()
+                        DayTimelineView(day: range.interval.start, blocks: activities.timelineBlocks,
+                                        events: activities.calendarBlocks, allDay: activities.allDayTitles,
+                                        focusBlocks: activities.focusBlocks,
+                                        selectedActivity: activities.selectedActivity,
+                                        selectedStart: activities.selectedStart,
+                                        isFiltered: model.activityTimeInterval != nil || model.activityFilter != nil || ActivitiesModel.normalizedQuery(model.activitySearch) != nil,
+                                        hourHeight: $activities.timelineHourHeight,
+                                        onSelect: selectTimelineBlock)
+                            .padding(10).frame(width: 230)
+                    }
                 }
             }
-        }
-        .background(WorkspaceBackground())
-        .pageInspector(isPresented: $showsInspector) {
-            ActivityInspector(model: model, activities: activities)
-                .inspectorColumnWidth(min: 260, ideal: 272, max: 320)
+            .background(WorkspaceBackground())
+            if showsInspector {
+                Divider()
+                ActivityInspector(model: model, activities: activities)
+                    .frame(width: 272)
+                    .background(Color(nsColor: .windowBackgroundColor))
+            }
         }
         .pageSearchable(text: searchBinding, prompt: "搜索应用、网址、标题")
         .pageToolbar {

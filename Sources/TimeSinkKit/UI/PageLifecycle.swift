@@ -66,12 +66,6 @@ extension View {
     func pageToolbar<Items: ToolbarContent>(@ToolbarContentBuilder _ items: () -> Items) -> some View {
         modifier(PageToolbar(items: items()))
     }
-
-    /// An inspector that closes with its page and opens again on return.
-    func pageInspector<Inspector: View>(isPresented: Binding<Bool>,
-                                        @ViewBuilder content: () -> Inspector) -> some View {
-        modifier(PageInspector(isPresented: isPresented, inspector: content()))
-    }
 }
 
 private struct PageChange<V: Equatable>: ViewModifier {
@@ -132,19 +126,5 @@ private struct PageToolbar<Items: ToolbarContent>: ViewModifier {
 
     func body(content: Content) -> some View {
         content.toolbar { if isActive { items } }
-    }
-}
-
-private struct PageInspector<Inspector: View>: ViewModifier {
-    @Binding var isPresented: Bool
-    let inspector: Inspector
-    @PageShown private var isActive
-
-    func body(content: Content) -> some View {
-        // The inspector column belongs to the window, not the page.
-        content.inspector(isPresented: Binding(get: { isPresented && isActive },
-                                               set: { if isActive { isPresented = $0 } })) {
-            inspector
-        }
     }
 }
