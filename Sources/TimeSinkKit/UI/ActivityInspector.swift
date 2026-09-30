@@ -58,19 +58,17 @@ struct ActivityInspector: View {
                     .frame(minHeight: 250)
             }
         }
-        .background(RefinedStyle.panel)
+        .scrollContentBackground(.hidden)
         .overlay(alignment: .bottom) {
             if let toast {
-                HStack(spacing: 8) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(toast).font(.system(size: 12)).lineLimit(2)
-                        ProgressView(value: Double(toastSeconds), total: 6).tint(.white)
-                    }
-                    Button("撤销", action: undo).controlSize(.small)
-                }.padding(12).foregroundStyle(.white)
-                    .background(.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 10))
-                    .padding(10).onHover { toastHovered = $0 }
-                    .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+                HStack(spacing: 10) {
+                    Text(toast).font(.system(size: 12)).lineLimit(2)
+                    Button("撤销", action: undo).controlSize(.small).glassButton()
+                }
+                .padding(.horizontal, 14).padding(.vertical, 10)
+                .glassSurface(cornerRadius: 14)
+                .padding(10).onHover { toastHovered = $0 }
+                .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
             }
         }
         .task(id: SelectionKey(activity: activities.selectedActivity, start: activities.selectedStart)) { load() }
@@ -89,63 +87,58 @@ struct ActivityInspector: View {
         .sheet(item: $selectedCapture) { CaptureReviewSheet(capture: $0) }
     }
 
+    /// Read-only until 修改分类… (⌘E): the form grows out of the button.
     private func inspector(_ item: CategorizedSpan) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            if let segment = activities.selectedBlock?.segment, segment.parts.count > 1 {
-                stretch(segment, current: ActivitiesModel.selection(for: item).row)
-            }
+        let block = activities.selectedBlock
+        let start = block?.start ?? item.span.start, end = block?.end ?? item.span.end
+        let seconds = block?.segment?.recorded ?? item.span.duration
+        return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                AppIcon(bundleID: item.span.appBundleID, size: 32)
+                ActivityIcon(bundleID: item.span.appBundleID, domain: item.span.domain, size: 32)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(item.span.domain ?? item.span.appName).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                    Text(block?.label ?? item.span.domain ?? item.span.appName).font(.system(size: 13, weight: .semibold)).lineLimit(1)
                     // A record inside one minute reads as a moment, not "10:36–10:36".
-                    let start = model.time(item.span.start), end = model.time(item.span.end)
-                    Text(start == end ? "\(start) · \(Format.duration(item.span.duration))" : "\(start)–\(end) · \(Format.duration(item.span.duration))")
+                    let from = model.time(start), to = model.time(end)
+                    Text(from == to ? "\(from) · \(Format.duration(seconds))" : "\(from)–\(to) · \(Format.duration(seconds))")
                         .font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit()
                 }
             }
-            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
-                GridRow { Text(String(localized: "标题")).foregroundStyle(.secondary); Text(item.span.title ?? String(localized: "无标题")).textSelection(.enabled) }
-                if let url = item.span.url { GridRow { Text("网址").foregroundStyle(.secondary); Text(url).font(.system(size: 11)).textSelection(.enabled) } }
-                GridRow { Text("分类").foregroundStyle(.secondary); CategoryChip(category: model.resolver.categoriesByID[item.categoryID]) }
-            }.font(.system(size: 12))
-            VStack(alignment: .leading, spacing: 4) {
-                Text("为什么是这个分类").fontWeight(.semibold)
-                Text(reason).foregroundStyle(.secondary)
-            }.font(.system(size: 12)).padding(10).frame(maxWidth: .infinity, alignment: .leading)
-                .background(item.categoryID == "uncategorized" ? RefinedStyle.warning.opacity(0.12) : Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 9))
-            Text("改为").font(.system(size: 12, weight: .semibold))
-            Picker("分类", selection: $categoryID) {
-                ForEach(model.resolver.categoriesByID.values.sorted { $0.sortOrder < $1.sortOrder }, id: \.id) { category in
-                    Text(category.name).tag(category.id)
-                }
-            }.labelsHidden()
-            Text("应用到").font(.system(size: 12, weight: .semibold))
-            Picker("应用范围", selection: $scope) {
-                Text("只改这条记录 · \(Format.duration(item.span.duration))").tag(ReclassificationEdit.Scope.segment)
-                Text("所有 \(item.span.domain ?? item.span.appName)").tag(ReclassificationEdit.Scope.activity)
-                Text("匹配标题 · 以后自动归类").tag(ReclassificationEdit.Scope.title)
-            }.pickerStyle(.radioGroup).labelsHidden().font(.system(size: 12))
-            if scope == .title {
-                TextField("标题包含，至少两个字", text: $pattern).textFieldStyle(.roundedBorder)
+            if let segment = block?.segment {
+                composition(segment, block: block!, current: ActivitiesModel.selection(for: item).row).padding(.top, 14)
             }
-            Text(categoryID == item.categoryID && affected.count == 0
-                 ? String(localized: "已经是这个分类，选择别的分类再保存")
-                 : String(localized: "\(scope == .segment ? "" : String(localized: "近 30 天 · "))会影响 \(affected.count) 条记录 · \(Format.duration(affected.seconds))"))
-                .font(.system(size: 11)).foregroundStyle(.secondary)
-            HStack {
-                Button("取消") { categoryID = item.categoryID; scope = .segment; pattern = "" }
-                Spacer()
-                Button("保存并重新归类", action: save).buttonStyle(.borderedProminent)
-                    .disabled(scope == .title && TitleRuleInput.normalizedPattern(pattern) == nil || affected.count == 0)
-            }.controlSize(.small)
-            if let error { Text(error).font(.system(size: 12)).foregroundStyle(.red) }
-            Divider()
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("分类").foregroundStyle(.secondary)
+                    Spacer()
+                    CategoryChip(category: model.resolver.categoriesByID[item.categoryID])
+                }
+                Text(reason).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            .font(.system(size: 12)).padding(10).frame(maxWidth: .infinity, alignment: .leading)
+            .background(item.categoryID == "uncategorized" ? RefinedStyle.warning.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .glassPlatter(cornerRadius: 12)
+            .padding(.top, 10)
+
+            Group {
+                if activities.isEditingCategory {
+                    form(item)
+                        .transition(reduceMotion ? .opacity : .scale(scale: 0.6, anchor: .top).combined(with: .opacity))
+                } else {
+                    Button { setEditing(true) } label: {
+                        Label("修改分类…", systemImage: "tag").frame(maxWidth: .infinity)
+                    }
+                    .glassButton()
+                    .transition(.opacity)
+                }
+            }
+            .padding(.top, 12)
+            if let error { Text(error).font(.system(size: 12)).foregroundStyle(.red).padding(.top, 8) }
+
             HStack {
                 Text("屏幕回看").font(.system(size: 12, weight: .semibold))
                 Spacer()
-                Text("只在本机").font(.system(size: 11)).foregroundStyle(.secondary)
-            }
+                Text("只在本机").font(.system(size: 11)).foregroundStyle(.tertiary)
+            }.padding(.top, 16).padding(.bottom, 8)
             if captures.isEmpty {
                 Text("这段时间没有保存的画面。可在「记录与隐私」中查看采集状态。")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
@@ -164,46 +157,170 @@ struct ActivityInspector: View {
         }
     }
 
-    /// A folded timeline block holds several activities: show what it is
-    /// made of, and let each part be opened on its own.
-    private func stretch(_ segment: TimelineSegment, current: ActivitySelection) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("这段时间").font(.system(size: 12, weight: .semibold))
-                Spacer(minLength: 6)
-                Text("\(model.time(segment.start))–\(model.time(segment.end)) · \(Format.duration(segment.recorded))")
-                    .font(.system(size: 11)).foregroundStyle(.secondary).monospacedDigit()
+    private func setEditing(_ editing: Bool) {
+        withAnimation(RefinedStyle.motion(reduced: reduceMotion)) { activities.isEditingCategory = editing }
+    }
+
+    private func form(_ item: CategorizedSpan) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("归为").font(.system(size: 12, weight: .semibold))
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 78), spacing: 6)], alignment: .leading, spacing: 6) {
+                ForEach(model.resolver.categoriesByID.values.sorted { $0.sortOrder < $1.sortOrder }, id: \.id) { category in
+                    let chosen = category.id == categoryID
+                    Button { categoryID = category.id } label: {
+                        HStack(spacing: 5) {
+                            Circle().fill(RefinedStyle.category(category.id, hex: category.colorHex)).frame(width: 6, height: 6)
+                            Text(category.name).lineLimit(1)
+                        }
+                        .font(.system(size: 12)).padding(.horizontal, 8).frame(height: 26).frame(maxWidth: .infinity, alignment: .leading)
+                        .foregroundStyle(chosen ? Color.white : .primary)
+                        .background(chosen ? Color.accentColor : Color.primary.opacity(0.06), in: Capsule())
+                        .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(chosen ? .isSelected : [])
+                }
             }
-            CompositionBar(segment: segment) { id in
-                RefinedStyle.category(id, hex: model.resolver.categoriesByID[id]?.colorHex ?? "#C7C7CC")
-            }.frame(height: 6)
-            VStack(spacing: 1) {
-                ForEach(segment.parts.prefix(5)) { part in
+            Text("应用到").font(.system(size: 12, weight: .semibold))
+            Picker("应用范围", selection: $scope) {
+                Text("这一段").tag(ReclassificationEdit.Scope.segment)
+                Text(item.span.domain == nil ? "整个应用" : "整个网站").tag(ReclassificationEdit.Scope.activity)
+                Text("按标题").tag(ReclassificationEdit.Scope.title)
+            }.pickerStyle(.segmented).labelsHidden()
+            if scope == .title {
+                TextField("标题包含，至少两个字", text: $pattern).textFieldStyle(.roundedBorder)
+            }
+            Text(previewLine(item)).font(.system(size: 11)).foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                Button { cancelEdit(item) } label: { Text("取消").frame(maxWidth: .infinity) }
+                    .glassButton().keyboardShortcut(.cancelAction)
+                Button(action: save) { Text("重新归类").frame(maxWidth: .infinity) }
+                    .glassProminentButton().keyboardShortcut(.defaultAction)
+                    .disabled(scope == .title && TitleRuleInput.normalizedPattern(pattern) == nil || affected.count == 0)
+            }
+        }
+        .padding(12)
+        .glassPlatter(cornerRadius: 14, strong: true)
+    }
+
+    private func previewLine(_ item: CategorizedSpan) -> String {
+        if categoryID == item.categoryID && affected.count == 0 { return String(localized: "已经是这个分类，选择别的分类再保存") }
+        switch scope {
+        case .segment: return String(localized: "这一段：\(Format.duration(affected.seconds))")
+        case .activity: return String(localized: "\(item.span.domain == nil ? String(localized: "整个应用") : String(localized: "整个网站"))：近 30 天 \(affected.count) 段 · \(Format.duration(affected.seconds))，以后自动归类")
+        case .title: return String(localized: "按标题：近 30 天 \(affected.count) 段 · \(Format.duration(affected.seconds))，以后自动归类")
+        }
+    }
+
+    private func cancelEdit(_ item: CategorizedSpan) {
+        categoryID = item.categoryID; scope = .segment; pattern = ""
+        setEditing(false)
+    }
+
+    /// What the block is made of, then every switch out of it with its
+    /// class -- the same rule that draws the ticks.
+    private func composition(_ segment: TimelineSegment, block: TimelineBlock, current: ActivitySelection) -> some View {
+        let outs = outs(of: block)
+        let interruptions = outs.filter { $0.tag.hasPrefix(String(localized: "打断")) }.count
+        let episodes = activities.dayInterruptions?.episodes.filter { $0.start >= block.start && $0.start < block.end } ?? []
+        let peeks = episodes.filter { $0.kind == .peek }.count, passes = episodes.filter { $0.kind == .pass }.count
+        let parts = segment.parts.filter { $0.seconds >= 20 }.prefix(4)
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("构成").fontWeight(.semibold)
+                Spacer()
+                Text(outs.isEmpty ? String(localized: "没有切出")
+                     : interruptions > 0 ? String(localized: "切出 \(outs.count) 次 · 打断 \(interruptions) 次")
+                     : String(localized: "切出 \(outs.count) 次"))
+                    .foregroundStyle(.secondary)
+            }.font(.system(size: 12))
+            VStack(spacing: 7) {
+                ForEach(parts.isEmpty ? Array(segment.parts.prefix(1)) : Array(parts)) { part in
                     Button { activities.select(part.selection, start: part.longest.span.start) } label: {
                         HStack(spacing: 8) {
                             ActivityIcon(bundleID: part.appBundleID, domain: part.longest.span.domain, size: 16)
-                            Text(part.label).lineLimit(1).truncationMode(.middle)
-                            Spacer(minLength: 6)
-                            Text(Format.duration(part.seconds)).monospacedDigit().foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(part.label).lineLimit(1).truncationMode(.middle)
+                                GeometryReader { proxy in
+                                    Capsule().fill(Color.primary.opacity(0.08))
+                                        .overlay(alignment: .leading) {
+                                            Capsule().fill(RefinedStyle.category(part.categoryID, hex: model.resolver.categoriesByID[part.categoryID]?.colorHex ?? "#C7C7CC"))
+                                                .frame(width: proxy.size.width * min(1, part.seconds / max(1, segment.recorded)))
+                                        }
+                                }.frame(height: 4)
+                            }
+                            Text(Format.duration(part.seconds)).monospacedDigit().foregroundStyle(.secondary).frame(width: 58, alignment: .trailing)
                         }
-                        .font(.system(size: 12)).padding(.vertical, 4).padding(.horizontal, 6)
-                        .background(part.selection == current ? Color.accentColor.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 6))
-                        .contentShape(Rectangle())
+                        .font(.system(size: 12)).contentShape(Rectangle())
+                        .padding(.vertical, 1)
+                        .background(part.selection == current ? Color.accentColor.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: 5))
                     }
                     .buttonStyle(.plain)
                     .accessibilityAddTraits(part.selection == current ? .isSelected : [])
                 }
             }
-            let rest = segment.parts.dropFirst(5)
-            if !rest.isEmpty || segment.switches > 0 {
-                Text([rest.isEmpty ? nil : String(localized: "另有 \(rest.count) 项 · \(Format.duration(rest.reduce(0) { $0 + $1.seconds }))"),
-                      segment.switches > 0 ? String(localized: "\(segment.spanCount) 条记录 · 切换 \(segment.switches) 次") : nil]
-                    .compactMap { $0 }.joined(separator: " · "))
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .glassPlatter(cornerRadius: 12)
+            if !outs.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(outs.prefix(6), id: \.start) { out in
+                        HStack(spacing: 7) {
+                            Text(model.time(out.start)).monospacedDigit().foregroundStyle(.tertiary).frame(width: 40, alignment: .leading)
+                            ActivityIcon(bundleID: out.bundleID, domain: nil, size: 14)
+                            (Text(out.label) + Text(" ") + Text(Format.duration(out.seconds)).foregroundStyle(.tertiary))
+                                .lineLimit(1).truncationMode(.middle)
+                            Spacer(minLength: 4)
+                            Text(out.tag).font(.system(size: 10.5, weight: .semibold))
+                                .foregroundStyle(out.isInterruption ? Color.red : Color.secondary)
+                        }
+                        .font(.system(size: 12)).frame(height: 22)
+                    }
+                    if outs.count > 6 {
+                        Text("还有 \(outs.count - 6) 次").font(.system(size: 11)).foregroundStyle(.tertiary).padding(.leading, 47)
+                    }
+                }
+                .padding(.top, 2)
+            }
+            if peeks > 0 || passes > 0 {
+                Text([peeks > 0 ? String(localized: "看一眼的 \(peeks) 次不画刻度，也不算打断") : nil,
+                      passes > 0 ? String(localized: "另有 \(passes) 次不到 3 秒的路过") : nil]
+                    .compactMap { $0 }.joined(separator: String(localized: "；")) + String(localized: "。"))
+                    .font(.system(size: 11)).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(10)
-        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 9))
+    }
+
+    private struct Out {
+        let start: Date
+        let seconds: TimeInterval
+        let label: String
+        let bundleID: String
+        let tag: String
+        let isInterruption: Bool
+    }
+
+    private func outs(of block: TimelineBlock) -> [Out] {
+        var result: [Out] = []
+        for episode in activities.dayInterruptions?.episodes ?? [] where episode.start >= block.start && episode.start < block.end {
+            switch episode.kind {
+            case .interruption:
+                result.append(Out(start: episode.start, seconds: episode.dwell, label: episode.destinationLabel, bundleID: episode.destinationBundleID,
+                                  tag: episode.reason == .typed ? String(localized: "打断 · 打字") : String(localized: "打断 · 停留"), isInterruption: true))
+            case .peek:
+                result.append(Out(start: episode.start, seconds: episode.dwell, label: episode.destinationLabel, bundleID: episode.destinationBundleID,
+                                  tag: String(localized: "看一眼"), isInterruption: false))
+            case .pass: break
+            }
+        }
+        let rule = activities.interruptionRule
+        for excursion in block.segment?.excursions ?? []
+        where !InterruptionRule.distractingCategories.contains(excursion.categoryID)
+            && (excursion.seconds >= rule.dwell || excursion.keySeconds >= InterruptionRule.typedKeySeconds) {
+            result.append(Out(start: excursion.start, seconds: excursion.seconds, label: excursion.label,
+                              bundleID: block.segment?.parts.first { $0.selection == excursion.row }?.appBundleID ?? "",
+                              tag: String(localized: "相关"), isInterruption: false))
+        }
+        return result.sorted { $0.start < $1.start }
     }
 
     private func load(keepForm: Bool = false) {
@@ -219,7 +336,7 @@ struct ActivityInspector: View {
         else if keepForm, let previous = selected, let updated = all.first(where: { $0.span.id == previous.span.id }) { selected = updated }
         else { selected = nil }
         guard let selected else { return }
-        if !keepForm { categoryID = selected.categoryID; scope = .segment; pattern = "" }
+        if !keepForm { categoryID = selected.categoryID; scope = .segment; pattern = ""; activities.isEditingCategory = false }
         reason = model.resolver.explanation(for: selected.span)
         captures = (try? model.observationStore?.captures(overlapping: DateInterval(start: selected.span.start, end: selected.span.end))) ?? []
         captures = captures.filter { $0.appBundleID == selected.span.appBundleID }
@@ -237,7 +354,12 @@ struct ActivityInspector: View {
             undoManager?.setActionName(String(localized: "更改分类"))
             model.resolver.refresh(); model.dataChanged()
             error = nil
-            withAnimation(RefinedStyle.motion(reduced: reduceMotion)) { toast = String(localized: "已归为「\(model.resolver.categoriesByID[categoryID]?.name ?? categoryID)」") }
+            let name = model.resolver.categoriesByID[categoryID]?.name ?? categoryID
+            withAnimation(RefinedStyle.motion(reduced: reduceMotion)) {
+                toast = scope == .segment ? String(localized: "已把这一段归为「\(name)」")
+                    : String(localized: "已把 \(key) 归为「\(name)」，以后自动归类")
+                activities.isEditingCategory = false
+            }
         } catch { self.error = error.localizedDescription }
     }
     /// The toast's button: reverts its own edit, whatever is on top of the

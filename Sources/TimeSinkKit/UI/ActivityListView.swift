@@ -75,7 +75,10 @@ struct ActivityListView: View {
                 emptyState
             } else {
                 ScrollViewReader { proxy in
-                    List {
+                    // A lazy stack instead of List: List measured every row of a
+                    // month-long range up front.
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 2, pinnedViews: [.sectionHeaders]) {
                         if grouping == 0 {
                             ForEach(displayedGroups) { group in
                                 CategoryGroupRow(model: model, activities: activities, group: group, totalSeconds: totalSeconds, pendingTitleRule: $pendingTitleRule)
@@ -91,13 +94,16 @@ struct ActivityListView: View {
                                         Spacer()
                                         Text(Format.duration(group.seconds)).monospacedDigit()
                                     }
+                                    .font(.system(size: 12, weight: .semibold)).padding(.vertical, 5)
+                                    .background(RefinedStyle.panel)
                                 }
                             }
                         } else {
                             ForEach(activities.timeRows) { segment in timeRow(segment) }
                         }
+                        }
+                        .padding(.horizontal, 14).padding(.bottom, 12)
                     }
-                    .listStyle(.inset)
                     .modifier(FollowSelection(activities: activities, proxy: proxy))
                 }
             }

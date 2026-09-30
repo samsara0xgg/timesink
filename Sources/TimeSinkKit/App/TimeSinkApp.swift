@@ -1,4 +1,5 @@
 import SwiftUI
+import TipKit
 import GRDB
 import os
 import AppKit
@@ -33,6 +34,7 @@ public struct TimeSinkApp: App {
         }
 
         NSApplication.shared.setActivationPolicy(.accessory)
+        try? Tips.configure()
 
         let db: any DatabaseWriter
         do {

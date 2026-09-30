@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import TipKit
 import Observation
 
 /// 活动 tab: a grouped category/domain/title breakdown (`ActivityListView`,
@@ -46,6 +47,15 @@ struct ActivitiesView: View {
         let overlayEnabled: Bool
     }
 
+    private struct InterruptionKey: Equatable {
+        let version: Int
+        let range: DateRangeSelection.Window
+        let rule: InterruptionRule
+    }
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.undoManager) private var undoManager
+
     /// Everything the list is built from, besides search and calendar events.
     private struct RecomputeKey: Equatable {
         let version: Int
@@ -55,46 +65,54 @@ struct ActivitiesView: View {
     }
 
     var body: some View {
-        // The inspector is part of the page rather than a window inspector
-        // column: a column that opens and closes with the page would resize
-        // every page on each switch to or from Activities.
-        HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 12) {
+        // 2.0: two columns. On a day the timeline is the list; longer ranges
+        // keep the grouped list. The inspector floats on glass to the right.
+        let range = activities.shownRange ?? model.range
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
                 timeFilterBanner
                 calendarBand
-
-                HStack(alignment: .top, spacing: 0) {
+                if ActivitiesModel.showsTimeline(range) {
+                    hintLine
+                    timelineCard(range)
+                } else {
                     ActivityListView(model: model, activities: activities, groups: activities.groups,
                                       matchCount: activities.matchCount, matchSeconds: activities.matchSeconds,
                                       meetingSeconds: activities.meetingSeconds)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    // The range the list was built for, so a hidden page does not
-                    // redraw when another page moves the range.
-                    let range = activities.shownRange ?? model.range
-                    if ActivitiesModel.showsTimeline(range) {
-                        Divider()
-                        DayTimelineView(day: range.interval.start, blocks: activities.timelineBlocks,
-                                        events: activities.calendarBlocks, allDay: activities.allDayTitles,
-                                        focusBlocks: activities.focusBlocks,
-                                        selectedActivity: activities.selectedActivity,
-                                        selectedStart: activities.selectedStart,
-                                        isFiltered: model.activityTimeInterval != nil || model.activityFilter != nil || ActivitiesModel.normalizedQuery(model.activitySearch) != nil,
-                                        hourHeight: $activities.timelineHourHeight,
-                                        onSelect: selectTimelineBlock)
-                            .padding(10).frame(width: 230)
-                    }
+                        .workspacePanel()
                 }
             }
-            .background(WorkspaceBackground())
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             if showsInspector {
-                Divider()
                 ActivityInspector(model: model, activities: activities)
-                    .frame(width: 272)
-                    .background(Color(nsColor: .windowBackgroundColor))
+                    .frame(width: 300)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .glassSurface(cornerRadius: 18)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
             }
+        }
+        .padding(12)
+        .background(WorkspaceBackground())
+        .background {
+            // ⌘E opens the inspector's form for the selected block.
+            Button("修改分类…") {
+                guard activities.selectedActivity != nil else { return }
+                showsInspector = true
+                withAnimation(RefinedStyle.motion(reduced: reduceMotion)) { activities.isEditingCategory = true }
+            }
+            .keyboardShortcut("e").hidden()
+        }
+        .pageTask(id: InterruptionKey(version: model.dataVersion, range: model.range.window, rule: model.interruptionRule)) {
+            await activities.loadInterruptions(model: model)
         }
         .pageSearchable(text: searchBinding, prompt: "搜索应用、网址、标题")
         .pageToolbar {
+            ToolbarItem {
+                if ActivitiesModel.showsTimeline(activities.shownRange ?? model.range) {
+                    TimelineZoomControl(hourHeight: $activities.timelineHourHeight)
+                }
+            }
             ToolbarItem {
                 Button { showsInspector.toggle() } label: { Image(systemName: "sidebar.right") }
                     .help("显示活动检查器")
@@ -157,6 +175,77 @@ struct ActivitiesView: View {
         }
     }
 
+    /// Calendar on one line (the events are drawn in the timeline's gaps),
+    /// keyboard on the right.
+    private var hintLine: some View {
+        HStack(spacing: 8) {
+            if !activities.calendarBlocks.isEmpty {
+                Image(systemName: "calendar")
+                Text("日历：\(activities.calendarBlocks.prefix(3).map { "\(model.time($0.start)) \($0.title)" }.joined(separator: String(localized: "，")))")
+                    .lineLimit(1).truncationMode(.tail)
+                Text("· 画在时间线的空白里").foregroundStyle(.tertiary).lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            Label("↑↓ 逐块 · ←→ 在刻度间跳", systemImage: "keyboard").foregroundStyle(.tertiary).lineLimit(1)
+        }
+        .font(.system(size: 12)).foregroundStyle(.secondary)
+        .padding(.horizontal, 4).frame(height: 24)
+    }
+
+    private func timelineCard(_ range: DateRangeSelection) -> some View {
+        let dwell = Int(activities.interruptionRule.dwell)
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("时间线").font(.system(size: 13, weight: .semibold))
+                Text("短于 \(TimelineZoom.thresholdLabel(for: activities.timelineHourHeight)) 的切换并入所在的块")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .contentTransition(.numericText())
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 4).padding(.bottom, 6)
+            HStack(spacing: 14) {
+                legend("相关的切换") { RoundedRectangle(cornerRadius: 1).fill(.primary.opacity(0.75)).frame(width: 9, height: 2) }
+                legend("打断") { RoundedRectangle(cornerRadius: 1).fill(.red).frame(width: 9, height: 2) }
+                legend("专注中被拦下") { Circle().strokeBorder(.primary, lineWidth: 1.5).frame(width: 7, height: 7) }
+                legend("专注") {
+                    RoundedRectangle(cornerRadius: 3).strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, dash: [2, 2]))
+                        .frame(width: 14, height: 8)
+                }
+                Text("停留不到 \(dwell) 秒、没打字的不画").foregroundStyle(.tertiary).lineLimit(1)
+            }
+            .font(.system(size: 11)).foregroundStyle(.secondary)
+            .padding(.horizontal, 4).padding(.bottom, 10)
+            DayTimelineView(day: range.interval.start, blocks: activities.timelineBlocks,
+                            events: activities.calendarBlocks, allDay: activities.allDayTitles,
+                            focusBlocks: activities.focusBlocks,
+                            selectedActivity: activities.selectedActivity,
+                            selectedStart: activities.selectedStart,
+                            isFiltered: model.activityTimeInterval != nil || model.activityFilter != nil || ActivitiesModel.normalizedQuery(model.activitySearch) != nil,
+                            hourHeight: $activities.timelineHourHeight,
+                            onSelect: selectTimelineBlock,
+                            categories: model.resolver.categoriesByID.values.sorted { $0.sortOrder < $1.sortOrder },
+                            onEdit: { block in
+                                selectTimelineBlock(block)
+                                showsInspector = true
+                                withAnimation(RefinedStyle.motion(reduced: reduceMotion)) { activities.isEditingCategory = true }
+                            },
+                            onAssign: assign)
+                .ticksTip(activities.timelineBlocks.contains { !$0.ticks.isEmpty }
+                          ? TicksTip(threshold: TimelineZoom.thresholdLabel(for: activities.timelineHourHeight), dwell: dwell) : nil) {
+                    withAnimation(RefinedStyle.motion(reduced: reduceMotion)) {
+                        activities.timelineHourHeight = TimelineZoom.step(activities.timelineHourHeight, by: 2)
+                    }
+                }
+        }
+        .padding(.horizontal, 12).padding(.top, 14).padding(.bottom, 4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .workspacePanel()
+    }
+
+    private func legend(_ title: LocalizedStringKey, @ViewBuilder mark: () -> some View) -> some View {
+        HStack(spacing: 5) { mark(); Text(title) }.lineLimit(1)
+    }
+
     @ViewBuilder private var timeFilterBanner: some View {
         if let interval = model.activityTimeInterval {
             VStack(alignment: .leading, spacing: 6) {
@@ -178,6 +267,22 @@ struct ActivitiesView: View {
             .padding(10)
             .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
         }
+    }
+
+    /// The context menu's 以后都归为: the block's site or app, from now on.
+    /// ⌘Z undoes it through the window's undo stack.
+    private func assign(_ block: TimelineBlock, to categoryID: String) {
+        guard let span = block.segment?.dominant.longest.span,
+              let edit = try? model.categoryStore.reclassify(span: span, scope: .activity, categoryID: categoryID) else { return }
+        let key = span.domain ?? span.appBundleID
+        undoManager?.registerUndo(withTarget: model) { model in
+            MainActor.assumeIsolated {
+                try? model.categoryStore.undoReclassification(edit, activityKey: key)
+                model.resolver.refresh(); model.dataChanged()
+            }
+        }
+        undoManager?.setActionName(String(localized: "更改分类"))
+        model.resolver.refresh(); model.dataChanged()
     }
 
     private func selectTimelineBlock(_ block: TimelineBlock) {
@@ -461,6 +566,8 @@ final class ActivitiesModel {
     var matchSeconds: TimeInterval?
 
     var selectedActivity: ActivitySelection?
+    /// The inspector's 修改分类… form is open (⌘E, the context menu).
+    var isEditingCategory = false
     /// The start of the exact raw span being inspected. The timeline's current
     /// block is whichever folded block covers it.
     var selectedStart: Date?

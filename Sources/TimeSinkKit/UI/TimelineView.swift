@@ -1,4 +1,6 @@
+import AppKit
 import SwiftUI
+import TipKit
 
 /// A nil title selects all titles within an app/entity row.
 struct ActivitySelection: Hashable {
@@ -37,8 +39,6 @@ struct TimelineBlock: Identifiable {
     var ticks: [TimelineTick] = []
     /// Highlight layer blocks drawn over a filtered day.
     var isHighlight = false
-    /// Peeks that started in the block: counted for VoiceOver, never drawn.
-    var peekCount = 0
     /// Light category colours read better with dark text.
     var darkInk: Bool { ["entertainment", "uncategorized", "misc", "utilities"].contains(activity?.categoryID ?? "") }
     /// The leading row's longest title, drawn after the label when it fits.
@@ -124,6 +124,24 @@ enum TimelineZoom {
         TimelineSegmenter.resolution(points: minimumBlockPoints, pointsPerHour: stop(for: hourHeight))
     }
 
+    /// "20 秒", "2 分钟": what a switch must be shorter than to fold.
+    static func thresholdLabel(for hourHeight: CGFloat) -> String {
+        let seconds = resolution(for: hourHeight)
+        return seconds >= 60 ? String(localized: "\(Int((seconds / 60).rounded())) 分钟")
+            : String(localized: "\(Int(seconds.rounded())) 秒")
+    }
+
+    /// Slider position 0...1, even in log steps across the stops.
+    static func position(for hourHeight: CGFloat) -> Double {
+        let low = log(Double(stops[0])), high = log(Double(stops[stops.count - 1]))
+        return (log(Double(min(max(hourHeight, stops[0]), stops[stops.count - 1]))) - low) / (high - low)
+    }
+
+    static func hourHeight(at position: Double) -> CGFloat {
+        let low = log(Double(stops[0])), high = log(Double(stops[stops.count - 1]))
+        return CGFloat(exp(low + position * (high - low)))
+    }
+
     static func resolutionLabel(for hourHeight: CGFloat) -> String {
         let seconds = resolution(for: hourHeight)
         return seconds >= 60
@@ -146,6 +164,10 @@ struct DayTimelineView: View {
     var isFiltered = false
     @Binding var hourHeight: CGFloat
     let onSelect: (TimelineBlock) -> Void
+    /// Categories for the context menu's 以后都归为 submenu.
+    var categories: [Category] = []
+    var onEdit: ((TimelineBlock) -> Void)?
+    var onAssign: ((TimelineBlock, String) -> Void)?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorSchemeContrast) private var contrast
@@ -225,36 +247,6 @@ struct DayTimelineView: View {
         guard let target = direction > 0 ? marks.first(where: { $0.date > from }) : marks.last(where: { $0.date < from }) else { return }
         tickCursor = target.date
         onSelect(target.block)
-    }
-
-    @ViewBuilder private var selectionSummary: some View {
-        if let selectedActivity {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(selectedActivity.title ?? selectedBlock?.segment?.parts.first { $0.selection == selectedActivity }?.label
-                     ?? selectedBlock?.label ?? String(localized: "已选活动"))
-                    .font(.caption).lineLimit(2)
-                HStack {
-                    if let selectedBlock {
-                        Text("\(selectedBlock.start.formatted(.dateTime.hour().minute().locale(locale)))–\(selectedBlock.end.formatted(.dateTime.hour().minute().locale(locale)))")
-                            .monospacedDigit()
-                    }
-                    Spacer(minLength: 0)
-                    Text("\(selectedBlocks.isEmpty ? 0 : (selectedIndex ?? 0) + 1) / \(selectedBlocks.count) 段")
-                    Button { move(-1) } label: { Image(systemName: "chevron.up") }
-                        .disabled((selectedIndex ?? 0) == 0).accessibilityLabel("上一段活动")
-                    Button { move(1) } label: { Image(systemName: "chevron.down") }
-                        .disabled((selectedIndex ?? 0) >= selectedBlocks.count - 1).accessibilityLabel("下一段活动")
-                }
-                .font(.caption2).foregroundStyle(.secondary)
-                .buttonStyle(.bordered).controlSize(.mini)
-            }
-        }
-    }
-
-    private func zoom(by offset: Int) {
-        withAnimation(reduceMotion ? nil : RefinedStyle.stateAnimation) {
-            hourHeight = TimelineZoom.step(hourHeight, by: offset)
-        }
     }
 
     private func move(_ offset: Int) {
@@ -343,7 +335,43 @@ struct DayTimelineView: View {
             .buttonStyle(PressTracking(id: block.id, pressed: $pressedBlock))
             .help(block.tooltip + (block.matchesFilter ? "" : String(localized: "\n点击后清除筛选并定位此活动")))
             .accessibilityLabel(block.tooltip)
+            .accessibilityValue(accessibilityTicks(block))
             .accessibilityAddTraits(current ? .isSelected : [])
+            .contextMenu { menu(block) }
+    }
+
+    private func accessibilityTicks(_ block: TimelineBlock) -> String {
+        let interruptions = block.ticks.filter { $0.kind == .interruption }.count
+        let blocked = block.ticks.filter { $0.kind == .blocked }.count
+        return [interruptions > 0 ? String(localized: "打断 \(interruptions) 次") : nil,
+                blocked > 0 ? String(localized: "专注中被拦下 \(blocked) 次") : nil]
+            .compactMap { $0 }.joined(separator: String(localized: "，"))
+    }
+
+    @ViewBuilder private func menu(_ block: TimelineBlock) -> some View {
+        Button { onSelect(block) } label: { Label("查看这一段", systemImage: "eye") }
+        if let onEdit {
+            Button { onEdit(block) } label: { Label("修改分类…", systemImage: "tag") }
+                .keyboardShortcut("e")
+        }
+        if let onAssign, !categories.isEmpty {
+            let site = block.segment?.dominant.longest.span.domain != nil
+            Menu {
+                ForEach(categories, id: \.id) { category in
+                    Button(category.name) { onAssign(block, category.id) }
+                        .disabled(category.id == block.activity?.categoryID)
+                }
+            } label: {
+                Label(site ? "这个网站以后都归为" : "这个应用以后都归为", systemImage: site ? "globe" : "macwindow")
+            }
+        }
+        Divider()
+        Button {
+            let range = "\(block.start.formatted(.dateTime.hour().minute().locale(locale)))–\(block.end.formatted(.dateTime.hour().minute().locale(locale)))"
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(range, forType: .string)
+        } label: { Label("拷贝时间范围", systemImage: "doc.on.doc") }
+            .keyboardShortcut("c")
     }
 
     private func offset(_ date: Date) -> CGFloat { max(0, date.timeIntervalSince(dayStart) / 3600 * hourHeight) }
@@ -493,6 +521,55 @@ private struct TimelineBlocksCanvas: View, Animatable {
                 context.draw(duration, in: CGRect(x: shape.minX + 8 + available - durationSize.width, y: origin.y,
                                                   width: durationSize.width, height: durationSize.height))
             }
+        }
+    }
+}
+
+/// The toolbar's zoom: a slider between two buttons, ⌘− and ⌘+.
+struct TimelineZoomControl: View {
+    @Binding var hourHeight: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Button { step(-1) } label: { Image(systemName: "minus.magnifyingglass") }
+                .keyboardShortcut("-").help("缩小时间线")
+            Slider(value: Binding(get: { TimelineZoom.position(for: hourHeight) },
+                                  set: { hourHeight = TimelineZoom.hourHeight(at: $0) }))
+                .controlSize(.small).frame(width: 110)
+                .accessibilityLabel("缩放时间线")
+                .accessibilityValue(TimelineZoom.resolutionLabel(for: hourHeight))
+            Button { step(1) } label: { Image(systemName: "plus.magnifyingglass") }
+                .keyboardShortcut("+").help("放大时间线")
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 8)
+    }
+
+    private func step(_ offset: Int) {
+        withAnimation(RefinedStyle.motion(reduced: reduceMotion)) { hourHeight = TimelineZoom.step(hourHeight, by: offset) }
+    }
+}
+
+/// Shown once, the first time a day's timeline has ticks.
+struct TicksTip: Tip {
+    var threshold = ""
+    var dwell = 15
+    var title: Text { Text("左边缘的刻度是你切出去的时刻") }
+    var message: Text? {
+        Text("短于 \(threshold) 的切换并进所在的块，在左边缘留一道刻度。停留不到 \(dwell) 秒、也没打字的不画；红色是打断，空心是专注中被拦下。")
+    }
+    var actions: [Action] { [Action(id: "zoom", title: String(localized: "看看缩放怎么影响合并"))] }
+}
+
+extension View {
+    /// TipKit's popover needs macOS 15.4 with this SDK; earlier systems skip the tip.
+    @ViewBuilder
+    func ticksTip(_ tip: TicksTip?, zoom: @escaping @MainActor @Sendable () -> Void) -> some View {
+        if #available(macOS 15.4, *) {
+            popoverTip(tip, arrowEdge: .leading) { _ in zoom() }
+        } else {
+            self
         }
     }
 }

@@ -1,13 +1,17 @@
 #if DEBUG
 import AppKit
 import SwiftUI
+import TipKit
 import Observation
 import WebKit
 
 /// Deterministic design review, isolated from tracking, permissions, sync and personal data.
 public enum RefinedPreview {
     @MainActor private static var stage: RefinedPreviewStage?
-    @MainActor public static func run() { RefinedPreviewApp.main() }
+    @MainActor public static func run() {
+        try? Tips.configure()
+        RefinedPreviewApp.main()
+    }
     @MainActor fileprivate static func start(stage: RefinedPreviewStage) async {
         guard !stage.started else { return }
         stage.started = true
