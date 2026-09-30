@@ -47,7 +47,9 @@ public final class WindowSampler: Sendable {
     public func frontmostApp() -> FrontmostApp? {
         guard let app = NSWorkspace.shared.frontmostApplication,
               let bundleID = app.bundleIdentifier,
-              bundleID != Bundle.main.bundleIdentifier else { return nil }
+              bundleID != Bundle.main.bundleIdentifier,
+              // Preview and perf builds (com.alllllenshi.TimeSink.preview) are TimeSink too, not the user's work.
+              !bundleID.hasPrefix("com.alllllenshi.TimeSink.") else { return nil }
         return FrontmostApp(bundleID: bundleID,
                             name: app.localizedName ?? bundleID,
                             pid: app.processIdentifier)
