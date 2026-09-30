@@ -504,11 +504,32 @@ final class ActivitiesModel {
         ActivityIdentity(item).selection
     }
 
+    /// The shown day's switch-outs, classified off the main actor; nil
+    /// until they arrive or outside single-day ranges.
+    var dayInterruptions: DayInterruptions?
+    @ObservationIgnored private var interruptionsDay: DateInterval?
+    @ObservationIgnored private(set) var interruptionRule = InterruptionRule()
+
     /// Refolds the day for the current zoom without re-reading or re-filtering.
     func rebuildTimeline() {
         timelineBlocks = Self.timelineBlocks(timelineItems, categories: timelineCategories,
                                              resolution: TimelineZoom.resolution(for: timelineHourHeight),
-                                             matching: timelineMatching)
+                                             matching: timelineMatching,
+                                             interruptions: dayInterruptions, rule: interruptionRule)
+    }
+
+    /// Classifies the shown day (cached per day in `AppModel`) and redraws
+    /// the ticks once it lands.
+    func loadInterruptions(model: AppModel) async {
+        let range = model.range
+        guard Self.showsTimeline(range) else { dayInterruptions = nil; return }
+        let value = await model.interruptions(for: range.interval)
+        guard !Task.isCancelled, model.range.interval == range.interval else { return }
+        interruptionsDay = range.interval
+        guard value != dayInterruptions || interruptionRule != model.interruptionRule else { return }
+        interruptionRule = model.interruptionRule
+        dayInterruptions = value
+        rebuildTimeline()
     }
 
     /// `events` (C3): the current range's calendar events, fetched
@@ -527,6 +548,7 @@ final class ActivitiesModel {
         }
         let all = model.rangedSpans()
         shownRange = model.range
+        if interruptionsDay != model.range.interval { dayInterruptions = nil }
         rangeSeconds = all.reduce(0) { $0 + $1.span.duration }
         rangeCount = all.count
         let categories = model.resolver.categoriesByID
@@ -796,7 +818,9 @@ final class ActivitiesModel {
     /// a highlight layer, so a short hit is never swallowed by its neighbours.
     nonisolated static func timelineBlocks(_ items: [CategorizedSpan], categories: [String: Category],
                                           resolution: TimeInterval = 0,
-                                          matching: ((CategorizedSpan) -> Bool)? = nil) -> [TimelineBlock] {
+                                          matching: ((CategorizedSpan) -> Bool)? = nil,
+                                          interruptions: DayInterruptions? = nil,
+                                          rule: InterruptionRule = InterruptionRule()) -> [TimelineBlock] {
         func blocks(_ segments: [TimelineSegment], highlight: Bool, live: Bool) -> [TimelineBlock] {
             segments.map { segment in
                 let categoryID = segment.dominant.categoryID
@@ -809,10 +833,7 @@ final class ActivitiesModel {
                               fraction: $0.value / max(1, segment.recorded))
                     }
                 }
-                let ticks = highlight ? [] : segment.excursions.map { excursion in
-                    (offset: excursion.start.timeIntervalSince(segment.start),
-                     color: RefinedStyle.category(excursion.categoryID, hex: categories[excursion.categoryID]?.colorHex ?? "#98989D"))
-                }
+                let ticks = highlight ? [] : Self.ticks(segment, interruptions: interruptions, rule: rule)
                 return TimelineBlock(start: segment.start, end: segment.end,
                                      color: RefinedStyle.category(categoryID, hex: categories[categoryID]?.colorHex ?? "#98989D"),
                                      label: segment.dominant.label, tooltip: tooltip(segment),
@@ -826,6 +847,32 @@ final class ActivitiesModel {
         let hits = TimelineSegmenter.segments(items.filter(matching), resolution: resolution,
                                               bridge: max(TimelineSegmenter.defaultBridge, resolution))
         return base + blocks(hits, highlight: true, live: true)
+    }
+
+    /// The 2.0 rule for a block's left edge: interruptions that start in
+    /// it, focus-blocked attempts, and related switches (a non-distracting
+    /// row) that lasted past the threshold or had typing. Peeks and passes
+    /// are never drawn.
+    nonisolated static func ticks(_ segment: TimelineSegment, interruptions: DayInterruptions?,
+                                  rule: InterruptionRule) -> [TimelineTick] {
+        let range = segment.start..<segment.end
+        var ticks: [TimelineTick] = []
+        for excursion in segment.excursions
+        where !InterruptionRule.distractingCategories.contains(excursion.categoryID)
+            && (excursion.seconds >= rule.dwell || excursion.keySeconds >= InterruptionRule.typedKeySeconds) {
+            ticks.append(TimelineTick(offset: excursion.start.timeIntervalSince(segment.start), seconds: excursion.seconds,
+                                      kind: .related, label: excursion.label))
+        }
+        guard let interruptions else { return ticks }
+        for episode in interruptions.interruptions where range.contains(episode.start) {
+            ticks.append(TimelineTick(offset: episode.start.timeIntervalSince(segment.start), seconds: episode.dwell,
+                                      kind: .interruption, label: episode.destinationLabel, reason: episode.reason))
+        }
+        for date in interruptions.blocked where range.contains(date) {
+            ticks.append(TimelineTick(offset: date.timeIntervalSince(segment.start), seconds: 0, kind: .blocked,
+                                      label: String(localized: "专注中被拦下")))
+        }
+        return ticks.sorted { $0.offset < $1.offset }
     }
 
     /// Zero-padded 24-hour "HH:mm", built from raw calendar components

@@ -81,7 +81,10 @@ final class TimelineSegmenterTests: XCTestCase {
         }
         let segments = TimelineSegmenter.segments(items, resolution: 450)
         XCTAssertEqual(segments.count, 1)
-        XCTAssertTrue(segments[0].excursions.isEmpty, "switching apps within one category is not leaving it")
+        // Every stretch on the other row is an excursion, whatever its
+        // category: whether it is drawn is the display layer's call.
+        XCTAssertEqual(segments[0].excursions.count, 20)
+        XCTAssertTrue(segments[0].excursions.allSatisfy { $0.seconds == 60 })
     }
 
     /// Ten minutes spent mostly elsewhere stay visible between two long tasks,

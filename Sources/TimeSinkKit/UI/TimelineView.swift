@@ -31,11 +31,21 @@ struct TimelineBlock: Identifiable {
     var segment: TimelineSegment? = nil
     /// Per-category shares, only for blocks that mix several rows.
     var mix: [Share] = []
-    /// Moments the block's time left its category, as offsets from `start`,
-    /// coloured by where it went -- brief switches folded into the block.
-    var ticks: [(offset: TimeInterval, color: Color)] = []
+    /// Switch-outs drawn on the block's left edge (2.0 rule): interruptions
+    /// in red, focus-blocked attempts hollow, long related switches grey.
+    /// Peeks and passes are counted in the inspector, never drawn.
+    var ticks: [TimelineTick] = []
     /// Highlight layer blocks drawn over a filtered day.
     var isHighlight = false
+    /// Peeks that started in the block: counted for VoiceOver, never drawn.
+    var peekCount = 0
+    /// Light category colours read better with dark text.
+    var darkInk: Bool { ["entertainment", "uncategorized", "misc", "utilities"].contains(activity?.categoryID ?? "") }
+    /// The leading row's longest title, drawn after the label when it fits.
+    var subtitle: String? {
+        guard let title = segment?.dominant.longest.span.title, !title.isEmpty, title != label else { return nil }
+        return title
+    }
     // A live block that grows keeps its view identity; zoom steps that keep a
     // block's start keep it too, so SwiftUI can animate the resize.
     var id: String { "\(isHighlight ? "hit" : "block")|\(start.timeIntervalSince1970)" }
@@ -55,6 +65,16 @@ struct TimelineBlock: Identifiable {
         guard let date else { return false }
         return start <= date && date < end
     }
+}
+
+struct TimelineTick: Sendable, Equatable {
+    enum Kind: Sendable { case related, interruption, blocked }
+    let offset: TimeInterval
+    let seconds: TimeInterval
+    let kind: Kind
+    /// Where the time went, for the tooltip and VoiceOver.
+    let label: String
+    var reason: SwitchEpisode.Reason? = nil
 }
 
 struct TimelineEventBlock: Identifiable {
@@ -128,7 +148,10 @@ struct DayTimelineView: View {
     let onSelect: (TimelineBlock) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
     @State private var pinchBase: CGFloat?
+    /// The tick ←→ last landed on.
+    @State private var tickCursor: Date?
     /// The block under a mouse press, which the canvas dims.
     @State private var pressedBlock: String?
     /// Fits the widest hour label ("10:00 PM" in English), measured below.
@@ -148,28 +171,6 @@ struct DayTimelineView: View {
     var body: some View {
         ScrollViewReader { proxy in
             VStack(alignment: .leading, spacing: 8) {
-                Text(isFiltered ? "全天 · 筛选命中已高亮" : "全天时间轴")
-                    .font(.caption).foregroundStyle(.secondary)
-                HStack(spacing: 6) {
-                    Button(Calendar.current.isDateInToday(day) ? "现在" : "首条记录") {
-                        scroll(to: Calendar.current.isDateInToday(day) ? Date() : (blocks.first?.start ?? dayStart),
-                               proxy: proxy, animated: true)
-                    }
-                    Spacer(minLength: 0)
-                    Button { zoom(by: -1) } label: { Image(systemName: "minus") }
-                        .disabled(TimelineZoom.stop(for: hourHeight) <= TimelineZoom.stops[0])
-                        .accessibilityLabel("缩小时间轴").help("缩小时间轴 · ⌘-")
-                        .keyboardShortcut("-", modifiers: .command)
-                    Button { zoom(by: 1) } label: { Image(systemName: "plus") }
-                        .disabled(TimelineZoom.stop(for: hourHeight) >= TimelineZoom.stops.last!)
-                        .accessibilityLabel("放大时间轴").help("放大时间轴 · ⌘=")
-                        .keyboardShortcut("=", modifiers: .command)
-                }
-                .buttonStyle(.bordered).controlSize(.small)
-                Text(TimelineZoom.resolutionLabel(for: hourHeight))
-                    .font(.caption2).foregroundStyle(.tertiary)
-                    .help("缩小时，短于这个时长的切换并入所在的任务，块左边的小刻度标出切到别的分类的时刻；零星的短暂记录不单独画出。放大可以看到更细的记录。")
-                selectionSummary
                 if !allDay.isEmpty {
                     Text(String(localized: "全天日程：\(allDay.joined(separator: String(localized: "、")))"))
                         .font(.caption).foregroundStyle(.secondary).lineLimit(2)
@@ -180,6 +181,12 @@ struct DayTimelineView: View {
                 ScrollView {
                     hourGrid
                 }
+                .focusable()
+                .focusEffectDisabled()
+                .onKeyPress(.upArrow) { move(-1); return .handled }
+                .onKeyPress(.downArrow) { move(1); return .handled }
+                .onKeyPress(.leftArrow) { jumpTick(-1); return .handled }
+                .onKeyPress(.rightArrow) { jumpTick(1); return .handled }
                 .simultaneousGesture(MagnifyGesture()
                     .onChanged { value in
                         let base = pinchBase ?? hourHeight
@@ -206,6 +213,18 @@ struct DayTimelineView: View {
                 if let selectedStart { scroll(to: selectedStart, proxy: proxy, animated: false) }
             }
         }
+    }
+
+    /// ←→: the block holding the previous or next drawn tick.
+    private func jumpTick(_ direction: Int) {
+        let marks = blocks.filter(\.matchesFilter).flatMap { block in
+            block.ticks.map { (date: block.start.addingTimeInterval($0.offset), block: block) }
+        }.sorted { $0.date < $1.date }
+        let from = tickCursor.flatMap { cursor in selectedBlock?.covers(cursor) == true ? cursor : nil }
+            ?? (direction > 0 ? selectedBlock?.start.addingTimeInterval(-0.001) : selectedBlock?.end) ?? .distantPast
+        guard let target = direction > 0 ? marks.first(where: { $0.date > from }) : marks.last(where: { $0.date < from }) else { return }
+        tickCursor = target.date
+        onSelect(target.block)
     }
 
     @ViewBuilder private var selectionSummary: some View {
@@ -276,31 +295,41 @@ struct DayTimelineView: View {
         }
         .overlay(alignment: .topLeading) {
             GeometryReader { geometry in
-                let width = max(0, geometry.size.width - labelWidth - 4)
-                let activityWidth = events.isEmpty ? width : width * 0.58
+                let width = max(0, geometry.size.width - labelWidth - 8)
+                let activityWidth = min(440, events.isEmpty ? width : width * 0.62)
+                let eventX = labelWidth + 8 + activityWidth + 12
+                let eventWidth = max(0, labelWidth + 8 + width - eventX)
                 ZStack(alignment: .topLeading) {
                     TimelineBlocksCanvas(blocks: blocks, dayStart: dayStart, hourHeight: hourHeight,
-                                         x: labelWidth + 4, width: activityWidth,
+                                         x: labelWidth + 8, width: activityWidth,
                                          selectedActivity: selectedActivity, selectedStart: selectedStart,
-                                         isFiltered: isFiltered, pressed: pressedBlock)
+                                         isFiltered: isFiltered, pressed: pressedBlock,
+                                         contrast: contrast == .increased)
                     ForEach(blocks) { block in
                         hitTarget(block)
                             .frame(width: activityWidth, height: height(block.duration))
-                            .offset(x: labelWidth + 4, y: offset(block.start))
+                            .offset(x: labelWidth + 8, y: offset(block.start))
                     }
                     ForEach(focusBlocks) { block in
-                        RoundedRectangle(cornerRadius: 3)
-                            .strokeBorder(block.color, style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
-                            .frame(width: activityWidth, height: height(block.duration))
-                            .offset(x: labelWidth + 4, y: offset(block.start))
+                        RoundedRectangle(cornerRadius: 10)
+                            .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                            .frame(width: activityWidth + 10, height: height(block.duration) + 6)
+                            .offset(x: labelWidth + 3, y: offset(block.start) - 3)
                             .help(block.tooltip).allowsHitTesting(false)
                     }
                     ForEach(events) { event in
-                        RoundedRectangle(cornerRadius: 3).fill(event.color.opacity(0.15))
-                            .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(event.color, lineWidth: 1))
-                            .frame(width: width * 0.36, height: height(event.duration))
-                            .offset(x: labelWidth + 4 + width * 0.64, y: offset(event.start))
+                        RoundedRectangle(cornerRadius: 7).fill(event.color.opacity(0.12))
+                            .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(event.color.opacity(0.7), lineWidth: 1))
+                            .overlay(alignment: .topLeading) {
+                                Text(event.title).font(.system(size: 10.5)).foregroundStyle(.secondary)
+                                    .lineLimit(1).padding(.horizontal, 6).padding(.top, 2)
+                            }
+                            .frame(width: eventWidth, height: height(event.duration))
+                            .offset(x: eventX, y: offset(event.start))
                             .help(event.tooltip).accessibilityLabel(event.tooltip)
+                    }
+                    if Calendar.current.isDateInToday(day) {
+                        NowLine(dayStart: dayStart, hourHeight: hourHeight, x: labelWidth + 8, width: activityWidth)
                     }
                 }
             }
@@ -319,6 +348,32 @@ struct DayTimelineView: View {
 
     private func offset(_ date: Date) -> CGFloat { max(0, date.timeIntervalSince(dayStart) / 3600 * hourHeight) }
     private func height(_ duration: TimeInterval) -> CGFloat { max(2, duration / 3600 * hourHeight) }
+}
+
+/// Where "now" is, redrawn on its own every 30 s so nothing else does.
+private struct NowLine: View {
+    let dayStart: Date
+    let hourHeight: CGFloat
+    let x: CGFloat
+    let width: CGFloat
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            let y = context.date.timeIntervalSince(dayStart) / 3600 * hourHeight
+            ZStack(alignment: .topLeading) {
+                Capsule().fill(.red).frame(width: width + 8, height: 2)
+                    .offset(x: x - 4, y: y - 1)
+                Text(context.date, format: .dateTime.hour(.twoDigits(amPM: .omitted)).minute())
+                    .font(.system(size: 10.5, weight: .bold)).monospacedDigit().foregroundStyle(.white)
+                    .padding(.horizontal, 5).padding(.vertical, 1)
+                    .background(.red, in: RoundedRectangle(cornerRadius: 5))
+                    .fixedSize()
+                    .offset(x: max(0, x - 46), y: y - 8)
+            }
+            .accessibilityElement().accessibilityLabel(Text("现在"))
+        }
+        .allowsHitTesting(false)
+    }
 }
 
 /// Draws nothing itself; the canvas shows the press the way a plain button would.
@@ -345,6 +400,8 @@ private struct TimelineBlocksCanvas: View, Animatable {
     let selectedStart: Date?
     let isFiltered: Bool
     let pressed: String?
+    /// Increase Contrast: wider ticks, heavier rings.
+    var contrast = false
 
     nonisolated var animatableData: CGFloat {
         get { hourHeight }
@@ -374,10 +431,11 @@ private struct TimelineBlocksCanvas: View, Animatable {
         let blockHeight = max(2, block.duration / 3600 * hourHeight)
         // A seam between abutting blocks instead of notched corners.
         let shape = CGRect(x: x, y: max(0, block.start.timeIntervalSince(dayStart) / 3600 * hourHeight),
-                           width: width, height: blockHeight - (blockHeight > 4 ? 1 : 0))
+                           width: width, height: blockHeight - (blockHeight > 4 ? 2 : 0))
+        let corner = min(7, shape.height / 2)
         if block.id == pressed { context.opacity = 0.75 }
-        context.fill(RoundedRectangle(cornerRadius: 3).path(in: shape),
-                     with: .color(resolve(block.color).opacity(selected ? 0.95 : (dimmed ? 0.18 : 0.72))))
+        context.fill(RoundedRectangle(cornerRadius: corner, style: .continuous).path(in: shape),
+                     with: .color(resolve(block.color).opacity(selected ? 1 : (dimmed ? 0.18 : 0.9))))
         guard !dimmed else { return }
 
         if !block.mix.isEmpty, blockHeight >= 10 {
@@ -389,33 +447,51 @@ private struct TimelineBlocksCanvas: View, Animatable {
                 y += height + 1
             }
         }
-        if !block.ticks.isEmpty, blockHeight >= 10 {
-            // Marks closer than 3 pt read as one.
-            var last: CGFloat?
-            for tick in block.ticks {
-                let y = min(blockHeight - 3, max(1, tick.offset / 3600 * hourHeight))
-                if let last, y - last < 3 { continue }
-                last = y
-                context.fill(Capsule().path(in: CGRect(x: shape.minX + 1, y: shape.minY + y, width: 6, height: 2)),
-                             with: .color(resolve(tick.color)))
+        if !block.ticks.isEmpty {
+            // On the left edge, 4 pt proud of the block, as tall as the time
+            // spent away; interruptions drawn last so they sit on top.
+            for tick in block.ticks.sorted(by: { ($0.kind == .interruption ? 1 : 0) < ($1.kind == .interruption ? 1 : 0) }) {
+                let y = shape.minY + min(max(0, blockHeight - 2), max(0, tick.offset / 3600 * hourHeight))
+                switch tick.kind {
+                case .blocked:
+                    context.stroke(Circle().path(in: CGRect(x: shape.minX - 3, y: y - 2.5, width: 7, height: 7)),
+                                   with: .color(.primary.opacity(0.8)), lineWidth: contrast ? 2 : 1.5)
+                case .interruption, .related:
+                    let height = max(2, min(blockHeight - (y - shape.minY), tick.seconds / 3600 * hourHeight))
+                    let color: Color = tick.kind == .interruption ? .red : .primary.opacity(0.75)
+                    context.fill(RoundedRectangle(cornerRadius: 1.5).path(in: CGRect(x: shape.minX - 4, y: y, width: contrast ? 11 : 9, height: height)),
+                                 with: .color(color))
+                }
             }
         }
         if current {
-            context.stroke(RoundedRectangle(cornerRadius: 3).inset(by: 1).path(in: shape), with: .color(.primary), lineWidth: 2)
+            context.stroke(RoundedRectangle(cornerRadius: corner + 3, style: .continuous).path(in: shape.insetBy(dx: -3, dy: -3)),
+                           with: .color(.accentColor), lineWidth: 2)
         }
         if blockHeight >= TimelineZoom.labelPoints {
-            let label = context.resolve(Text(block.label).font(.caption2))
-            let more = block.segment.flatMap { $0.parts.count > 1 ? $0.parts.count - 1 : nil }
-                .map { context.resolve(Text(verbatim: "+\($0)").font(.caption2).foregroundStyle(.secondary)) }
-            let available = shape.width - 10 - (block.mix.isEmpty ? 0 : 6)
+            // Light categories take dark ink, the rest white.
+            let ink: Color = block.darkInk ? .black.opacity(0.82) : .white
+            let label = context.resolve(Text(block.label).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(ink))
+            let duration = context.resolve(Text(Format.duration(block.segment?.recorded ?? block.duration))
+                .font(.system(size: 11.5)).monospacedDigit().foregroundStyle(ink.opacity(0.9)))
+            let title = block.subtitle.map { context.resolve(Text($0).font(.system(size: 11.5)).foregroundStyle(ink.opacity(0.85))) }
             let unbounded = CGSize(width: CGFloat.infinity, height: .infinity)
-            let moreSize = more?.measure(in: unbounded) ?? .zero
+            let durationSize = duration.measure(in: unbounded)
             let labelSize = label.measure(in: unbounded)
-            let labelWidth = max(0, min(labelSize.width, available - (more == nil ? 0 : moreSize.width + 4)))
-            let origin = CGPoint(x: shape.minX + 5, y: shape.minY + 3)
+            let available = shape.width - 16 - (block.mix.isEmpty ? 0 : 6)
+            let showsDuration = labelSize.width + durationSize.width + 8 <= available
+            let room = available - (showsDuration ? durationSize.width + 8 : 0)
+            let labelWidth = max(0, min(labelSize.width, room))
+            let origin = CGPoint(x: shape.minX + 8, y: shape.minY + 4)
             context.draw(label, in: CGRect(origin: origin, size: CGSize(width: labelWidth, height: labelSize.height)))
-            if let more {
-                context.draw(more, in: CGRect(origin: CGPoint(x: origin.x + labelWidth + 4, y: origin.y), size: moreSize))
+            if let title, room - labelWidth > 40 {
+                let size = title.measure(in: unbounded)
+                context.draw(title, in: CGRect(x: origin.x + labelWidth + 6, y: origin.y,
+                                               width: min(size.width, room - labelWidth - 6), height: size.height))
+            }
+            if showsDuration {
+                context.draw(duration, in: CGRect(x: shape.minX + 8 + available - durationSize.width, y: origin.y,
+                                                  width: durationSize.width, height: durationSize.height))
             }
         }
     }

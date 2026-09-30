@@ -38,10 +38,18 @@ struct TimelineSegment: Identifiable, Sendable {
     let firstStarts: [ActivitySelection: Date]
     let recorded: TimeInterval
     let matchedSeconds: TimeInterval
-    /// Where the time inside the segment left the dominant row's category
-    /// (the colour a timeline block takes): the start of each stretch spent
-    /// in another category, in time order.
-    let excursions: [(start: Date, categoryID: String)]
+    /// A stretch inside the segment spent on another row than the dominant
+    /// one -- a brief switch folded into the block.
+    struct Excursion: Sendable, Equatable {
+        let start: Date
+        var seconds: TimeInterval
+        var keySeconds: Int
+        let categoryID: String
+        let row: ActivitySelection
+        let label: String
+    }
+    /// Every stretch away from the dominant row, in time order.
+    let excursions: [Excursion]
 
     var id: Date { start }
     var duration: TimeInterval { end.timeIntervalSince(start) }
@@ -298,11 +306,11 @@ enum TimelineSegmenter {
                 var matched: TimeInterval = 0
                 var switches = 0
                 var previousRow: ActivitySelection?
-                var visits: [(start: Date, categoryID: String)] = []
+                var visits: [(entry: Entry, row: ActivitySelection)] = []
                 for run in block {
                     for index in run.entries {
                         let entry = entries[index]
-                        visits.append((entry.item.span.start, entry.item.categoryID))
+                        visits.append((entry, entry.identity.selection.row))
                         let seconds = entry.item.span.duration
                         let row = entry.identity.selection.row
                         spanCount += 1
@@ -331,11 +339,22 @@ enum TimelineSegmenter {
                 let start = block.first!.start
                 let end = offset + 1 < merged.count ? merged[offset + 1].runs.first!.start : block.map(\.end).max()!
                 let sortedParts = parts.values.sorted { $0.seconds == $1.seconds ? $0.label < $1.label : $0.seconds > $1.seconds }
-                let home = sortedParts[0].categoryID
-                var excursions: [(start: Date, categoryID: String)] = []
-                for (visit, previous) in zip(visits, [nil] + visits.map(Optional.some))
-                where visit.categoryID != home && visit.categoryID != previous?.categoryID {
-                    excursions.append(visit)
+                let home = sortedParts[0].selection
+                var excursions: [TimelineSegment.Excursion] = []
+                var previous: ActivitySelection?
+                for visit in visits {
+                    defer { previous = visit.row }
+                    guard visit.row != home else { continue }
+                    let span = visit.entry.item.span
+                    if previous == visit.row, var last = excursions.popLast() {
+                        last.seconds += span.duration
+                        last.keySeconds += span.keySeconds
+                        excursions.append(last)
+                    } else {
+                        excursions.append(.init(start: span.start, seconds: span.duration, keySeconds: span.keySeconds,
+                                                categoryID: visit.entry.item.categoryID, row: visit.row,
+                                                label: visit.entry.identity.rowLabel))
+                    }
                 }
                 segments.append(TimelineSegment(
                     start: start, end: max(end, start.addingTimeInterval(0.001)),
