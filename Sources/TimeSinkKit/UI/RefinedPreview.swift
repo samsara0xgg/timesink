@@ -105,6 +105,8 @@ public enum RefinedPreview {
             model.sidebarSelection = .stats
             model.range = DateRangeSelection(kind: .last30, anchor: Date())
             try await render(MainWindowView(model: model), size: mainSize, dark: dark, to: output.appendingPathComponent("trends-30-\(suffix).png"))
+            try await render(InterruptionRadarCard(model: model, period: .week).padding(20).background(WorkspaceBackground()),
+                             size: .init(width: 1100, height: 470), dark: dark, to: output.appendingPathComponent("radar-\(suffix).png"))
             model.range = .today()
             model.accessibilityGranted = false
             try await render(MenuBarDashboardView(model: model), size: .init(width: 340, height: 520), dark: dark, to: output.appendingPathComponent("menu-permission-\(suffix).png"))

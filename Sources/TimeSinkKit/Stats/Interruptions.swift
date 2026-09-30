@@ -191,8 +191,11 @@ public struct DayInterruptions: Sendable, Equatable {
 
     public var sources: [Source] {
         var byKey: [String: Source] = [:]
+        // One source per activity row: every chat or tab of one app/site together.
+        func row(_ destination: String) -> String { String(destination.split(separator: "\u{1F}", maxSplits: 1).first ?? "") }
         for episode in interruptions {
-            var source = byKey[episode.destination] ?? Source(destination: episode.destination, label: episode.destinationLabel,
+            let key = row(episode.destination)
+            var source = byKey[key] ?? Source(destination: key, label: episode.destinationLabel,
                                                               bundleID: episode.destinationBundleID,
                                                               domain: episode.destinationDomain,
                                                               categoryID: episode.destinationCategoryID,
@@ -201,9 +204,9 @@ public struct DayInterruptions: Sendable, Equatable {
             source.starts.append(episode.start)
             source.seconds += episode.dwell
             if episode.reason == .typed { source.typed += 1 }
-            byKey[episode.destination] = source
+            byKey[key] = source
         }
-        for episode in peeks where byKey[episode.destination] != nil { byKey[episode.destination]!.peeks += 1 }
+        for episode in peeks where byKey[row(episode.destination)] != nil { byKey[row(episode.destination)]!.peeks += 1 }
         return byKey.values.sorted { $0.count == $1.count ? $0.seconds > $1.seconds : $0.count > $1.count }
     }
 

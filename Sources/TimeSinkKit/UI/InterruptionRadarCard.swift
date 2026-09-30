@@ -5,13 +5,18 @@ import SwiftUI
 /// under 所有切换.
 struct InterruptionRadarCard: View {
     let model: AppModel
-    @State private var period = Period.today
+    @State private var period: Period
     @State private var mode = Mode.interruptions
     @State private var data: DayInterruptions?
     @State private var longest: DateInterval?
     @State private var hoveredSource: String?
 
     enum Period: Hashable { case today, week }
+
+    init(model: AppModel, period: Period = .today) {
+        self.model = model
+        _period = State(initialValue: period)
+    }
     enum Mode: Hashable { case interruptions, all }
 
     private struct LoadKey: Equatable {
@@ -78,10 +83,10 @@ struct InterruptionRadarCard: View {
         let interruptions = data.interruptions
         let typed = interruptions.filter { $0.reason == .typed }.count
         return HStack(spacing: 0) {
-            cell(String(localized: "打断"), String(localized: "\(interruptions.count) 次"),
+            cell(String(localized: "打断"), "\(interruptions.count)",
                  String(localized: "回消息 \(typed) · 停留 \(interruptions.count - typed)"))
             Divider().frame(height: 44)
-            cell(String(localized: "看一眼就回来"), String(localized: "\(data.peeks.count) 次"),
+            cell(String(localized: "看一眼就回来"), "\(data.peeks.count)",
                  mode == .all ? String(localized: "另有 \(data.passes) 次路过") : String(localized: "不算打断"))
             Divider().frame(height: 44)
             if period == .today {
@@ -89,7 +94,7 @@ struct InterruptionRadarCard: View {
                      longest.map { "\(model.time($0.start))–\(model.time($0.end))" } ?? "")
                 Divider().frame(height: 44)
             }
-            cell(String(localized: "专注中拦下"), String(localized: "\(data.blocked.count) 次"), String(localized: "不算离开"))
+            cell(String(localized: "专注中拦下"), "\(data.blocked.count)", String(localized: "不算离开"))
         }
     }
 
@@ -109,7 +114,7 @@ struct InterruptionRadarCard: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text(source.label).fontWeight(.semibold).lineLimit(1)
-                    Text("\(source.count) 次").foregroundStyle(.secondary)
+                    Text("打断 \(source.count) 次").foregroundStyle(.secondary)
                     if source.peeks > 0 { Text("· 另有 \(source.peeks) 次看一眼").foregroundStyle(.tertiary) }
                 }.font(.system(size: 13))
                 Text(how(source)).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
@@ -127,7 +132,7 @@ struct InterruptionRadarCard: View {
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(peak(hours))
-            action(source).frame(width: 110, alignment: .trailing)
+            action(source).frame(width: 140, alignment: .trailing)
         }
         .padding(.vertical, 8)
         .opacity(hoveredSource == nil || hoveredSource == source.id ? 1 : 0.45)
@@ -253,7 +258,7 @@ private struct InterruptionRadar: View {
             for (index, source) in sources.enumerated() {
                 let radius = outer * (0.35 + 0.65 * CGFloat(index + 1) / CGFloat(max(1, sources.count)))
                 let dim = highlighted != nil && highlighted != source.id
-                for episode in data.interruptions where episode.destination == source.destination {
+                for episode in data.interruptions where episode.destination.hasPrefix(source.destination + "\u{1F}") || episode.destination == source.destination {
                     let p = point(episode.start, radius)
                     let dot = Path(ellipseIn: CGRect(x: p.x - 4, y: p.y - 4, width: 8, height: 8))
                     let red = Color.red.opacity(dim ? 0.2 : 1)
