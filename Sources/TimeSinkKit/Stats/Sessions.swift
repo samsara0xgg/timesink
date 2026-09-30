@@ -28,8 +28,8 @@ public struct WorkSession: Sendable, Equatable, Identifiable {
     /// Window titles by time held, longest first, at most 12: what a name
     /// is based on.
     public var titles: [Title]
-    /// Folder, file and repo names seen in the session.
-    public var documents: [String]
+    /// Folder, file, repo and conversation names, longest held first, at most 8.
+    public var documents: [Title]
 
     public var id: Date { start }
     public var duration: TimeInterval { end.timeIntervalSince(start) }
@@ -139,7 +139,8 @@ public enum SessionSegmenter {
                 if !pieces.isEmpty { sessions.append(session(pieces)) }
             }
         }
-        return sessions
+        // A stretch under a minute between two absences is too short to name.
+        return sessions.filter { $0.recorded >= glance }
     }
 
     /// Where a key changes and the new one lasts `threshold`. Spans without
@@ -178,7 +179,7 @@ public enum SessionSegmenter {
         var categories: [String: TimeInterval] = [:]
         var projects: [String: (label: String, seconds: TimeInterval)] = [:]
         var titles: [String: WorkSession.Title] = [:]
-        var documents: [String: TimeInterval] = [:]
+        var documents: [String: WorkSession.Title] = [:]
         var recorded: TimeInterval = 0
         for piece in pieces {
             let span = piece.span, seconds = span.duration
@@ -188,12 +189,13 @@ public enum SessionSegmenter {
             if let project = projectKey(span) {
                 projects[project.key, default: (project.label, 0)].seconds += seconds
             }
-            if let title = span.title, !title.isEmpty {
+            // A title that only repeats the app's name says nothing.
+            if let title = span.title, !title.isEmpty, title != span.appName {
                 titles[span.appName + "\u{1}" + title, default: .init(appName: span.appName, title: title, seconds: 0)].seconds += seconds
             }
             if let document = span.document {
                 let name = DocumentIdentity.path(of: document).map { ($0 as NSString).lastPathComponent } ?? document
-                documents[name, default: 0] += seconds
+                documents[span.appName + "\u{1}" + name, default: .init(appName: span.appName, title: name, seconds: 0)].seconds += seconds
             }
         }
         let project = projects.max { $0.value.seconds == $1.value.seconds ? $0.key > $1.key : $0.value.seconds < $1.value.seconds }
@@ -204,6 +206,6 @@ public enum SessionSegmenter {
             project: project?.key, projectLabel: project?.value.label,
             apps: apps.values.sorted { $0.seconds == $1.seconds ? $0.bundleID < $1.bundleID : $0.seconds > $1.seconds },
             titles: Array(titles.values.sorted { $0.seconds == $1.seconds ? $0.title < $1.title : $0.seconds > $1.seconds }.prefix(12)),
-            documents: documents.sorted { $0.value > $1.value }.prefix(8).map(\.key))
+            documents: Array(documents.values.sorted { $0.seconds == $1.seconds ? $0.title < $1.title : $0.seconds > $1.seconds }.prefix(8)))
     }
 }

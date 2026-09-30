@@ -140,6 +140,24 @@ public final class AppModel {
             interruptionCache.removeAll()
         }
     }
+    /// F1 会话: away this long, or a change lasting this long, starts a new
+    /// session (设置 › 记录).
+    public var sessionThreshold: TimeInterval = SessionSegmenter.defaultThreshold {
+        didSet { settings.set("sessionThreshold", String(Int(sessionThreshold))); sessionCache.removeAll() }
+    }
+    /// Names worked out off the main actor, by `WorkSession.nameKey`.
+    public var sessionLabels: [String: SessionLabel] = [:]
+    /// Your names and projects, by `WorkSession.signature`.
+    public var sessionOverrides: [String: SessionNameRow] = [:]
+    /// Bumped when you split a session.
+    public var sessionSplitsVersion = 0
+    @ObservationIgnored var sessionCache: [DateInterval: (version: Int, threshold: TimeInterval, splits: Int, value: [WorkSession])] = [:]
+    @ObservationIgnored var sessionTasks: [DateInterval: Task<[WorkSession], Never>] = [:]
+    @ObservationIgnored var namingQueue: [WorkSession] = []
+    @ObservationIgnored var namingTask: Task<Void, Never>?
+    @ObservationIgnored var sessionOverridesLoaded = false
+    @ObservationIgnored let sessionNamer = SessionNamer()
+
     /// Classified days, keyed by day, data version and rule. The pass runs
     /// off the main actor; see `interruptions(for:)`.
     @ObservationIgnored private var interruptionCache: [DateInterval: (version: Int, rule: InterruptionRule, value: DayInterruptions)] = [:]
@@ -348,6 +366,8 @@ public final class AppModel {
         self.interruptionRule = InterruptionRule(
             dwell: settings.get("interruptionDwell").flatMap(TimeInterval.init).flatMap { InterruptionRule.dwellChoices.contains($0) ? $0 : nil } ?? 15,
             countsTyping: settings.get("interruptionTyping") != "false")
+        self.sessionThreshold = settings.get("sessionThreshold").flatMap(TimeInterval.init)
+            .flatMap { SessionSegmenter.thresholdChoices.contains($0) ? $0 : nil } ?? SessionSegmenter.defaultThreshold
         self.calendarOverlayEnabled = settings.calendarOverlayEnabled
         self.screenCapturePaused = settings.screenCapturePaused
         self.range.firstWeekday = firstWeekday
