@@ -178,6 +178,11 @@ struct DayTimelineView: View {
     @State private var pressedBlock: String?
     /// Fits the widest hour label ("10:00 PM" in English), measured below.
     @State private var labelWidth: CGFloat = 44
+    /// m7: blocks that just split out of a tick as the zoom grew, by when.
+    @State private var emerging: [String: Date] = [:]
+    /// Where the ticks were before the last change of blocks.
+    @State private var tickStarts: [Date] = []
+    private var currentTickStarts: [Date] { blocks.flatMap { block in block.ticks.map { block.start.addingTimeInterval($0.offset) } } }
     private var dayStart: Date { Calendar.current.startOfDay(for: day) }
     private var hours: [Date] { TimelineNavigation.hourAnchors(day: day) }
     /// Blocks the arrows step through: the ones holding the selection, or
@@ -231,10 +236,29 @@ struct DayTimelineView: View {
             .onChange(of: selectedStart) { _, date in
                 if let date { scroll(to: date, proxy: proxy, animated: true) }
             }
+            .onAppear { tickStarts = currentTickStarts }
+            .onChange(of: blocks.map(\.id)) { old, _ in splitOut(from: old) }
             .onChange(of: TimelineZoom.stop(for: hourHeight)) { _, _ in
                 if let selectedStart { scroll(to: selectedStart, proxy: proxy, animated: false) }
             }
         }
+    }
+
+    /// Blocks new since `old` that start where a tick was drawn grow out of
+    /// that tick (m7). Reduce Motion skips it.
+    private func splitOut(from old: [String]) {
+        defer { tickStarts = currentTickStarts }
+        guard !reduceMotion else { return }
+        let before = Set(old)
+        let now = Date()
+        var born: [String: Date] = [:]
+        for block in blocks where !before.contains(block.id) && block.activity != nil && !block.isHighlight
+        && tickStarts.contains(where: { abs($0.timeIntervalSince(block.start)) < 2 }) {
+            born[block.id] = now
+        }
+        guard !born.isEmpty else { return }
+        emerging = born
+        Task { try? await Task.sleep(for: .milliseconds(400)); if emerging == born { emerging = [:] } }
     }
 
     /// ←→: the block holding the previous or next drawn tick.
@@ -292,11 +316,14 @@ struct DayTimelineView: View {
                 let eventX = labelWidth + 8 + activityWidth + 12
                 let eventWidth = max(0, labelWidth + 8 + width - eventX)
                 ZStack(alignment: .topLeading) {
-                    TimelineBlocksCanvas(blocks: blocks, dayStart: dayStart, hourHeight: hourHeight,
-                                         x: labelWidth + 8, width: activityWidth,
-                                         selectedActivity: selectedActivity, selectedStart: selectedStart,
-                                         isFiltered: isFiltered, pressed: pressedBlock,
-                                         contrast: contrast == .increased)
+                    SwiftUI.TimelineView(.animation(paused: emerging.isEmpty)) { frame in
+                        TimelineBlocksCanvas(blocks: blocks, dayStart: dayStart, hourHeight: hourHeight,
+                                             x: labelWidth + 8, width: activityWidth,
+                                             selectedActivity: selectedActivity, selectedStart: selectedStart,
+                                             isFiltered: isFiltered, pressed: pressedBlock,
+                                             contrast: contrast == .increased,
+                                             emerging: emerging.mapValues { min(1, max(0, frame.date.timeIntervalSince($0) / 0.32)) })
+                    }
                     ForEach(blocks) { block in
                         hitTarget(block)
                             .frame(width: activityWidth, height: height(block.duration))
@@ -430,6 +457,8 @@ private struct TimelineBlocksCanvas: View, Animatable {
     let pressed: String?
     /// Increase Contrast: wider ticks, heavier rings.
     var contrast = false
+    /// m7: how far each block splitting out of its tick has grown, 0...1.
+    var emerging: [String: Double] = [:]
 
     nonisolated var animatableData: CGFloat {
         get { hourHeight }
@@ -458,8 +487,15 @@ private struct TimelineBlocksCanvas: View, Animatable {
         let dimmed = isFiltered && !block.isHighlight
         let blockHeight = max(2, block.duration / 3600 * hourHeight)
         // A seam between abutting blocks instead of notched corners.
-        let shape = CGRect(x: x, y: max(0, block.start.timeIntervalSince(dayStart) / 3600 * hourHeight),
+        var shape = CGRect(x: x, y: max(0, block.start.timeIntervalSince(dayStart) / 3600 * hourHeight),
                            width: width, height: blockHeight - (blockHeight > 4 ? 2 : 0))
+        if let raw = emerging[block.id], raw < 1 {
+            // Out of the tick: first a little wider, then the whole block, the red fading into the category.
+            let grow = raw < 0.35 ? raw / 0.35 * 0.04 : 0.04 + (1 - pow(1 - (raw - 0.35) / 0.65, 3)) * 0.96
+            shape = CGRect(x: x - 4 * (1 - grow), y: shape.minY, width: 9 + (width - 9) * grow, height: shape.height)
+            context.fill(RoundedRectangle(cornerRadius: 2).path(in: shape), with: .color(Color.red.opacity(1 - raw)))
+            context.opacity = raw
+        }
         let corner = min(7, shape.height / 2)
         if block.id == pressed { context.opacity = 0.75 }
         context.fill(RoundedRectangle(cornerRadius: corner, style: .continuous).path(in: shape),
