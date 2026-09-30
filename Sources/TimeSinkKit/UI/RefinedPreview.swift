@@ -9,6 +9,18 @@ import WebKit
 public enum RefinedPreview {
     @MainActor private static var stage: RefinedPreviewStage?
     @MainActor public static func run() {
+        if CommandLine.arguments.contains("--screen-capture") {
+            // Real windows with real glass, on the built-in display, never
+            // activated: no Dock icon, no focus, no status item, no tips.
+            let app = NSApplication.shared
+            app.setActivationPolicy(.accessory)
+            Task { @MainActor in
+                do { try await ScreenCapture.runAll() } catch { print("Capture failed: \(error)") }
+                exit(0)
+            }
+            app.run()
+            return
+        }
         try? Tips.configure()
         RefinedPreviewApp.main()
     }
@@ -196,6 +208,15 @@ public enum RefinedPreview {
     /// The popover's hover panes, built the way `MenuBarDashboardView`
     /// builds them from its dashboard model.
     @MainActor private static func renderFlyouts(model: AppModel, dark: Bool, suffix: String, to output: URL) async throws {
+        guard let panes = await flyoutPanes(model: model) else { print("Skipped flyouts: no data yet today"); return }
+        for (name, pane) in panes {
+            // The panel is transparent; the pane draws its own card and shadow.
+            let size = fitting(pane, dark: dark)
+            try await render(pane.padding(24), size: NSSize(width: size.width + 48, height: size.height + 48), dark: dark, to: output.appendingPathComponent("flyout-\(name)-\(suffix).png"))
+        }
+    }
+
+    @MainActor static func flyoutPanes(model: AppModel) async -> [(String, AnyView)]? {
         let dashboard = TodayDashboardModel()
         await dashboard.recompute(model: model, forceStreak: true)
         let categories = model.resolver.categoriesByID
@@ -211,7 +232,7 @@ public enum RefinedPreview {
             return HourlyBigView.Bar(hour: Int(parts[0])!, categoryID: String(parts[1]), colorHex: categories[String(parts[1])]?.colorHex ?? "#8E8E93", seconds: seconds)
         }
         // Before the fixture's day starts (small hours) there is nothing to hover.
-        guard let top = dashboard.topCategories.first else { print("Skipped flyouts: no data yet today"); return }
+        guard let top = dashboard.topCategories.first else { return nil }
         let items = dashboard.todayItems.filter { $0.categoryID == top.id }
         var hourBars = Array(repeating: 0.0, count: 24)
         for (hour, seconds) in Aggregator.profileByHourOfDay(items, calendar: .current) { hourBars[hour] = seconds / 3600 }
@@ -224,11 +245,7 @@ public enum RefinedPreview {
             ("hourly", AnyView(HourlyBigView(categories: categories, todayBars: bars, loadLast7Bars: { bars }))),
             ("budget", AnyView(BudgetProgressView(rows: dashboard.allBudgetRows.map { BudgetProgressView.Row(id: $0.id, name: $0.name, colorHex: $0.colorHex, spent: $0.spent, limit: $0.limit) }, warnPercent: dashboard.budgetWarnPercent))),
         ]
-        for (name, pane) in panes {
-            // The panel is transparent; the pane draws its own card and shadow.
-            let size = fitting(pane, dark: dark)
-            try await render(pane.padding(24), size: NSSize(width: size.width + 48, height: size.height + 48), dark: dark, to: output.appendingPathComponent("flyout-\(name)-\(suffix).png"))
-        }
+        return panes
     }
 
     @MainActor private static func renderMotion(to output: URL) async throws {
