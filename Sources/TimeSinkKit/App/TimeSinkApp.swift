@@ -289,6 +289,10 @@ struct MenuBarLabel: View {
                 // drains with the time left (SF Symbols 7 variable draw).
                 Image(nsImage: FocusCapsule.image(remaining: focus.remaining, planned: TimeInterval(running.plannedSeconds)))
                     .accessibilityLabel(String(localized: "专注中 · 还剩 \(Format.mmss(focus.remaining))"))
+            } else if let offer = model.returnOffer, model.accessibilityGranted, !model.trackingPaused {
+                // F3: the hourglass grows a 回到 capsule.
+                Image(nsImage: FocusCapsule.image(symbol: "arrow.uturn.backward", text: String(localized: "回到 \(offer.appName)")))
+                    .accessibilityLabel(String(localized: "回到 \(offer.appName)"))
             } else {
             Image(systemName: !model.accessibilityGranted ? "exclamationmark.triangle" : model.trackingPaused ? "pause.circle" : model.chromeDegraded
                   ? "hourglass.badge.exclamationmark" : "hourglass")
@@ -315,6 +319,7 @@ struct MenuBarLabel: View {
         .background(StatusButtonBridge { button in
             model.popoverShortcut.action = { [weak button] in button?.performClick(nil) }
             model.registerPopoverShortcut()
+            model.registerReturnShortcut()
         })
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             model.accessibilityGranted = Permissions.accessibilityGranted(prompt: false)
@@ -486,15 +491,29 @@ final class TimeSinkAppDelegate: NSObject, NSApplicationDelegate, @unchecked Sen
 @MainActor enum FocusCapsule {
     private static var cache: (key: String, image: NSImage)?
 
+    static func image(symbol: String, text: String) -> NSImage {
+        let key = symbol + "|" + text
+        if let cache, cache.key == key { return cache.image }
+        let image = render(HStack(spacing: 3) { Image(systemName: symbol); Text(text).lineLimit(1) })
+        cache = (key, image)
+        return image
+    }
+
     static func image(remaining: TimeInterval, planned: TimeInterval) -> NSImage {
         let fraction = planned > 0 ? max(0, min(1, remaining / planned)) : 0
         // One render per second shown; SwiftUI re-reads the label more often.
         let key = Format.mmss(remaining)
         if let cache, cache.key == key { return cache.image }
-        let content = HStack(spacing: 3) {
+        let image = render(HStack(spacing: 3) {
             sand(fraction)
             Text(Format.mmss(remaining)).monospacedDigit()
-        }
+        })
+        cache = (key, image)
+        return image
+    }
+
+    private static func render(_ content: some View) -> NSImage {
+        let content = content
         .font(.system(size: 12, weight: .semibold))
         .foregroundStyle(.white)
         .padding(.horizontal, 7)
@@ -504,7 +523,6 @@ final class TimeSinkAppDelegate: NSObject, NSApplicationDelegate, @unchecked Sen
         renderer.scale = NSScreen.main?.backingScaleFactor ?? 2
         let image = renderer.nsImage ?? NSImage()
         image.isTemplate = false
-        cache = (key, image)
         return image
     }
 

@@ -43,6 +43,11 @@ public final class AppModel {
     /// Selected Settings window tab -- default `.general`; notification
     /// routing (`.settingsBudget`) jumps this to `.budget`.
     let popoverShortcut = PopoverShortcut()
+    let returnShortcut = PopoverShortcut(id: 2)
+    /// F3: the window 回到刚才 would bring back; set only when it changes.
+    var returnOffer: ReturnTracker.Origin?
+    @ObservationIgnored var returnTracker = ReturnTracker()
+    @ObservationIgnored var returnCategory: (start: Date, bundleID: String, categoryID: String)?
     public var popoverShortcutAvailable = false
     public var accessibilityGranted = true { didSet { engine.setPermissionGranted(accessibilityGranted) } }
     public var settingsTab: SettingsTab = .general
@@ -355,6 +360,7 @@ public final class AppModel {
         // rather than serving that bootstrap-time snapshot indefinitely.
         rangeCache.removeAll()
         cacheOrder.removeAll()
+        engine.onTick = { [weak self] span, now in self?.observeForReturn(span, now: now) }
         engine.onChange = { [weak self] in
             guard let self else { return }
             let start = engine.lastWriteStart ?? .distantPast

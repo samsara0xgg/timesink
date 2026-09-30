@@ -298,6 +298,8 @@ public final class TrackerEngine {
     private var tickInFlight = false
 
     public var onChange: (() -> Void)?
+    /// Every recorded tick, with the open span: 回到刚才 watches it.
+    public var onTick: ((Span?, Date) -> Void)?
     /// Start of the span the last `onChange` wrote: nothing before it changed.
     public private(set) var lastWriteStart: Date?
     public var llmCoordinator: LLMCoordinator?
@@ -673,6 +675,7 @@ public final class TrackerEngine {
         }
         if keyDownThisTick { builder.noteKeySecond(at: sample.timestamp) }
         heartbeat(now: now)
+        onTick?(builder.current, now)
     }
 
     /// True when Chrome Automation is currently authorized. Backed by the

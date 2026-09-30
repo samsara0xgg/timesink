@@ -562,6 +562,17 @@ struct MenuBarDashboardView: View {
         let kind = kind
         VStack(alignment: .leading, spacing: 8) {
             statusRow(kind)
+            if let offer = model.returnOffer, kind == .recording {
+                Button { model.goBack() } label: {
+                    HStack {
+                        Label("回到 \(offer.appName)", systemImage: "arrow.uturn.backward")
+                        Spacer()
+                        Text(verbatim: "⌃⌥←").foregroundStyle(.secondary)
+                    }.frame(maxWidth: .infinity)
+                }
+                .glassProminentButton()
+                .transition(transition)
+            }
             Group {
                 switch kind {
                 case .focus:
@@ -733,9 +744,11 @@ struct MenuBarDashboardView: View {
                     Button { model.pauseTracking(minutes: nil) } label: { Label("直到我恢复", systemImage: "pause.circle") }
                 } label: { Label("暂停记录", systemImage: "pause.circle") }
             }
-            Button {} label: { Label("回到刚才", systemImage: "arrow.uturn.backward") }
-                .keyboardShortcut(.leftArrow, modifiers: [.control, .option])
-                .disabled(true)
+            Button { model.goBack() } label: {
+                Label(model.returnOffer.map { String(localized: "回到 \($0.appName)") } ?? String(localized: "回到刚才"), systemImage: "arrow.uturn.backward")
+            }
+            .keyboardShortcut(.leftArrow, modifiers: [.control, .option])
+            .disabled(model.returnOffer == nil)
             Divider()
             Button {} label: { Label(captureStatus, systemImage: "viewfinder") }.disabled(true)
             Button {} label: { Label(syncStatus, systemImage: "icloud") }.disabled(true)

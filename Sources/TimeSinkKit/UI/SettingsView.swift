@@ -292,6 +292,7 @@ struct RefinedNotificationsPane: View {
     @State private var budgetAlerts = true
     @State private var focusAlerts = true
     @State private var sound = false
+    @State private var returnOffer = true
     var body: some View {
         Form {
             Section("限额提醒") {
@@ -318,12 +319,22 @@ struct RefinedNotificationsPane: View {
                 }
             }
             Section {
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle("回到刚才", isOn: $returnOffer).onChange(of: returnOffer) { _, value in
+                        model.settings.set("returnOfferEnabled", value ? "true" : "false")
+                        if !value { model.returnOffer = nil }
+                    }
+                    Text("打了字或停留满 \(Int(model.interruptionRule.dwell)) 秒时在菜单栏出现，⌃⌥← 回去").font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+            }
+            Section {
                 Toggle("专注结束", isOn: $focusAlerts).onChange(of: focusAlerts) { _, value in model.settings.set("focusNotificationsEnabled", value ? "true" : "false") }
                 Toggle("提醒声音", isOn: $sound).onChange(of: sound) { _, value in model.settings.set("notificationSound", value ? "true" : "false") }
             }
         }.formStyle(.grouped).onAppear {
             warn = model.settings.budgetWarnPercent; summary = model.settings.dailySummaryEnabled; hour = model.settings.dailySummaryHour
             budgetAlerts = model.settings.budgetNotificationsEnabled; focusAlerts = model.settings.focusNotificationsEnabled; sound = model.settings.notificationSound
+            returnOffer = model.returnEnabled
         }
     }
 }

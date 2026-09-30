@@ -4,6 +4,9 @@ import SwiftUI
 
 /// Carbon hot keys require neither keyboard monitoring nor Accessibility permission.
 @MainActor final class PopoverShortcut {
+    /// Tells this key's presses from other TimeSink hot keys'.
+    let id: UInt32
+    init(id: UInt32 = 1) { self.id = id }
     private var hotKey: EventHotKeyRef?
     private var handler: EventHandlerRef?
     private var registeredKey: UInt32?
@@ -17,12 +20,19 @@ import SwiftUI
         unregister()
         var type = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         let context = Unmanaged.passUnretained(self).toOpaque()
-        guard InstallEventHandler(GetApplicationEventTarget(), { _, _, pointer in
-            guard let pointer else { return OSStatus(eventNotHandledErr) }
-            MainActor.assumeIsolated { Unmanaged<PopoverShortcut>.fromOpaque(pointer).takeUnretainedValue().action?() }
-            return noErr
+        guard InstallEventHandler(GetApplicationEventTarget(), { _, event, pointer in
+            guard let pointer, let event else { return OSStatus(eventNotHandledErr) }
+            var pressed = EventHotKeyID()
+            GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil,
+                              MemoryLayout<EventHotKeyID>.size, nil, &pressed)
+            return MainActor.assumeIsolated {
+                let shortcut = Unmanaged<PopoverShortcut>.fromOpaque(pointer).takeUnretainedValue()
+                guard pressed.id == shortcut.id else { return OSStatus(eventNotHandledErr) }
+                shortcut.action?()
+                return noErr
+            }
         }, 1, &type, context, &handler) == noErr else { return }
-        available = RegisterEventHotKey(keyCode, modifiers, EventHotKeyID(signature: 0x54534E4B, id: 1), GetApplicationEventTarget(), 0, &hotKey) == noErr
+        available = RegisterEventHotKey(keyCode, modifiers, EventHotKeyID(signature: 0x54534E4B, id: id), GetApplicationEventTarget(), 0, &hotKey) == noErr
         registeredKey = keyCode; registeredModifiers = modifiers
     }
     func unregister() {

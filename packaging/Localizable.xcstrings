@@ -3075,6 +3075,16 @@
         }
       }
     },
+    "回到 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Back to %@"
+          }
+        }
+      }
+    },
     "回到 TimeSink 时自动重新检查。其他浏览器目前只按应用记录。": {
       "localizations": {
         "en": {
@@ -4291,6 +4301,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "This hour has not yet occurred in the selected range."
+          }
+        }
+      }
+    },
+    "打了字或停留满 %lld 秒时在菜单栏出现，⌃⌥← 回去": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appears in the menu bar when you type or stay %lld s elsewhere; ⌃⌥← goes back"
           }
         }
       }
