@@ -306,6 +306,15 @@ public enum AppDatabase {
                 t.column("ruleKey", .text).primaryKey()
             }
         }
+        migrator.registerMigration("v11") { db in
+            // Key-seconds per span, for telling a glance from an
+            // interruption. NOT NULL DEFAULT 0 so an older build that
+            // inserts without the column (a rollback) still writes valid
+            // rows, and every existing span reads as "no typing".
+            try db.alter(table: "span") { t in
+                t.add(column: "keySeconds", .integer).notNull().defaults(to: 0)
+            }
+        }
         return migrator
     }
 }

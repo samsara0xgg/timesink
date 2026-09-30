@@ -27,6 +27,14 @@ public final class SpanBuilder {
         return closed
     }
 
+    /// Counts one key-second on the open span. The caller decides what
+    /// counts; the builder only never counts the span's opening tick.
+    public func noteKeySecond(at timestamp: Date) {
+        guard var cur = current, timestamp > cur.start else { return }
+        cur.keySeconds += 1
+        current = cur
+    }
+
     public func close(at end: Date) -> Span? {
         guard var cur = current else { return nil }
         cur.end = max(cur.start, min(end, cur.end))

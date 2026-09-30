@@ -767,3 +767,49 @@ final class TrackerEngineAsyncTickTests: XCTestCase {
         XCTAssertEqual(rows.count, 0)
     }
 }
+
+/// A before t=5, B after: the window switch at 5 is the ⌘⇥ tick.
+private func switchingSample(at date: Date) -> Sample {
+    date < ts(5)
+        ? Sample(timestamp: date, appBundleID: "com.example.a", appName: "A", windowTitle: "A", url: nil)
+        : Sample(timestamp: date, appBundleID: "com.example.b", appName: "B", windowTitle: "B", url: nil)
+}
+
+@MainActor
+final class TrackerEngineKeySecondTests: XCTestCase {
+    /// Counts ticks with a new keyDown, never the span's opening tick, and
+    /// never the same keyDown twice.
+    func testKeySecondsSkipTheOpeningTickAndCountEachKeyOnce() async throws {
+        let db = try AppDatabase.openInMemory()
+        let store = SpanStore(db)
+        let engine = TrackerEngine(spanStore: store, settings: SettingsStore(db))
+        engine.idleSecondsProvider = { 0 }
+        engine.windowSampleProvider = { switchingSample(at: $0) }
+        // Seconds since the last keyDown, per tick: a key in ticks 0-5, 7, 8.
+        let sinceKey: [TimeInterval] = [0.2, 0.2, 0.2, 0.2, 0.2, 0.3, 1.3, 0.5, 0.1, 1.1, 2.1]
+        var tick = 0
+        engine.keyDownSecondsProvider = { sinceKey[tick] }
+        for t in 0..<sinceKey.count {
+            tick = t
+            await engine.tickAsync(now: ts(Double(t)))
+        }
+        engine.stop()
+        let rows = try store.spans(overlapping: DateInterval(start: ts(-1), end: ts(100)))
+        XCTAssertEqual(rows.map(\.appName), ["A", "B"])
+        XCTAssertEqual(rows.map(\.keySeconds), [4, 2])
+    }
+
+    /// The heartbeat rewrites the running count, not only the end.
+    func testHeartbeatWritesTheRunningCount() async throws {
+        let db = try AppDatabase.openInMemory()
+        let store = SpanStore(db)
+        let engine = TrackerEngine(spanStore: store, settings: SettingsStore(db))
+        engine.idleSecondsProvider = { 0 }
+        engine.windowSampleProvider = { meetingSample(at: $0) }
+        engine.keyDownSecondsProvider = { 0.2 }
+        for t in 0...61 { await engine.tickAsync(now: ts(Double(t))) }
+        let rows = try store.spans(overlapping: DateInterval(start: ts(-1), end: ts(100)))
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].keySeconds, 60)
+    }
+}

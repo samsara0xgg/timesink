@@ -10,4 +10,7 @@ public struct IdleMonitor: Sendable {
             CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: $0)
         }.min() ?? 0
     }
+    public func secondsSinceKeyDown() -> TimeInterval {
+        CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: .keyDown)
+    }
 }

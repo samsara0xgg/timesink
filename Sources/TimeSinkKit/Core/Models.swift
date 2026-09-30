@@ -36,13 +36,18 @@ public struct Span: Equatable, Sendable, Codable {
     /// a change in it splits the span, so one row never spans two working
     /// directories or two conversations.
     public var document: String?
+    /// Migration v11. Seconds in this span in which a key went down, not
+    /// counting the span's first second (usually the ⌘⇥ that opened it).
+    /// Only the count is stored, never which keys.
+    public var keySeconds: Int
     public var duration: TimeInterval { end.timeIntervalSince(start) }
     public init(id: Int64? = nil, start: Date, end: Date, appBundleID: String,
                 appName: String, title: String?, url: String?, domain: String?,
-                document: String? = nil) {
+                document: String? = nil, keySeconds: Int = 0) {
         self.id = id; self.start = start; self.end = end
         self.appBundleID = appBundleID; self.appName = appName
         self.title = title; self.url = url; self.domain = domain
         self.document = document
+        self.keySeconds = keySeconds
     }
 }

@@ -238,6 +238,9 @@ public final class TrackerEngine {
     var chatSessionProvider: (@Sendable () -> String?)?
     var chromeAutomationAuthorizedProvider: (() -> Bool)?
     var idleSecondsProvider: (() -> TimeInterval)?
+    /// Seconds since the last keyDown; the real reading is one
+    /// `CGEventSource` call, the same kind `IdleMonitor` already makes.
+    var keyDownSecondsProvider: (() -> TimeInterval)?
     /// True while the user is currently in a calendar meeting -- when set,
     /// `tick` forces `idleSeconds` to 0 regardless of the real idle reading,
     /// so hands-off-keyboard time during a video call never triggers
@@ -347,6 +350,12 @@ public final class TrackerEngine {
     /// This tick's idle reading (0 in a meeting), handed to the screen
     /// collector so an untouched window is checked less often.
     private var idleSeconds: TimeInterval = 0
+    /// Previous tick's `now`, and whether a key went down since then. A
+    /// key-second is a tick with a new keyDown; the span's opening tick never
+    /// counts (see `SpanBuilder.noteKeySecond`), which drops the ⌘⇥ that
+    /// switched into it and any single shortcut like ⌘W.
+    private var lastTickAt = Date.distantPast
+    private var keyDownThisTick = false
 
     private let logger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "tracker")
 
@@ -536,6 +545,9 @@ public final class TrackerEngine {
     private func beginTick(now: Date) -> TickPhase {
         guard !userPaused, permissionGranted else { return .suspended }
         let rawIdle = idleSecondsProvider?() ?? idleMonitor.idleSeconds()
+        let sinceKey = keyDownSecondsProvider?() ?? idleMonitor.secondsSinceKeyDown()
+        keyDownThisTick = now.addingTimeInterval(-sinceKey) > lastTickAt
+        lastTickAt = now
         let isInMeetingNow = isInMeetingProvider?() == true
         if wasInMeeting, !isInMeetingNow {
             exemptionEndedAt = now
@@ -659,6 +671,7 @@ public final class TrackerEngine {
         if let closed = builder.ingest(sample) {
             persist(closed)
         }
+        if keyDownThisTick { builder.noteKeySecond(at: sample.timestamp) }
         heartbeat(now: now)
     }
 
@@ -756,7 +769,7 @@ public final class TrackerEngine {
         }
         if let rowID = currentRowID {
             do {
-                try spanStore.updateEnd(id: rowID, end: span.end)
+                try spanStore.updateEnd(id: rowID, end: span.end, keySeconds: span.keySeconds)
                 lastHeartbeat = now
                 lastWriteStart = span.start
                 onChange?()

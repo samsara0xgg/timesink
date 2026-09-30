@@ -23,9 +23,10 @@ public final class SpanStore: Sendable {
         return span
     }
 
-    public func updateEnd(id: Int64, end: Date) throws {
+    public func updateEnd(id: Int64, end: Date, keySeconds: Int = 0) throws {
         try writer.write { db in
-            try db.execute(sql: "UPDATE span SET end = ? WHERE id = ?", arguments: [end, id])
+            try db.execute(sql: "UPDATE span SET end = ?, keySeconds = ? WHERE id = ?",
+                           arguments: [end, keySeconds, id])
         }
     }
 

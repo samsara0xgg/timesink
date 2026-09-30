@@ -17,7 +17,7 @@ final class DatabaseTests: XCTestCase {
         let db = try DatabaseQueue()
         try AppDatabase.migrator.migrate(db, upTo: "v8")
         let store = SpanStore(db)
-        let span = try store.insert(Span(start: ts(0), end: ts(100), appBundleID: "test.app", appName: "Test", title: "Keep", url: nil, domain: nil))
+        let spanID = try insertPreV11Span(db)
         try db.write { db in
             try db.execute(sql: "CREATE TABLE legacyV9Feature (value TEXT)")
             try db.execute(sql: "INSERT INTO legacyV9Feature VALUES ('preserve')")
@@ -30,21 +30,21 @@ final class DatabaseTests: XCTestCase {
             }
             XCTAssertEqual(try String.fetchOne(db, sql: "SELECT value FROM legacyV9Feature"), "preserve")
         }
-        XCTAssertEqual(try store.spans(overlapping: DateInterval(start: ts(0), end: ts(200))).first?.id, span.id)
+        XCTAssertEqual(try store.spans(overlapping: DateInterval(start: ts(0), end: ts(200))).first?.id, spanID)
     }
 
     func testRefinedRepairMigrationPreservesExistingOverrides() throws {
         let db = try DatabaseQueue()
         try AppDatabase.migrator.migrate(db, upTo: "v10")
-        let span = try SpanStore(db).insert(Span(start: ts(0), end: ts(100), appBundleID: "test.app", appName: "Test", title: nil, url: nil, domain: nil))
+        let spanID = try insertPreV11Span(db)
         try db.write { db in
-            try db.execute(sql: "INSERT INTO spanCategoryOverride VALUES (?, 'learning')", arguments: [span.id])
+            try db.execute(sql: "INSERT INTO spanCategoryOverride VALUES (?, 'learning')", arguments: [spanID])
             try db.execute(sql: "INSERT INTO disabledClassificationRule VALUES ('keep-disabled')")
         }
         try AppDatabase.migrator.migrate(db)
         try AppDatabase.migrator.migrate(db)
         try db.read { db in
-            XCTAssertEqual(try String.fetchOne(db, sql: "SELECT categoryID FROM spanCategoryOverride WHERE spanID = ?", arguments: [span.id]), "learning")
+            XCTAssertEqual(try String.fetchOne(db, sql: "SELECT categoryID FROM spanCategoryOverride WHERE spanID = ?", arguments: [spanID]), "learning")
             XCTAssertEqual(try String.fetchOne(db, sql: "SELECT ruleKey FROM disabledClassificationRule"), "keep-disabled")
         }
     }
@@ -236,5 +236,38 @@ final class DatabaseTests: XCTestCase {
         XCTAssertEqual(s.focusBlockedApps, [])
         s.setFocusBlockedApps(["com.tencent.xinWeChat", "com.hnc.Discord"])
         XCTAssertEqual(s.focusBlockedApps, ["com.tencent.xinWeChat", "com.hnc.Discord"])
+    }
+}
+
+final class KeySecondsMigrationTests: XCTestCase {
+    /// A rollback build inserts without the column; the row must still be
+    /// valid and read as "no typing".
+    func testInsertWithoutTheColumnDefaultsToZero() throws {
+        let db = try AppDatabase.openInMemory()
+        try db.write { db in
+            try db.execute(sql: "INSERT INTO span (start, end, appBundleID, appName) VALUES (?, ?, 'a', 'A')",
+                           arguments: [ts(0), ts(10)])
+        }
+        let rows = try SpanStore(db).spans(overlapping: DateInterval(start: ts(-1), end: ts(20)))
+        XCTAssertEqual(rows.map(\.keySeconds), [0])
+    }
+
+    func testUpdateEndWritesKeySeconds() throws {
+        let store = SpanStore(try AppDatabase.openInMemory())
+        let span = try store.insert(Span(start: ts(0), end: ts(10), appBundleID: "a", appName: "A",
+                                         title: nil, url: nil, domain: nil))
+        try store.updateEnd(id: span.id!, end: ts(20), keySeconds: 7)
+        let rows = try store.spans(overlapping: DateInterval(start: ts(-1), end: ts(30)))
+        XCTAssertEqual(rows.map(\.keySeconds), [7])
+    }
+}
+
+/// A span written before migration v11, when `Span`'s encoding would name a
+/// column the table does not have yet.
+private func insertPreV11Span(_ db: DatabaseQueue) throws -> Int64 {
+    try db.write { db in
+        try db.execute(sql: "INSERT INTO span (start, end, appBundleID, appName, title) VALUES (?, ?, 'test.app', 'Test', 'Keep')",
+                       arguments: [ts(0), ts(100)])
+        return db.lastInsertedRowID
     }
 }
