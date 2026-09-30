@@ -132,6 +132,8 @@ public enum RefinedPreview {
     @MainActor static func present(_ window: NSWindow, size: NSSize) {
         window.setContentSize(size)
         moveToBuiltInDisplay(window)
+        // Timing needs the window on screen, not in focus: leave the user's app in front.
+        if CommandLine.arguments.contains("--perf-review") { window.orderFrontRegardless(); return }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -440,7 +442,10 @@ private struct RefinedBlockProof: NSViewRepresentable {
                 .preferredColorScheme(stage.dark ? .dark : .light)
                 .environment(\.locale, RefinedPreview.locale)
                 .background(RefinedWindowProbe(window: $stage.window))
-                .task { NSApp.setActivationPolicy(.regular); await RefinedPreview.start(stage: stage) }
+                .task {
+                    NSApp.setActivationPolicy(CommandLine.arguments.contains("--perf-review") ? .accessory : .regular)
+                    await RefinedPreview.start(stage: stage)
+                }
         }.windowResizability(.contentSize)
     }
 }

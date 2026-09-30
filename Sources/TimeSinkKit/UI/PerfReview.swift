@@ -75,6 +75,7 @@ import GRDB
     }
 
     static func run(window: NSWindow, show: (AnyView) -> Void) async throws {
+        setvbuf(stdout, nil, _IOLBF, 0)  // lines reach a pipe as they happen
         let model = try ProcessInfo.processInfo.environment["TIMESINK_PERF_DB"].map(realModel) ?? RefinedPreview.fixture()
         let activities = ActivitiesModel()
         let size = RefinedPreview.mainSize
@@ -83,7 +84,7 @@ import GRDB
         try await Task.sleep(for: .seconds(1.5))
         print("PERF today_spans=\(model.rangedSpans(for: .today()).count) window=\(Int(size.width))x\(Int(size.height))")
         if let loop = ProcessInfo.processInfo.environment["TIMESINK_PERF_LOOP"] {
-            try await profileLoop(loop, model: model, activities: activities)
+            try await profileLoop(loop, model: model, activities: activities, window: window)
             return
         }
 
@@ -190,10 +191,17 @@ import GRDB
     }
 
     /// Repeats one interaction for a sampling profiler: `sample <pid>` while it runs.
-    private static func profileLoop(_ loop: String, model: AppModel, activities: ActivitiesModel) async throws {
+    private static func profileLoop(_ loop: String, model: AppModel, activities: ActivitiesModel, window: NSWindow) async throws {
         let pause = Duration.milliseconds(500)
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: RefinedStyle.popoverWidth, height: 700),
                             styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        if ["scroll", "day", "select"].contains(loop) {
+            // Every page visited once, as in real use: hidden pages stay alive.
+            for page in [SidebarItem.stats, .focus, .organization, .today, .activities] {
+                navigate(model, to: page)
+                try await Task.sleep(for: .milliseconds(600))
+            }
+        }
         if loop.hasPrefix("write_") {
             model.sidebarSelection = [ "write_today": .today, "write_activities": .activities, "write_trends": .stats ][loop] ?? .today
             model.range = model.sidebarSelection == .stats ? DateRangeSelection(kind: .last7, anchor: Date()) : .today()
@@ -222,6 +230,8 @@ import GRDB
                     activities.select(ActivitiesModel.selection(for: item), start: item.span.start)
                     try await Task.sleep(for: pause)
                 }
+            case "scroll":
+                try await scroll(window: window, label: "scroll_activities")
             case "day":
                 model.sidebarSelection = .activities
                 model.range.shift(-1)
@@ -250,11 +260,17 @@ import GRDB
         func scrollViews(_ view: NSView) -> [NSScrollView] {
             (view as? NSScrollView).map { [$0] } ?? [] + view.subviews.flatMap(scrollViews)
         }
+        // Hidden kept-alive pages stay in the view tree; only the visible page's views take events.
+        func visible(_ view: NSScrollView) -> Bool {
+            guard let content = window.contentView, let parent = content.superview else { return false }
+            let center = view.convert(NSPoint(x: view.bounds.midX, y: view.bounds.midY), to: nil)
+            return content.hitTest(parent.convert(center, from: nil))?.isDescendant(of: view) ?? false
+        }
         guard let content = window.contentView,
-              let target = scrollViews(content).max(by: { ($0.documentView?.frame.height ?? 0) < ($1.documentView?.frame.height ?? 0) }),
+              let target = scrollViews(content).filter(visible).max(by: { ($0.documentView?.frame.height ?? 0) < ($1.documentView?.frame.height ?? 0) }),
               let document = target.documentView else { return }
         let travel = max(0, document.frame.height - target.contentView.bounds.height)
-        print(String(format: "PERF %@ travel=%.0f", label, travel))
+        print(String(format: "PERF %@ travel=%.0f", label, travel), type(of: document), target.convert(target.bounds, to: nil))
         guard travel > 0 else { return }
         monitor.passes.removeAll()
         let t0 = CACurrentMediaTime()
