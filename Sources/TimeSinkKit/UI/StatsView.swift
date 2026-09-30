@@ -19,9 +19,9 @@ struct StatsView: View {
                             // One panel of four columns, as the design draws it.
                             let columns = geometry.size.width >= 650 ? 4 : 2
                             let metrics: [AnyView] = [
-                                AnyView(metric(String(localized: "总时长"), stats.totalDelta.map { String(localized: "比上期 \(Format.durationDelta($0))") } ?? String(localized: "上期暂无记录")) { DurationHero(seconds: stats.total, size: 26) }),
-                                AnyView(metric(String(localized: "日均"), String(localized: "按所选时段已过的天数")) { DurationHero(seconds: stats.avgPerDay, size: 26) }),
-                                AnyView(metric(String(localized: "投入"), String(localized: "占 \(Int((stats.focus / max(1, stats.total) * 100).rounded()))% · 按分类估算")) { DurationHero(seconds: stats.focus, size: 26) }),
+                                AnyView(metric(String(localized: "总时长"), stats.totalDelta.map { String(localized: "比上期 \(Format.durationDelta($0))") } ?? String(localized: "上期暂无记录")) { DurationHero(seconds: stats.total, size: 26, animated: false) }),
+                                AnyView(metric(String(localized: "日均"), String(localized: "按所选时段已过的天数")) { DurationHero(seconds: stats.avgPerDay, size: 26, animated: false) }),
+                                AnyView(metric(String(localized: "投入"), String(localized: "占 \(Int((stats.focus / max(1, stats.total) * 100).rounded()))% · 按分类估算")) { DurationHero(seconds: stats.focus, size: 26, animated: false) }),
                                 AnyView(metric(String(localized: "评分"), String(localized: "连续 \(stats.trendStreak) 天达标")) {
                                     Text(verbatim: stats.pulse.map(String.init) ?? "—").font(.system(size: 26, weight: .semibold)).monospacedDigit()
                                 }),

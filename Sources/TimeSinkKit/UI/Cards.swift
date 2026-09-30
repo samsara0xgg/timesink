@@ -19,6 +19,7 @@ extension View {
 struct DurationHero: View {
     let seconds: TimeInterval
     let size: CGFloat
+    var animated = true
     var body: some View {
         let minutes = Format.minutes(seconds)
         let unit = Font.system(size: size * 0.42, weight: .medium)
@@ -33,7 +34,7 @@ struct DurationHero: View {
             }
         }
         .font(.system(size: size, weight: .semibold)).tracking(-0.5).monospacedDigit()
-        .refinedNumberMotion("\(minutes)")
+        .refinedNumberMotion(animated ? "\(minutes)" : "")
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Format.chineseDuration(Double(minutes) * 60))
     }
