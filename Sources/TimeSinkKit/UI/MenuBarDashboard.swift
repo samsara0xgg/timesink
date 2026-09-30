@@ -768,8 +768,9 @@ struct MenuBarDashboardView: View {
         VStack(spacing: 10) {
             HStack(spacing: 6) {
                 Button { showsCapture.toggle() } label: {
+                    // Its own width, so the longer status is never cut; sync takes the rest.
                     Label(String(localized: "屏幕采集 · \(model.trackingPaused || model.screenCapturePaused ? String(localized: "已暂停") : model.screenCollector == nil ? String(localized: "未开启") : String(localized: "\(captureSummary.count) 张"))"), systemImage: "viewfinder")
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize()
                 }.popover(isPresented: $showsCapture) {
                     VStack(alignment: .leading, spacing: 12) {
                         ScreenCaptureRow(model: model)
@@ -822,9 +823,12 @@ struct MenuBarDashboardView: View {
 
     private var dashboardHeader: some View {
         HStack(spacing: 6) {
-            RecordingStatusView(model: model)
-            Text(Date(), format: .dateTime.month().day().weekday(.abbreviated))
-                .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+            // The date gives way first.
+            RecordingStatusView(model: model).layoutPriority(1)
+            ViewThatFits(in: .horizontal) {
+                Text(Date(), format: .dateTime.month().day().weekday(.abbreviated))
+                Text(Date(), format: .dateTime.month().day())
+            }.font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
             Spacer(minLength: 0)
             RecordingPauseMenu(model: model)
             Menu {

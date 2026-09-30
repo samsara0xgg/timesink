@@ -57,8 +57,11 @@ struct ScoreBreakdownView: View {
                         .font(.caption).monospacedDigit().foregroundStyle(.secondary)
                 }
             }
-            // Bar keeps at least 48pt beside the 114pt of dot, spacing and numbers.
-            let nameWidth = RefinedStyle.nameColumn(rows.map(\.name), font: .preferredFont(forTextStyle: .caption1), cap: width - 162)
+            // Points take the width their widest label needs ("100 pts" in
+            // English); the bar keeps at least 48pt beside dot, spacing and numbers.
+            let points = rows.map { String(localized: "\(Int($0.points.rounded()))分") }
+            let pointsWidth = RefinedStyle.nameColumn(points, font: .monospacedDigitSystemFont(ofSize: NSFont.preferredFont(forTextStyle: .caption2).pointSize, weight: .regular), cap: 60)
+            let nameWidth = RefinedStyle.nameColumn(rows.map(\.name), font: .preferredFont(forTextStyle: .caption1), cap: width - 132 - pointsWidth)
             ForEach(rows) { row in
                 HStack(spacing: 8) {
                     Circle().fill(RefinedStyle.category(row.id, hex: row.colorHex)).frame(width: 8, height: 8)
@@ -71,7 +74,7 @@ struct ScoreBreakdownView: View {
                     .frame(height: 6)
                     Text("\(Int(row.points.rounded()))分")
                         .font(.caption2).monospacedDigit().foregroundStyle(.secondary)
-                        .frame(width: 30, alignment: .trailing)
+                        .fixedSize().frame(width: pointsWidth, alignment: .trailing)
                     Text(Format.duration(row.seconds))
                         .font(.caption2).monospacedDigit().foregroundStyle(.secondary)
                         .frame(width: 44, alignment: .trailing)
@@ -99,6 +102,8 @@ struct CompareBaseView: View {
     var width: CGFloat = DrillWidths.compare
 
     private var yesterdayValue: TimeInterval? { delta.map { todayValue - $0 } }
+    /// Whole minutes, as `Format.duration` shows them.
+    private func minutes(_ t: TimeInterval) -> TimeInterval { (t / 60).rounded(.down) * 60 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -113,7 +118,8 @@ struct CompareBaseView: View {
                     Text("昨日同时段").font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     Text(Format.duration(yesterdayValue)).font(.caption).monospacedDigit()
-                    Text(Format.durationDelta(delta))
+                    // The difference of the two minutes shown, so the three numbers add up.
+                    Text(Format.durationDelta(minutes(todayValue) - minutes(yesterdayValue)))
                         .font(.caption2.weight(.bold)).monospacedDigit()
                         .foregroundStyle(.secondary)
                 }
@@ -285,7 +291,7 @@ struct HourlyBigView: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.segmented)
-                .frame(width: 120)
+                .fixedSize()
                 .onChange(of: mode) { _, newMode in
                     if newMode == .last7, last7Bars == nil {
                         last7Bars = loadLast7Bars()

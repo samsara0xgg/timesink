@@ -257,8 +257,10 @@ private struct WindowTitles: ViewModifier {
 }
 
 private extension DateRangeSelection {
-    /// The range's name; a single day also shows its date.
+    /// The range's name; Today and Yesterday also show their date. An
+    /// older day is named by its date already.
     var toolbarLabel: String {
-        kind == .day ? "\(label) · \(interval.start.formatted(.dateTime.month().day()))" : label
+        let date = interval.start.formatted(.dateTime.month().day())
+        return kind == .day && label != date ? "\(label) · \(date)" : label
     }
 }

@@ -88,15 +88,28 @@ struct TodayView: View {
     private func summary(_ overview: DayOverview) -> some View {
         VStack(alignment: .leading, spacing: 18) {
             ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 18) { metrics(overview) }
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 18) { metrics(overview) }
+                HStack(alignment: .top, spacing: 18) {
+                    recorded(overview, fixed: true)
+                    engaged(overview, divided: true, fixed: true)
+                    sessions(overview, divided: true, fixed: true)
+                    if model.showScore { score(fixed: true) }
+                }
+                // Two by two when narrow: captions wrap instead of running
+                // into the next column, and each column starts at one edge.
+                Grid(alignment: .topLeading, horizontalSpacing: 18, verticalSpacing: 18) {
+                    GridRow { recorded(overview, fixed: false); engaged(overview, divided: true, fixed: false) }
+                    GridRow {
+                        sessions(overview, divided: false, fixed: false)
+                        if model.showScore { score(fixed: false) }
+                    }
+                }
             }
             DayRibbonView(overview: overview, events: events, onSelect: onSelect)
         }
         .padding(18).workspacePanel()
     }
 
-    @ViewBuilder private func metrics(_ overview: DayOverview) -> some View {
+    private func recorded(_ overview: DayOverview, fixed: Bool) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text("已记录").font(.system(size: 12)).foregroundStyle(.secondary)
             Text(Format.duration(overview.total)).font(.system(size: 34, weight: .semibold))
@@ -105,17 +118,27 @@ struct TodayView: View {
                   dashboard.totalDelta.map { String(localized: "比昨天同时段 \(Format.durationDelta($0))") }]
                 .compactMap { $0 }.joined(separator: " · "))
                 .font(.system(size: 11)).foregroundStyle(.secondary)
-        }.fixedSize(horizontal: true, vertical: false)
-        metric(String(localized: "投入"), value: Format.duration(overview.engaged),
-               detail: String(localized: "占已记录 \(Int((overview.engaged / max(1, overview.total) * 100).rounded()))% · 按分类估算"))
-        metric(String(localized: "专注会话"), value: Format.duration(overview.sessionSeconds),
-               detail: String(localized: "\(overview.sessions.count) 次，\(overview.sessions.filter(\.completed).count) 次已完成"))
-        if model.showScore {
-            metric(String(localized: "评分"), value: dashboard.pulse.map { "\($0)" } ?? "—", detail: String(localized: "连续 \(dashboard.streakDays) 天 ≥ 70"), suffix: "/ 100")
-        }
+        }.fixedSize(horizontal: fixed, vertical: !fixed)
     }
 
-    private func metric(_ title: String, value: String, detail: String, suffix: String = "") -> some View {
+    private func engaged(_ overview: DayOverview, divided: Bool, fixed: Bool) -> some View {
+        metric(String(localized: "投入"), value: Format.duration(overview.engaged),
+               detail: String(localized: "占已记录 \(Int((overview.engaged / max(1, overview.total) * 100).rounded()))% · 按分类估算"),
+               divided: divided, fixed: fixed)
+    }
+
+    private func sessions(_ overview: DayOverview, divided: Bool, fixed: Bool) -> some View {
+        metric(String(localized: "专注会话"), value: Format.duration(overview.sessionSeconds),
+               detail: String(localized: "\(overview.sessions.count) 次，\(overview.sessions.filter(\.completed).count) 次已完成"),
+               divided: divided, fixed: fixed)
+    }
+
+    private func score(fixed: Bool) -> some View {
+        metric(String(localized: "评分"), value: dashboard.pulse.map { "\($0)" } ?? "—", detail: String(localized: "连续 \(dashboard.streakDays) 天 ≥ 70"),
+               suffix: "/ 100", divided: true, fixed: fixed)
+    }
+
+    private func metric(_ title: String, value: String, detail: String, suffix: String = "", divided: Bool, fixed: Bool) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title).font(.system(size: 12)).foregroundStyle(.secondary)
             HStack(alignment: .firstTextBaseline, spacing: 4) {
@@ -124,9 +147,9 @@ struct TodayView: View {
             }
             Text(detail).font(.system(size: 11)).foregroundStyle(.secondary)
         }
-        .padding(.leading, 18)
-        .overlay(alignment: .leading) { Rectangle().fill(.quaternary).frame(width: 0.5) }
-        .fixedSize(horizontal: true, vertical: false)
+        .padding(.leading, divided ? 18 : 0)
+        .overlay(alignment: .leading) { if divided { Rectangle().fill(.quaternary).frame(width: 0.5) } }
+        .fixedSize(horizontal: fixed, vertical: !fixed)
     }
 
     private func pieces(_ overview: DayOverview) -> some View {
@@ -217,6 +240,7 @@ struct TodayView: View {
                             spent: used, limit: Double(budget.dailySeconds), warningPercent: model.settings.budgetWarnPercent)
                     }
                     Text("限额只提醒，不会拦截。").font(.system(size: 11)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }.padding(.horizontal, 18).padding(.vertical, 16).workspacePanel()
             }
             if let unclassified = overview.categories.first(where: { $0.id == "uncategorized" }) {
@@ -481,10 +505,11 @@ struct CategoryVesselView: View {
                     Button { onSelect(category.id) } label: {
                         HStack(spacing: 6) {
                             Circle().fill(RefinedStyle.category(category.id, hex: category.colorHex)).frame(width: 7, height: 7)
-                            Text(category.name).lineLimit(1)
+                            // Long names wrap; the column is sized for Chinese.
+                            Text(category.name).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                             Spacer(minLength: 2)
                             Text(Format.duration(category.seconds)).monospacedDigit().fixedSize()
-                        }.font(.system(size: 12)).frame(height: 24).padding(.horizontal, 3)
+                        }.font(.system(size: 12)).frame(minHeight: 24).padding(.horizontal, 3)
                             .background(hovered == category.id ? Color.primary.opacity(0.07) : .clear, in: RoundedRectangle(cornerRadius: 5))
                     }.buttonStyle(.plain).onHover { hovered = $0 ? category.id : nil }
                 }

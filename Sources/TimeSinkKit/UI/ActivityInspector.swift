@@ -98,7 +98,9 @@ struct ActivityInspector: View {
                 AppIcon(bundleID: item.span.appBundleID, size: 32)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(item.span.domain ?? item.span.appName).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                    Text("\(model.time(item.span.start))–\(model.time(item.span.end)) · \(Format.duration(item.span.duration))")
+                    // A record inside one minute reads as a moment, not "10:36–10:36".
+                    let start = model.time(item.span.start), end = model.time(item.span.end)
+                    Text(start == end ? "\(start) · \(Format.duration(item.span.duration))" : "\(start)–\(end) · \(Format.duration(item.span.duration))")
                         .font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit()
                 }
             }
@@ -127,7 +129,9 @@ struct ActivityInspector: View {
             if scope == .title {
                 TextField("标题包含，至少两个字", text: $pattern).textFieldStyle(.roundedBorder)
             }
-            Text(String(localized: "\(scope == .segment ? "" : String(localized: "近 30 天 · "))会影响 \(affected.count) 条记录 · \(Format.duration(affected.seconds))"))
+            Text(categoryID == item.categoryID && affected.count == 0
+                 ? String(localized: "已经是这个分类，选择别的分类再保存")
+                 : String(localized: "\(scope == .segment ? "" : String(localized: "近 30 天 · "))会影响 \(affected.count) 条记录 · \(Format.duration(affected.seconds))"))
                 .font(.system(size: 11)).foregroundStyle(.secondary)
             HStack {
                 Button("取消") { categoryID = item.categoryID; scope = .segment; pattern = "" }

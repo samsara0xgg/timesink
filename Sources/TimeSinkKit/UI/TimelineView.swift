@@ -131,7 +131,8 @@ struct DayTimelineView: View {
     @State private var pinchBase: CGFloat?
     /// The block under a mouse press, which the canvas dims.
     @State private var pressedBlock: String?
-    private let labelWidth: CGFloat = 44
+    /// Fits the widest hour label ("10:00 PM" in English), measured below.
+    @State private var labelWidth: CGFloat = 44
     private var dayStart: Date { Calendar.current.startOfDay(for: day) }
     private var hours: [Date] { TimelineNavigation.hourAnchors(day: day) }
     /// Blocks the arrows step through: the ones holding the selection, or
@@ -262,6 +263,16 @@ struct DayTimelineView: View {
                 .frame(height: hourHeight, alignment: .top)
                 .id(hour)
             }
+        }
+        .background(alignment: .topLeading) {
+            // Two-digit hours on both sides of noon are the widest labels.
+            ZStack {
+                ForEach([10.0, 22], id: \.self) { hour in
+                    Text(dayStart.addingTimeInterval(hour * 3600), format: .dateTime.hour().minute())
+                }
+            }
+            .font(.caption2).monospacedDigit().fixedSize().hidden()
+            .onGeometryChange(for: CGFloat.self, of: \.size.width) { labelWidth = max(44, ceil($0)) }
         }
         .overlay(alignment: .topLeading) {
             GeometryReader { geometry in

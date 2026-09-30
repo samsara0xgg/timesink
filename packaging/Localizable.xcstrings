@@ -46,9 +46,21 @@
     " · 本次第 %lld 次打开": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": " · Opened %lld times this session"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": " · Opened %lld time this session"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": " · Opened %lld times this session"
+                }
+              }
+            }
           }
         }
       }
@@ -108,9 +120,21 @@
     "%@ · %lld 分": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ · %lld pts"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@ · %lld pt"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@ · %lld pts"
+                }
+              }
+            }
           }
         }
       }
@@ -120,7 +144,49 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ · %lld records · %lld categories"
+            "value": "%1$@ · %#@n2@ · %#@n3@"
+          },
+          "substitutions": {
+            "n2": {
+              "argNum": 2,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg record"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg records"
+                    }
+                  }
+                }
+              }
+            },
+            "n3": {
+              "argNum": 3,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg category"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg categories"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -382,7 +448,29 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@, %@ total, %@ average: %@, %lld days with %lld recorded"
+            "value": "%1$@, %2$@ total, %3$@ average: %4$@, %#@n5@ with %6$lld recorded"
+          },
+          "substitutions": {
+            "n5": {
+              "argNum": 5,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg day"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg days"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -392,7 +480,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@:"
+            "value": "%@: "
           }
         }
       }
@@ -402,7 +490,29 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld / %lld minutes"
+            "value": "%1$lld / %#@n2@"
+          },
+          "substitutions": {
+            "n2": {
+              "argNum": 2,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg minute"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg minutes"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -412,7 +522,29 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld / %lld segments"
+            "value": "%1$lld / %#@n2@"
+          },
+          "substitutions": {
+            "n2": {
+              "argNum": 2,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg segment"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg segments"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -430,9 +562,21 @@
     "%lld 个分类": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld categories"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld category"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld categories"
+                }
+              }
+            }
           }
         }
       }
@@ -440,9 +584,21 @@
     "%lld 分": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld pts"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld pt"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld pts"
+                }
+              }
+            }
           }
         }
       }
@@ -450,9 +606,21 @@
     "%lld 分钟": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld minutes"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld minute"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld minutes"
+                }
+              }
+            }
           }
         }
       }
@@ -480,9 +648,21 @@
     "%lld 天": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld days"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld day"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld days"
+                }
+              }
+            }
           }
         }
       }
@@ -492,7 +672,29 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld d · target %lld pts"
+            "value": "%1$lld d · target %#@n2@"
+          },
+          "substitutions": {
+            "n2": {
+              "argNum": 2,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg pt"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg pts"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -500,9 +702,21 @@
     "%lld 小时": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld hours"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld hour"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld hours"
+                }
+              }
+            }
           }
         }
       }
@@ -512,7 +726,49 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld hours %lld minutes"
+            "value": "%#@n1@ %#@n2@"
+          },
+          "substitutions": {
+            "n1": {
+              "argNum": 1,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg hour"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg hours"
+                    }
+                  }
+                }
+              }
+            },
+            "n2": {
+              "argNum": 2,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg minute"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg minutes"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -520,9 +776,21 @@
     "%lld 张": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld images"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld image"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld images"
+                }
+              }
+            }
           }
         }
       }
@@ -576,7 +844,49 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld records · %lld switches"
+            "value": "%#@n1@ · %#@n2@"
+          },
+          "substitutions": {
+            "n1": {
+              "argNum": 1,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg record"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg records"
+                    }
+                  }
+                }
+              }
+            },
+            "n2": {
+              "argNum": 2,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg switch"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg switches"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -584,9 +894,21 @@
     "%lld 次": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld visits"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld visit"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld visits"
+                }
+              }
+            }
           }
         }
       }
@@ -594,9 +916,21 @@
     "%lld 次 · %@": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld sessions · %@"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld session · %@"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld sessions · %@"
+                }
+              }
+            }
           }
         }
       }
@@ -604,9 +938,21 @@
     "%lld 次采集": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld captures"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld capture"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld captures"
+                }
+              }
+            }
           }
         }
       }
@@ -616,7 +962,29 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld sessions, %lld completed"
+            "value": "%#@n1@, %2$lld completed"
+          },
+          "substitutions": {
+            "n1": {
+              "argNum": 1,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg session"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg sessions"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -656,9 +1024,21 @@
     "%lld分": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld pts"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld pt"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld pts"
+                }
+              }
+            }
           }
         }
       }
@@ -676,9 +1056,21 @@
     "0 / %lld 分钟": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "0 / %lld minutes"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "0 / %lld minute"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "0 / %lld minutes"
+                }
+              }
+            }
           }
         }
       }
@@ -1186,9 +1578,21 @@
     "专注 %lld 分钟": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Focus for %lld minutes"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Focus for %lld minute"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Focus for %lld minutes"
+                }
+              }
+            }
           }
         }
       }
@@ -1376,9 +1780,21 @@
     "今天 %lld 次专注 · %@": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld focus sessions today · %@"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld focus session today · %@"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld focus sessions today · %@"
+                }
+              }
+            }
           }
         }
       }
@@ -1868,9 +2284,21 @@
     "其余（%lld 项）": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Other (%lld items)"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Other (%lld item)"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Other (%lld items)"
+                }
+              }
+            }
           }
         }
       }
@@ -1991,6 +2419,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Categories & Rules"
+          }
+        }
+      }
+    },
+    "分类列表": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Categories"
           }
         }
       }
@@ -2168,9 +2606,21 @@
     "刻度：小时 · 容器按 %lld 小时绘制": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Scale: hours · Container represents %lld hours"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Scale: hours · Container represents %lld hour"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Scale: hours · Container represents %lld hours"
+                }
+              }
+            }
           }
         }
       }
@@ -2278,9 +2728,21 @@
     "另外 %lld 个分类 · %@": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld other categories · %@"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld other category · %@"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld other categories · %@"
+                }
+              }
+            }
           }
         }
       }
@@ -2658,9 +3120,21 @@
     "回看当时在做什么 · 保存 %lld 天": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Review what you were doing · Keep for %lld days"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Review what you were doing · Keep for %lld day"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Review what you were doing · Keep for %lld days"
+                }
+              }
+            }
           }
         }
       }
@@ -2900,7 +3374,49 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hide %lld apps · Block %lld website categories"
+            "value": "Hide %#@n1@ · Block %#@n2@"
+          },
+          "substitutions": {
+            "n1": {
+              "argNum": 1,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg app"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg apps"
+                    }
+                  }
+                }
+              }
+            },
+            "n2": {
+              "argNum": 2,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg website category"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg website categories"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -3018,9 +3534,21 @@
     "已专注 %lld 分钟": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Focused for %lld minutes"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Focused for %lld minute"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Focused for %lld minutes"
+                }
+              }
+            }
           }
         }
       }
@@ -3078,9 +3606,21 @@
     "已删除 %lld 张截图。": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Deleted %lld screenshots."
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Deleted %lld screenshot."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Deleted %lld screenshots."
+                }
+              }
+            }
           }
         }
       }
@@ -3108,9 +3648,21 @@
     "已启用 · 今日 %lld 张 · 最近 %@": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "On · %lld captures today · Latest %@"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "On · %lld capture today · Latest %@"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "On · %lld captures today · Latest %@"
+                }
+              }
+            }
           }
         }
       }
@@ -3185,6 +3737,16 @@
         }
       }
     },
+    "已提前结束": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ended early"
+          }
+        }
+      }
+    },
     "已暂停": {
       "localizations": {
         "en": {
@@ -3255,6 +3817,16 @@
         }
       }
     },
+    "已经是这个分类，选择别的分类再保存": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Already in this category. Choose another one to recategorize."
+          }
+        }
+      }
+    },
     "已记录": {
       "localizations": {
         "en": {
@@ -3288,9 +3860,21 @@
     "已超出 %lld 分钟": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld minutes over"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld minute over"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld minutes over"
+                }
+              }
+            }
           }
         }
       }
@@ -3818,9 +4402,21 @@
     "拦下 %lld 次": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Blocked %lld times"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Blocked %lld time"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Blocked %lld times"
+                }
+              }
+            }
           }
         }
       }
@@ -4021,16 +4617,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Remind once near the limit and once at the limit. Limits send reminders; they do not block activity."
-          }
-        }
-      }
-    },
-    "提前结束": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "End early"
           }
         }
       }
@@ -4648,9 +5234,21 @@
     "更早的 %lld 段": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld earlier segments"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld earlier segment"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld earlier segments"
+                }
+              }
+            }
           }
         }
       }
@@ -4898,9 +5496,21 @@
     "来回 %lld 次": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Visited %lld times"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Visited %lld time"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Visited %lld times"
+                }
+              }
+            }
           }
         }
       }
@@ -5320,7 +5930,29 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Average per %@: %@ · %lld days with %lld recorded"
+            "value": "Average per %1$@: %2$@ · %#@n3@ with %4$lld recorded"
+          },
+          "substitutions": {
+            "n3": {
+              "argNum": 3,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg day"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg days"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -6240,7 +6872,29 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Recorded %@, productive %@, completed %lld focus sessions. Score %lld%@."
+            "value": "Recorded %1$@, productive %2$@, completed %#@n3@. Score %4$lld%5$@."
+          },
+          "substitutions": {
+            "n3": {
+              "argNum": 3,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg focus session"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg focus sessions"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -6700,9 +7354,21 @@
     "还剩 %lld 分钟": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld minutes remaining"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld minute remaining"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld minutes remaining"
+                }
+              }
+            }
           }
         }
       }
@@ -6820,9 +7486,21 @@
     "连续 %lld 天 ≥ 70": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld days in a row ≥ 70"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld day in a row ≥ 70"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld days in a row ≥ 70"
+                }
+              }
+            }
           }
         }
       }

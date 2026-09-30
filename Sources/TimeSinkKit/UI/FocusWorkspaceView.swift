@@ -106,7 +106,7 @@ struct FocusWorkspaceView: View {
                         Text("\(Int(session.end.timeIntervalSince(session.start) / 60)) / \(session.plannedSeconds / 60) 分钟").monospacedDigit()
                         Spacer(minLength: 0)
                         Text(session.appBlocks + session.siteBlocks == 0 ? "没有分心" : "拦下 \(session.appBlocks + session.siteBlocks) 次").foregroundStyle(.secondary)
-                        Text(session.id == model.focus?.running?.id ? "进行中" : session.completed ? "完成" : "提前结束")
+                        Text(session.id == model.focus?.running?.id ? "进行中" : session.completed ? "完成" : "已提前结束")
                             .font(.system(size: 11)).padding(.horizontal, 6).padding(.vertical, 3)
                             .background((session.completed ? Color.green : .secondary).opacity(0.12), in: RoundedRectangle(cornerRadius: 5))
                             .foregroundStyle(session.completed ? Color.green : .secondary)
@@ -235,8 +235,8 @@ struct OrganizationView: View {
             Picker("管理", selection: $tab) {
                 Text("待分类").tag(SettingsTab.uncategorized)
                 Text("规则").tag(SettingsTab.rules)
-                Text("分类").tag(SettingsTab.categories)
-            }.pickerStyle(.segmented).frame(width: 260)
+                Text("分类列表").tag(SettingsTab.categories)
+            }.pickerStyle(.segmented).labelsHidden().fixedSize()
             Group {
                 switch tab {
                 case .rules: RefinedRulesPane(model: model)
@@ -249,7 +249,8 @@ struct OrganizationView: View {
         .padding(.horizontal, 24).padding(.top, 22).padding(.bottom, 28).background(WorkspaceBackground())
         .onChange(of: model.organizationTab, initial: true) { _, value in tab = value }
         .onChange(of: tab) { _, value in model.organizationTab = value }
-        .pageSearchable(text: $model.organizationSearch, prompt: "搜索规则")
+        // Only rules can be searched, so only their tab shows the field.
+        .pageSearchable(text: $model.organizationSearch, prompt: "搜索规则", isEnabled: tab == .rules)
         .onChange(of: model.organizationSearch) { _, value in
             if !value.isEmpty { tab = .rules; model.organizationTab = .rules }
         }

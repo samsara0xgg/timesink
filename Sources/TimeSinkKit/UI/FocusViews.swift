@@ -141,9 +141,12 @@ struct FocusRunningView: View {
                     }.font(.system(size: 11))
                 }
                 if !running.blockedCategories.isEmpty {
-                    HStack(spacing: 5) {
-                        Text("拦截网站").font(.system(size: 11)).foregroundStyle(.secondary)
-                        ForEach(Array(running.blockedCategories.sorted().prefix(3)), id: \.self) { CategoryChip(category: model.resolver.categoriesByID[$0]) }
+                    let label = Text("拦截网站").font(.system(size: 11)).foregroundStyle(.secondary)
+                    let chips = ForEach(Array(running.blockedCategories.sorted().prefix(3)), id: \.self) { CategoryChip(category: model.resolver.categoriesByID[$0]) }
+                    // Chips move under the label rather than truncate.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 5) { label; chips }
+                        VStack(alignment: .leading, spacing: 5) { label; HStack(spacing: 5) { chips } }
                     }
                 }
                 HStack {

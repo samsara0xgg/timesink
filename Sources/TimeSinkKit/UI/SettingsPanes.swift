@@ -18,7 +18,7 @@ struct CategoriesSettingsPane: View {
 
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 10)], spacing: 10) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 10, alignment: .top)], spacing: 10) {
                 ForEach($categories, id: \.id) { $category in
                     CategoryEditRow(model: model, category: $category, todaySeconds: today[category.id] ?? 0)
                 }
@@ -76,18 +76,23 @@ private struct CategoryEditRow: View {
                             Button("恢复默认颜色") { category.colorHex = shipped; persistOnly(); commitRefresh() }
                         }
                     }
+                // The whole row is the name's, so an English name is not cut off.
                 TextField(String(localized: "\(category.name)的名称"), text: $category.name)
                     .textFieldStyle(.plain).font(.system(size: 13, weight: .semibold))
                     .focused($isNameFocused).onSubmit { commitRefresh() }
-                Text(todaySeconds == 0 ? "—" : Format.duration(todaySeconds)).font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit().fixedSize()
             }
             Picker(String(localized: "\(category.name)的投入程度"), selection: $category.productivity) {
                 ForEach(-2...2, id: \.self) { level in
                     Text(level > 0 ? "+\(level)" : "\(level)").tag(level).help(Self.productivityLabel(level))
                 }
             }.pickerStyle(.segmented).labelsHidden()
-            Text(Self.productivityLabel(category.productivity) + (category.productivity >= 1 ? String(localized: " · 计入投入时长") : ""))
-                .font(.system(size: 11)).foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline) {
+                // Two lines for every card, so a row of cards lines up.
+                Text(Self.productivityLabel(category.productivity) + (category.productivity >= 1 ? String(localized: " · 计入投入时长") : ""))
+                    .lineLimit(2, reservesSpace: true)
+                Spacer(minLength: 6)
+                Text(todaySeconds == 0 ? "—" : Format.duration(todaySeconds)).monospacedDigit().fixedSize()
+            }.font(.system(size: 11)).foregroundStyle(.secondary)
         }.padding(.horizontal, 14).padding(.vertical, 12).workspacePanel()
         .onChange(of: category.name) { _, _ in persistOnly() }
         .onChange(of: isNameFocused) { _, focused in

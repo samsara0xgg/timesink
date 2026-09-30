@@ -138,6 +138,20 @@ def specifiers(text):
     return re.findall(r"%(?:\d+\$)?[-+ #0-9.]*(?:ll|l|h)?[@dDiuUxXoOfeEgGcCsSpaA]", text.replace("%%", ""))
 
 
+def arguments(text, substitutions=None):
+    """The argument types in argument order. A translation may move them
+    with positional specifiers (%2$@), and a plural substitution (%#@n@)
+    stands for the argument its entry names."""
+    subs = substitutions or {}
+    text = re.sub(r"%#@(\w+)@", lambda m: f"%{subs[m.group(1)]['argNum']}${subs[m.group(1)]['formatSpecifier']}", text)
+    args, i = {}, 0
+    for s in specifiers(text):
+        m = re.match(r"%(\d+)\$", s)
+        i = int(m.group(1)) if m else i + 1
+        args[i] = re.sub(r"^%\d+\$", "%", s)
+    return [args[k] for k in sorted(args)]
+
+
 def main():
     keys, at = compiler_keys()
     problems = []
@@ -167,10 +181,13 @@ def main():
             continue
         units = [en["stringUnit"]] if "stringUnit" in en else [
             v["stringUnit"] for v in en["variations"]["plural"].values()]
-        for unit in units:
+        subs = en.get("substitutions", {})
+        forms = [v["stringUnit"] for sub in subs.values() for v in sub["variations"]["plural"].values()]
+        for unit in units + forms:
             if unit["state"] != "translated" or CJK.search(unit["value"]):
                 problems.append(f"{CATALOG}: English for \"{key}\" is not finished: \"{unit['value']}\"")
-            elif specifiers(unit["value"]) != specifiers(key):
+        for unit in units:
+            if arguments(unit["value"], subs) != arguments(key):
                 problems.append(f"{CATALOG}: English for \"{key}\" has placeholders {specifiers(unit['value'])}, "
                                 f"the key has {specifiers(key)}")
     for key in sorted(set(catalog) - keys):

@@ -14,11 +14,19 @@ struct StatsView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         if stats.hasLoaded {
-                            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: geometry.size.width >= 650 ? 4 : 2), spacing: 12) {
-                                metric(String(localized: "总时长"), Format.duration(stats.total), stats.totalDelta.map { String(localized: "比上期 \(Format.durationDelta($0))") } ?? String(localized: "上期暂无记录"))
-                                metric(String(localized: "日均"), Format.duration(stats.avgPerDay), String(localized: "按所选时段已过的天数"))
-                                metric(String(localized: "投入"), Format.duration(stats.focus), String(localized: "占 \(Int((stats.focus / max(1, stats.total) * 100).rounded()))% · 按分类估算"))
-                                metric(String(localized: "评分"), stats.pulse.map(String.init) ?? "—", String(localized: "连续 \(stats.trendStreak) 天达标"))
+                            // A grid rather than a lazy one, so every card in a row
+                            // takes the tallest card's height.
+                            let metrics = [
+                                metric(String(localized: "总时长"), Format.duration(stats.total), stats.totalDelta.map { String(localized: "比上期 \(Format.durationDelta($0))") } ?? String(localized: "上期暂无记录")),
+                                metric(String(localized: "日均"), Format.duration(stats.avgPerDay), String(localized: "按所选时段已过的天数")),
+                                metric(String(localized: "投入"), Format.duration(stats.focus), String(localized: "占 \(Int((stats.focus / max(1, stats.total) * 100).rounded()))% · 按分类估算")),
+                                metric(String(localized: "评分"), stats.pulse.map(String.init) ?? "—", String(localized: "连续 \(stats.trendStreak) 天达标")),
+                            ]
+                            let columns = geometry.size.width >= 650 ? 4 : 2
+                            Grid(horizontalSpacing: 12, verticalSpacing: 12) {
+                                ForEach(Array(stride(from: 0, to: metrics.count, by: columns)), id: \.self) { row in
+                                    GridRow { ForEach(row..<row + columns, id: \.self) { metrics[$0] } }
+                                }
                             }
                             if geometry.size.width >= 850 {
                                 // Side by side the chart grows to the ranking's height
@@ -66,7 +74,7 @@ struct StatsView: View {
             Text(title).font(.system(size: 12)).foregroundStyle(.secondary)
             Text(value).font(.system(size: 24, weight: .semibold)).monospacedDigit().contentTransition(.numericText())
             Text(detail).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2)
-        }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.vertical, 16).workspacePanel()
+        }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(.horizontal, 18).padding(.vertical, 16).workspacePanel()
     }
     private var categoryHistory: some View {
         VStack(alignment: .leading, spacing: 12) {

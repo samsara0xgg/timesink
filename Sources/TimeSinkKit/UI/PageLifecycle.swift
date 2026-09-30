@@ -58,8 +58,8 @@ extension View {
     }
 
     /// `searchable` whose field leaves the window toolbar with its page.
-    func pageSearchable(text: Binding<String>, prompt: LocalizedStringKey) -> some View {
-        modifier(PageSearch(text: text, prompt: prompt))
+    func pageSearchable(text: Binding<String>, prompt: LocalizedStringKey, isEnabled: Bool = true) -> some View {
+        modifier(PageSearch(text: text, prompt: prompt, isEnabled: isEnabled))
     }
 
     /// Toolbar items that leave the window toolbar with their page.
@@ -112,11 +112,12 @@ private struct PageVisibilityChange: ViewModifier {
 private struct PageSearch: ViewModifier {
     let text: Binding<String>
     let prompt: LocalizedStringKey
+    let isEnabled: Bool
     @PageShown private var isActive
 
     func body(content: Content) -> some View {
         // On a sibling, so hiding the field does not rebuild the page.
-        content.background { if isActive { Color.clear.searchable(text: text, prompt: prompt) } }
+        content.background { if isActive && isEnabled { Color.clear.searchable(text: text, prompt: prompt) } }
     }
 }
 

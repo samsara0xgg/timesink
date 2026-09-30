@@ -33,8 +33,10 @@ struct HourlyActivityChart: View {
         Dictionary(grouping: bars, by: \.hour).mapValues { $0.reduce(0) { $0 + $1.seconds } }
     }
 
+    /// Whole hours of minutes; an hour a few seconds over 60 minutes (spans
+    /// meeting at the boundary) does not double the axis.
     private var ceiling: Double {
-        max(minimumScale, ceil((totals.values.max() ?? 0) / 3600) * 60)
+        max(minimumScale, ceil((totals.values.max() ?? 0) / 3600 - 0.02) * 60)
     }
 
     private func description(_ hour: Int) -> String {
@@ -52,7 +54,6 @@ struct HourlyActivityChart: View {
                                   xEnd: .value("小时", Double(bar.hour) + 0.92),
                                   yStart: .value("分钟", segment.startMinutes),
                                   yEnd: .value("分钟", segment.endMinutes))
-                        .cornerRadius(2)
                         .foregroundStyle(RefinedStyle.category(bar.categoryID, hex: bar.colorHex))
                         .accessibilityLabel(HeatmapData.Key(weekday: 0, hour: bar.hour).timeLabel(locale))
                         .accessibilityValue(Format.duration(bar.seconds))
