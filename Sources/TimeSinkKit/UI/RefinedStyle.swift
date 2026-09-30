@@ -20,6 +20,8 @@ enum RefinedStyle {
     static let work = adaptive("#F6F6F7", "#1B1B1D")
     static let panel = adaptive("#FFFFFF", "#252528")
     static let warning = adaptive("#C98300", "#F2AA2E")
+    /// Neutral heatmap ink: the accent colour stays reserved for things you can click.
+    static let heat = adaptive("#2A3140", "#DDE3F0")
 
     /// Shipped hex -> its light/dark pair, built once: this is called per
     /// block, row and chip on every render.

@@ -27,7 +27,7 @@ struct HeatmapCard: View {
                 Spacer(minLength: 8)
                 Picker("热力图指标", selection: $showsScore) { Text("时长").tag(false); Text("评分").tag(true) }
                     .pickerStyle(.segmented).labelsHidden().frame(width: 120)
-                Text("近 30 天 · 按星期汇总").font(.system(size: 11)).fixedSize().foregroundStyle(.secondary)
+                Text(showsScore ? "近 30 天 · 按星期汇总" : "近 30 天平均 · 中性色，越深越投入").font(.system(size: 11)).fixedSize().foregroundStyle(.secondary)
             }
             Text("\(data.window.start.formatted(.dateTime.month().day()))–\(data.window.end.addingTimeInterval(-1).formatted(.dateTime.month().day())) · 每格汇总同一星期、同一小时的记录")
                 .font(.caption).foregroundStyle(.secondary)
@@ -124,7 +124,7 @@ struct HeatmapCard: View {
             HStack(spacing: 5) {
                 Text(showsScore ? "评分" : "平均分钟")
                 ForEach([0, 40, 70], id: \.self) { score in
-                    RoundedRectangle(cornerRadius: 2).fill((showsScore ? scoreColor(score) : Color.accentColor.opacity(0.15 + Double(score) / 100))).frame(width: 12, height: 8)
+                    RoundedRectangle(cornerRadius: 2).fill((showsScore ? scoreColor(score) : RefinedStyle.heat.opacity(0.08 + 0.8 * min(1, Double(score) / 70)))).frame(width: 12, height: 8)
                     Text(showsScore ? (score == 0 ? "0–39" : score == 40 ? "40–69" : "70–100") : (score == 0 ? "少" : score == 40 ? "30" : "60"))
                 }
                 Spacer(minLength: 0)
@@ -233,6 +233,7 @@ private struct HeatmapCellView: View, Equatable {
     let pinned: Bool
     let select: () -> Void
     let hover: (Bool) -> Void
+    private var intensity: Double { min(1, cell.averageSeconds / 3600) }
 
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.showsScore == rhs.showsScore && lhs.locale == rhs.locale && lhs.cell.key == rhs.cell.key && lhs.cell.seconds == rhs.cell.seconds
@@ -244,8 +245,8 @@ private struct HeatmapCellView: View, Equatable {
     var body: some View {
         Button(action: select) {
             RoundedRectangle(cornerRadius: 3)
-                .fill(cell.seconds == 0 ? Color.secondary.opacity(0.06)
-                      : !showsScore ? Color.accentColor.opacity(0.12 + 0.88 * min(1, cell.averageSeconds / 3600))
+                .fill(cell.seconds == 0 || (!showsScore && intensity < 0.04) ? Color.secondary.opacity(0.06)
+                      : !showsScore ? RefinedStyle.heat.opacity(0.08 + 0.8 * intensity)
                       : cell.isLowSample ? Color.secondary.opacity(0.25) : scoreColor(cell.pulse))
                 .overlay {
                     RoundedRectangle(cornerRadius: 3)
