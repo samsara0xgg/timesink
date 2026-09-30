@@ -93,17 +93,18 @@ struct RefinedRulesPane: View {
     }
     private var header: some View {
         HStack(spacing: 10) {
+            Text("启用").frame(width: 28, alignment: .leading)
             Color.clear.frame(width: 16, height: 1)
             Text("类型").frame(width: 56, alignment: .leading)
             Text("条件").frame(maxWidth: .infinity, alignment: .leading)
             Text("归为").frame(width: chipWidth, alignment: .leading)
             Text("今天命中").frame(width: 84, alignment: .trailing)
             Text("来源").frame(width: 48)
-            Color.clear.frame(width: 30, height: 1)
         }.font(.system(size: 11)).foregroundStyle(.secondary).padding(.horizontal, 14).frame(height: 28).background(.quaternary.opacity(0.45))
     }
     private func rule(_ row: RuleRow) -> some View {
         HStack(spacing: 10) {
+            Toggle(String(localized: "启用规则：\(row.displayPattern)"), isOn: Binding(get: { row.enabled }, set: { setEnabled(row, $0) })).toggleStyle(.checkbox).controlSize(.small).labelsHidden().frame(width: 28, alignment: .leading)
             Image(systemName: "line.3.horizontal").font(.system(size: 11)).foregroundStyle(.tertiary).frame(width: 16)
                 .opacity(row.type == String(localized: "标题") && row.source == "user" ? 1 : 0)
             Text(row.type).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).padding(.vertical, 3).padding(.horizontal, 4)
@@ -111,13 +112,11 @@ struct RefinedRulesPane: View {
             HStack(spacing: 3) {
                 if !row.scopeLabel.isEmpty { Text(row.scopeLabel + " ·").foregroundStyle(.secondary) }
                 Text(row.displayPattern)
-            }.font(.system(size: 13)).lineLimit(1).truncationMode(.middle).frame(maxWidth: .infinity, alignment: .leading).help(row.scopeLabel + " " + row.displayPattern)
+            }.font(.system(size: 13)).foregroundStyle(row.enabled ? .primary : .secondary).lineLimit(1).truncationMode(.middle).frame(maxWidth: .infinity, alignment: .leading).help(row.scopeLabel + " " + row.displayPattern)
             CategoryChip(category: model.resolver.categoriesByID[row.category]).lineLimit(1).frame(width: chipWidth, alignment: .leading)
             Text(row.seconds == 0 ? "—" : Format.duration(row.seconds)).font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit().frame(width: 84, alignment: .trailing)
             Text(row.source == "user" ? "你" : "内置").font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).frame(width: 48)
-            Toggle(String(localized: "启用规则：\(row.displayPattern)"), isOn: Binding(get: { row.enabled }, set: { setEnabled(row, $0) }))
-                .toggleStyle(.switch).controlSize(.mini).labelsHidden().frame(width: 30)
-        }.padding(.horizontal, 14).frame(minHeight: 42).opacity(row.enabled ? 1 : 0.5)
+        }.padding(.horizontal, 14).frame(minHeight: 42)
             .contextMenu {
                 if isOrderable(row) {
                     Button("上移") { move(row, by: -1) }
