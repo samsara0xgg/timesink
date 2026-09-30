@@ -16,7 +16,7 @@ struct SettingsView: View {
             List(selection: Binding(get: { model.settingsTab }, set: { if let tab = $0 { model.settingsTab = tab } })) {
                 ForEach(tabs, id: \.0) { tab in Label(tab.1, systemImage: tab.2).tag(tab.0) }
             }
-            .navigationSplitViewColumnWidth(200)
+            .navigationSplitViewColumnWidth(min: 200, ideal: 200, max: 200)
             .toolbar(removing: .sidebarToggle)
         } detail: {
             Group {
@@ -82,7 +82,7 @@ struct RefinedGeneralPane: View {
             Section("显示") {
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle("显示评分", isOn: $model.showScore)
-                Text("在弹出层和「今天」显示评分与连续达标；关闭后只在「趋势」里出现。")
+                Text("关闭后只在「趋势」里显示。")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
                 }
                 Picker("一周从哪天开始", selection: $model.firstWeekday) {
@@ -345,14 +345,14 @@ struct RefinedNotificationsPane: View {
                         model.settings.set("returnOfferEnabled", value ? "true" : "false")
                         if !value { model.setReturnOffer(nil) }
                     }
-                    Text("打了字或停留满 \(Int(model.interruptionRule.dwell)) 秒时在菜单栏出现，⌃⌥← 回去").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text("打了字或停留满 \(Int(model.interruptionRule.dwell)) 秒时出现，⌃⌥← 回去").font(.system(size: 11)).foregroundStyle(.secondary)
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle("离开补记", isOn: $awayPrompt).onChange(of: awayPrompt) { _, value in
                         model.settings.set("awayPromptEnabled", value ? "true" : "false")
                         if !value { model.awayOffer = nil }
                     }
-                    Text("离开电脑 10 分钟以上再回来时，在菜单栏问一次；超过 4 小时不问，一天最多 5 次").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text("离开 10 分钟以上回来时问一次，一天最多 5 次").font(.system(size: 11)).foregroundStyle(.secondary)
                 }
             }
             Section {

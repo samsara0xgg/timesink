@@ -53,6 +53,16 @@
         }
       }
     },
+    " 次": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " times"
+          }
+        }
+      }
+    },
     " 等 %lld 项": {
       "localizations": {
         "en": {
@@ -2077,6 +2087,16 @@
         }
       }
     },
+    "停留 %lld 秒以上或打了字才算。最多的是%@，%lld 次。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Counts when you stay %1$lld s or type there. Most often %2$@, %3$lld times."
+          }
+        }
+      }
+    },
     "停留不到 %lld 秒、没打字的不画": {
       "localizations": {
         "en": {
@@ -2163,6 +2183,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "About"
+          }
+        }
+      }
+    },
+    "关闭后只在「趋势」里显示。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When off, shown only in Trends."
           }
         }
       }
@@ -3135,16 +3165,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Block in Chrome"
-          }
-        }
-      }
-    },
-    "在弹出层和「今天」显示评分与连续达标；关闭后只在「趋势」里出现。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Show score and streak in the popover and Today. When off, they appear only in Trends."
           }
         }
       }
@@ -4267,12 +4287,12 @@
         }
       }
     },
-    "打了字或停留满 %lld 秒时在菜单栏出现，⌃⌥← 回去": {
+    "打了字或停留满 %lld 秒时出现，⌃⌥← 回去": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Appears in the menu bar when you type or stay %lld s elsewhere; ⌃⌥← goes back"
+            "value": "Appears after typing or %lld s there; ⌃⌥← to go back"
           }
         }
       }
@@ -4323,6 +4343,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Open popover"
+          }
+        }
+      }
+    },
+    "打开打断雷达": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Interruption Radar"
           }
         }
       }
@@ -5365,6 +5395,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Longest uninterrupted"
+          }
+        }
+      }
+    },
+    "最长没被打断：%@–%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Longest without interruption: %@–%@"
           }
         }
       }
@@ -6583,6 +6623,16 @@
         }
       }
     },
+    "离开 10 分钟以上回来时问一次，一天最多 5 次": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Asks once after 10+ minutes away, up to 5 times a day"
+          }
+        }
+      }
+    },
     "离开中": {
       "localizations": {
         "en": {
@@ -6629,16 +6679,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Away from Mac"
-          }
-        }
-      }
-    },
-    "离开电脑 10 分钟以上再回来时，在菜单栏问一次；超过 4 小时不问，一天最多 5 次": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Asks once in the menu bar after 10 minutes or more away; not after 4 hours, at most 5 times a day"
           }
         }
       }
