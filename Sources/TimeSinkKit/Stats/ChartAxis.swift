@@ -49,10 +49,4 @@ enum ChartAxis {
         }
         return result
     }
-
-    /// Difference of two durations after each is cut to whole minutes the way
-    /// `Format.duration` shows them, so "6h 36m" vs "5h 49m" reads as +47m.
-    static func minuteDelta(_ current: TimeInterval, _ previous: TimeInterval) -> TimeInterval {
-        (floor(current / 60) - floor(previous / 60)) * 60
-    }
 }

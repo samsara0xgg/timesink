@@ -120,7 +120,7 @@ struct StatsSummary: Sendable {
         totalDelta = total - Aggregator.totalDuration(durationPrevItems.map(\.span))
         let prevDurationByCategory = Aggregator.durationByCategory(durationPrevItems)
         focusDelta = focus - Aggregator.focusTime(durationByCategory: prevDurationByCategory, categories: categories)
-        categoryDeltas = Dictionary(uniqueKeysWithValues: categoryRows.map { ($0.id, ChartAxis.minuteDelta($0.seconds, prevDurationByCategory[$0.id] ?? 0)) })
+        categoryDeltas = Dictionary(uniqueKeysWithValues: categoryRows.map { ($0.id, Format.minuteDelta($0.seconds, prevDurationByCategory[$0.id] ?? 0)) })
     }
 
     private static func hourScale(_ points: [StackedPoint]) -> (top: Double, step: Double) {

@@ -50,7 +50,7 @@ final class ChartAxisTests: XCTestCase {
 
     func testMinuteDeltaMatchesDisplayedMinutes() {
         // 6h 36m 50s vs 5h 49m 10s: shown as 6h 36m and 5h 49m, so the delta reads +47m.
-        let delta = ChartAxis.minuteDelta(6 * 3600 + 36 * 60 + 50, 5 * 3600 + 49 * 60 + 10)
+        let delta = Format.minuteDelta(6 * 3600 + 36 * 60 + 50, 5 * 3600 + 49 * 60 + 10)
         XCTAssertEqual(delta, 47 * 60)
         XCTAssertEqual(Format.durationDelta(delta), "+47m")
     }
