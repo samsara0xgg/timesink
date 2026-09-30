@@ -218,6 +218,31 @@ public struct StateEvent: Codable, Equatable, Sendable, FetchableRecord, Mutable
     public mutating func didInsert(_ inserted: InsertionSuccess) { id = inserted.rowID }
 }
 
+// MARK: - AwayNote
+
+/// F4 离开补记: what a stretch away from the Mac was, as you named it. Kept
+/// apart from spans, so it never counts as time at the computer or in the
+/// score.
+public struct AwayNote: Codable, Equatable, Sendable, FetchableRecord, MutablePersistableRecord {
+    public static let databaseTableName = "awayNote"
+    public var id: Int64?
+    public var start: Date
+    public var end: Date
+    public var label: String
+    /// SF Symbol shown with the label.
+    public var symbol: String
+
+    public init(id: Int64? = nil, start: Date, end: Date, label: String, symbol: String) {
+        self.id = id
+        self.start = start
+        self.end = end
+        self.label = label
+        self.symbol = symbol
+    }
+
+    public mutating func didInsert(_ inserted: InsertionSuccess) { id = inserted.rowID }
+}
+
 // MARK: - Capture
 
 public struct Capture: Codable, Equatable, Sendable, FetchableRecord, MutablePersistableRecord {

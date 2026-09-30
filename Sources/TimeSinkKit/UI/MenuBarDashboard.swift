@@ -562,6 +562,9 @@ struct MenuBarDashboardView: View {
         let kind = kind
         VStack(alignment: .leading, spacing: 8) {
             statusRow(kind)
+            if let away = model.awayOffer, kind != .focus {
+                AwayPrompt(model: model, interval: away).transition(transition)
+            }
             if let offer = model.returnOffer, kind == .recording {
                 Button { model.goBack() } label: {
                     HStack {

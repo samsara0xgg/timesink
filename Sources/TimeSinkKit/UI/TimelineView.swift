@@ -159,6 +159,7 @@ struct DayTimelineView: View {
     var events: [TimelineEventBlock] = []
     var allDay: [String] = []
     var focusBlocks: [TimelineBlock] = []
+    var awayNotes: [AwayNote] = []
     var selectedActivity: ActivitySelection?
     var selectedStart: Date?
     var isFiltered = false
@@ -335,6 +336,23 @@ struct DayTimelineView: View {
                             .frame(width: activityWidth + 10, height: height(block.duration) + 6)
                             .offset(x: labelWidth + 3, y: offset(block.start) - 3)
                             .help(block.tooltip).allowsHitTesting(false)
+                    }
+                    ForEach(awayNotes, id: \.start) { note in
+                        let duration = note.end.timeIntervalSince(note.start)
+                        RoundedRectangle(cornerRadius: 7)
+                            .fill(Color.primary.opacity(0.04))
+                            .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.secondary, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+                            .overlay(alignment: .topLeading) {
+                                if height(duration) >= 16 {
+                                    Label(String(localized: "\(note.label) · \(Format.minutes(duration)) 分钟"), systemImage: note.symbol)
+                                        .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                                        .padding(.horizontal, 8).padding(.top, 3)
+                                }
+                            }
+                            .frame(width: activityWidth, height: height(duration))
+                            .offset(x: labelWidth + 8, y: offset(note.start))
+                            .help(String(localized: "补记：\(note.label) · 不计入评分"))
+                            .accessibilityLabel(String(localized: "补记：\(note.label)，\(Format.minutes(duration)) 分钟"))
                     }
                     ForEach(events) { event in
                         RoundedRectangle(cornerRadius: 7).fill(event.color.opacity(0.12))

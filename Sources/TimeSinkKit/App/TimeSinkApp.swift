@@ -289,6 +289,10 @@ struct MenuBarLabel: View {
                 // drains with the time left (SF Symbols 7 variable draw).
                 Image(nsImage: FocusCapsule.image(remaining: focus.remaining, planned: TimeInterval(running.plannedSeconds)))
                     .accessibilityLabel(String(localized: "专注中 · 还剩 \(Format.mmss(focus.remaining))"))
+            } else if let away = model.awayOffer, !model.trackingPaused {
+                // F4: back after a while away; the capsule asks what it was.
+                Image(nsImage: FocusCapsule.image(symbol: "moon", text: String(localized: "离开了 \(Format.minutes(away.duration)) 分钟 · 补记？")))
+                    .accessibilityLabel(String(localized: "离开了 \(Format.minutes(away.duration)) 分钟 · 补记？"))
             } else if let offer = model.returnOffer, model.accessibilityGranted, !model.trackingPaused {
                 // F3: the hourglass grows a 回到 capsule.
                 Image(nsImage: FocusCapsule.image(symbol: "arrow.uturn.backward", text: String(localized: "回到 \(offer.appName)")))

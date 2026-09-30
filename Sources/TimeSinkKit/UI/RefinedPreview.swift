@@ -97,6 +97,13 @@ public enum RefinedPreview {
                 Image(systemName: "hourglass"); Text(verbatim: "6:42")
             }.frame(maxWidth: .infinity, maxHeight: .infinity).background(.bar), size: .init(width: 340, height: 44), dark: dark,
                              to: output.appendingPathComponent("menubar-focus-\(suffix).png"))
+            // F4: back from a 48-minute lunch.
+            let lunch = DateInterval(start: Calendar.current.startOfDay(for: Date()).addingTimeInterval(12 * 3600 + 120), duration: 48 * 60)
+            try await render(VStack(spacing: 10) {
+                Image(nsImage: FocusCapsule.image(symbol: "moon", text: String(localized: "离开了 \(48) 分钟 · 补记？")))
+                AwayPrompt(model: model, interval: lunch)
+            }.padding(14).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top).background(.regularMaterial),
+                             size: .init(width: 340, height: 330), dark: dark, to: output.appendingPathComponent("away-\(suffix).png"))
             if let focus = model.focus {
                 try await render(FocusHUDContentView(appName: "信息", appKey: "com.apple.MobileSMS", hideCount: 1, controller: focus, onReturn: {}, onAllow: {}), size: .init(width: 312, height: 122), dark: dark, to: output.appendingPathComponent("focus-hud-\(suffix).png")) // l10n: data
             }

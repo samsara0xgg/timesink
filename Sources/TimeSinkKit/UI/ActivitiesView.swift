@@ -220,6 +220,7 @@ struct ActivitiesView: View {
             DayTimelineView(day: range.interval.start, blocks: activities.timelineBlocks,
                             events: activities.calendarBlocks, allDay: activities.allDayTitles,
                             focusBlocks: activities.focusBlocks,
+                            awayNotes: activities.awayNotes,
                             selectedActivity: activities.selectedActivity,
                             selectedStart: activities.selectedStart,
                             isFiltered: model.activityTimeInterval != nil || model.activityFilter != nil || ActivitiesModel.normalizedQuery(model.activitySearch) != nil,
@@ -550,6 +551,8 @@ final class ActivitiesModel {
     /// ranges only, same gate as `timelineBlocks`) -- `DayTimelineView`
     /// renders these as a dashed outline lane over the activity column.
     var focusBlocks: [TimelineBlock] = []
+    /// F4 补记 on this day, drawn as dashed frames in the gaps.
+    var awayNotes: [AwayNote] = []
 
     /// C3 calendar overlay -- populated only for single-day-ish ranges (see
     /// `showsTimeline`), from the `events` the caller fetched via
@@ -780,6 +783,7 @@ final class ActivitiesModel {
         } else {
             focusBlocks = []
         }
+        awayNotes = showsTimeline ? (try? model.observationStore?.awayNotes(overlapping: model.range.interval)) ?? [] : []
     }
 
     /// Split at the filter's exact edges so the timeline never highlights

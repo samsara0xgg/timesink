@@ -317,6 +317,7 @@ struct RefinedNotificationsPane: View {
     @State private var focusAlerts = true
     @State private var sound = false
     @State private var returnOffer = true
+    @State private var awayPrompt = true
     var body: some View {
         Form {
             Section("限额提醒") {
@@ -350,6 +351,13 @@ struct RefinedNotificationsPane: View {
                     }
                     Text("打了字或停留满 \(Int(model.interruptionRule.dwell)) 秒时在菜单栏出现，⌃⌥← 回去").font(.system(size: 11)).foregroundStyle(.secondary)
                 }
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle("离开补记", isOn: $awayPrompt).onChange(of: awayPrompt) { _, value in
+                        model.settings.set("awayPromptEnabled", value ? "true" : "false")
+                        if !value { model.awayOffer = nil }
+                    }
+                    Text("离开电脑 10 分钟以上再回来时，在菜单栏问一次；超过 4 小时不问，一天最多 5 次").font(.system(size: 11)).foregroundStyle(.secondary)
+                }
             }
             Section {
                 Toggle("专注结束", isOn: $focusAlerts).onChange(of: focusAlerts) { _, value in model.settings.set("focusNotificationsEnabled", value ? "true" : "false") }
@@ -358,7 +366,7 @@ struct RefinedNotificationsPane: View {
         }.formStyle(.grouped).onAppear {
             warn = model.settings.budgetWarnPercent; summary = model.settings.dailySummaryEnabled; hour = model.settings.dailySummaryHour
             budgetAlerts = model.settings.budgetNotificationsEnabled; focusAlerts = model.settings.focusNotificationsEnabled; sound = model.settings.notificationSound
-            returnOffer = model.returnEnabled
+            returnOffer = model.returnEnabled; awayPrompt = model.awayPromptEnabled
         }
     }
 }

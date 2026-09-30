@@ -315,6 +315,17 @@ public enum AppDatabase {
                 t.add(column: "keySeconds", .integer).notNull().defaults(to: 0)
             }
         }
+        migrator.registerMigration("v12") { db in
+            // F4 离开补记. A table of its own: an older build (a rollback)
+            // never reads it and keeps working.
+            try db.create(table: "awayNote") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("start", .datetime).notNull().indexed()
+                t.column("end", .datetime).notNull()
+                t.column("label", .text).notNull()
+                t.column("symbol", .text).notNull()
+            }
+        }
         return migrator
     }
 }

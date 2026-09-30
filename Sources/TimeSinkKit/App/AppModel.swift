@@ -46,6 +46,10 @@ public final class AppModel {
     let returnShortcut = PopoverShortcut(id: 2)
     /// F3: the window 回到刚才 would bring back; set only when it changes.
     var returnOffer: ReturnTracker.Origin?
+    /// F4: a stretch away just ended and is waiting for a name.
+    var awayOffer: DateInterval?
+    @ObservationIgnored var lastTickAt: Date?
+    @ObservationIgnored var awayAsked: (day: Date, count: Int) = (.distantPast, 0)
     @ObservationIgnored var returnTracker = ReturnTracker()
     @ObservationIgnored var returnCategory: (start: Date, bundleID: String, categoryID: String)?
     public var popoverShortcutAvailable = false
@@ -257,7 +261,7 @@ public final class AppModel {
     /// `isNowInMeeting` (derived from it) needs to be, and that's read by
     /// `TrackerEngine.isInMeetingProvider`, not SwiftUI.
     @ObservationIgnored
-    private var todayMeetingEvents: [CalendarEvent] = []
+    private(set) var todayMeetingEvents: [CalendarEvent] = []
 
     /// C4 budgets -- same post-init injection convention as `calendarStore`:
     /// `TimeSinkApp.init` assigns these after constructing `AppModel`. All
@@ -360,7 +364,7 @@ public final class AppModel {
         // rather than serving that bootstrap-time snapshot indefinitely.
         rangeCache.removeAll()
         cacheOrder.removeAll()
-        engine.onTick = { [weak self] span, now in self?.observeForReturn(span, now: now) }
+        engine.onTick = { [weak self] span, now in self?.observeForReturn(span, now: now); self?.observeForAway(now: now) }
         engine.onChange = { [weak self] in
             guard let self else { return }
             let start = engine.lastWriteStart ?? .distantPast

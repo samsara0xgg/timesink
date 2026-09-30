@@ -149,6 +149,16 @@
         }
       }
     },
+    "%@ · %lld 分钟": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %lld min"
+          }
+        }
+      }
+    },
     "%@ · %lld 条记录 · %lld 个分类": {
       "localizations": {
         "en": {
@@ -1567,6 +1577,16 @@
         }
       }
     },
+    "不记": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leave Blank"
+          }
+        }
+      }
+    },
     "不记录这些应用": {
       "localizations": {
         "en": {
@@ -2011,6 +2031,16 @@
         }
       }
     },
+    "休息": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Break"
+          }
+        }
+      }
+    },
     "会影响 %lld 条记录 · %@": {
       "localizations": {
         "en": {
@@ -2373,6 +2403,16 @@
         }
       }
     },
+    "其他…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Other…"
+          }
+        }
+      }
+    },
     "其余（%lld 项）": {
       "localizations": {
         "en": {
@@ -2635,6 +2675,16 @@
         }
       }
     },
+    "刚才你离开了 %lld 分钟": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You were away for %lld min"
+          }
+        }
+      }
+    },
     "删除今天保存的截图？": {
       "localizations": {
         "en": {
@@ -2731,6 +2781,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Remind when %lld%% remains"
+          }
+        }
+      }
+    },
+    "午饭": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lunch"
           }
         }
       }
@@ -4175,6 +4235,16 @@
         }
       }
     },
+    "开会": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meeting"
+          }
+        }
+      }
+    },
     "开发版": {
       "localizations": {
         "en": {
@@ -5213,6 +5283,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Calendar Access Denied"
+          }
+        }
+      }
+    },
+    "日历里正好有": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On your calendar"
           }
         }
       }
@@ -6893,6 +6973,16 @@
         }
       }
     },
+    "离开了 %lld 分钟 · 补记？": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Away %lld min · Name it?"
+          }
+        }
+      }
+    },
     "离开多久算空闲": {
       "localizations": {
         "en": {
@@ -6909,6 +6999,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Away from Mac"
+          }
+        }
+      }
+    },
+    "离开电脑 10 分钟以上再回来时，在菜单栏问一次；超过 4 小时不问，一天最多 5 次": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Asks once in the menu bar after 10 minutes or more away; not after 4 hours, at most 5 times a day"
+          }
+        }
+      }
+    },
+    "离开补记": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Name Time Away"
           }
         }
       }
@@ -7293,6 +7403,46 @@
         }
       }
     },
+    "补记": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add"
+          }
+        }
+      }
+    },
+    "补记画成虚线框，和电脑上的时间分开统计，不计入评分。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Named time is drawn as a dashed frame, counted apart from time at the Mac, and left out of the score."
+          }
+        }
+      }
+    },
+    "补记：%@ · 不计入评分": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Named: %@ · not in the score"
+          }
+        }
+      }
+    },
+    "补记：%@，%lld 分钟": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Named: %@, %lld min"
+          }
+        }
+      }
+    },
     "规则": {
       "localizations": {
         "en": {
@@ -7329,6 +7479,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Let TimeSink keep track of your time"
+          }
+        }
+      }
+    },
+    "记为会议": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Log as Meeting"
           }
         }
       }
@@ -7859,6 +8019,16 @@
         }
       }
     },
+    "这 %lld 分钟是": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "These %lld min were"
+          }
+        }
+      }
+    },
     "这 7 天没有被打断。": {
       "localizations": {
         "en": {
@@ -7915,6 +8085,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Always Sort This App As"
+          }
+        }
+      }
+    },
+    "这个时间常是午饭": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usually lunch at this time"
           }
         }
       }

@@ -46,6 +46,18 @@ public final class ObservationStore: Sendable {
         }
     }
 
+    public func insert(_ note: AwayNote) throws {
+        var note = note
+        try writer.write { db in try note.insert(db) }
+    }
+
+    public func awayNotes(overlapping interval: DateInterval) throws -> [AwayNote] {
+        try writer.read { db in
+            try AwayNote.fetchAll(db, sql: "SELECT * FROM awayNote WHERE start < ? AND \"end\" > ? ORDER BY start",
+                                  arguments: [interval.end, interval.start])
+        }
+    }
+
     public func stateEvents(in interval: DateInterval) throws -> [StateEvent] {
         try writer.read { db in
             try StateEvent.fetchAll(db, sql: "SELECT * FROM stateEvent WHERE at >= ? AND at < ? ORDER BY at",
