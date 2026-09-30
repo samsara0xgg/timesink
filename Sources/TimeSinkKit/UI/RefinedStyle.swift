@@ -177,9 +177,9 @@ struct RecordingPauseMenu: View {
         } else {
             Menu {
                 Text("暂停应用、网站、标题和屏幕采集")
-                Button("暂停 15 分钟") { model.pauseTracking(minutes: 15) }
-                Button("暂停 1 小时") { model.pauseTracking(minutes: 60) }
-                Button("直到手动恢复") { model.pauseTracking(minutes: nil) }
+                Button("暂停 15 分钟", systemImage: "pause.circle") { model.pauseTracking(minutes: 15) }
+                Button("暂停 1 小时", systemImage: "clock") { model.pauseTracking(minutes: 60) }
+                Button("直到手动恢复", systemImage: "hand.raised") { model.pauseTracking(minutes: nil) }
             } label: { Label("暂停", systemImage: "pause") }
             .menuStyle(.borderlessButton).fixedSize().font(.system(size: 11))
             .help("暂停所有记录；暂停期间不补记")

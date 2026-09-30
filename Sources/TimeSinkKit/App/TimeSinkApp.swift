@@ -284,7 +284,13 @@ struct MenuBarLabel: View {
 
     var body: some View {
         HStack(spacing: 3) {
-            Image(systemName: !model.accessibilityGranted ? "exclamationmark.triangle" : model.trackingPaused ? "pause.circle" : model.focus?.running != nil ? "scope" : model.chromeDegraded
+            if let focus = model.focus, let running = focus.running, model.accessibilityGranted, !model.trackingPaused {
+                // Focus grows the hourglass into an accent capsule; its sand
+                // drains with the time left (SF Symbols 7 variable draw).
+                Image(nsImage: FocusCapsule.image(remaining: focus.remaining, planned: TimeInterval(running.plannedSeconds)))
+                    .accessibilityLabel(String(localized: "专注中 · 还剩 \(Format.mmss(focus.remaining))"))
+            } else {
+            Image(systemName: !model.accessibilityGranted ? "exclamationmark.triangle" : model.trackingPaused ? "pause.circle" : model.chromeDegraded
                   ? "hourglass.badge.exclamationmark" : "hourglass")
                 .accessibilityLabel(model.chromeDegraded ? "Chrome 采集降级" : "TimeSink")
             // C4 (R-T12h, stands as reviewed): while a focus session is
@@ -301,12 +307,9 @@ struct MenuBarLabel: View {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     Text(model.trackingResumeAt.map { String(localized: "已暂停 ") + Format.mmss($0.timeIntervalSince(context.date)) } ?? String(localized: "已暂停")).monospacedDigit()
                 }
-            } else if let focus = model.focus, focus.running != nil {
-                Text(Format.mmss(focus.remaining))
-                    .monospacedDigit()
-                    .foregroundStyle(.tint)
             } else if model.menuTextEnabled {
                 Text(model.menuDisplayMode == "category" ? model.currentCategoryTitle : model.menuTitle).monospacedDigit()
+            }
             }
         }
         .background(StatusButtonBridge { button in
@@ -474,5 +477,47 @@ final class TimeSinkAppDelegate: NSObject, NSApplicationDelegate, @unchecked Sen
                 }
             }
         }
+    }
+}
+
+/// The focus state of the menu bar item: an accent capsule holding an
+/// hourglass whose sand drains, and the time left. A status item shows
+/// only images and text, so the capsule is drawn into an image.
+@MainActor enum FocusCapsule {
+    private static var cache: (key: String, image: NSImage)?
+
+    static func image(remaining: TimeInterval, planned: TimeInterval) -> NSImage {
+        let fraction = planned > 0 ? max(0, min(1, remaining / planned)) : 0
+        // One render per second shown; SwiftUI re-reads the label more often.
+        let key = Format.mmss(remaining)
+        if let cache, cache.key == key { return cache.image }
+        let content = HStack(spacing: 3) {
+            sand(fraction)
+            Text(Format.mmss(remaining)).monospacedDigit()
+        }
+        .font(.system(size: 12, weight: .semibold))
+        .foregroundStyle(.white)
+        .padding(.horizontal, 7)
+        .frame(height: 18)
+        .background(Color.accentColor, in: Capsule())
+        let renderer = ImageRenderer(content: content)
+        renderer.scale = NSScreen.main?.backingScaleFactor ?? 2
+        let image = renderer.nsImage ?? NSImage()
+        image.isTemplate = false
+        cache = (key, image)
+        return image
+    }
+
+    @ViewBuilder private static func sand(_ fraction: Double) -> some View {
+        let glass = Image(systemName: "hourglass", variableValue: fraction)
+        #if compiler(>=6.2)
+        if #available(macOS 26, *) {
+            glass.symbolVariableValueMode(.draw)
+        } else {
+            glass
+        }
+        #else
+        glass
+        #endif
     }
 }

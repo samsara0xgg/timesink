@@ -1639,6 +1639,16 @@
         }
       }
     },
+    "专注中 · 还剩 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Focusing · %@ left"
+          }
+        }
+      }
+    },
     "专注中被拦下": {
       "localizations": {
         "en": {

@@ -201,7 +201,7 @@ struct FocusWorkspaceView: View {
                 Spacer()
             }
         }.opacity(budget.enabled ? 1 : 0.5)
-            .contextMenu { Button("删除限额", role: .destructive) { writeBudget { try model.budgetStore?.deleteBudget(categoryID: budget.categoryID) } } }
+            .contextMenu { Button("删除限额", systemImage: "trash", role: .destructive) { writeBudget { try model.budgetStore?.deleteBudget(categoryID: budget.categoryID) } } }
     }
     private func writeBudget(_ action: () throws -> Void) {
         do { try action(); load(); model.settingsChanged(); error = nil }

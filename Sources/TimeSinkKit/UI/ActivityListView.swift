@@ -329,7 +329,7 @@ private struct ActivityRowView: View {
             .help("在时间轴中定位这项活动")
         }
         .contextMenu {
-            Button("检查并调整分类…") {
+            Button("检查并调整分类…", systemImage: "tag") {
                 activities.select(ActivitySelection(categoryID: categoryID, rowID: row.id), start: nil)
             }
         }
@@ -376,7 +376,7 @@ private struct TitleRowView: View {
         .help(title.title + String(localized: " · 在时间轴中定位"))
         .accessibilityAddTraits(activities.selectedActivity == selection ? .isSelected : [])
         .contextMenu {
-            Button("始终把此标题归为…") {
+            Button("始终把此标题归为…", systemImage: "text.badge.checkmark") {
                 // `scopeKey` must be `parent.reassignKey` (domain/bundleID),
                 // never `parent.id` -- `TitleRuleInput.affected` and
                 // `Classifier.scopeMatches` both compare a rule's scopeKey

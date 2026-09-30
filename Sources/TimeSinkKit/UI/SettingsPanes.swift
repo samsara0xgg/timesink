@@ -73,7 +73,7 @@ private struct CategoryEditRow: View {
                 ColorPicker(String(localized: "\(category.name)的颜色"), selection: colorBinding, supportsOpacity: false).labelsHidden().fixedSize()
                     .contextMenu {
                         if let shipped = RefinedStyle.shippedHex(category.id), shipped != category.colorHex {
-                            Button("恢复默认颜色") { category.colorHex = shipped; persistOnly(); commitRefresh() }
+                            Button("恢复默认颜色", systemImage: "arrow.uturn.backward") { category.colorHex = shipped; persistOnly(); commitRefresh() }
                         }
                     }
                 // The whole row is the name's, so an English name is not cut off.

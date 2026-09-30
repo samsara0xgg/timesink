@@ -119,10 +119,14 @@ struct ActivitiesView: View {
             }
             ToolbarItem {
                 Menu {
-                    Button("所有分类") { model.activityFilter = nil }
+                    Button("所有分类", systemImage: "square.grid.2x2") { model.activityFilter = nil }
                     Divider()
                     ForEach(model.resolver.categoriesByID.values.sorted { $0.sortOrder < $1.sortOrder }, id: \.id) { category in
-                        Button(category.name) { model.activityFilter = category.id }
+                        Button { model.activityFilter = category.id } label: {
+                            Label { Text(category.name) } icon: {
+                                Image(systemName: "circle.fill").foregroundStyle(RefinedStyle.category(category.id, hex: category.colorHex))
+                            }
+                        }
                     }
                 } label: {
                     Label(model.activityFilter.flatMap { model.resolver.categoriesByID[$0]?.name } ?? String(localized: "所有分类"), systemImage: "line.3.horizontal.decrease")

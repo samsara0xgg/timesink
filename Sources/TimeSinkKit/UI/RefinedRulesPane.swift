@@ -119,12 +119,12 @@ struct RefinedRulesPane: View {
         }.padding(.horizontal, 14).frame(minHeight: 42)
             .contextMenu {
                 if isOrderable(row) {
-                    Button("上移") { move(row, by: -1) }
-                    Button("下移") { move(row, by: 1) }
+                    Button("上移", systemImage: "arrow.up") { move(row, by: -1) }
+                    Button("下移", systemImage: "arrow.down") { move(row, by: 1) }
                     Divider()
                 }
                 if row.source == "user" {
-                    if row.recordID != nil { Button("删除规则", role: .destructive) { delete(row) } }
+                    if row.recordID != nil { Button("删除规则", systemImage: "trash", role: .destructive) { delete(row) } }
                     else { Button("删除并恢复默认", role: .destructive) { perform { try model.categoryStore.removeUserMapping(key: row.id) } } }
                 }
             }
