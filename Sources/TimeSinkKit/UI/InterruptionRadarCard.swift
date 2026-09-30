@@ -39,8 +39,26 @@ struct InterruptionRadarCard: View {
         }
     }
     @MainActor private static var last: (key: LoadKey, data: DayInterruptions, longest: DateInterval?)?
+    /// The card is built in its own pass after the page (80 ms later, so the
+    /// two never share a frame): Trends then opens at its pre-radar cost,
+    /// and an empty panel of the card's last height holds its place.
+    @State private var built = false
+    @MainActor private static var lastHeight: CGFloat = 320
 
     var body: some View {
+        if built {
+            card.background(GeometryReader { geometry in
+                Color.clear.onAppear { Self.lastHeight = geometry.size.height }
+                    .onChange(of: geometry.size.height) { _, height in Self.lastHeight = height }
+            })
+        } else {
+            Color.clear.frame(height: Self.lastHeight).frame(maxWidth: .infinity)
+                .workspacePanel()
+                .task { try? await Task.sleep(for: .milliseconds(80)); built = true }
+        }
+    }
+
+    private var card: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text("打断雷达").font(.system(size: 13, weight: .semibold))
