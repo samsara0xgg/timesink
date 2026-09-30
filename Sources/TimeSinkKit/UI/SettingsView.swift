@@ -16,6 +16,7 @@ struct SettingsView: View {
             List(selection: Binding(get: { model.settingsTab }, set: { if let tab = $0 { model.settingsTab = tab } })) {
                 ForEach(tabs, id: \.0) { tab in Label(tab.1, systemImage: tab.2).tag(tab.0) }
             }
+            .frame(minWidth: 200)
             .navigationSplitViewColumnWidth(min: 200, ideal: 200, max: 200)
             .toolbar(removing: .sidebarToggle)
         } detail: {
