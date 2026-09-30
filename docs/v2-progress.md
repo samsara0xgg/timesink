@@ -21,7 +21,7 @@ Branch: v2-liquid-glass (local only, never pushed).
 - [x] Strings merged, check_strings green
 
 ## Tier 2
-- [x] F3 回到刚才: capsule, popover button, ⋯ menu, ⌃⌥← (held only while offered), Settings toggle
+- [x] F3 回到刚才: capsule, popover button, ⋯ menu, ⌃⌥← (held only while offered), Settings toggle, Chrome tab restore by URL (not tried on a live Chrome)
 - [x] F2 打断雷达 in Trends (today / 7 days, interruptions / all switches), time band; built in its own pass
 - [ ] F2 回来后多久才动手: key-seconds are counted per span, not timed, so the delay can't be measured honestly
 - [x] Settings regrouped: 通用 (with 关于), 记录, 智能, 通知与提示, 同步, 隐私 (with 权限 and export); 专注与限额 stays on its page
@@ -57,3 +57,11 @@ Merging by app or site instead of by window gives 40 / 34 / 29 / 12. The timelin
 30 / 46 / 21 / 12 differs from my rerun on 9-24 and 9-28: it grouped unmapped browser pages under
 the browser's category (misc: 78 and 85 episodes) where the app resolves them per page (uncategorized).
 Every step is the agreed rule, so the classifier stays as is.
+
+Reinstalled 2026-09-30 12:08 UTC from HEAD (F4 and the second pass included), migration v12 applied.
+Backups: TimeSink-v2-b1ba1c8-20260930-0508.app, timesink-before-v2-second-20260930-0508.sqlite.
+rollback-v2.sh still restores the pre-2.0 build.
+
+Open: background writes on Today / Focus / Rules measure 20-38 ms against v1's 3-16 ms this
+morning; last night's commit (0a640b8), rebuilt, measures the same, so it tracks the data or the
+clock rather than today's changes. Not yet explained.
