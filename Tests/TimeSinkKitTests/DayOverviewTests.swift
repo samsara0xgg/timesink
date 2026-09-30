@@ -84,6 +84,15 @@ final class DayOverviewTests: XCTestCase {
         }
     }
 
+    /// A few minutes past midnight, then nothing until morning: the band
+    /// starts in the morning, while the total still counts the night.
+    func testBandSkipsAFewMinutesPastMidnight() {
+        let overview = DayOverview(items: [item(date(0, minute: 1), date(0, minute: 5)), item(date(9, minute: 10), date(12))],
+            categories: categories, sessions: [], now: date(12), calendar: calendar)
+        XCTAssertEqual(overview.displayInterval.start, date(9))
+        XCTAssertEqual(overview.total, 240 + 170 * 60)
+    }
+
     func testEmptyDayDoesNotInventGapsOrSessions() {
         let overview = DayOverview(items: [], categories: categories, sessions: [], now: date(7), calendar: calendar)
         XCTAssertEqual(overview.total, 0)

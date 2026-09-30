@@ -78,12 +78,29 @@ struct DayOverview: Sendable {
         // Use real local-day boundaries, including 23/25-hour DST days. Records
         // end at now, so the span with data runs from the first record's hour
         // to the hour boundary at least half an hour past now.
-        let first = min(clipped.first?.span.start ?? now, now)
+        let first = min(Self.dayStart(clipped) ?? now, now)
         let start = calendar.dateInterval(of: .hour, for: first)?.start ?? day.start
         let last = now.addingTimeInterval(1800)
         let lastHour = calendar.dateInterval(of: .hour, for: last)
         let end = min(day.end, lastHour?.start == last ? last : lastHour?.end ?? day.end)
         displayInterval = DateInterval(start: max(day.start, start), end: max(start.addingTimeInterval(1), end))
+    }
+
+    /// Where the day's band starts: the first record, unless a few minutes
+    /// just past midnight are followed by hours of nothing -- then the day
+    /// starts after that gap, so the band is not mostly hatching.
+    static func dayStart(_ items: [CategorizedSpan]) -> Date? {
+        var start = items.first?.span.start
+        var reached: Date?
+        var before: TimeInterval = 0
+        for item in items {
+            if let reached, item.span.start.timeIntervalSince(reached) >= 3 * 3600, before < 1800 {
+                start = item.span.start
+            }
+            before += item.span.duration
+            reached = max(reached ?? item.span.end, item.span.end)
+        }
+        return start
     }
 
     /// Folded activity with the unrecorded stretches between it, in time order.

@@ -468,6 +468,7 @@ struct DayColumnsView: View {
     private func pieces(width: CGFloat) -> [DayOverview.Piece] {
         let resolution = TimelineSegmenter.resolution(points: 6, pointsPerHour: width / max(interval.duration / 3600, 1))
         return DayOverview.pieces(overview.items, resolution: resolution, grouping: .category, forDrawing: true)
+            .filter { $0.end > interval.start }
     }
 }
 
