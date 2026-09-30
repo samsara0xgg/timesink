@@ -329,31 +329,41 @@ struct UncategorizedSettingsPane: View {
         ownEditVersion = model.dataEditVersion
     }
 
+    /// Reads and classifies 30 days of spans off the main thread; the first
+    /// visit used to hold it for over a second.
     private func recompute() {
         let interval = DateRangeSelection(kind: .last30, anchor: Date()).interval
-        do {
-            suggestions = Dictionary(uniqueKeysWithValues: try model.categoryStore.suggestions().map { ($0.key, $0) })
-            let spans = try model.spanStore.spans(overlapping: interval).compactMap { span -> Span? in
-                guard span.end > interval.start, span.start < interval.end else { return nil }
-                var clipped = span; clipped.start = max(span.start, interval.start); clipped.end = min(span.end, interval.end); return clipped
+        let spanStore = model.spanStore, categoryStore = model.categoryStore
+        let classification = model.resolver.snapshot()
+        Task {
+            do {
+                let (fresh, stored) = try await Task.detached(priority: .userInitiated) { () throws -> ([Row], [ClassificationSuggestion]) in
+                    var classification = classification
+                    let stored = try categoryStore.suggestions()
+                    let spans = try spanStore.spans(overlapping: interval).compactMap { span -> Span? in
+                        guard span.end > interval.start, span.start < interval.end else { return nil }
+                        var clipped = span; clipped.start = max(span.start, interval.start); clipped.end = min(span.end, interval.end); return clipped
+                    }
+                    let uncategorized = spans.filter { classification.categoryID(for: $0) == "uncategorized" }
+                    var isDomainByKey: [String: Bool] = [:]
+                    for span in uncategorized {
+                        isDomainByKey[span.domain ?? span.appBundleID] = span.domain != nil
+                    }
+                    let items = uncategorized.map { CategorizedSpan(span: $0, categoryID: "uncategorized") }
+                    let fresh = Aggregator.durationByDomainOrApp(items).map { entry in
+                        Row(id: entry.key, label: entry.label, seconds: entry.seconds, isDomain: isDomainByKey[entry.key] ?? false)
+                    }
+                    return (fresh, stored)
+                }.value
+                suggestions = Dictionary(uniqueKeysWithValues: stored.map { ($0.key, $0) })
+                let freshIDs = Set(fresh.map(\.id))
+                rows = fresh + rows.filter { accepted[$0.id] != nil && !freshIDs.contains($0.id) }
+                loadFailed = false
+            } catch {
+                settingsLogger.error("uncategorized recompute failed: \(String(describing: error), privacy: .public)")
+                loadFailed = true
+                needsRecompute = true
             }
-            let uncategorized = spans.filter { model.resolver.categoryID(for: $0) == "uncategorized" }
-            var isDomainByKey: [String: Bool] = [:]
-            for span in uncategorized {
-                let key = span.domain ?? span.appBundleID
-                isDomainByKey[key] = span.domain != nil
-            }
-            let items = uncategorized.map { CategorizedSpan(span: $0, categoryID: "uncategorized") }
-            let fresh = Aggregator.durationByDomainOrApp(items).map { entry in
-                Row(id: entry.key, label: entry.label, seconds: entry.seconds, isDomain: isDomainByKey[entry.key] ?? false)
-            }
-            let freshIDs = Set(fresh.map(\.id))
-            rows = fresh + rows.filter { accepted[$0.id] != nil && !freshIDs.contains($0.id) }
-            loadFailed = false
-        } catch {
-            settingsLogger.error("uncategorized recompute failed: \(String(describing: error), privacy: .public)")
-            loadFailed = true
-            needsRecompute = true
         }
     }
 }
