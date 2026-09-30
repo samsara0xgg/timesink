@@ -9,13 +9,18 @@ SPARKLE = $(DIST)/Contents/Frameworks/Sparkle.framework
 # scripts/release.sh adds --timestamp through SIGN_FLAGS.
 SIGN = codesign --force --options runtime --sign "$(CERT)" $(SIGN_FLAGS)
 
+# swift build links through the toolchain's clang with --sysroot only, and
+# clang then records the deployment target as the SDK version; macOS 26 draws
+# such an app in its old look. Name the SDK the build really uses.
+SDK_LINK = -Xlinker -platform_version -Xlinker macos -Xlinker 14.0 -Xlinker $(shell xcrun --sdk macosx --show-sdk-version)
+
 .PHONY: build test run bundle install clean
 build:
-	swift build -c release
+	swift build -c release $(SDK_LINK)
 test:
 	swift test
 run:
-	swift run TimeSink
+	swift run $(SDK_LINK) TimeSink
 bundle: build
 	rm -rf $(DIST)
 	mkdir -p $(DIST)/Contents/MacOS $(DIST)/Contents/Resources $(DIST)/Contents/Frameworks
