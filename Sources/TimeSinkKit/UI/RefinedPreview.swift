@@ -59,7 +59,9 @@ public enum RefinedPreview {
                 if page == .activities, let item = model.rangedSpans().first(where: { $0.span.start >= midMorning }) {
                     selectedActivities.select(ActivitiesModel.selection(for: item), start: item.span.start)
                 }
-                try await render(MainWindowView(model: model, activities: selectedActivities), size: mainSize, dark: dark, to: output.appendingPathComponent("\(name)-\(suffix).png"))
+                // Trends reads 7 days before it draws.
+                try await render(MainWindowView(model: model, activities: selectedActivities), size: mainSize, dark: dark,
+                                 to: output.appendingPathComponent("\(name)-\(suffix).png"), settle: page == .stats ? 3000 : 650)
             }
             let activityModel = ActivitiesModel()
             model.range = .today()
@@ -104,7 +106,7 @@ public enum RefinedPreview {
             try await render(MainWindowView(model: model), size: mainSize, dark: dark, to: output.appendingPathComponent("activities-empty-\(suffix).png"))
             model.sidebarSelection = .stats
             model.range = DateRangeSelection(kind: .last30, anchor: Date())
-            try await render(MainWindowView(model: model), size: mainSize, dark: dark, to: output.appendingPathComponent("trends-30-\(suffix).png"))
+            try await render(MainWindowView(model: model), size: mainSize, dark: dark, to: output.appendingPathComponent("trends-30-\(suffix).png"), settle: 3000)
             try await render(InterruptionRadarCard(model: model, period: .week).padding(20).background(WorkspaceBackground()),
                              size: .init(width: 1100, height: 470), dark: dark, to: output.appendingPathComponent("radar-\(suffix).png"))
             model.range = .today()
@@ -157,7 +159,7 @@ public enum RefinedPreview {
         return host.fittingSize
     }
 
-    @MainActor private static func render<V: View>(_ view: V, size: NSSize, dark: Bool, to url: URL) async throws {
+    @MainActor private static func render<V: View>(_ view: V, size: NSSize, dark: Bool, to url: URL, settle: Int = 650) async throws {
         guard !skips(url) else { return }
         guard let stage else { throw CocoaError(.fileWriteUnknown) }
         NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
@@ -165,7 +167,7 @@ public enum RefinedPreview {
         stage.dark = dark
         stage.size = size
         stage.content = AnyView(view.id(url.lastPathComponent))
-        try await Task.sleep(for: .milliseconds(650))
+        try await Task.sleep(for: .milliseconds(settle))
         guard let window = stage.window else { throw CocoaError(.fileWriteUnknown) }
         window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         // Wherever the pointer rests must not hover rows open mid-capture.
