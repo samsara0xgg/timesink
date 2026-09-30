@@ -88,6 +88,9 @@ public final class FocusSessionController {
     /// Production = ChromeBlocker.setActiveTabURL.
     public var redirectChrome: ((String) -> Bool)?
     public var showHUD: ((_ appName: String, _ hideCount: Int) -> Void)?
+    /// Every blocked attempt, when it happened: the timeline draws them as
+    /// hollow ticks, counted apart from interruptions.
+    public var onBlocked: ((Date) -> Void)?
     /// Fires on every finish (completed or manual): posts the end
     /// notification and refreshes the timeline.
     public var onFinish: ((_ completed: Bool, _ appBlocks: Int, _ siteBlocks: Int) -> Void)?
@@ -215,6 +218,7 @@ public final class FocusSessionController {
            policy.shouldHide(sample.appBundleID, at: now) {
             hideApp?(sample.appBundleID)
             appBlocks += 1
+            onBlocked?(now)
             lastHiddenAppKey = sample.appBundleID
             showHUD?(sample.appName, appBlocks)
             return false
@@ -242,6 +246,7 @@ public final class FocusSessionController {
             if redirectChrome?(target) == true {
                 blockedDestinations[domain] = url
                 siteBlocks += 1
+                onBlocked?(now)
             }
             return false
         }

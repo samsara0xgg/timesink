@@ -109,6 +109,7 @@ public struct TimeSinkApp: App {
         let focusHUD = FocusHUDController()
 
         focusController.notifier = notifier
+        focusController.onBlocked = { observationStore.logState("focus_block", at: $0) }
         focusController.categoryForDomain = { [weak model] domain, url in
             guard let model else { return "uncategorized" }
             // A throwaway Span just to reuse `CategoryResolver`'s existing

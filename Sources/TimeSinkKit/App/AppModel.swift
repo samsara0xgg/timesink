@@ -123,6 +123,39 @@ public final class AppModel {
     public var timeFormat = "system" {
         didSet { settings.set("timeFormat", timeFormat) }
     }
+    /// 设置 › 记录 › 什么算打断.
+    public var interruptionRule = InterruptionRule() {
+        didSet {
+            settings.set("interruptionDwell", String(Int(interruptionRule.dwell)))
+            settings.set("interruptionTyping", interruptionRule.countsTyping ? "true" : "false")
+            interruptionCache.removeAll()
+        }
+    }
+    /// Classified days, keyed by day, data version and rule. The pass runs
+    /// off the main actor; see `interruptions(for:)`.
+    @ObservationIgnored private var interruptionCache: [DateInterval: (version: Int, rule: InterruptionRule, value: DayInterruptions)] = [:]
+    @ObservationIgnored private var interruptionTasks: [DateInterval: Task<DayInterruptions, Never>] = [:]
+
+    /// A day's episodes: cached when nothing was written since, otherwise
+    /// classified on a background task from the spans already in memory.
+    public func interruptions(for day: DateInterval) async -> DayInterruptions {
+        let version = dataVersion, rule = interruptionRule
+        if let hit = interruptionCache[day], hit.version == version, hit.rule == rule { return hit.value }
+        if let running = interruptionTasks[day] { return await running.value }
+        let items = rangedSpans(for: day)
+        let productivity = resolver.categoriesByID.mapValues(\.productivity)
+        let blocked = ((try? observationStore?.stateEvents(in: day)) ?? []).filter { $0.kind == "focus_block" }.map(\.at)
+        let task = Task.detached(priority: .userInitiated) {
+            DayInterruptions(episodes: InterruptionClassifier.episodes(items, productivity: productivity, rule: rule),
+                             blocked: blocked)
+        }
+        interruptionTasks[day] = task
+        let value = await task.value
+        interruptionTasks[day] = nil
+        if interruptionCache.count > 40 { interruptionCache.removeAll() }
+        interruptionCache[day] = (version, rule, value)
+        return value
+    }
     public var displayCalendar: Calendar {
         var calendar = Calendar.current
         calendar.firstWeekday = firstWeekday
@@ -303,6 +336,9 @@ public final class AppModel {
         self.showScore = settings.get("showScore") != "false"
         self.firstWeekday = settings.get("firstWeekday") == "1" ? 1 : 2
         self.timeFormat = settings.get("timeFormat") ?? "system"
+        self.interruptionRule = InterruptionRule(
+            dwell: settings.get("interruptionDwell").flatMap(TimeInterval.init).flatMap { InterruptionRule.dwellChoices.contains($0) ? $0 : nil } ?? 15,
+            countsTyping: settings.get("interruptionTyping") != "false")
         self.calendarOverlayEnabled = settings.calendarOverlayEnabled
         self.screenCapturePaused = settings.screenCapturePaused
         self.range.firstWeekday = firstWeekday
