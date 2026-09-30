@@ -66,6 +66,16 @@ extension Permissions {
     /// (unlike `requestCalendarAccess`), same spirit as
     /// `accessibilityState(prompt: false)`.
     @MainActor public static func calendarState() -> PermissionState {
+        readCalendarState()
+    }
+
+    /// The same read off the main thread: it is a synchronous round trip to
+    /// the calendar service, ~35 ms warm and ~600 ms the first time.
+    public static func calendarStateInBackground() async -> PermissionState {
+        await Task.detached(priority: .userInitiated) { readCalendarState() }.value
+    }
+
+    private static func readCalendarState() -> PermissionState {
         switch EKEventStore.authorizationStatus(for: .event) {
         case .fullAccess: return .granted
         case .denied, .restricted, .writeOnly: return .denied

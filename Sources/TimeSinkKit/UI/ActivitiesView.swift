@@ -17,6 +17,8 @@ struct ActivitiesView: View {
     /// immediately, unrelated to this.
     @State private var pendingSearch: Task<Void, Never>?
     @State private var showsInspector = true
+    /// Whether the page is on screen; read by handlers only, never by `body`.
+    @State private var isShown = true
 
     /// Tracks the in-flight `refreshCalendarOverlay()` Task spawned by the
     /// `didBecomeActive` handler below -- see that handler's doc comment for
@@ -27,7 +29,6 @@ struct ActivitiesView: View {
     /// re-fed into every `recompute` call so `activities.calendarBlocks`/
     /// `meetingSpanIDs`/etc. stay in sync with what's on screen.
     @State private var calendarEvents: [CalendarEvent] = []
-    @State private var calendarPermissionState: PermissionState = .notDetermined
     /// The enable card is an offer, not a state to fix: once declined it
     /// stays away (Settings keeps the switch).
     @AppStorage("calendarBandDismissed") private var calendarBandDismissed = false
@@ -41,8 +42,16 @@ struct ActivitiesView: View {
     /// band, or from the Settings pane) -- either alone would leave the
     /// other trigger's change unobserved.
     private struct CalendarTaskKey: Equatable {
-        let range: DateRangeSelection
+        let range: DateRangeSelection.Window
         let overlayEnabled: Bool
+    }
+
+    /// Everything the list is built from, besides search and calendar events.
+    private struct RecomputeKey: Equatable {
+        let version: Int
+        let range: DateRangeSelection.Window
+        let timeInterval: DateInterval?
+        let filter: String?
     }
 
     var body: some View {
@@ -55,9 +64,12 @@ struct ActivitiesView: View {
                                   matchCount: activities.matchCount, matchSeconds: activities.matchSeconds,
                                   meetingSeconds: activities.meetingSeconds)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                if ActivitiesModel.showsTimeline(model.range) {
+                // The range the list was built for, so a hidden page does not
+                // redraw when another page moves the range.
+                let range = activities.shownRange ?? model.range
+                if ActivitiesModel.showsTimeline(range) {
                     Divider()
-                    DayTimelineView(day: model.range.interval.start, blocks: activities.timelineBlocks,
+                    DayTimelineView(day: range.interval.start, blocks: activities.timelineBlocks,
                                     events: activities.calendarBlocks, allDay: activities.allDayTitles,
                                     focusBlocks: activities.focusBlocks,
                                     selectedActivity: activities.selectedActivity,
@@ -70,12 +82,12 @@ struct ActivitiesView: View {
             }
         }
         .background(WorkspaceBackground())
-        .inspector(isPresented: $showsInspector) {
+        .pageInspector(isPresented: $showsInspector) {
             ActivityInspector(model: model, activities: activities)
                 .inspectorColumnWidth(min: 260, ideal: 272, max: 320)
         }
-        .searchable(text: searchBinding, prompt: "搜索应用、网址、标题")
-        .toolbar {
+        .pageSearchable(text: searchBinding, prompt: "搜索应用、网址、标题")
+        .pageToolbar {
             ToolbarItem {
                 Button { showsInspector.toggle() } label: { Image(systemName: "sidebar.right") }
                     .help("显示活动检查器")
@@ -97,17 +109,17 @@ struct ActivitiesView: View {
             await Task.yield()
             activities.recompute(model: model, events: calendarEvents)
         }
-        .onChange(of: model.dataVersion) { _, _ in activities.recompute(model: model, events: calendarEvents) }
+        .onPageChange(of: RecomputeKey(version: model.dataVersion, range: model.range.window,
+                                       timeInterval: model.activityTimeInterval, filter: model.activityFilter)) {
+            activities.recompute(model: model, events: calendarEvents)
+        }
         .onChange(of: activities.selectedActivity) { _, value in if value != nil { showsInspector = true } }
-        .onChange(of: model.range) { _, _ in activities.recompute(model: model, events: calendarEvents) }
-        .onChange(of: model.activityTimeInterval) { _, _ in activities.recompute(model: model, events: calendarEvents) }
-        .onChange(of: model.activityFilter) { _, _ in activities.recompute(model: model, events: calendarEvents) }
         .onChange(of: model.activitySearch) { _, _ in scheduleSearchRecompute() }
         .onDisappear {
             pendingSearch?.cancel()
             pendingActivationRefresh?.cancel()
         }
-        .task(id: CalendarTaskKey(range: model.range, overlayEnabled: model.calendarOverlayEnabled)) {
+        .pageTask(id: CalendarTaskKey(range: model.range.window, overlayEnabled: model.calendarOverlayEnabled)) {
             await refreshCalendarOverlay()
         }
         // Closes the "denied -> System Settings -> grant" round-trip: the
@@ -128,7 +140,9 @@ struct ActivitiesView: View {
         // reactivations in quick succession (e.g. fast Cmd-Tabbing) could
         // let an earlier, slower fetch for a since-abandoned range land
         // after a newer one already wrote the correct state, clobbering it.
+        .onPageVisibilityChange { isShown = $0 }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            guard isShown else { return }
             pendingActivationRefresh?.cancel()
             pendingActivationRefresh = Task { @MainActor in
                 await refreshCalendarOverlay()
@@ -180,7 +194,7 @@ struct ActivitiesView: View {
     private var calendarBand: some View {
         if calendarBandDismissed {
             EmptyView()
-        } else if !model.calendarOverlayEnabled || calendarPermissionState == .notDetermined {
+        } else if !model.calendarOverlayEnabled || model.calendarPermission == .notDetermined {
             CalendarBandCard(
                 title: String(localized: "日历叠加"),
                 message: String(localized: "在时间轴上叠加你的日历日程，自动标注会议时间；会议期间空闲不会触发挂起。"),
@@ -188,7 +202,7 @@ struct ActivitiesView: View {
                 action: enableCalendarOverlay,
                 dismiss: { calendarBandDismissed = true }
             )
-        } else if calendarPermissionState != .granted {
+        } else if let permission = model.calendarPermission, permission != .granted {
             CalendarBandCard(
                 title: String(localized: "日历访问被拒绝"),
                 message: String(localized: "无法叠加日程或自动标注会议。前往系统设置重新授权日历访问后即可生效。"),
@@ -248,15 +262,14 @@ struct ActivitiesView: View {
     /// the user has already navigated away from could land after a newer
     /// task already wrote the correct state, clobbering it with stale data.
     private func refreshCalendarOverlay() async {
-        calendarPermissionState = Permissions.calendarState()
-        guard model.calendarOverlayEnabled, calendarPermissionState == .granted,
-              let store = model.calendarStore else {
-            calendarEvents = []
-            activities.recompute(model: model, events: calendarEvents)
-            return
+        if model.calendarOverlayEnabled { await model.refreshCalendarPermission() }
+        var fetched: [CalendarEvent] = []
+        if model.calendarOverlayEnabled, model.calendarPermission == .granted,
+           let store = model.calendarStore {
+            fetched = await store.events(on: model.range.interval.start)
         }
-        let fetched = await store.events(on: model.range.interval.start)
-        guard !Task.isCancelled else { return }
+        // Unchanged events leave the list as the other triggers built it.
+        guard !Task.isCancelled, fetched != calendarEvents else { return }
         calendarEvents = fetched
         activities.recompute(model: model, events: calendarEvents)
     }
@@ -370,6 +383,12 @@ final class ActivitiesModel {
     }
 
     var groups: [CategoryGroup] = []
+    /// The whole range, unfiltered, for the window subtitle; nil until the
+    /// first recompute.
+    var rangeSeconds: TimeInterval = 0
+    var rangeCount: Int?
+    /// The range the rows were built for.
+    var shownRange: DateRangeSelection?
     var displayedItems: [CategorizedSpan] = [] {
         didSet { foldedRows = nil; appGroupRows = nil }
     }
@@ -500,6 +519,9 @@ final class ActivitiesModel {
             collapsedCategories.removeAll()
         }
         let all = model.rangedSpans()
+        shownRange = model.range
+        rangeSeconds = all.reduce(0) { $0 + $1.span.duration }
+        rangeCount = all.count
         let categories = model.resolver.categoriesByID
 
         let query = Self.normalizedQuery(model.activitySearch)

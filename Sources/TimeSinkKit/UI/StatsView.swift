@@ -6,7 +6,7 @@ struct StatsView: View {
     @Bindable var stats: StatsModel
     @State private var granularity: StatsModel.Granularity = .day
     @State private var showsScore = false
-    private struct RefreshID: Equatable { let range: DateRangeSelection; let version: Int }
+    private struct RefreshID: Equatable { let range: DateRangeSelection.Window; let version: Int }
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -51,8 +51,8 @@ struct StatsView: View {
                         .frame(maxWidth: 1500).frame(maxWidth: .infinity)
                 }
             }
-            .task(id: RefreshID(range: model.range, version: model.dataVersion)) { await stats.recompute(model: model) }
-            .task {
+            .pageTask(id: RefreshID(range: model.range.window, version: model.dataVersion)) { await stats.recompute(model: model) }
+            .whilePageShown {
                 if stats.heatmapInteraction.pinned != nil { await Task.yield(); proxy.scrollTo("heatmap", anchor: .top) }
                 while !Task.isCancelled {
                     do { try await Task.sleep(for: .seconds(60)) } catch { return }
@@ -91,7 +91,7 @@ struct StatsView: View {
             HStack {
                 Text("分类").font(.system(size: 13, weight: .semibold))
                 Spacer()
-                Text("\(model.range.label) · 与上期差").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text("\((stats.shownRange ?? model.range).label) · 与上期差").font(.system(size: 11)).foregroundStyle(.secondary)
             }
             if stats.categoryRows.isEmpty { Text("这段时间还没有记录。").font(.system(size: 12)).foregroundStyle(.secondary) }
             let nameWidth = RefinedStyle.nameColumn(stats.categoryRows.map(\.name), font: .systemFont(ofSize: 12), cap: 140)
@@ -114,7 +114,7 @@ struct StatsView: View {
     }
     private var appRanking: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack { Text("应用与网站").font(.system(size: 13, weight: .semibold)); Spacer(); Text(model.range.label).font(.system(size: 12)).foregroundStyle(.secondary) }
+            HStack { Text("应用与网站").font(.system(size: 13, weight: .semibold)); Spacer(); Text((stats.shownRange ?? model.range).label).font(.system(size: 12)).foregroundStyle(.secondary) }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 330), spacing: 28)], spacing: 4) {
                 ForEach(stats.appRows) { row in
                     HStack(spacing: 10) {

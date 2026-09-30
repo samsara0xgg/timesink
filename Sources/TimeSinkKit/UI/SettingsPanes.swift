@@ -14,22 +14,26 @@ private let settingsLogger = Logger(subsystem: "com.alllllenshi.TimeSink", categ
 struct CategoriesSettingsPane: View {
     let model: AppModel
     @State private var categories: [Category] = []
+    @State private var today: [String: TimeInterval] = [:]
 
     var body: some View {
-        // One pass for every card, and re-read as today's records grow.
-        let today = Aggregator.durationByCategory(model.rangedSpans(for: .today()))
-        let _ = model.dataVersion
         ScrollView {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 10)], spacing: 10) {
                 ForEach($categories, id: \.id) { $category in
                     CategoryEditRow(model: model, category: $category, todaySeconds: today[category.id] ?? 0)
                 }
             }
-        }.onAppear { load() }
+        }.onAppear { load(); loadToday() }
+        .onPageChange(of: model.dataVersion) { loadToday() }
     }
 
     private func load() {
         categories = (try? model.categoryStore.allCategories()) ?? []
+    }
+
+    /// One pass for every card, re-read as today's records grow.
+    private func loadToday() {
+        today = Aggregator.durationByCategory(model.rangedSpans(for: .today()))
     }
 }
 
@@ -182,6 +186,8 @@ struct UncategorizedSettingsPane: View {
     /// The edit version this pane's own assignment produced: its rows are
     /// already updated in place, so it skips the 30-day reload.
     @State private var ownEditVersion = -1
+    /// Whether the page is on screen; read by handlers only, never by `body`.
+    @State private var isShown = true
     @State private var loadFailed = false
 
     private struct Row: Identifiable {
@@ -235,13 +241,14 @@ struct UncategorizedSettingsPane: View {
             recomputeIfVisibleAndStale()
         }
         .onChange(of: model.organizationTab) { _, _ in recomputeIfVisibleAndStale() }
+        .onPageVisibilityChange { isShown = $0; recomputeIfVisibleAndStale() }
     }
 
     /// `recompute()` reads 30 days of spans and classifies each one, so it
     /// runs only when this pane is actually on screen and something has
     /// changed since it last ran.
     private func recomputeIfVisibleAndStale() {
-        guard model.organizationTab == .uncategorized, needsRecompute else { return }
+        guard isShown, model.organizationTab == .uncategorized, needsRecompute else { return }
         needsRecompute = false
         recompute()
     }

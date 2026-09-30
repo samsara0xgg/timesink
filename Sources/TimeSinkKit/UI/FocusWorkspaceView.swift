@@ -16,6 +16,7 @@ struct FocusWorkspaceView: View {
     @State private var warn = 20
     @State private var summary = false
     @State private var error: String?
+    private struct LoadKey: Equatable { let version: Int; let running: Int64? }
 
     var body: some View {
         GeometryReader { geometry in
@@ -31,15 +32,13 @@ struct FocusWorkspaceView: View {
                 }
             }
         }.background(WorkspaceBackground())
-        .onAppear {
-            minutes = model.settings.focusDurationMinutes
-            blockedApps = model.settings.focusBlockedApps
-            appBlock = model.settings.focusAppBlockEnabled; siteBlock = model.settings.focusSiteBlockEnabled
-            warn = model.settings.budgetWarnPercent; summary = model.settings.dailySummaryEnabled
-            load()
+        .onAppear { loadSettings(); load() }
+        // Settings can change elsewhere while the page is hidden; popovers
+        // must not stay open over another page.
+        .onPageVisibilityChange { shown in
+            if shown { loadSettings() } else { customDuration = false; editCategories = false }
         }
-        .onChange(of: model.focus?.running?.id) { _, _ in load() }
-        .onChange(of: model.dataVersion) { _, _ in load() }
+        .onPageChange(of: LoadKey(version: model.dataVersion, running: model.focus?.running?.id)) { load() }
         .sheet(isPresented: $editApps) { FocusBlockedAppsEditor(model: model, blockedApps: $blockedApps) }
         .popover(isPresented: $editCategories) {
             VStack(alignment: .leading, spacing: 12) {
@@ -212,6 +211,12 @@ struct FocusWorkspaceView: View {
         do { model.settings.setFocusDurationMinutes(minutes); try model.focus?.start(minutes: minutes); error = nil }
         catch { self.error = String(localized: "无法开始专注：\(error.localizedDescription)") }
     }
+    private func loadSettings() {
+        minutes = model.settings.focusDurationMinutes
+        blockedApps = model.settings.focusBlockedApps
+        appBlock = model.settings.focusAppBlockEnabled; siteBlock = model.settings.focusSiteBlockEnabled
+        warn = model.settings.budgetWarnPercent; summary = model.settings.dailySummaryEnabled
+    }
     private func load() {
         do {
             sessions = try model.focusStore?.sessions(overlapping: DateRangeSelection(kind: .week, anchor: Date(), firstWeekday: model.firstWeekday).interval) ?? []
@@ -242,9 +247,9 @@ struct OrganizationView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding(.horizontal, 24).padding(.top, 22).padding(.bottom, 28).background(WorkspaceBackground())
-        .onAppear { tab = model.organizationTab }
+        .onChange(of: model.organizationTab, initial: true) { _, value in tab = value }
         .onChange(of: tab) { _, value in model.organizationTab = value }
-        .searchable(text: $model.organizationSearch, prompt: "搜索规则")
+        .pageSearchable(text: $model.organizationSearch, prompt: "搜索规则")
         .onChange(of: model.organizationSearch) { _, value in
             if !value.isEmpty { tab = .rules; model.organizationTab = .rules }
         }

@@ -3,7 +3,7 @@ import Observation
 import os
 
 /// Top-level sidebar destination.
-public enum SidebarItem: Hashable {
+public enum SidebarItem: Hashable, CaseIterable {
     case today, activities, stats, focus, organization
 }
 
@@ -338,8 +338,18 @@ public final class AppModel {
 
     public func openToday() {
         clearActivityTimeFilter()
-        range = .today()
+        show(.today())
         sidebarSelection = .today
+    }
+
+    /// Navigation picks ranges such as "today" with a fresh anchor. Keeping
+    /// the current value when it covers the same days spares every view keyed
+    /// on the range a reload.
+    private func show(_ newRange: DateRangeSelection) {
+        var newRange = newRange
+        newRange.firstWeekday = firstWeekday
+        guard newRange.kind != range.kind || newRange.interval != range.interval else { return }
+        range = newRange
     }
 
     /// Points the main window at Stats for `range` -- shared by the
@@ -348,7 +358,7 @@ public final class AppModel {
     /// environment action `AppModel` itself never touches).
     public func openStats(range: DateRangeSelection) {
         clearActivityTimeFilter()
-        self.range = range
+        show(range)
         sidebarSelection = .stats
     }
 
@@ -357,7 +367,7 @@ public final class AppModel {
     /// convention as `openStats(range:)`.
     public func openActivities(category: String?, range: DateRangeSelection) {
         clearActivityTimeFilter()
-        self.range = range
+        show(range)
         sidebarSelection = .activities
         activityFilter = category
     }
@@ -630,7 +640,12 @@ public final class AppModel {
     /// window for every caller at once, rather than needing each call site
     /// to duplicate the check.
     public func refreshCalendarWindows() async {
-        guard calendarOverlayEnabled, let calendarStore, Permissions.calendarState() == .granted else {
+        guard calendarOverlayEnabled, let calendarStore else {
+            todayMeetingEvents = []
+            return
+        }
+        await refreshCalendarPermission()
+        guard calendarPermission == .granted else {
             todayMeetingEvents = []
             return
         }
@@ -702,6 +717,16 @@ public final class AppModel {
     /// Bumped when the user's calendars change, so views showing events
     /// fetch them again.
     public private(set) var calendarVersion = 0
+
+    /// Calendar access as last read by `refreshCalendarPermission()`, nil
+    /// until the first read. Views read this instead of asking the calendar
+    /// service on the main thread.
+    public private(set) var calendarPermission: PermissionState?
+
+    public func refreshCalendarPermission() async {
+        let state = await Permissions.calendarStateInBackground()
+        if state != calendarPermission { calendarPermission = state }
+    }
 
     /// Budgets and the daily summary only ever notify; without asking here
     /// the first alert would be dropped silently. The system prompts once.

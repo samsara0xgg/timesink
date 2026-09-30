@@ -83,15 +83,13 @@ import GRDB
 
         // Page switches: the first round builds each page, later rounds are warm.
         let pages: [(String, SidebarItem)] = [("activities", .activities), ("trends", .stats), ("focus", .focus), ("rules", .organization), ("today", .today)]
-        for round in 1...3 {
+        let environment = ProcessInfo.processInfo.environment
+        for round in 1...(environment["TIMESINK_PERF_ROUNDS"].flatMap(Int.init) ?? 3) {
             for (name, page) in pages {
-                _ = await measure("switch_\(round)_to_\(name)") {
-                    if page == .stats { model.range = DateRangeSelection(kind: .last7, anchor: Date()) }
-                    if page == .activities { model.range = .today() }
-                    model.sidebarSelection = page
-                }
+                _ = await measure("switch_\(round)_to_\(name)") { navigate(model, to: page) }
             }
         }
+        if environment["TIMESINK_PERF_ONLY"] == "switch" { report(); return }
 
         // A tracker write lands about every 1.5 s while recording.
         for (name, page) in pages {
@@ -155,6 +153,15 @@ import GRDB
         report()
     }
 
+    /// What a sidebar click does.
+    private static func navigate(_ model: AppModel, to page: SidebarItem) {
+        switch page {
+        case .today: model.openToday()
+        case .stats: model.openStats(range: DateRangeSelection(kind: .last7, anchor: Date()))
+        default: model.sidebarSelection = page
+        }
+    }
+
     /// Repeats one interaction for a sampling profiler: `sample <pid>` while it runs.
     private static func profileLoop(_ loop: String, model: AppModel, activities: ActivitiesModel) async throws {
         let pause = Duration.milliseconds(500)
@@ -178,10 +185,9 @@ import GRDB
             switch loop {
             case "activities", "today", "trends", "rules":
                 let page: SidebarItem = ["activities": .activities, "today": .today, "trends": .stats, "rules": .organization][loop]!
-                if page == .stats { model.range = DateRangeSelection(kind: .last7, anchor: Date()) } else { model.range = .today() }
-                model.sidebarSelection = page
+                navigate(model, to: page)
                 try await Task.sleep(for: pause)
-                model.sidebarSelection = .focus
+                navigate(model, to: .focus)
             case "day":
                 model.sidebarSelection = .activities
                 model.range.shift(-1)

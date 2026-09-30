@@ -68,6 +68,8 @@ final class StatsModel {
     private(set) var lastHeavyUpdate: Date?
     private(set) var isLoading = false
     private(set) var hasLoaded = false
+    /// The range the shown numbers belong to.
+    private(set) var shownRange: DateRangeSelection?
     private(set) var loadError: String?
 
     @ObservationIgnored private let worker = StatsWorker()
@@ -109,6 +111,7 @@ final class StatsModel {
             guard request == generation, model.range == range, model.dataEditVersion == editVersion else { return }
             summary = result.summary
             lastRange = range
+            if shownRange != range { shownRange = range }
             lastDataVersion = version
             hasLoaded = true
             if let heavy = result.heavy {

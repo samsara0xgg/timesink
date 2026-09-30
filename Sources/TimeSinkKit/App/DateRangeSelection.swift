@@ -51,6 +51,16 @@ public struct DateRangeSelection: Equatable, Sendable {
         }
     }
 
+    /// The days a selection shows, without the day it was picked on.
+    /// Navigation picks "today" or "last 7 days" with a fresh anchor, so a
+    /// view keyed on this skips reloading the same days.
+    public struct Window: Equatable, Sendable {
+        public let kind: Kind
+        public let interval: DateInterval
+    }
+
+    public var window: Window { Window(kind: kind, interval: interval) }
+
     public var interval: DateInterval {
         let cal = Calendar.current
         switch kind {

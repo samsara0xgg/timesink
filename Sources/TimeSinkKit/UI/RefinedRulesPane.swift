@@ -72,8 +72,8 @@ struct RefinedRulesPane: View {
             }
             if let error { Text(error).font(.system(size: 12)).foregroundStyle(.red).padding(12) }
         }.workspacePanel().task { load() }
-        .onChange(of: model.dataEditVersion) { _, _ in load() }
-        .onChange(of: model.dataVersion) { _, _ in refreshHits() }
+        .onPageChange(of: model.dataEditVersion) { load() }
+        .onPageChange(of: model.dataVersion) { refreshHits() }
         .sheet(item: $pendingTitle) { TitleRuleEditor(model: model, pending: $0) }
         .sheet(isPresented: $showURL) {
             VStack(alignment: .leading, spacing: 16) {

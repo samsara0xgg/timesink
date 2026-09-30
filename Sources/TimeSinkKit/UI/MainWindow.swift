@@ -12,10 +12,9 @@ struct MainWindowView: View {
     @State private var customRangeStart = Date()
     @State private var customRangeEnd = Date()
     @State private var focusError: String?
-    /// Today's focus sessions for the subtitle, read when the page or the
-    /// data changes rather than on every render.
-    @State private var focusToday: (count: Int, seconds: TimeInterval) = (0, 0)
-    private struct FocusSubtitleKey: Equatable { let page: SidebarItem; let version: Int }
+    /// Pages opened so far. They stay alive behind the visible one, so going
+    /// back to a page shows it as it was instead of building it again.
+    @State private var openedPages: Set<SidebarItem> = []
 
     init(model: AppModel, activities: ActivitiesModel? = nil) {
         self.model = model
@@ -29,7 +28,7 @@ struct MainWindowView: View {
         } detail: {
             detailContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .navigationTitle(windowTitle)
+                .modifier(WindowTitles(model: model, activities: activities))
                 .toolbar {
                     if model.sidebarSelection == .stats || model.sidebarSelection == .activities { rangeToolbar }
                     if model.sidebarSelection == .today {
@@ -56,59 +55,35 @@ struct MainWindowView: View {
                         }
                     }
                 }
-                .navigationSubtitle(windowSubtitle)
         }
         .navigationSplitViewStyle(.balanced)
         .environment(\.locale, model.displayLocale)
         .environment(\.calendar, model.displayCalendar)
         .frame(minWidth: 800, minHeight: 580)
-        .task(id: FocusSubtitleKey(page: model.sidebarSelection, version: model.dataVersion)) {
-            guard model.sidebarSelection == .focus else { return }
-            let sessions = (try? model.focusStore?.sessions(overlapping: DateRangeSelection.today().interval)) ?? []
-            focusToday = (sessions.count, sessions.reduce(0) { $0 + $1.end.timeIntervalSince($1.start) })
-        }
         .alert("无法开始专注", isPresented: Binding(get: { focusError != nil }, set: { if !$0 { focusError = nil } })) {
             Button("好") { focusError = nil }
         } message: { Text(focusError ?? "") }
     }
 
-    private var windowSubtitle: String {
-        _ = model.dataVersion  // the counts below come from the store, not from observed state
-        switch model.sidebarSelection {
-        case .today: return Date().formatted(.dateTime.month().day().weekday(.wide))
-        case .activities:
-            let items = model.rangedSpans()
-            return String(localized: "\(rangeLabel) · \(Format.duration(items.reduce(0) { $0 + $1.span.duration })) · \(items.count) 条记录")
-        case .stats: return String(localized: "\(rangeLabel) · 与前一时段比较")
-        case .focus:
-            return String(localized: "今天 \(focusToday.count) 次专注 · \(Format.duration(focusToday.seconds))")
-        case .organization: return String(localized: "\(model.pendingClassificationCount) 项待分类")
+    private var detailContent: some View {
+        ZStack {
+            ForEach(SidebarItem.allCases, id: \.self) { page in
+                if openedPages.contains(page) || page == model.sidebarSelection {
+                    KeptPage(model: model, page: page) { pageView(page) }
+                }
+            }
         }
-    }
-
-    private var windowTitle: String {
-        switch model.sidebarSelection {
-        case .today: return String(localized: "今天")
-        case .activities: return String(localized: "活动")
-        case .stats: return String(localized: "趋势")
-        case .focus: return String(localized: "专注与限额")
-        case .organization: return String(localized: "分类与规则")
+        .onChange(of: model.sidebarSelection, initial: true) { _, page in
+            openedPages.insert(page)
+            AppWindow.releaseHiddenPageFocus()
         }
-    }
-
-    private func openPiece(_ piece: DayOverview.Piece) {
-        guard let item = piece.item else { return }
-        model.activitySearch = ""
-        model.openActivities(category: nil, range: .today())
-        activities.recompute(model: model, events: [])
-        activities.select(ActivitiesModel.selection(for: item), start: item.span.start)
     }
 
     @ViewBuilder
-    private var detailContent: some View {
-        switch model.sidebarSelection {
+    private func pageView(_ page: SidebarItem) -> some View {
+        switch page {
         case .today:
-            TodayView(model: model, dayModel: dayModel, onSelect: openPiece)
+            TodayView(model: model, dayModel: dayModel, activities: activities)
         case .focus:
             FocusWorkspaceView(model: model)
         case .organization:
@@ -160,12 +135,7 @@ struct MainWindowView: View {
         return next
     }
 
-    private var rangeLabel: String {
-        if model.range.kind == .day {
-            return "\(model.range.label) · \(model.range.interval.start.formatted(.dateTime.month().day()))"
-        }
-        return model.range.label
-    }
+    private var rangeLabel: String { model.range.toolbarLabel }
 
     private var customRangePopover: some View {
         HStack(alignment: .top, spacing: 16) {
@@ -210,5 +180,83 @@ struct MainWindowView: View {
         case .last30: return String(localized: "近 30 天")
         case .custom: return String(localized: "自定义…")
         }
+    }
+}
+
+/// A page kept alive while another one is shown. It is transparent and
+/// takes no input or focus, and it keeps the size it last had on screen, so
+/// the inspector opening beside another page does not lay it out again.
+private struct KeptPage<Content: View>: View {
+    let active: Bool
+    let content: Content
+    @State private var size: CGSize?
+    @State private var visibility: PageVisibility
+
+    init(model: AppModel, page: SidebarItem, @ViewBuilder content: () -> Content) {
+        active = model.sidebarSelection == page
+        self.content = content()
+        _visibility = State(initialValue: PageVisibility(model: model, page: page))
+    }
+
+    var body: some View {
+        content
+            .environment(visibility)
+            .frame(width: active ? nil : size?.width, height: active ? nil : size?.height)
+            .onGeometryChange(for: CGSize.self, of: \.size) { if active { size = $0 } }
+            .opacity(active ? 1 : 0)
+            .allowsHitTesting(active)
+            .accessibilityHidden(!active)
+    }
+}
+
+/// The window title and subtitle. Kept in their own view so the data they
+/// read (every tracker write) refreshes only them, not the pages.
+private struct WindowTitles: ViewModifier {
+    let model: AppModel
+    let activities: ActivitiesModel
+    @State private var focusToday: (count: Int, seconds: TimeInterval) = (0, 0)
+    private struct FocusKey: Equatable { let page: SidebarItem; let version: Int }
+
+    func body(content: Content) -> some View {
+        content
+            .navigationTitle(title)
+            .navigationSubtitle(subtitle)
+            .task(id: FocusKey(page: model.sidebarSelection, version: model.dataVersion)) {
+                guard model.sidebarSelection == .focus else { return }
+                let sessions = (try? model.focusStore?.sessions(overlapping: DateRangeSelection.today().interval)) ?? []
+                focusToday = (sessions.count, sessions.reduce(0) { $0 + $1.end.timeIntervalSince($1.start) })
+            }
+    }
+
+    private var subtitle: String {
+        switch model.sidebarSelection {
+        case .today: return Date().formatted(.dateTime.month().day().weekday(.wide))
+        case .activities:
+            guard let count = activities.rangeCount else { return rangeLabel }
+            return String(localized: "\(rangeLabel) · \(Format.duration(activities.rangeSeconds)) · \(count) 条记录")
+        case .stats: return String(localized: "\(rangeLabel) · 与前一时段比较")
+        case .focus:
+            return String(localized: "今天 \(focusToday.count) 次专注 · \(Format.duration(focusToday.seconds))")
+        case .organization: return String(localized: "\(model.pendingClassificationCount) 项待分类")
+        }
+    }
+
+    private var title: String {
+        switch model.sidebarSelection {
+        case .today: return String(localized: "今天")
+        case .activities: return String(localized: "活动")
+        case .stats: return String(localized: "趋势")
+        case .focus: return String(localized: "专注与限额")
+        case .organization: return String(localized: "分类与规则")
+        }
+    }
+
+    private var rangeLabel: String { model.range.toolbarLabel }
+}
+
+private extension DateRangeSelection {
+    /// The range's name; a single day also shows its date.
+    var toolbarLabel: String {
+        kind == .day ? "\(label) · \(interval.start.formatted(.dateTime.month().day()))" : label
     }
 }

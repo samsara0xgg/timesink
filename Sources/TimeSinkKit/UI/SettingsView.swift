@@ -267,7 +267,7 @@ struct RefinedPermissionsPane: View {
         model.accessibilityGranted = ax == .granted
         chrome = Permissions.chromeAutomationState(ask: false)
         screen = Permissions.screenRecordingState()
-        calendar = Permissions.calendarState()
+        calendar = await Permissions.calendarStateInBackground()
         notification = await Permissions.notificationState(model.notifier)
     }
 }

@@ -74,7 +74,7 @@ struct ActivityInspector: View {
             }
         }
         .task(id: SelectionKey(activity: activities.selectedActivity, start: activities.selectedStart)) { load() }
-        .onChange(of: model.dataVersion) { _, _ in load(keepForm: true) }
+        .onPageChange(of: model.dataVersion) { load(keepForm: true) }
         .task(id: PreviewKey(span: selected?.span.id, spanCategory: selected?.categoryID, scope: scope,
                              categoryID: categoryID, pattern: pattern, edits: model.dataEditVersion)) { preview() }
         .task(id: toast) {

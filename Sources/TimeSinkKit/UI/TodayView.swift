@@ -4,7 +4,7 @@ import AppKit
 struct TodayView: View {
     let model: AppModel
     @Bindable var dayModel: DayOverviewModel
-    let onSelect: (DayOverview.Piece) -> Void
+    let activities: ActivitiesModel
     @State private var dashboard = TodayDashboardModel()
     @State private var visiblePieces = 9
     @State private var events: [CalendarEvent] = []
@@ -57,11 +57,11 @@ struct TodayView: View {
             }
         }
         .background(WorkspaceBackground())
-        .task(id: model.dataVersion) { await refresh() }
+        .pageTask(id: model.dataVersion) { await refresh() }
         .task(id: EventsKey(enabled: model.calendarOverlayEnabled, day: day, calendars: model.calendarVersion)) {
             events = model.calendarOverlayEnabled ? await model.calendarStore?.events(on: day) ?? [] : []
         }
-        .task {
+        .whilePageShown {
             // Keeps the ribbon's now line moving while nothing is written; the
             // headline numbers only move with data or at midnight.
             while !Task.isCancelled {
@@ -70,6 +70,14 @@ struct TodayView: View {
                 if today != day { day = today; await refresh() } else { await dayModel.refresh(model: model) }
             }
         }
+    }
+
+    private func onSelect(_ piece: DayOverview.Piece) {
+        guard let item = piece.item else { return }
+        model.activitySearch = ""
+        model.openActivities(category: nil, range: .today())
+        activities.recompute(model: model, events: [])
+        activities.select(ActivitiesModel.selection(for: item), start: item.span.start)
     }
 
     private func refresh() async {
