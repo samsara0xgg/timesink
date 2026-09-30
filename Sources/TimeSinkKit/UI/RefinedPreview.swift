@@ -198,7 +198,8 @@ public enum RefinedPreview {
             let parts = key.split(separator: "|")
             return HourlyBigView.Bar(hour: Int(parts[0])!, categoryID: String(parts[1]), colorHex: categories[String(parts[1])]?.colorHex ?? "#8E8E93", seconds: seconds)
         }
-        let top = dashboard.topCategories.first!
+        // Before the fixture's day starts (small hours) there is nothing to hover.
+        guard let top = dashboard.topCategories.first else { print("Skipped flyouts: no data yet today"); return }
         let items = dashboard.todayItems.filter { $0.categoryID == top.id }
         var hourBars = Array(repeating: 0.0, count: 24)
         for (hour, seconds) in Aggregator.profileByHourOfDay(items, calendar: .current) { hourBars[hour] = seconds / 3600 }
