@@ -107,6 +107,63 @@ enum FocusPresets {
     static let minutes = [15, 25, 45, 90]
 }
 
+/// The length of the next focus: an arc around a dial, set by dragging its
+/// glass knob in 5-minute steps from 15 minutes to 2 hours.
+struct FocusDial: View {
+    @Binding var minutes: Int
+    private let range = 15...120
+    private let size: CGFloat = 236, radius: CGFloat = 98, line: CGFloat = 18
+
+    var body: some View {
+        let fraction = min(1, CGFloat(minutes) / CGFloat(range.upperBound))
+        let angle = Angle.degrees(Double(fraction) * 360 - 90)
+        ZStack {
+            Canvas { context, canvas in
+                let center = CGPoint(x: canvas.width / 2, y: canvas.height / 2)
+                for index in 0..<24 {
+                    let a = Double(index) / 24 * 2 * .pi - .pi / 2
+                    let major = index % 6 == 0
+                    var path = Path()
+                    path.move(to: CGPoint(x: center.x + 112 * cos(a), y: center.y + 112 * sin(a)))
+                    path.addLine(to: CGPoint(x: center.x + (major ? 104 : 108) * cos(a), y: center.y + (major ? 104 : 108) * sin(a)))
+                    context.stroke(path, with: .style(.tertiary), style: StrokeStyle(lineWidth: major ? 2 : 1, lineCap: .round))
+                }
+            }
+            Circle().stroke(.quaternary, lineWidth: line).frame(width: radius * 2, height: radius * 2)
+            Circle().trim(from: 0, to: fraction)
+                .stroke(.tint, style: StrokeStyle(lineWidth: line, lineCap: .round))
+                .rotationEffect(.degrees(-90)).frame(width: radius * 2, height: radius * 2)
+            Color.clear.frame(width: 34, height: 34).glassSurface(in: Circle())
+                .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
+                .offset(x: radius * cos(angle.radians), y: radius * sin(angle.radians))
+            VStack(spacing: 2) {
+                Text("\(minutes)").font(.system(size: 50, weight: .semibold)).monospacedDigit().contentTransition(.numericText())
+                Text("分钟 · \(Date().addingTimeInterval(Double(minutes) * 60), format: .dateTime.hour().minute()) 结束")
+                    .font(.system(size: 13)).foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: size, height: size)
+        .contentShape(Circle())
+        .gesture(DragGesture(minimumDistance: 0).onChanged { value in
+            let dx = value.location.x - size / 2, dy = value.location.y - size / 2
+            var turn = (atan2(dy, dx) + .pi / 2) / (2 * .pi)
+            if turn < 0 { turn += 1 }
+            let stepped = Int((turn * CGFloat(range.upperBound) / 5).rounded()) * 5
+            minutes = min(range.upperBound, max(range.lowerBound, stepped == 0 ? range.upperBound : stepped))
+        })
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("专注时长")
+        .accessibilityValue("\(minutes) 分钟")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: minutes = min(range.upperBound, minutes + 5)
+            case .decrement: minutes = max(range.lowerBound, minutes - 5)
+            @unknown default: break
+            }
+        }
+    }
+}
+
 /// Focus session in-progress state: big countdown, distraction count, and
 /// blocked-list chips, plus 结束会话.
 struct FocusRunningView: View {

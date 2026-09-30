@@ -31,6 +31,20 @@ struct MainWindowView: View {
                 .modifier(WindowTitles(model: model, activities: activities))
                 .toolbar {
                     if model.sidebarSelection == .stats || model.sidebarSelection == .activities { rangeToolbar }
+                    if model.sidebarSelection == .focus {
+                        ToolbarItem {
+                            Menu {
+                                let taken = Set(((try? model.budgetStore?.budgets()) ?? []).map(\.categoryID))
+                                ForEach(model.resolver.categoriesByID.values.filter { !taken.contains($0.id) }.sorted { $0.sortOrder < $1.sortOrder }, id: \.id) { category in
+                                    Button(category.name) {
+                                        try? model.budgetStore?.setBudget(categoryID: category.id, dailySeconds: 45 * 60)
+                                        model.requestNotificationPermission()
+                                        model.settingsChanged()
+                                    }
+                                }
+                            } label: { Label("添加限额", systemImage: "plus").labelStyle(.titleAndIcon) }.fixedSize()
+                        }
+                    }
                     if model.sidebarSelection == .today {
                         ToolbarItem {
                             Menu {

@@ -1889,16 +1889,6 @@
         }
       }
     },
-    "今天 %@ · %@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Today %@ · %@"
-          }
-        }
-      }
-    },
     "今天 %lld 次专注 · %@": {
       "localizations": {
         "en": {
@@ -2585,12 +2575,12 @@
         }
       }
     },
-    "分钟 · %@ → %@ 结束": {
+    "分钟 · %@ 结束": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Minutes · %@ → Ends %@"
+            "value": "Minutes · Ends %@"
           }
         }
       }
@@ -2631,16 +2621,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Switching to chat, social or entertainment counts as an interruption only after %lld s there or typing there; a quick peek doesn't count, and pass-throughs under 3 s aren't drawn."
-          }
-        }
-      }
-    },
-    "切回被隐藏的应用时会提示你；网站在 Chrome 中拦截，需要时可以放行 5 分钟。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Switching to a hidden app shows a reminder. Websites are blocked in Chrome and can be allowed for 5 minutes."
           }
         }
       }
@@ -3337,6 +3317,16 @@
         }
       }
     },
+    "在 Chrome 中拦截": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Block in Chrome"
+          }
+        }
+      }
+    },
     "在弹出层和「今天」显示评分与连续达标；关闭后只在「趋势」里出现。": {
       "localizations": {
         "en": {
@@ -3533,16 +3523,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Done"
-          }
-        }
-      }
-    },
-    "完成第一段专注后，在这里回看。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Completed focus sessions will appear here."
           }
         }
       }
@@ -3963,16 +3943,6 @@
         }
       }
     },
-    "已提前结束": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ended early"
-          }
-        }
-      }
-    },
     "已暂停": {
       "localizations": {
         "en": {
@@ -4265,16 +4235,6 @@
         }
       }
     },
-    "开始一段专注": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Start a focus session"
-          }
-        }
-      }
-    },
     "开始专注": {
       "localizations": {
         "en": {
@@ -4381,6 +4341,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Amber once when close, red with an icon when over. Reminders only, nothing is blocked."
+          }
+        }
+      }
+    },
+    "快到时黄色，超出时红色加图标": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yellow when close, red with an icon when over"
           }
         }
       }
@@ -4705,24 +4675,12 @@
         }
       }
     },
-    "拦下 %lld 次": {
+    "拖动圆环上的把手，15 分钟到 2 小时": {
       "localizations": {
         "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "Blocked %lld time"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "Blocked %lld times"
-                }
-              }
-            }
+          "stringUnit": {
+            "state": "translated",
+            "value": "Drag the knob around the ring, 15 minutes to 2 hours"
           }
         }
       }
@@ -5719,16 +5677,6 @@
         }
       }
     },
-    "期间隐藏应用、拦截网站": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hide apps and block websites during focus"
-          }
-        }
-      }
-    },
     "未分类": {
       "localizations": {
         "en": {
@@ -6443,16 +6391,6 @@
         }
       }
     },
-    "每日限额": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Daily limits"
-          }
-        }
-      }
-    },
     "每次都回了消息": {
       "localizations": {
         "en": {
@@ -6499,16 +6437,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Communication"
-          }
-        }
-      }
-    },
-    "没有分心": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No distractions"
           }
         }
       }
@@ -8115,16 +8043,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "This activity has not been saved yet. Please try again shortly."
-          }
-        }
-      }
-    },
-    "进行中": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "In progress"
           }
         }
       }
