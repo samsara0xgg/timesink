@@ -121,13 +121,14 @@ struct InterruptionRadarCard: View {
             }
             Spacer(minLength: 8)
             VStack(alignment: .leading, spacing: 3) {
-                HStack(alignment: .bottom, spacing: 2) {
-                    ForEach(8..<20, id: \.self) { hour in
-                        RoundedRectangle(cornerRadius: 1)
-                            .fill(hours[hour] == nil ? Color.primary.opacity(0.12) : Color.red.opacity(0.8))
-                            .frame(width: 4, height: hours[hour].map { CGFloat(4 + min($0, 4) * 3) } ?? 2)
+                // One canvas, not a dozen shapes per row.
+                Canvas { context, _ in
+                    for hour in 8..<20 {
+                        let height = hours[hour].map { CGFloat(4 + min($0, 4) * 3) } ?? 2
+                        context.fill(Path(roundedRect: CGRect(x: CGFloat(hour - 8) * 6, y: 16 - height, width: 4, height: height), cornerRadius: 1),
+                                     with: .color(hours[hour] == nil ? Color.primary.opacity(0.12) : Color.red.opacity(0.8)))
                     }
-                }.frame(height: 16, alignment: .bottom)
+                }.frame(width: 70, height: 16)
                 Text(peak(hours)).font(.system(size: 11)).foregroundStyle(.tertiary)
             }
             .accessibilityElement(children: .ignore)
@@ -167,10 +168,10 @@ struct InterruptionRadarCard: View {
             } label: {
                 Label("专注时隐藏", systemImage: hidden ? "checkmark" : "eye.slash")
             }
-            .controlSize(.small).glassButton()
+            .controlSize(.small).buttonStyle(.borderless)
         } else {
             Button { model.sidebarSelection = .focus } label: { Label("设限额…", systemImage: "gauge.with.dots.needle.33percent") }
-                .controlSize(.small).glassButton()
+                .controlSize(.small).buttonStyle(.borderless)
         }
     }
 
