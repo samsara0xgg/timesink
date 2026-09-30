@@ -510,7 +510,9 @@ private struct ExpandedDrillView<Content: View>: View {
 /// three-line text dropdown.
 struct MenuBarDashboardView: View {
     let model: AppModel
-    @State private var dashboard = TodayDashboardModel()
+    /// Kept on the model: SwiftUI builds the popover window afresh on every
+    /// open, and a model created with it would open empty, then grow.
+    private var dashboard: TodayDashboardModel { model.dashboard }
     /// C4: switches the popover between the normal dashboard and the focus
     /// duration/block-list configuration screen. Superseded entirely by
     /// `FocusRunningView` whenever a session is actually running, regardless

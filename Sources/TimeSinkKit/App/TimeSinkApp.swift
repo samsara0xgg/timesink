@@ -219,6 +219,8 @@ public struct TimeSinkApp: App {
                     // see `TimeSinkAppDelegate.application(_:open:)`.
                     appDelegate.focus = model.focus
                     appDelegate.blocker = chromeBlocker
+                    // The popover's first open shows these numbers at once.
+                    Task { await model.dashboard.recompute(model: model, forceStreak: false) }
                     if needsOnboarding {
                         openWindow(id: "main")
                         AppWindow.main.bringForward()

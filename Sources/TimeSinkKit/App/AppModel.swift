@@ -718,6 +718,10 @@ public final class AppModel {
     /// fetch them again.
     public private(set) var calendarVersion = 0
 
+    /// The menu bar popover's numbers, kept between openings so an open
+    /// shows the last ones at their final height while it refreshes.
+    @ObservationIgnored let dashboard = TodayDashboardModel()
+
     /// Calendar access as last read by `refreshCalendarPermission()`, nil
     /// until the first read. Views read this instead of asking the calendar
     /// service on the main thread.
