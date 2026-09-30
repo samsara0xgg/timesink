@@ -48,7 +48,7 @@ import WebKit
                               styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                               backing: .buffered, defer: false)
             window.contentViewController = controller
-            window.titlebarAppearsTransparent = false
+            window.titlebarAppearsTransparent = true
             window.toolbarStyle = .unified
         case .glass(let radius):
             window = NSPanel(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless, .nonactivatingPanel],
