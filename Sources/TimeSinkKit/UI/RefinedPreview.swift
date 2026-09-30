@@ -219,8 +219,6 @@ public enum RefinedPreview {
         await dashboard.recompute(model: model, forceStreak: true)
         let categories = model.resolver.categoriesByID
         let byCategory = Aggregator.durationByCategory(dashboard.todayItems)
-        let scoreRows = TodayDashboardModel.scoreContributions(byCategory: byCategory, categories: categories)
-            .map { ScoreBreakdownView.Row(id: $0.id, name: $0.name, colorHex: $0.colorHex, seconds: $0.seconds, points: $0.points, share: $0.share) }
         var hourTotals: [String: TimeInterval] = [:]
         for entry in Aggregator.stackedSeries(dashboard.todayItems, bucket: .hour, calendar: .current) {
             hourTotals["\(Calendar.current.component(.hour, from: entry.bucketStart))|\(entry.categoryID)", default: 0] += entry.seconds
@@ -236,9 +234,8 @@ public enum RefinedPreview {
         for (hour, seconds) in Aggregator.profileByHourOfDay(items, calendar: .current) { hourBars[hour] = seconds / 3600 }
         let subs = Aggregator.durationByDomainOrApp(items).prefix(5).map { CategoryDetailView.SubEntry(id: $0.key, label: $0.label, seconds: $0.seconds) }
         let panes: [(String, AnyView)] = [
-            ("score", AnyView(ScoreBreakdownView(rows: scoreRows, pulse: dashboard.pulse, pulseDelta: dashboard.pulseDelta))),
+            ("score", AnyView(ScoreFlyoutView(pulse: dashboard.pulse, dailyPulses: dashboard.streakLookbackPulses, threshold: TodayDashboardModel.streakThreshold, streakDays: dashboard.streakDays))),
             ("compare", AnyView(CompareBaseView(label: String(localized: "投入时长比较"), todayValue: dashboard.focus, delta: dashboard.focusDelta))),
-            ("streak", AnyView(StreakDotsView(dailyPulses: dashboard.streakLookbackPulses, threshold: TodayDashboardModel.streakThreshold, streakDays: dashboard.streakDays))),
             ("category", AnyView(CategoryDetailView(categoryID: top.id, name: top.name, colorHex: top.colorHex, seconds: top.seconds, hourBars: hourBars, subs: Array(subs), onOpenActivities: {}))),
             ("hourly", AnyView(HourlyBigView(categories: categories, todayBars: bars, loadLast7Bars: { bars }))),
             ("budget", AnyView(BudgetProgressView(rows: dashboard.allBudgetRows.map { BudgetProgressView.Row(id: $0.id, name: $0.name, colorHex: $0.colorHex, spent: $0.spent, limit: $0.limit) }, warnPercent: dashboard.budgetWarnPercent))),

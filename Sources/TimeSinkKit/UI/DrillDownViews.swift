@@ -23,68 +23,70 @@ extension View {
     fileprivate func flyoutCard() -> some View { modifier(FlyoutCard()) }
 }
 
-// MARK: - 分数环: ScoreBreakdownView
+// MARK: - 分数环: ScoreFlyoutView
 
-/// 分数环 hover pane: `TodayDashboardModel.scoreContributions` rows (color
-/// dot + name + per-category points + share-proportional bar + duration),
-/// plus today's pulse and its 较昨日 delta.
-struct ScoreBreakdownView: View {
-    struct Row: Identifiable {
-        let id: String
-        let name: String
-        let colorHex: String
-        let seconds: TimeInterval
-        let points: Double
-        let share: Double
-    }
-
-    let rows: [Row]
+/// 分数环 hover pane: how the score is weighted, the last two weeks as
+/// met / missed / no record, and the current streak.
+struct ScoreFlyoutView: View {
     let pulse: Int?
-    let pulseDelta: Int?
-    /// Panel default is `DrillWidths.score`; the degraded in-popover
-    /// expansion passes `DrillWidths.compact` so it fits inside the
-    /// popover's own content width (F1 fix).
+    /// One entry per day, tail = today; `nil` is a day with no record.
+    let dailyPulses: [Int?]
+    let threshold: Int
+    let streakDays: Int
     var width: CGFloat = DrillWidths.score
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let days = Array(dailyPulses.suffix(14))
+        VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Text("分数构成").font(.headline)
+                Text("评分").font(.headline)
                 Spacer()
-                if let pulse {
-                    Text(pulseDelta.map { "\(pulse) · 较昨日 \(Format.signedInt($0))" } ?? "\(pulse)")
-                        .font(.caption).monospacedDigit().foregroundStyle(.secondary)
-                }
+                Text(pulse.map { "\($0) 分" } ?? "—").font(.callout).monospacedDigit().foregroundStyle(.secondary)
             }
-            // Points take the width their widest label needs ("100 pts" in
-            // English); the bar keeps at least 48pt beside dot, spacing and numbers.
-            let points = rows.map { String(localized: "\(Int($0.points.rounded()))分") }
-            let pointsWidth = RefinedStyle.nameColumn(points, font: .monospacedDigitSystemFont(ofSize: NSFont.preferredFont(forTextStyle: .caption2).pointSize, weight: .regular), cap: 60)
-            let nameWidth = RefinedStyle.nameColumn(rows.map(\.name), font: .preferredFont(forTextStyle: .caption1), cap: width - 132 - pointsWidth)
-            ForEach(rows) { row in
-                HStack(spacing: 8) {
-                    Circle().fill(RefinedStyle.category(row.id, hex: row.colorHex)).frame(width: 8, height: 8)
-                    Text(row.name).font(.caption).lineLimit(1).frame(width: nameWidth, alignment: .leading)
-                    GeometryReader { geo in
-                        Capsule().fill(RefinedStyle.category(row.id, hex: row.colorHex))
-                            .frame(width: max(4, geo.size.width * row.share))
-                            .frame(maxHeight: .infinity, alignment: .center)
+            Text("按分类加权：投入类 75–100 分，中性 50 分，分心类 0–25 分。\(threshold) 分算达标。")
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 4) {
+                    ForEach(Array(days.enumerated()), id: \.offset) { index, pulse in
+                        let day = Calendar.current.date(byAdding: .day, value: index - days.count + 1, to: .now) ?? .now
+                        VStack(spacing: 3) {
+                            square(pulse)
+                                .overlay { if index == days.count - 1 { RoundedRectangle(cornerRadius: 5).strokeBorder(.primary, lineWidth: 1.5) } }
+                                .frame(height: 20)
+                            Text(verbatim: "\(Calendar.current.component(.day, from: day))").font(.system(size: 10)).monospacedDigit().foregroundStyle(.tertiary)
+                        }
+                        .help(pulse.map { String(localized: "\(day.formatted(.dateTime.month().day())) · \($0) 分") }
+                              ?? String(localized: "\(day.formatted(.dateTime.month().day())) · 无记录"))
                     }
-                    .frame(height: 6)
-                    Text("\(Int(row.points.rounded()))分")
-                        .font(.caption2).monospacedDigit().foregroundStyle(.secondary)
-                        .fixedSize().frame(width: pointsWidth, alignment: .trailing)
-                    Text(Format.duration(row.seconds))
-                        .font(.caption2).monospacedDigit().foregroundStyle(.secondary)
-                        .frame(width: 44, alignment: .trailing)
                 }
+                HStack(spacing: 12) {
+                    legend(square(threshold), "达标")
+                    legend(square(0), "未达标")
+                    legend(square(nil), "没有记录")
+                }.font(.caption).foregroundStyle(.secondary)
             }
-            Text("每分钟按分类的投入程度计分，全天取平均。")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+            .padding(10).glassPlatter(cornerRadius: 14)
+            HStack {
+                Text("连续达标").foregroundStyle(.secondary)
+                Spacer()
+                Text("\(streakDays) 天").fontWeight(.semibold).monospacedDigit()
+            }.font(.callout)
         }
         .frame(width: width, alignment: .leading)
         .flyoutCard()
+    }
+
+    @ViewBuilder private func square(_ pulse: Int?) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 5, style: .continuous)
+        if let pulse {
+            shape.fill(pulse >= threshold ? Color.green.opacity(0.85) : Color.secondary.opacity(0.25))
+        } else {
+            HatchFill().clipShape(shape).overlay(shape.strokeBorder(Color.secondary.opacity(0.2)))
+        }
+    }
+
+    private func legend(_ swatch: some View, _ title: LocalizedStringKey) -> some View {
+        HStack(spacing: 4) { swatch.frame(width: 10, height: 10); Text(title) }
     }
 }
 
@@ -148,48 +150,6 @@ struct CompareBaseView: View {
             }.frame(height: 8)
         }
         .accessibilityElement(children: .combine)
-    }
-}
-
-// MARK: - 连续达标行: StreakDotsView
-
-/// 连续达标行 hover pane: 30-day dot pattern (`dailyPulses`, tail = today) --
-/// filled/tinted at >= `threshold`, grey otherwise; a `nil` entry (no
-/// tracked day) is only outlined, so a day off does not read as a miss.
-struct StreakDotsView: View {
-    let dailyPulses: [Int?]
-    let threshold: Int
-    let streakDays: Int
-    var width: CGFloat = DrillWidths.streak
-
-    private var metDaysCount: Int { dailyPulses.compactMap { $0 }.filter { $0 >= threshold }.count }
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 10)
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("连续达标").font(.headline)
-                Spacer()
-                Text("\(streakDays) 天 · 达标线 \(threshold) 分")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            LazyVGrid(columns: columns, spacing: 4) {
-                ForEach(Array(dailyPulses.enumerated()), id: \.offset) { index, pulse in
-                    let day = Calendar.current.date(byAdding: .day, value: index - dailyPulses.count + 1, to: .now) ?? .now
-                    let date = day.formatted(.dateTime.month().day())
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(pulse.map { $0 >= threshold ? Color.green.opacity(0.85) : Color.secondary.opacity(0.2) } ?? .clear)
-                        .overlay { if pulse == nil { RoundedRectangle(cornerRadius: 2).strokeBorder(Color.secondary.opacity(0.25)) } }
-                        .aspectRatio(1, contentMode: .fit)
-                        .help(pulse.map { String(localized: "\(date) · \($0) 分") } ?? String(localized: "\(date) · 无记录"))
-                }
-            }
-            Text("近 30 天 · 达标 \(metDaysCount) 天，当前连续 \(streakDays) 天")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-        }
-        .frame(width: width, alignment: .leading)
-        .flyoutCard()
     }
 }
 
@@ -456,7 +416,6 @@ struct LimitRowView: View {
 enum DrillWidths {
     static let score: CGFloat = 280
     static let compare: CGFloat = 240
-    static let streak: CGFloat = 220
     static let category: CGFloat = 340
     static let hourly: CGFloat = 340
     static let budget: CGFloat = 280

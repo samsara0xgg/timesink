@@ -71,7 +71,7 @@ final class TodayDashboardModel {
     var todayItems: [CategorizedSpan] = []
 
     /// C1+ drill-down: the 30-day per-day pulse array `streakDays` above was
-    /// computed from (`StreakDotsView`'s dot pattern) -- see
+    /// computed from (`ScoreFlyoutView`'s day strip) -- see
     /// `refreshStreakIfDayChanged`, which keeps this alongside `streakDays`
     /// rather than discarding it, so no second `.last30` lookback runs just
     /// to render the dots.
@@ -1176,17 +1176,9 @@ struct MenuBarDashboardView: View {
 
     /// The score and the streak it keeps, one droplet.
     private func scoreContent(compact: Bool = false) -> some View {
-        let byCategory = Aggregator.durationByCategory(dashboard.todayItems)
-        let rows = TodayDashboardModel.scoreContributions(byCategory: byCategory, categories: model.resolver.categoriesByID)
-            .map { ScoreBreakdownView.Row(id: $0.id, name: $0.name, colorHex: $0.colorHex,
-                                           seconds: $0.seconds, points: $0.points, share: $0.share) }
-        return VStack(alignment: .leading, spacing: 8) {
-            ScoreBreakdownView(rows: rows, pulse: dashboard.pulse, pulseDelta: dashboard.pulseDelta,
-                               width: compact ? DrillWidths.compact : DrillWidths.score)
-            StreakDotsView(dailyPulses: dashboard.streakLookbackPulses,
-                           threshold: TodayDashboardModel.streakThreshold, streakDays: dashboard.streakDays,
-                           width: compact ? DrillWidths.compact : DrillWidths.score)
-        }
+        ScoreFlyoutView(pulse: dashboard.pulse, dailyPulses: dashboard.streakLookbackPulses,
+                        threshold: TodayDashboardModel.streakThreshold, streakDays: dashboard.streakDays,
+                        width: compact ? DrillWidths.compact : DrillWidths.score)
     }
 
     private func compareBaseContent(compact: Bool = false) -> CompareBaseView {

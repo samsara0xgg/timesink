@@ -585,16 +585,6 @@
         }
       }
     },
-    "%lld · 较昨日 %@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld · %@ vs. yesterday"
-          }
-        }
-      }
-    },
     "%lld 个分类 · 限额在条上": {
       "localizations": {
         "en": {
@@ -684,38 +674,6 @@
                 "stringUnit": {
                   "state": "translated",
                   "value": "%lld days"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "%lld 天 · 达标线 %lld 分": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld d · target %#@n2@"
-          },
-          "substitutions": {
-            "n2": {
-              "argNum": 2,
-              "formatSpecifier": "lld",
-              "variations": {
-                "plural": {
-                  "one": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg pt"
-                    }
-                  },
-                  "other": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg pts"
-                    }
-                  }
                 }
               }
             }
@@ -1026,28 +984,6 @@
                 "stringUnit": {
                   "state": "translated",
                   "value": "%lld items to categorize"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "%lld分": {
-      "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld pt"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld pts"
                 }
               }
             }
@@ -2381,16 +2317,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Score"
-          }
-        }
-      }
-    },
-    "分数构成": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Score Breakdown"
           }
         }
       }
@@ -4623,6 +4549,16 @@
         }
       }
     },
+    "按分类加权：投入类 75–100 分，中性 50 分，分心类 0–25 分。%lld 分算达标。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weighted by category: productive 75–100, neutral 50, distracting 0–25. %lld or more meets the target."
+          }
+        }
+      }
+    },
     "按分类筛选活动": {
       "localizations": {
         "en": {
@@ -5605,6 +5541,16 @@
         }
       }
     },
+    "未达标": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Missed"
+          }
+        }
+      }
+    },
     "未选择": {
       "localizations": {
         "en": {
@@ -6129,16 +6075,6 @@
         }
       }
     },
-    "每分钟按分类的投入程度计分，全天取平均。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Each minute is scored by its category's productivity, then averaged across the day."
-          }
-        }
-      }
-    },
     "每周的分类时长": {
       "localizations": {
         "en": {
@@ -6275,6 +6211,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "No activity, not counted"
+          }
+        }
+      }
+    },
+    "没有记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No record"
           }
         }
       }
@@ -7491,6 +7437,16 @@
         }
       }
     },
+    "达标": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Met"
+          }
+        }
+      }
+    },
     "近 30 天": {
       "localizations": {
         "en": {
@@ -7507,16 +7463,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Last 30 days · By weekday"
-          }
-        }
-      }
-    },
-    "近 30 天 · 达标 %lld 天，当前连续 %lld 天": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Last 30 days · on target %lld d, current streak %lld d"
           }
         }
       }
