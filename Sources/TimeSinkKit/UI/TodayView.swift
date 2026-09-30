@@ -283,16 +283,14 @@ struct DayRibbonView: View {
     var compact = false
     var events: [CalendarEvent] = []
     var onSelect: ((DayOverview.Piece) -> Void)?
-    private var interval: DateInterval {
-        let end = Calendar.current.date(bySettingHour: compact ? 18 : 20, minute: 0, second: 0, of: overview.now) ?? overview.displayInterval.end
-        return DateInterval(start: overview.displayInterval.start, end: max(end, overview.displayInterval.end))
-    }
+    private var interval: DateInterval { overview.displayInterval }
     @Environment(\.locale) private var locale
     private struct Tick: Identifiable {
         let id: Date
         let text: String
         let width: CGFloat
         let x: CGFloat
+        var isNow = false
     }
     private func ticks(width: CGFloat) -> [Tick] {
         let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
@@ -319,17 +317,22 @@ struct DayRibbonView: View {
         // The right edge gets a label only on the step's grid; an off-grid
         // edge label would crowd out the last even tick.
         let alignedEnd = interval.duration.truncatingRemainder(dividingBy: Double(step) * 3600) == 0
-        for date in hours(every: step) + (alignedEnd ? [interval.end] : []) {
+        func tick(_ date: Date) -> Tick {
             let (text, labelWidth) = label(date)
             let x = max(0, min(width - labelWidth, bounds(start: date, end: date, width: width).minX - labelWidth / 2))
-            if date == interval.end {
-                while let last = result.last, x < last.x + last.width + 8 { result.removeLast() }
-            }
-            if result.last.map({ x >= $0.x + $0.width + 8 }) ?? true {
-                result.append(Tick(id: date, text: text, width: labelWidth, x: x))
-            }
+            return Tick(id: date, text: text, width: labelWidth, x: x)
         }
-        return result
+        for date in hours(every: step) + (alignedEnd ? [interval.end] : []) {
+            let next = tick(date)
+            if date == interval.end {
+                while let last = result.last, next.x < last.x + last.width + 8 { result.removeLast() }
+            }
+            if result.last.map({ next.x >= $0.x + $0.width + 8 }) ?? true { result.append(next) }
+        }
+        // Now's own label wins over any hour label it would touch.
+        var now = tick(overview.now)
+        now.isNow = true
+        return result.filter { $0.x + $0.width + 6 <= now.x || $0.x >= now.x + now.width + 6 } + [now]
     }
 
     var body: some View {
@@ -346,7 +349,12 @@ struct DayRibbonView: View {
                         }
                     }
                     ZStack(alignment: .topLeading) {
-                        RoundedRectangle(cornerRadius: 5).fill(.quaternary.opacity(0.5))
+                        let past = bounds(start: interval.start, end: overview.now, width: geometry.size.width)
+                        Rectangle().fill(.quaternary.opacity(0.5)).frame(width: past.width)
+                        // The rest of the day is still to come: a faint dashed outline.
+                        RoundedRectangle(cornerRadius: 3)
+                            .strokeBorder(.quaternary, style: StrokeStyle(lineWidth: 1, dash: [2, 3]))
+                            .frame(width: max(0, geometry.size.width - past.width)).offset(x: past.width)
                         ForEach(ribbonPieces(width: geometry.size.width)) { piece in
                             let rect = bounds(start: piece.start, end: piece.end, width: geometry.size.width)
                             Group {
@@ -375,7 +383,8 @@ struct DayRibbonView: View {
             }.frame(height: compact ? 12 : 54)
             GeometryReader { geometry in
                 ForEach(ticks(width: geometry.size.width)) { tick in
-                    Text(tick.text).font(.system(size: 11)).monospacedDigit().foregroundStyle(.secondary)
+                    Text(tick.text).font(.system(size: 11, weight: tick.isNow ? .semibold : .regular)).monospacedDigit()
+                        .foregroundStyle(tick.isNow ? .primary : .secondary)
                         .fixedSize().frame(width: tick.width)
                         .offset(x: tick.x)
                 }
@@ -386,7 +395,6 @@ struct DayRibbonView: View {
                     Label("专注会话", systemImage: "minus").foregroundStyle(.tint)
                     Label("日程", systemImage: "rectangle")
                     Label("未记录", systemImage: "rectangle.dashed")
-                    Text("现在 \(overview.now.formatted(.dateTime.hour().minute().locale(locale)))")
                 }.font(.system(size: 11)).foregroundStyle(.secondary)
             }
         }

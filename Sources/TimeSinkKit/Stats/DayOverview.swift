@@ -28,6 +28,8 @@ struct DayOverview: Sendable {
     static let listResolution: TimeInterval = 300
 
     let day: DateInterval
+    /// What the day ribbon draws: from the hour of the first record to a
+    /// little after now, never to midnight.
     let displayInterval: DateInterval
     /// The day's raw spans, clipped and sorted, for re-folding at other scales.
     let items: [CategorizedSpan]
@@ -74,13 +76,12 @@ struct DayOverview: Sendable {
         self.items = clipped
         pieces = Self.pieces(clipped, resolution: Self.listResolution, grouping: .activity)
         gapSeconds = pieces.filter { $0.segment == nil }.reduce(0) { $0 + $1.seconds }
-        // Use real local-day boundaries, including 23/25-hour DST days. Always
-        // include early/late records and the current time rather than hiding them.
-        let defaultStart = calendar.date(bySettingHour: 8, minute: 0, second: 0, of: now) ?? day.start
-        let defaultEnd = calendar.date(bySettingHour: 18, minute: 0, second: 0, of: now) ?? day.end
-        let first = min(clipped.first?.span.start ?? defaultStart, defaultStart, now)
+        // Use real local-day boundaries, including 23/25-hour DST days. Records
+        // end at now, so the span with data runs from the first record's hour
+        // to the hour boundary at least half an hour past now.
+        let first = min(clipped.first?.span.start ?? now, now)
         let start = calendar.dateInterval(of: .hour, for: first)?.start ?? day.start
-        let last = max(clipped.last?.span.end ?? defaultEnd, defaultEnd, now)
+        let last = now.addingTimeInterval(1800)
         let lastHour = calendar.dateInterval(of: .hour, for: last)
         let end = min(day.end, lastHour?.start == last ? last : lastHour?.end ?? day.end)
         displayInterval = DateInterval(start: max(day.start, start), end: max(start.addingTimeInterval(1), end))

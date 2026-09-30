@@ -94,6 +94,17 @@ final class DayOverviewTests: XCTestCase {
         XCTAssertLessThanOrEqual(overview.displayInterval.start, date(7))
     }
 
+    /// The ribbon starts at the first recorded hour and stops a little after
+    /// now instead of running to a fixed evening hour or midnight.
+    func testDisplayIntervalRunsFromFirstRecordToJustAfterNow() {
+        let overview = DayOverview(items: [item(date(9, minute: 10), date(16, minute: 40))],
+            categories: categories, sessions: [], now: date(16, minute: 40), calendar: calendar)
+        XCTAssertEqual(overview.displayInterval, DateInterval(start: date(9), end: date(18)))
+        let late = DayOverview(items: [item(date(9), date(16, minute: 20))],
+            categories: categories, sessions: [], now: date(16, minute: 20), calendar: calendar)
+        XCTAssertEqual(late.displayInterval.end, date(17))
+    }
+
     /// "6h 36m" today and "5h 49m" yesterday read as 47 minutes more, even
     /// when the raw seconds differ by 46m 20s.
     func testMinuteDeltaAgreesWithTheDurationsShown() {
