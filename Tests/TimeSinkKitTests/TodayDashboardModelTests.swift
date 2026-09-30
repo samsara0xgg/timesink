@@ -231,4 +231,48 @@ final class TodayDashboardModelTests: XCTestCase {
     // checker already guarantees -- a test would either need to expose
     // internal view state purely for test access, or restate the exact
     // same expression the source uses (a tautology, not a check).
+
+    /// 6 h 36 min 20 s against 5 h 49 min 40 s: rounded to minutes first
+    /// (396 and 350), the difference is 46, matching the two numbers shown,
+    /// not the 46.67 of the raw seconds.
+    func testMinuteDeltaRoundsBeforeSubtracting() {
+        XCTAssertEqual(Format.minuteDelta(today: 396 * 60 + 20, yesterday: 349 * 60 + 40), 46)
+        XCTAssertEqual(Format.minuteDelta(today: 29.6, yesterday: 80), -1)
+        XCTAssertEqual(Format.roundedMinutes(89), 1)
+    }
+
+    /// Over and near (at most 20% left) are drawn; the rest fold into one line.
+    func testLimitsFoldOnlyNearAndOver() {
+        let row = { (id: String, spent: Double, limit: Double) in
+            BudgetProgressView.Row(id: id, name: id, colorHex: "#000000", spent: spent * 60, limit: limit * 60)
+        }
+        XCTAssertEqual(LimitState.of(spent: 70 * 60, limit: 60 * 60, warnPercent: 20), .over(minutes: 10))
+        XCTAssertEqual(LimitState.of(spent: 50 * 60, limit: 60 * 60, warnPercent: 20), .near(minutes: 10))
+        XCTAssertEqual(LimitState.of(spent: 47 * 60, limit: 60 * 60, warnPercent: 20), .fine)
+        XCTAssertEqual(LimitState.of(spent: 60 * 60, limit: 60 * 60, warnPercent: 20), .near(minutes: 0))
+        let fold = LimitState.fold([row("social", 70, 60), row("video", 20, 90), row("games", 25, 30)], warnPercent: 20)
+        XCTAssertEqual(fold.shown.map(\.id), ["social", "games"])
+        XCTAssertEqual(fold.fine.map(\.id), ["video"])
+    }
+
+    /// Flyout axes: y rounded up to 15 minutes (30 to 60 for one day), x
+    /// only across the hours with data.
+    func testHourlyChartAxesFollowTheData() {
+        XCTAssertEqual(HourlyActivityChart.ceiling(maxMinutes: 12), 30)
+        XCTAssertEqual(HourlyActivityChart.ceiling(maxMinutes: 31), 45)
+        XCTAssertEqual(HourlyActivityChart.ceiling(maxMinutes: 45), 45)
+        XCTAssertEqual(HourlyActivityChart.ceiling(maxMinutes: 60.4), 60)
+        XCTAssertEqual(HourlyActivityChart.ceiling(maxMinutes: 200), 210)
+        XCTAssertEqual(HourlyActivityChart.hourDomain([7: 600, 12: 0, 17: 60]), 7...18)
+        XCTAssertEqual(HourlyActivityChart.hourDomain([23: 60]), 21...24)
+        XCTAssertEqual(HourlyActivityChart.hourDomain([:]), 8...18)
+    }
+
+    @MainActor
+    func testPauseUntilMorningEndsAtEightTomorrow() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let now = Date(timeIntervalSince1970: 22 * 3600)  // 22:00
+        XCTAssertEqual(MenuBarDashboardView.minutesUntilMorning(now: now, calendar: calendar), 600)
+    }
 }
