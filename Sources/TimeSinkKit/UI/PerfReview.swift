@@ -188,6 +188,13 @@ import GRDB
                 navigate(model, to: page)
                 try await Task.sleep(for: pause)
                 navigate(model, to: .focus)
+            case "select":
+                model.sidebarSelection = .activities
+                let items = model.rangedSpans(for: model.range)
+                for item in [items[items.count / 5], items[items.count * 3 / 5]] {
+                    activities.select(ActivitiesModel.selection(for: item), start: item.span.start)
+                    try await Task.sleep(for: pause)
+                }
             case "day":
                 model.sidebarSelection = .activities
                 model.range.shift(-1)
