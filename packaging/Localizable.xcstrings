@@ -3111,6 +3111,16 @@
         }
       }
     },
+    "回来打开了 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "came back to %@"
+          }
+        }
+      }
+    },
     "回消息 %lld · 停留 %lld": {
       "localizations": {
         "en": {
@@ -6611,6 +6621,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Away %lld min · Name it?"
+          }
+        }
+      }
+    },
+    "离开前在 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Before: %@"
           }
         }
       }

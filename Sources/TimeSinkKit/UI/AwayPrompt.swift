@@ -25,6 +25,7 @@ struct AwayPrompt: View {
                 Text(verbatim: "\(model.time(interval.start))–\(model.time(interval.end))")
                     .font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit()
                 Text("刚才你离开了 \(minutes) 分钟").font(.system(size: 15, weight: .semibold))
+                if let context { Text(verbatim: context).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1) }
             }
             if let event = model.awaySuggestion(for: interval) {
                 Button { model.answerAway(label: event.title, symbol: "person.2") } label: {
@@ -51,8 +52,22 @@ struct AwayPrompt: View {
                 }
                 .onAppear { nameFocused = true }
             } else {
+                // The likely answer gets a row of its own, saying why.
+                if looksLikeLunch {
+                    Button { model.answerAway(label: String(localized: "午饭"), symbol: "fork.knife") } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "fork.knife").frame(width: 16)
+                            Text("午饭")
+                            Spacer(minLength: 8)
+                            Label("这个时间常是午饭", systemImage: "sparkles").font(.system(size: 11)).foregroundStyle(.secondary)
+                        }
+                        .font(.system(size: 13, weight: .medium))
+                        .padding(.horizontal, 10).frame(height: 38).frame(maxWidth: .infinity, alignment: .leading)
+                        .glassPlatter(cornerRadius: 10, strong: true).contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                }
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
-                    option(String(localized: "午饭"), "fork.knife", hint: looksLikeLunch)
+                    if !looksLikeLunch { option(String(localized: "午饭"), "fork.knife") }
                     option(String(localized: "休息"), "cup.and.saucer")
                     option(String(localized: "开会"), "person.2")
                     Button { naming = true } label: { tile(String(localized: "其他…"), "pencil") }.buttonStyle(.plain)
@@ -65,20 +80,29 @@ struct AwayPrompt: View {
         .padding(12).frame(maxWidth: .infinity, alignment: .leading).glassPlatter()
     }
 
-    private func option(_ label: String, _ symbol: String, hint: Bool = false) -> some View {
-        Button { model.answerAway(label: label, symbol: symbol) } label: { tile(label, symbol, hint: hint) }.buttonStyle(.plain)
+    /// What was in front just before leaving and just after coming back.
+    private var context: String? {
+        let spans = model.rangedSpans(for: .today())
+        func name(_ item: CategorizedSpan) -> String { item.span.domain ?? AppIcon.name(for: item.span.appBundleID) }
+        let before = spans.last { $0.span.end <= interval.start.addingTimeInterval(60) }.map { String(localized: "离开前在 \(name($0))") }
+        let after = spans.first { $0.span.start >= interval.end.addingTimeInterval(-60) }.map { String(localized: "回来打开了 \(name($0))") }
+        let parts = [before, after].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
-    private func tile(_ label: String, _ symbol: String, hint: Bool = false) -> some View {
+    private func option(_ label: String, _ symbol: String) -> some View {
+        Button { model.answerAway(label: label, symbol: symbol) } label: { tile(label, symbol) }.buttonStyle(.plain)
+    }
+
+    private func tile(_ label: String, _ symbol: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: symbol).frame(width: 16)
             Text(label).lineLimit(1)
             Spacer(minLength: 0)
-            if hint { Image(systemName: "sparkles").font(.system(size: 10)).foregroundStyle(.secondary).help("这个时间常是午饭") }
         }
         .font(.system(size: 13, weight: .medium))
         .padding(.horizontal, 10).frame(height: 34).frame(maxWidth: .infinity, alignment: .leading)
-        .glassPlatter(cornerRadius: 10, strong: hint)
+        .glassPlatter(cornerRadius: 10)
         .contentShape(Rectangle())
     }
 }
