@@ -222,30 +222,10 @@ struct TodayView: View {
 
     private func context(_ overview: DayOverview) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("时间的去向").font(.system(size: 13, weight: .semibold))
-                    Spacer()
-                    Text("\(overview.categories.count) 个分类").font(.system(size: 12)).foregroundStyle(.secondary)
-                }
-                CategoryVesselView(overview: overview) { model.openActivities(category: $0, range: .today()) }
-                Text("刻度：小时 · 容器按 \(Int(overview.vesselHours)) 小时绘制").font(.system(size: 11)).foregroundStyle(.secondary)
-            }.padding(.horizontal, 18).padding(.vertical, 16).workspacePanel()
-            if !dayModel.budgets.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Text("今日限额").font(.system(size: 13, weight: .semibold))
-                        Spacer()
-                        Button("编辑") { model.sidebarSelection = .focus }.buttonStyle(.link).font(.system(size: 12))
-                    }
-                    ForEach(dayModel.budgets, id: \.categoryID) { budget in
-                        let used = overview.categories.first { $0.id == budget.categoryID }?.seconds ?? 0
-                        RefinedBudgetRow(name: categoryName(budget.categoryID), color: categoryColor(budget.categoryID),
-                            spent: used, limit: Double(budget.dailySeconds), warningPercent: model.settings.budgetWarnPercent)
-                    }
-                    Text("限额只提醒，不会拦截。").font(.system(size: 11)).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }.padding(.horizontal, 18).padding(.vertical, 16).workspacePanel()
+            TimeRankingCard(categories: overview.categories,
+                            limits: Dictionary(dayModel.budgets.map { ($0.categoryID, TimeInterval($0.dailySeconds)) }) { a, _ in a },
+                            warningPercent: model.settings.budgetWarnPercent) {
+                model.openActivities(category: $0, range: .today())
             }
             if let unclassified = overview.categories.first(where: { $0.id == "uncategorized" }) {
                 HStack(alignment: .top, spacing: 10) {
@@ -477,57 +457,87 @@ enum TimelineSegmentText {
     }
 }
 
-struct CategoryVesselView: View {
-    let overview: DayOverview
+/// Today's categories ranked by time, bars scaled to the top one; a daily
+/// limit is drawn on its category's bar and captioned under it.
+struct TimeRankingCard: View {
+    let categories: [DayOverview.CategoryTotal]
+    let limits: [String: TimeInterval]
+    let warningPercent: Int
     let onSelect: (String) -> Void
-    @State private var hovered: String?
-    private let height: CGFloat = 230
+
     var body: some View {
-        HStack(alignment: .bottom, spacing: 14) {
-            VStack(alignment: .trailing, spacing: 0) {
-                ForEach((0...5).reversed(), id: \.self) { tick in
-                    Text((overview.vesselHours * Double(tick) / 5).formatted(.number.precision(.fractionLength(0...1))))
-                        .font(.system(size: 11)).monospacedDigit().foregroundStyle(.secondary)
-                    if tick > 0 { Spacer(minLength: 0) }
-                }
-            }.frame(width: 18, height: height)
-            ZStack(alignment: .bottom) {
-                Rectangle().fill(.quaternary.opacity(0.5))
-                VStack(spacing: 0) {
-                    ForEach(overview.categories.reversed()) { category in
-                        Rectangle().fill(RefinedStyle.category(category.id, hex: category.colorHex))
-                            .opacity(hovered == nil || hovered == category.id ? 1 : 0.4)
-                            .overlay { if category.id == "uncategorized" { HatchFill() } }
-                            .frame(height: height * category.seconds / (overview.vesselHours * 3600))
-                            .onHover { hovered = $0 ? category.id : nil }
-                            .onTapGesture { onSelect(category.id) }
-                            .help("\(category.name) · \(Format.duration(category.seconds))")
-                    }
-                }
-                ForEach(1..<10) { line in
-                    Rectangle().fill(.primary.opacity(line.isMultiple(of: 2) ? 0.2 : 0.1))
-                        .frame(height: 0.5).offset(y: -height * CGFloat(line) / 10)
-                }.allowsHitTesting(false)
-            }
-            .frame(width: 58, height: height)
-            .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 24, bottomTrailingRadius: 24))
-            .accessibilityLabel("已记录 \(Format.duration(overview.total))，刻度 \(Int(overview.vesselHours)) 小时")
-            VStack(alignment: .leading, spacing: 1) {
-                ForEach(overview.categories) { category in
-                    Button { onSelect(category.id) } label: {
-                        HStack(spacing: 6) {
+        let scale = max(categories.first?.seconds ?? 0, 1)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("时间去了哪").font(.system(size: 13, weight: .semibold))
+                Spacer(minLength: 4)
+                Text("\(categories.count) 个分类 · 限额在条上").font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+            }.padding(.bottom, 6)
+            ForEach(categories) { category in
+                let limit = limits[category.id]
+                let status = limit.map { LimitStatus(spent: category.seconds, limit: $0, warningPercent: warningPercent) }
+                Button { onSelect(category.id) } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 8) {
                             Circle().fill(RefinedStyle.category(category.id, hex: category.colorHex)).frame(width: 7, height: 7)
-                            // Long names wrap; the column is sized for Chinese.
-                            Text(category.name).lineLimit(2).fixedSize(horizontal: false, vertical: true)
-                            Spacer(minLength: 2)
-                            Text(Format.duration(category.seconds)).monospacedDigit().fixedSize()
-                        }.font(.system(size: 12)).frame(minHeight: 24).padding(.horizontal, 3)
-                            .background(hovered == category.id ? Color.primary.opacity(0.07) : .clear, in: RoundedRectangle(cornerRadius: 5))
-                    }.buttonStyle(.plain).onHover { hovered = $0 ? category.id : nil }
+                            Text(category.name).lineLimit(1).frame(width: 62, alignment: .leading)
+                            bar(category, limit: limit, over: status?.isOver ?? false, scale: scale)
+                            Text(Format.duration(category.seconds)).monospacedDigit().frame(width: 52, alignment: .trailing)
+                        }.frame(minHeight: 24)
+                        if let status { caption(status).padding(.leading, 77) }
+                    }.font(.system(size: 12)).contentShape(Rectangle())
+                }.buttonStyle(.plain).help("\(category.name) · \(Format.duration(category.seconds))")
+            }
+        }.padding(.horizontal, 18).padding(.vertical, 16).workspacePanel()
+    }
+
+    private func bar(_ category: DayOverview.CategoryTotal, limit: TimeInterval?, over: Bool, scale: TimeInterval) -> some View {
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            ZStack(alignment: .leading) {
+                Capsule().fill(.quaternary)
+                Capsule().fill(RefinedStyle.category(category.id, hex: category.colorHex))
+                    .overlay { if category.id == "uncategorized" { HatchFill() } }
+                    .frame(width: width * category.seconds / scale)
+                if let limit {
+                    RoundedRectangle(cornerRadius: 1).fill(over ? Color.red : Color.secondary)
+                        .frame(width: 2, height: 14)
+                        .offset(x: min(width, width * limit / scale) - 1)
                 }
-            }.frame(maxWidth: .infinity)
+            }.frame(height: 8).frame(maxHeight: .infinity)
+        }.frame(height: 14)
+    }
+
+    @ViewBuilder private func caption(_ status: LimitStatus) -> some View {
+        switch status {
+        case .over(let minutes):
+            Label("超出限额 \(minutes) 分钟", systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red).fontWeight(.semibold)
+        case .near(let minutes):
+            Label("离限额还剩 \(minutes) 分钟", systemImage: "gauge.with.dots.needle.67percent")
+                .foregroundStyle(RefinedStyle.warning).fontWeight(.semibold)
+        case .within(let minutes):
+            Text("限额 \(minutes) 分钟").foregroundStyle(.secondary)
         }
     }
+}
+
+/// A daily limit as captioned under its category, in whole minutes as shown.
+enum LimitStatus: Equatable {
+    case over(minutes: Int)
+    /// Within `warningPercent` of the limit.
+    case near(minutes: Int)
+    /// Comfortably under; carries the limit itself.
+    case within(minutes: Int)
+
+    init(spent: TimeInterval, limit: TimeInterval, warningPercent: Int) {
+        let left = Int(Format.minuteDelta(limit, spent) / 60)
+        if left < 0 { self = .over(minutes: -left) }
+        else if limit - spent <= limit * Double(warningPercent) / 100 { self = .near(minutes: left) }
+        else { self = .within(minutes: Int(limit / 60)) }
+    }
+
+    var isOver: Bool { if case .over = self { true } else { false } }
 }
 
 struct RefinedRowButtonStyle: ButtonStyle {

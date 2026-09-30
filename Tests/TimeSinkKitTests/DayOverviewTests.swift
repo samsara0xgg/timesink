@@ -72,14 +72,13 @@ final class DayOverviewTests: XCTestCase {
         XCTAssertEqual(overview.pieces.first?.segment?.dominant.appName, "Editor")
     }
 
-    func testDSTDayAndLongDayVesselNeverClipRecordedTime() {
+    func testDSTDayAndLongDayRibbonNeverClipsRecordedTime() {
         for (month, dayNumber, expectedHours) in [(3, 9, 23), (11, 2, 25)] {
             let start = calendar.date(from: DateComponents(year: 2025, month: month, day: dayNumber))!
             let end = calendar.date(byAdding: .day, value: 1, to: start)!
             let now = end.addingTimeInterval(-1)
             let overview = DayOverview(items: [item(start, now)], categories: categories, sessions: [], now: now, calendar: calendar)
             XCTAssertEqual(overview.day.duration, Double(expectedHours * 3600))
-            XCTAssertGreaterThanOrEqual(overview.vesselHours * 3600, overview.total)
             XCTAssertEqual(overview.displayInterval.start, start)
             XCTAssertEqual(overview.displayInterval.end, end)
         }
@@ -115,5 +114,13 @@ final class DayOverviewTests: XCTestCase {
         XCTAssertEqual(Format.minuteDelta(today, yesterday), 47 * 60)
         XCTAssertEqual(Format.minuteDelta(yesterday, today), -47 * 60)
         XCTAssertEqual(Format.minuteDelta(59, 0), 0)
+    }
+
+    func testLimitStatusCaptions() {
+        let hour: TimeInterval = 3600
+        XCTAssertEqual(LimitStatus(spent: hour + 12 * 60 + 30, limit: hour, warningPercent: 20), .over(minutes: 12))
+        XCTAssertEqual(LimitStatus(spent: 50 * 60, limit: hour, warningPercent: 20), .near(minutes: 10))
+        XCTAssertEqual(LimitStatus(spent: 60 * 60 + 30, limit: hour, warningPercent: 20), .near(minutes: 0))
+        XCTAssertEqual(LimitStatus(spent: 20 * 60, limit: hour, warningPercent: 20), .within(minutes: 60))
     }
 }

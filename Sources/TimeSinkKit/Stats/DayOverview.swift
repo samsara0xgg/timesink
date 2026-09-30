@@ -43,7 +43,6 @@ struct DayOverview: Sendable {
     let now: Date
 
     var firstRecord: Date? { pieces.first { $0.item != nil }?.start }
-    var vesselHours: Double { max(10, ceil(total / 7200) * 2) }
 
     init(items: [CategorizedSpan], categories: [String: Category], sessions: [FocusSession],
          now: Date = Date(), calendar: Calendar = .current) {
