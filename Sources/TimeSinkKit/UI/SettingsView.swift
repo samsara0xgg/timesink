@@ -6,9 +6,9 @@ import UniformTypeIdentifiers
 struct SettingsView: View {
     @Bindable var model: AppModel
     private let tabs: [(SettingsTab, String, String)] = [
-        (.general, String(localized: "通用"), "gearshape"), (.privacy, String(localized: "记录与隐私"), "hand.raised"),
-        (.permissions, String(localized: "权限"), "checkmark.shield"), (.notifications, String(localized: "通知"), "bell"),
-        (.account, String(localized: "账号与同步"), "icloud"), (.llm, String(localized: "智能分类"), "sparkles"), (.about, String(localized: "关于"), "info.circle")
+        (.general, String(localized: "通用"), "gearshape"), (.recording, String(localized: "记录"), "hourglass"),
+        (.llm, String(localized: "智能"), "sparkles"), (.notifications, String(localized: "通知与提示"), "bell"),
+        (.account, String(localized: "同步"), "icloud"), (.privacy, String(localized: "隐私"), "lock")
     ]
     var body: some View {
         VStack(spacing: 0) {
@@ -27,12 +27,11 @@ struct SettingsView: View {
             Divider()
             Group {
                 switch model.settingsTab {
+                case .recording: RefinedRecordingPane(model: model)
                 case .privacy: RefinedPrivacyPane(model: model)
-                case .permissions: RefinedPermissionsPane(model: model)
                 case .notifications: RefinedNotificationsPane(model: model)
                 case .account: AccountSettingsPane(model: model)
                 case .llm: LLMSettingsPane(model: model)
-                case .about: RefinedAboutPane(model: model)
                 default: RefinedGeneralPane(model: model)
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -46,6 +45,9 @@ struct SettingsView: View {
         switch model.settingsTab {
         case .budget: model.sidebarSelection = .focus; model.settingsTab = .notifications
         case .categories, .rules, .uncategorized: model.sidebarSelection = .organization; model.settingsTab = .general
+        // 2.0 folded 权限 into 隐私 and 关于 into 通用.
+        case .permissions: model.settingsTab = .privacy
+        case .about: model.settingsTab = .general
         default: break
         }
     }
@@ -54,7 +56,6 @@ struct SettingsView: View {
 struct RefinedGeneralPane: View {
     @Bindable var model: AppModel
     @State private var loginEnabled = false
-    @State private var idleMinutes: Double = 3
     @State private var error: String?
     var body: some View {
         Form {
@@ -81,12 +82,6 @@ struct RefinedGeneralPane: View {
                     Text("快捷键当前不可用，可点按上方重新设置。").font(.system(size: 11)).foregroundStyle(.secondary)
                 }
                 }
-                VStack(alignment: .leading, spacing: 4) {
-                    Stepper(value: $idleMinutes, in: 1...15, step: 0.5) {
-                    LabeledContent(String(localized: "离开多久算空闲"), value: String(localized: "\(idleMinutes.formatted()) 分钟"))
-                }.onChange(of: idleMinutes) { _, value in model.settings.setIdleThreshold(value * 60) }
-                Text("空闲的时间不计入，回来自动继续。").font(.system(size: 11)).foregroundStyle(.secondary)
-                }
             }
             Section("显示") {
                 VStack(alignment: .leading, spacing: 4) {
@@ -102,18 +97,17 @@ struct RefinedGeneralPane: View {
                 }
             }
             if let error { Text(error).foregroundStyle(.red) }
+            AboutSection(model: model)
         }.formStyle(.grouped)
-        .onAppear { idleMinutes = model.settings.idleThreshold / 60; loginEnabled = SMAppService.mainApp.status == .enabled }
+        .onAppear { loginEnabled = SMAppService.mainApp.status == .enabled }
     }
 }
 
-struct RefinedPrivacyPane: View {
+/// 记录: what is recorded and how -- pause, away time, Chrome sites, what
+/// counts as an interruption, screen capture and the calendar.
+struct RefinedRecordingPane: View {
     let model: AppModel
-    @State private var apps: [String] = []
-    @State private var domains: [String] = []
-    @State private var newDomain = ""
-    @State private var editApps = false
-    @State private var editDomains = false
+    @State private var idleMinutes: Double = 3
     @State private var retention = 7
     @State private var summary = ObservationStore.Summary(count: 0, latestAt: nil)
     @State private var confirmingDelete = false
@@ -126,13 +120,11 @@ struct RefinedPrivacyPane: View {
                     HStack { Text("暂停记录"); Spacer(); RecordingPauseMenu(model: model) }
                     caption(String(localized: "暂停期间不记录、不采集，也不补记。"))
                 }
-                LabeledContent("不记录这些应用") {
-                    Text(apps.prefix(3).map { AppIcon.name(for: $0) }.joined(separator: String(localized: "、"))).lineLimit(1)
-                    Button { editApps = true } label: { Image(systemName: "plus") }.help("编辑不记录的应用")
-                }
-                LabeledContent("不记录这些网站") {
-                    Text(domains.joined(separator: String(localized: "、"))).lineLimit(1)
-                    Button { editDomains = true } label: { Image(systemName: "plus") }.help("编辑不记录的网站")
+                VStack(alignment: .leading, spacing: 4) {
+                    Stepper(value: $idleMinutes, in: 1...15, step: 0.5) {
+                        LabeledContent(String(localized: "离开多久算空闲"), value: String(localized: "\(idleMinutes.formatted()) 分钟"))
+                    }.onChange(of: idleMinutes) { _, value in model.settings.setIdleThreshold(value * 60) }
+                    caption(String(localized: "空闲的时间不计入，回来自动继续。"))
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle("按网站记录 Chrome", isOn: $chromeEnabled)
@@ -140,9 +132,8 @@ struct RefinedPrivacyPane: View {
                     HStack {
                         caption(chromeEnabled ? String(localized: "按网站分类需 Chrome 自动化权限。") : String(localized: "已关闭；Chrome 只记录应用时长。"))
                         Spacer(minLength: 4)
-                        Button("查看权限…") { model.settingsTab = .permissions }.buttonStyle(.link)
+                        Button("查看权限…") { model.settingsTab = .privacy }.buttonStyle(.link)
                     }
-                    caption(String(localized: "已识别的无痕窗口不记录；无法识别时，只记录应用时长，不保存标题、网址或截图。"))
                 }
             }
             Section("什么算打断") {
@@ -186,10 +177,55 @@ struct RefinedPrivacyPane: View {
                 }
             }
         }.formStyle(.grouped).onAppear {
-            apps = model.settings.excludedApps.sorted(); domains = model.settings.excludedDomains.sorted()
+            idleMinutes = model.settings.idleThreshold / 60
             chromeEnabled = model.settings.get("chromeTrackingEnabled") != "false"
             retention = model.settings.captureRetentionDays
             summary = model.observationStore?.summary(since: Calendar.current.startOfDay(for: Date())) ?? summary
+        }
+        .confirmationDialog("删除今天保存的截图？", isPresented: $confirmingDelete, titleVisibility: .visible) {
+            Button("删除截图", role: .destructive) {
+                Task {
+                    do {
+                        let count = try await model.screenCollector?.deleteImages(in: DateRangeSelection.today().interval) ?? 0
+                        status = String(localized: "已删除 \(count) 张截图。"); model.settingsChanged()
+                    } catch { status = String(localized: "截图未能全部删除，请重试。") }
+                }
+            }
+            Button("取消", role: .cancel) {}
+        } message: { Text("截图删除后无法恢复。活动记录和已识别的文字会保留。") }
+    }
+    private func caption(_ text: String) -> some View {
+        Text(text).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// 隐私: what is never recorded, what TimeSink may see (permissions), and
+/// taking your data out.
+struct RefinedPrivacyPane: View {
+    let model: AppModel
+    @State private var apps: [String] = []
+    @State private var domains: [String] = []
+    @State private var newDomain = ""
+    @State private var editApps = false
+    @State private var editDomains = false
+    var body: some View {
+        Form {
+            Section {
+                LabeledContent("不记录这些应用") {
+                    Text(apps.prefix(3).map { AppIcon.name(for: $0) }.joined(separator: String(localized: "、"))).lineLimit(1)
+                    Button { editApps = true } label: { Image(systemName: "plus") }.help("编辑不记录的应用")
+                }
+                LabeledContent("不记录这些网站") {
+                    Text(domains.joined(separator: String(localized: "、"))).lineLimit(1)
+                    Button { editDomains = true } label: { Image(systemName: "plus") }.help("编辑不记录的网站")
+                }
+                Text("已识别的无痕窗口不记录；无法识别时，只记录应用时长，不保存标题、网址或截图。")
+                    .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            PermissionsSection(model: model)
+            DataSection(model: model)
+        }.formStyle(.grouped).onAppear {
+            apps = model.settings.excludedApps.sorted(); domains = model.settings.excludedDomains.sorted()
         }
         .sheet(isPresented: $editApps) {
             FocusBlockedAppsEditor(model: model, title: String(localized: "不记录这些应用"), onSave: { values in
@@ -209,20 +245,6 @@ struct RefinedPrivacyPane: View {
                 Text("同时适用于子域名。不会保存这些网站的活动、标题或截图。").font(.system(size: 11)).foregroundStyle(.secondary)
             }.padding(18).frame(width: 360)
         }
-        .confirmationDialog("删除今天保存的截图？", isPresented: $confirmingDelete, titleVisibility: .visible) {
-            Button("删除截图", role: .destructive) {
-                Task {
-                    do {
-                        let count = try await model.screenCollector?.deleteImages(in: DateRangeSelection.today().interval) ?? 0
-                        status = String(localized: "已删除 \(count) 张截图。"); model.settingsChanged()
-                    } catch { status = String(localized: "截图未能全部删除，请重试。") }
-                }
-            }
-            Button("取消", role: .cancel) {}
-        } message: { Text("截图删除后无法恢复。活动记录和已识别的文字会保留。") }
-    }
-    private func caption(_ text: String) -> some View {
-        Text(text).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }
     private var normalizedDomain: String? {
         let text = newDomain.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -236,7 +258,7 @@ struct RefinedPrivacyPane: View {
     private func saveDomains() { model.settings.setExcludedDomains(Set(domains)) }
 }
 
-struct RefinedPermissionsPane: View {
+struct PermissionsSection: View {
     let model: AppModel
     @State private var ax: PermissionState = .denied
     @State private var chrome: PermissionState = .notDetermined
@@ -244,8 +266,7 @@ struct RefinedPermissionsPane: View {
     @State private var calendar: PermissionState = .notDetermined
     @State private var notification: PermissionState = .notDetermined
     var body: some View {
-        Form {
-            Section {
+        Section {
                 PermissionRow(title: String(localized: "辅助功能 · 必需"), explanation: String(localized: "看到最前面的应用和窗口标题。"), state: ax,
                     actionTitle: String(localized: "打开系统设置…"), action: { open("Privacy_Accessibility") })
                 PermissionRow(title: String(localized: "Chrome 自动化 · 推荐"), explanation: String(localized: "读取当前标签页的网址，按网站分类。不读网页内容。"), state: chrome,
@@ -265,10 +286,13 @@ struct RefinedPermissionsPane: View {
                         if notification == .denied { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.notifications")!) }
                         else { Task { _ = await model.notifier?.requestAuthorization(); await refresh() } }
                     })
-            }
+        } header: {
+            Text("权限")
+        } footer: {
             Text("回到 TimeSink 时自动重新检查。其他浏览器目前只按应用记录。")
                 .font(.system(size: 11)).foregroundStyle(.secondary)
-        }.formStyle(.grouped).task { await refresh() }
+        }
+        .task { await refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             Task { await refresh() }
         }
@@ -339,9 +363,30 @@ struct RefinedNotificationsPane: View {
     }
 }
 
-struct RefinedAboutPane: View {
+/// The app itself, at the bottom of 通用 (2.0 folded 关于 in).
+struct AboutSection: View {
     let model: AppModel
     @State private var autoCheckUpdates = false
+    var body: some View {
+        Section("关于") {
+            LabeledContent("TimeSink", value: String(localized: "版本 \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? String(localized: "开发版"))"))
+            if let updates = model.updates {
+                Toggle("自动检查更新", isOn: Binding(
+                    get: { autoCheckUpdates },
+                    set: { autoCheckUpdates = $0; updates.automaticallyChecks = $0 }
+                ))
+                Button("检查更新…") { updates.checkForUpdates() }
+            } else {
+                Text("开发版不检查更新。").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+        }
+        .onAppear { autoCheckUpdates = model.updates?.automaticallyChecks ?? false }
+    }
+}
+
+/// Taking your data out, in 隐私.
+struct DataSection: View {
+    let model: AppModel
     @State private var document: TextExportDocument?
     @State private var exportType: UTType = .commaSeparatedText
     @State private var exportName = "TimeSink-records"
@@ -350,45 +395,23 @@ struct RefinedAboutPane: View {
     @State private var diagnostic: String?
     @State private var error: String?
     var body: some View {
-        Form {
-            Section {
-                HStack(spacing: 16) {
-                    Image(systemName: "hourglass").font(.system(size: 40)).foregroundStyle(.tint).frame(width: 64, height: 64)
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("TimeSink").font(.system(size: 17, weight: .semibold))
-                        Text(String(localized: "版本 \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? String(localized: "开发版"))"))
-                            .font(.system(size: 12)).foregroundStyle(.secondary)
-                    }
-                }
-                Text("让时间的去向更清楚。").foregroundStyle(.secondary)
+        Section {
+            LabeledContent("导出全部记录") {
+                Button(preparing ? "正在准备…" : "导出为 CSV…") { prepareExport(diagnostics: false) }.disabled(preparing)
             }
-            Section {
-                if let updates = model.updates {
-                    Toggle("自动检查更新", isOn: Binding(
-                        get: { autoCheckUpdates },
-                        set: { autoCheckUpdates = $0; updates.automaticallyChecks = $0 }
-                    ))
-                    Button("检查更新…") { updates.checkForUpdates() }
-                } else {
-                    Text("开发版不检查更新。").font(.system(size: 11)).foregroundStyle(.secondary)
-                }
-                LabeledContent("导出全部记录") {
-                    Button(preparing ? "正在准备…" : "导出为 CSV…") { prepareExport(diagnostics: false) }.disabled(preparing)
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    LabeledContent("诊断信息") {
+            VStack(alignment: .leading, spacing: 4) {
+                LabeledContent("诊断信息") {
                     Button("预览并导出…") { prepareExport(diagnostics: true) }.disabled(preparing)
                 }
                 Text("诊断信息默认不含窗口标题、网址、截图和识别文字。").font(.system(size: 11)).foregroundStyle(.secondary)
-                }
-                if let error { Text(error).foregroundStyle(.red) }
             }
-            Section("你的数据") {
-                Text("活动记录保存在这台 Mac。云端同步、智能分类与屏幕采集分别控制。")
-                Button("查看记录与隐私") { model.settingsTab = .privacy }
-            }
-        }.formStyle(.grouped)
-        .onAppear { autoCheckUpdates = model.updates?.automaticallyChecks ?? false }
+            if let error { Text(error).foregroundStyle(.red) }
+        } header: {
+            Text("你的数据")
+        } footer: {
+            Text("活动记录保存在这台 Mac。云端同步、智能分类与屏幕采集分别控制。")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+        }
         .fileExporter(isPresented: $exporting, document: document, contentType: exportType, defaultFilename: exportName) { result in
             if case .failure(let failure) = result { error = String(localized: "导出失败：\(failure.localizedDescription)") }
         }

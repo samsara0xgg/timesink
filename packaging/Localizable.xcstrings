@@ -5427,12 +5427,12 @@
         }
       }
     },
-    "智能分类": {
+    "智能": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Smart Categorization"
+            "value": "Intelligence"
           }
         }
       }
@@ -5927,16 +5927,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "View permissions…"
-          }
-        }
-      }
-    },
-    "查看记录与隐私": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "View Recording & Privacy"
           }
         }
       }
@@ -7343,12 +7333,12 @@
         }
       }
     },
-    "让时间的去向更清楚。": {
+    "记录": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "See where your time goes."
+            "value": "Recording"
           }
         }
       }
@@ -7381,16 +7371,6 @@
                 }
               }
             }
-          }
-        }
-      }
-    },
-    "记录与隐私": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Recording & Privacy"
           }
         }
       }
@@ -7591,16 +7571,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Account"
-          }
-        }
-      }
-    },
-    "账号与同步": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Account & Sync"
           }
         }
       }
@@ -8151,22 +8121,22 @@
         }
       }
     },
-    "通知": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Notifications"
-          }
-        }
-      }
-    },
     "通知 · 可选": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Notifications · Optional"
+          }
+        }
+      }
+    },
+    "通知与提示": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notifications & Tips"
           }
         }
       }
@@ -8297,6 +8267,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Pause anytime"
+          }
+        }
+      }
+    },
+    "隐私": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privacy"
           }
         }
       }

@@ -80,7 +80,8 @@ public enum RefinedPreview {
                 try await render(MainWindowView(model: model), size: mainSize, dark: dark, to: output.appendingPathComponent("\(name)-\(suffix).png"))
             }
             model.organizationTab = .uncategorized
-            for (name, tab) in [("general", SettingsTab.general), ("privacy", .privacy), ("notifications", .notifications), ("account", .account), ("ai", .llm), ("about", .about)] {
+            // No 隐私: its Chrome permission check blocks an unsigned preview build.
+            for (name, tab) in [("general", SettingsTab.general), ("recording", .recording), ("notifications", .notifications), ("account", .account), ("ai", .llm)] {
                 model.settingsTab = tab
                 try await render(SettingsView(model: model), size: .init(width: 640, height: 560), dark: dark, to: output.appendingPathComponent("settings-\(name)-\(suffix).png"))
             }
