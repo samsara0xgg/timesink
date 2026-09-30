@@ -422,21 +422,21 @@ private struct CalendarBandCard: View {
     let action: () -> Void
     let dismiss: () -> Void
 
+    /// One line above the timeline, not a banner: the design keeps the
+    /// calendar a quiet hint.
     var body: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.headline)
-                Text(message)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button(actionTitle, action: action)
-            Button("不用了", action: dismiss).buttonStyle(.borderless)
+        HStack(spacing: 8) {
+            Image(systemName: "calendar").foregroundStyle(.secondary)
+            (Text(title).fontWeight(.semibold) + Text(verbatim: " · ") + Text(message).foregroundStyle(.secondary))
+                .lineLimit(1).truncationMode(.tail).help(message)
+            Spacer(minLength: 8)
+            Button(actionTitle, action: action).controlSize(.small)
+            Button { dismiss() } label: { Image(systemName: "xmark") }.buttonStyle(.borderless).controlSize(.small)
                 .help("可在「设置 · 记录与隐私」中随时开启日历叠加")
+                .accessibilityLabel("不用了")
         }
-        .padding(12)
-        .workspacePanel()
+        .font(.system(size: 12))
+        .padding(.horizontal, 4).padding(.vertical, 2)
     }
 }
 
