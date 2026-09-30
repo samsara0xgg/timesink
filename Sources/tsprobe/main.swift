@@ -16,6 +16,34 @@ func processUsage() -> (cpu: Double, peakMiB: Double) {
     return (cpu, Double(usage.ru_maxrss) / 1_048_576)
 }
 
+/// `tsprobe interruptions <copy.sqlite> [days]`: per-day interruption counts
+/// at each dwell threshold. Migrates the file it is given, so point it at a
+/// copy. Prints numbers only -- no titles or apps.
+if CommandLine.arguments.dropFirst().first == "interruptions" {
+    let args = Array(CommandLine.arguments.dropFirst(2))
+    guard let path = args.first else { print("usage: tsprobe interruptions <db> [days]"); exit(64) }
+    let db = try! AppDatabase.open(at: URL(fileURLWithPath: path))
+    let resolver = CategoryResolver(categoryStore: CategoryStore(db))
+    let productivity = resolver.categoriesByID.mapValues(\.productivity)
+    let calendar = Calendar.current
+    let today = calendar.startOfDay(for: Date())
+    for back in stride(from: (args.count > 1 ? Int(args[1]) ?? 7 : 7), through: 0, by: -1) {
+        let start = calendar.date(byAdding: .day, value: -back, to: today)!
+        let end = calendar.date(byAdding: .day, value: 1, to: start)!
+        let items = resolver.categorized(try! SpanStore(db).spans(overlapping: DateInterval(start: start, end: end)))
+        var line = start.formatted(.iso8601.year().month().day())
+        for dwell in InterruptionRule.dwellChoices {
+            let day = DayInterruptions(episodes: InterruptionClassifier.episodes(items, productivity: productivity,
+                                                                                 rule: InterruptionRule(dwell: dwell, countsTyping: false)))
+            line += "  \(Int(dwell))s: int \(day.interruptions.count) peek \(day.peeks.count) pass \(day.passes)"
+        }
+        let typed = DayInterruptions(episodes: InterruptionClassifier.episodes(items, productivity: productivity))
+        line += "  | 15s+typing: \(typed.interruptions.count)  keySecondsSum \(items.reduce(0) { $0 + $1.span.keySeconds })"
+        print(line)
+    }
+    exit(0)
+}
+
 /// `tsprobe ax <bundleID> [maxDepth]`: one-shot accessibility dump of an
 /// app's focused window -- see `AXProbe`. Runs from the command line without
 /// the target being frontmost, so it can be pointed at whatever is open.
