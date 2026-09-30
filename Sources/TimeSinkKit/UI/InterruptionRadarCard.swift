@@ -11,11 +11,15 @@ struct InterruptionRadarCard: View {
     @State private var longest: DateInterval?
     @State private var runs: [BandRun] = []
     @State private var hoveredSource: String?
+    /// The summary that sits beside the heatmap: radar, count, one line, and
+    /// a button to the full card.
+    private let onOpen: (() -> Void)?
 
     enum Period: Hashable { case today, week }
 
-    init(model: AppModel, period: Period = .today) {
+    init(model: AppModel, period: Period = .today, onOpen: (() -> Void)? = nil) {
         self.model = model
+        self.onOpen = onOpen
         _period = State(initialValue: period)
         // The last result for this period and day, so the page's first frame
         // is laid out already; the load replaces it if a write came since.
@@ -47,16 +51,20 @@ struct InterruptionRadarCard: View {
     /// two never share a frame): Trends then opens at its pre-radar cost,
     /// and an empty panel of the card's last height holds its place.
     @State private var built = false
-    @MainActor private static var lastHeight: CGFloat = 320
+    @MainActor private static var lastHeights: [Bool: CGFloat] = [:]
+    private var lastHeight: CGFloat {
+        get { Self.lastHeights[onOpen != nil] ?? 320 }
+        nonmutating set { Self.lastHeights[onOpen != nil] = newValue }
+    }
 
     var body: some View {
         if built {
-            card.background(GeometryReader { geometry in
-                Color.clear.onAppear { Self.lastHeight = geometry.size.height }
-                    .onChange(of: geometry.size.height) { _, height in Self.lastHeight = height }
+            Group { if onOpen != nil { summary } else { card } }.background(GeometryReader { geometry in
+                Color.clear.onAppear { lastHeight = geometry.size.height }
+                    .onChange(of: geometry.size.height) { _, height in lastHeight = height }
             })
         } else {
-            Color.clear.frame(height: Self.lastHeight).frame(maxWidth: .infinity)
+            Color.clear.frame(height: lastHeight).frame(maxWidth: .infinity)
                 .workspacePanel()
                 .task { try? await Task.sleep(for: .milliseconds(80)); built = true }
         }
@@ -84,6 +92,39 @@ struct InterruptionRadarCard: View {
             }
         }
         .padding(18)
+        .workspacePanel()
+        .pageTask(id: LoadKey(model: model, period: period)) { await load() }
+    }
+
+    private var summary: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("打断").font(.system(size: 13, weight: .semibold))
+            (Text(data?.interruptions.count ?? 0, format: .number).font(.system(size: 26, weight: .semibold)).monospacedDigit()
+                + Text(" 次").font(.system(size: 13)).foregroundStyle(.secondary))
+            Group {
+                if let data {
+                    InterruptionRadar(data: data, sources: Array(data.sources.prefix(4)), showsPeeks: false, highlighted: nil)
+                } else {
+                    Circle().fill(.quaternary)
+                }
+            }
+            .frame(width: 180, height: 180).frame(maxWidth: .infinity).padding(.vertical, 6)
+            Group {
+                if let top = data?.sources.first {
+                    Text("停留 \(Int(model.interruptionRule.dwell)) 秒以上或打了字才算。最多的是\(top.label)，\(top.count) 次。")
+                } else {
+                    Text("今天还没有被打断。")
+                }
+                if let longest {
+                    Text("最长没被打断：\(model.time(longest.start))–\(model.time(longest.end))")
+                }
+            }
+            .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Button { onOpen?() } label: { HStack(spacing: 4) { Text("打开打断雷达"); Image(systemName: "chevron.right").imageScale(.small) } }
+                .controlSize(.small).glassButton().fixedSize().padding(.top, 4)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .workspacePanel()
         .pageTask(id: LoadKey(model: model, period: period)) { await load() }
     }

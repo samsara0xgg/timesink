@@ -6,6 +6,7 @@ struct StatsView: View {
     @Bindable var stats: StatsModel
     @State private var granularity: StatsModel.Granularity = .day
     @State private var showsScore = false
+    @State private var showsRadar = false
     private struct RefreshID: Equatable { let range: DateRangeSelection.Window; let version: Int }
 
     var body: some View {
@@ -45,10 +46,18 @@ struct StatsView: View {
                                     ranking.frame(maxWidth: .infinity)
                                 }.fixedSize(horizontal: false, vertical: true)
                             } else { categoryHistory; ranking }
+                            // The radar summary sits beside the heatmap, as the design
+                            // draws it; the full radar opens in a sheet.
+                            let radar = InterruptionRadarCard(model: model) { showsRadar = true }
                             if let heatmap = stats.heatmapData {
-                                HeatmapCard(data: heatmap, interaction: $stats.heatmapInteraction) { model.openHeatmapActivities(in: $0) }.id("heatmap")
-                            }
-                            InterruptionRadarCard(model: model)
+                                let heatmapCard = HeatmapCard(data: heatmap, interaction: $stats.heatmapInteraction) { model.openHeatmapActivities(in: $0) }.id("heatmap")
+                                if geometry.size.width >= 1000 {
+                                    HStack(alignment: .top, spacing: 16) {
+                                        heatmapCard.frame(maxWidth: .infinity)
+                                        radar.frame(width: 300)
+                                    }.fixedSize(horizontal: false, vertical: true)
+                                } else { heatmapCard; radar }
+                            } else { radar }
                             appRanking
                             DisclosureGroup("评分与连续记录", isExpanded: $showsScore) {
                                 ScoreTrendCard(trend: stats.scoreTrend, streak: stats.trendStreak, updatedAt: stats.lastHeavyUpdate) { day in
@@ -78,6 +87,12 @@ struct StatsView: View {
                 }
             }
         }.background(WorkspaceBackground())
+        .sheet(isPresented: $showsRadar) {
+            VStack(alignment: .trailing, spacing: 12) {
+                InterruptionRadarCard(model: model)
+                Button("完成") { showsRadar = false }.keyboardShortcut(.defaultAction)
+            }.padding(20).frame(minWidth: 820).background(WorkspaceBackground())
+        }
     }
     private func metric<Value: View>(_ title: String, _ detail: String, @ViewBuilder value: () -> Value) -> some View {
         VStack(alignment: .leading, spacing: 4) {
