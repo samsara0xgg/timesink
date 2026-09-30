@@ -145,6 +145,18 @@ struct RefinedPrivacyPane: View {
                     caption(String(localized: "已识别的无痕窗口不记录；无法识别时，只记录应用时长，不保存标题、网址或截图。"))
                 }
             }
+            Section("什么算打断") {
+                VStack(alignment: .leading, spacing: 4) {
+                    Picker("停留满", selection: Binding(get: { model.interruptionRule.dwell }, set: { model.interruptionRule.dwell = $0 })) {
+                        ForEach(InterruptionRule.dwellChoices, id: \.self) { Text("\(Int($0)) 秒").tag($0) }
+                    }
+                    caption(String(localized: "切到无关的窗口，待多久算打断"))
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle("在那里打了字", isOn: Binding(get: { model.interruptionRule.countsTyping }, set: { model.interruptionRule.countsTyping = $0 }))
+                    caption(String(localized: "只数有按键的秒数，不记录按了什么"))
+                }
+            }
             Section("屏幕采集") {
                 VStack(alignment: .leading, spacing: 4) {
                     ScreenCaptureRow(model: model, compact: true)

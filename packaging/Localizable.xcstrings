@@ -1779,6 +1779,16 @@
         }
       }
     },
+    "什么算打断": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What Counts as an Interruption"
+          }
+        }
+      }
+    },
     "仅检查记录中的网址；不访问网页。至少 3 个字符。": {
       "localizations": {
         "en": {
@@ -2143,6 +2153,16 @@
         }
       }
     },
+    "停留满": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stayed for"
+          }
+        }
+      }
+    },
     "允许": {
       "localizations": {
         "en": {
@@ -2495,6 +2515,16 @@
         }
       }
     },
+    "切到无关的窗口，待多久算打断": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "How long in an unrelated window counts as an interruption"
+          }
+        }
+      }
+    },
     "切回被隐藏的应用时会提示你；网站在 Chrome 中拦截，需要时可以放行 5 分钟。": {
       "localizations": {
         "en": {
@@ -2761,6 +2791,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Captures only the frontmost window and saves it locally."
+          }
+        }
+      }
+    },
+    "只数有按键的秒数，不记录按了什么": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Counts seconds with key presses, never which keys"
           }
         }
       }
@@ -3153,6 +3193,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Pause from the menu bar. Nothing is recorded while paused."
+          }
+        }
+      }
+    },
+    "在那里打了字": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Typed there"
           }
         }
       }
