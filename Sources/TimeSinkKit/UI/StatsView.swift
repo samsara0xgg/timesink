@@ -16,18 +16,27 @@ struct StatsView: View {
                         if stats.hasLoaded {
                             // A grid rather than a lazy one, so every card in a row
                             // takes the tallest card's height.
-                            let metrics = [
-                                metric(String(localized: "总时长"), Format.duration(stats.total), stats.totalDelta.map { String(localized: "比上期 \(Format.durationDelta($0))") } ?? String(localized: "上期暂无记录")),
-                                metric(String(localized: "日均"), Format.duration(stats.avgPerDay), String(localized: "按所选时段已过的天数")),
-                                metric(String(localized: "投入"), Format.duration(stats.focus), String(localized: "占 \(Int((stats.focus / max(1, stats.total) * 100).rounded()))% · 按分类估算")),
-                                metric(String(localized: "评分"), stats.pulse.map(String.init) ?? "—", String(localized: "连续 \(stats.trendStreak) 天达标")),
-                            ]
+                            // One panel of four columns, as the design draws it.
                             let columns = geometry.size.width >= 650 ? 4 : 2
-                            Grid(horizontalSpacing: 12, verticalSpacing: 12) {
+                            let metrics: [AnyView] = [
+                                AnyView(metric(String(localized: "总时长"), stats.totalDelta.map { String(localized: "比上期 \(Format.durationDelta($0))") } ?? String(localized: "上期暂无记录")) { DurationHero(seconds: stats.total, size: 26) }),
+                                AnyView(metric(String(localized: "日均"), String(localized: "按所选时段已过的天数")) { DurationHero(seconds: stats.avgPerDay, size: 26) }),
+                                AnyView(metric(String(localized: "投入"), String(localized: "占 \(Int((stats.focus / max(1, stats.total) * 100).rounded()))% · 按分类估算")) { DurationHero(seconds: stats.focus, size: 26) }),
+                                AnyView(metric(String(localized: "评分"), String(localized: "连续 \(stats.trendStreak) 天达标")) {
+                                    Text(verbatim: stats.pulse.map(String.init) ?? "—").font(.system(size: 26, weight: .semibold)).monospacedDigit()
+                                }),
+                            ]
+                            Grid(alignment: .topLeading, horizontalSpacing: 0, verticalSpacing: 14) {
                                 ForEach(Array(stride(from: 0, to: metrics.count, by: columns)), id: \.self) { row in
-                                    GridRow { ForEach(row..<row + columns, id: \.self) { metrics[$0] } }
+                                    GridRow {
+                                        ForEach(row..<row + columns, id: \.self) { index in
+                                            metrics[index]
+                                                .padding(.leading, index % columns == 0 ? 0 : 16)
+                                                .overlay(alignment: .leading) { if index % columns != 0 { Rectangle().fill(.quaternary).frame(width: 0.5) } }
+                                        }
+                                    }
                                 }
-                            }
+                            }.padding(.horizontal, 18).padding(.vertical, 16).workspacePanel()
                             if geometry.size.width >= 850 {
                                 // Side by side the chart grows to the ranking's height
                                 // instead of leaving a blank block under it.
@@ -36,10 +45,10 @@ struct StatsView: View {
                                     ranking.frame(maxWidth: .infinity)
                                 }.fixedSize(horizontal: false, vertical: true)
                             } else { categoryHistory; ranking }
-                            InterruptionRadarCard(model: model)
                             if let heatmap = stats.heatmapData {
                                 HeatmapCard(data: heatmap, interaction: $stats.heatmapInteraction) { model.openHeatmapActivities(in: $0) }.id("heatmap")
                             }
+                            InterruptionRadarCard(model: model)
                             appRanking
                             DisclosureGroup("评分与连续记录", isExpanded: $showsScore) {
                                 ScoreTrendCard(trend: stats.scoreTrend, streak: stats.trendStreak, updatedAt: stats.lastHeavyUpdate) { day in
@@ -70,12 +79,12 @@ struct StatsView: View {
             }
         }.background(WorkspaceBackground())
     }
-    private func metric(_ title: String, _ value: String, _ detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
+    private func metric<Value: View>(_ title: String, _ detail: String, @ViewBuilder value: () -> Value) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
             Text(title).font(.system(size: 12)).foregroundStyle(.secondary)
-            Text(value).font(.system(size: 24, weight: .semibold)).monospacedDigit().contentTransition(.numericText())
+            value()
             Text(detail).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2)
-        }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(.horizontal, 18).padding(.vertical, 16).workspacePanel()
+        }.frame(maxWidth: .infinity, alignment: .topLeading)
     }
     private var categoryHistory: some View {
         VStack(alignment: .leading, spacing: 12) {
