@@ -62,6 +62,7 @@ Reinstalled 2026-09-30 12:08 UTC from HEAD (F4 and the second pass included), mi
 Backups: TimeSink-v2-b1ba1c8-20260930-0508.app, timesink-before-v2-second-20260930-0508.sqlite.
 rollback-v2.sh still restores the pre-2.0 build.
 
-Open: background writes on Today / Focus / Rules measure 20-38 ms against v1's 3-16 ms this
-morning; last night's commit (0a640b8), rebuilt, measures the same, so it tracks the data or the
-clock rather than today's changes. Not yet explained.
+Background writes on Today / Focus / Rules (20-38 ms against v1's 3-16 ms): bisected to
+b1ba1c8. The radar card's init read `dataVersion` and the interruption rule to match its cached
+result; an init runs inside the parent's body, so the kept (hidden) Trends page redrew on every
+tracker write. Fixed in 9c9a55a: the init matches on period and day only.
