@@ -833,25 +833,7 @@ struct MenuBarDashboardView: View {
         .opacity(dim ? 0.5 : 1)
     }
 
-    /// Hours and minutes with small units, rounded like every difference beside it.
-    private func hero(_ seconds: TimeInterval, size: CGFloat) -> some View {
-        let minutes = Format.minutes(seconds)
-        let unit = Font.system(size: size * 0.42, weight: .medium)
-        return HStack(alignment: .firstTextBaseline, spacing: 2) {
-            if minutes >= 60 {
-                Text(minutes / 60, format: .number)
-                Text("小时").font(unit).foregroundStyle(.secondary)
-            }
-            if minutes < 60 || minutes % 60 > 0 {
-                Text(minutes % 60, format: .number)
-                Text("分钟").font(unit).foregroundStyle(.secondary)
-            }
-        }
-        .font(.system(size: size, weight: .semibold)).tracking(-0.5).monospacedDigit()
-        .refinedNumberMotion("\(minutes)")
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Format.chineseDuration(Double(minutes) * 60))
-    }
+    private func hero(_ seconds: TimeInterval, size: CGFloat) -> some View { DurationHero(seconds: seconds, size: size) }
 
     /// Always one line, so the platter has the same height with or without yesterday.
     @ViewBuilder private var compareLine: some View {

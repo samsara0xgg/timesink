@@ -16,7 +16,7 @@ struct TodayView: View {
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 12) {
                     if let overview = dayModel.overview {
                         if overview.total == 0 {
                             ContentUnavailableView {
@@ -28,11 +28,13 @@ struct TodayView: View {
                                 else { SettingsLink { Text("检查记录与权限设置") } }
                             }.frame(minHeight: 350)
                         } else {
-                            summary(overview)
+                            DayColumnsView(overview: overview, productivity: productivity, onSelect: onSelect)
+                                .padding(.bottom, 4)
+                            cards(overview, wide: geometry.size.width >= 760)
                             if geometry.size.width >= 860 {
-                                HStack(alignment: .top, spacing: 16) {
+                                HStack(alignment: .top, spacing: 12) {
                                     pieces(overview).frame(maxWidth: .infinity)
-                                    context(overview).frame(width: 300)
+                                    context(overview).frame(width: 316)
                                 }
                             } else {
                                 pieces(overview)
@@ -85,75 +87,49 @@ struct TodayView: View {
         await dashboard.recompute(model: model, forceStreak: false, headlineOnly: true)
     }
 
-    private func summary(_ overview: DayOverview) -> some View {
-        VStack(alignment: .leading, spacing: 18) {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 18) {
-                    recorded(overview, fixed: true)
-                    engaged(overview, divided: true, fixed: true)
-                    sessions(overview, divided: true, fixed: true)
-                    if model.showScore { score(fixed: true) }
-                }
-                // Two by two when narrow: captions wrap instead of running
-                // into the next column, and each column starts at one edge.
-                Grid(alignment: .topLeading, horizontalSpacing: 18, verticalSpacing: 18) {
-                    GridRow { recorded(overview, fixed: false); engaged(overview, divided: true, fixed: false) }
-                    GridRow {
-                        sessions(overview, divided: false, fixed: false)
-                        if model.showScore { score(fixed: false) }
-                    }
-                }
-            }
-            DayRibbonView(overview: overview, events: events, onSelect: onSelect)
+    /// Four equal cards, two by two when narrow.
+    private func cards(_ overview: DayOverview, wide: Bool) -> some View {
+        let recorded = card(String(localized: "已记录"), detail: recordedDetail(overview)) { DurationHero(seconds: overview.total, size: 30) }
+        let engaged = card(String(localized: "投入"),
+                           detail: String(localized: "占已记录 \(Int((overview.engaged / max(1, overview.total) * 100).rounded()))% · 按分类估算")) {
+            DurationHero(seconds: overview.engaged, size: 30)
         }
-        .padding(18).workspacePanel()
+        let focus = card(String(localized: "专注会话"),
+                         detail: String(localized: "\(overview.sessions.count) 次，\(overview.sessions.filter(\.completed).count) 次已完成")) {
+            DurationHero(seconds: overview.sessionSeconds, size: 30)
+        }
+        let score = card(String(localized: "评分"), detail: String(localized: "连续 \(dashboard.streakDays) 天 ≥ 70")) {
+            let value = dashboard.pulse.map { "\($0)" } ?? "—"
+            Text(verbatim: value).font(.system(size: 30, weight: .semibold)).tracking(-0.5).monospacedDigit().refinedNumberMotion(value)
+        }
+        return Grid(horizontalSpacing: 12, verticalSpacing: 12) {
+            if wide {
+                GridRow { recorded; engaged; focus; if model.showScore { score } }
+            } else {
+                GridRow { recorded; engaged }
+                GridRow { focus; if model.showScore { score } }
+            }
+        }
     }
 
-    private func recorded(_ overview: DayOverview, fixed: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text("已记录").font(.system(size: 12)).foregroundStyle(.secondary)
-            Text(Format.duration(overview.total)).font(.system(size: 34, weight: .semibold))
-                .tracking(-0.68).monospacedDigit().refinedNumberMotion(Format.duration(overview.total))
-            Text([overview.firstRecord.map { String(localized: "\(model.time($0)) 开始") },
-                  dashboard.yesterdayTotal.map { yesterday in
-                      let delta = Format.minuteDelta(overview.total, yesterday)
-                      return delta >= 0 ? String(localized: "比昨天此时多 \(Format.chineseDuration(delta))")
-                          : String(localized: "比昨天此时少 \(Format.chineseDuration(-delta))")
-                  }]
-                .compactMap { $0 }.joined(separator: " · "))
-                .font(.system(size: 11)).foregroundStyle(.secondary)
-        }.fixedSize(horizontal: fixed, vertical: !fixed)
-    }
-
-    private func engaged(_ overview: DayOverview, divided: Bool, fixed: Bool) -> some View {
-        metric(String(localized: "投入"), value: Format.duration(overview.engaged),
-               detail: String(localized: "占已记录 \(Int((overview.engaged / max(1, overview.total) * 100).rounded()))% · 按分类估算"),
-               divided: divided, fixed: fixed)
-    }
-
-    private func sessions(_ overview: DayOverview, divided: Bool, fixed: Bool) -> some View {
-        metric(String(localized: "专注会话"), value: Format.duration(overview.sessionSeconds),
-               detail: String(localized: "\(overview.sessions.count) 次，\(overview.sessions.filter(\.completed).count) 次已完成"),
-               divided: divided, fixed: fixed)
-    }
-
-    private func score(fixed: Bool) -> some View {
-        metric(String(localized: "评分"), value: dashboard.pulse.map { "\($0)" } ?? "—", detail: String(localized: "连续 \(dashboard.streakDays) 天 ≥ 70"),
-               suffix: "/ 100", divided: true, fixed: fixed)
-    }
-
-    private func metric(_ title: String, value: String, detail: String, suffix: String = "", divided: Bool, fixed: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+    private func card<Value: View>(_ title: String, detail: String, @ViewBuilder value: () -> Value) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
             Text(title).font(.system(size: 12)).foregroundStyle(.secondary)
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(value).font(.system(size: 22, weight: .semibold)).monospacedDigit().refinedNumberMotion(value)
-                if !suffix.isEmpty { Text(suffix).font(.system(size: 12)).foregroundStyle(.secondary) }
-            }
-            Text(detail).font(.system(size: 11)).foregroundStyle(.secondary)
+            value()
+            Text(detail).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2, reservesSpace: true)
         }
-        .padding(.leading, divided ? 18 : 0)
-        .overlay(alignment: .leading) { if divided { Rectangle().fill(.quaternary).frame(width: 0.5) } }
-        .fixedSize(horizontal: fixed, vertical: !fixed)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16).padding(.vertical, 14).workspacePanel()
+    }
+
+    private func recordedDetail(_ overview: DayOverview) -> String {
+        [overview.firstRecord.map { String(localized: "\(model.time($0)) 开始") },
+         dashboard.yesterdayTotal.map { yesterday in
+             let delta = Format.minuteDelta(overview.total, yesterday)
+             return delta >= 0 ? String(localized: "比昨天此时多 \(Format.chineseDuration(delta))")
+                 : String(localized: "比昨天此时少 \(Format.chineseDuration(-delta))")
+         }]
+            .compactMap { $0 }.joined(separator: " · ")
     }
 
     private func pieces(_ overview: DayOverview) -> some View {
@@ -212,8 +188,10 @@ struct TodayView: View {
                 Text(Format.duration(piece.seconds)).font(.system(size: 13)).monospacedDigit().frame(minWidth: 45, alignment: .trailing)
                 Image(systemName: "chevron.right").font(.system(size: 11)).foregroundStyle(.tertiary)
             } else {
-                Image(systemName: "moon").foregroundStyle(.secondary).frame(width: 22)
-                Text("未记录").font(.system(size: 13)).foregroundStyle(.secondary)
+                let event = events.first { !$0.isAllDay && $0.start < piece.end && $0.end > piece.start }
+                Image(systemName: event == nil ? "moon" : "person.2").foregroundStyle(.secondary).frame(width: 22)
+                ((event.map { Text(verbatim: "\($0.title) · ") } ?? Text(verbatim: "")) + Text("未记录"))
+                    .font(.system(size: 13)).foregroundStyle(.secondary)
                 Spacer()
                 Text(Format.duration(piece.seconds)).font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary)
             }
@@ -221,23 +199,10 @@ struct TodayView: View {
     }
 
     private func context(_ overview: DayOverview) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            TimeRankingCard(categories: overview.categories,
-                            limits: Dictionary(dayModel.budgets.map { ($0.categoryID, TimeInterval($0.dailySeconds)) }) { a, _ in a },
-                            warningPercent: model.settings.budgetWarnPercent) {
-                model.openActivities(category: $0, range: .today())
-            }
-            if let unclassified = overview.categories.first(where: { $0.id == "uncategorized" }) {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "tag").foregroundStyle(RefinedStyle.warning)
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("今天还有活动没分类").font(.system(size: 13, weight: .semibold))
-                        Text("共 \(Format.duration(unclassified.seconds))。分好以后，以后自动归类。")
-                            .font(.system(size: 12)).foregroundStyle(.secondary)
-                        Button("去分类") { model.sidebarSelection = .organization }.controlSize(.small)
-                    }
-                }.padding(18).frame(maxWidth: .infinity, alignment: .leading).workspacePanel()
-            }
+        TimeRankingCard(categories: overview.categories,
+                        limits: Dictionary(dayModel.budgets.map { ($0.categoryID, TimeInterval($0.dailySeconds)) }) { a, _ in a },
+                        warningPercent: model.settings.budgetWarnPercent) {
+            model.openActivities(category: $0, range: .today())
         }
     }
 
@@ -255,6 +220,7 @@ struct TodayView: View {
 
     private func openActivities() { model.activitySearch = ""; model.openActivities(category: nil, range: .today()) }
     private func categoryName(_ id: String) -> String { model.resolver.categoriesByID[id]?.name ?? String(localized: "未分类") }
+    private func productivity(_ id: String) -> Int { model.resolver.categoriesByID[id]?.productivity ?? 0 }
     private func categoryColor(_ id: String) -> Color { RefinedStyle.category(id, hex: model.resolver.categoriesByID[id]?.colorHex ?? "#C7C7CC") }
 }
 
@@ -348,7 +314,7 @@ struct DayRibbonView: View {
                             }
                             .frame(width: rect.width)
                             .offset(x: rect.minX)
-                            .help(tooltip(piece))
+                            .help(Self.tooltip(piece, overview: overview, locale: locale))
                             .onTapGesture { if piece.item != nil { onSelect?(piece) } }
                             .accessibilityHidden(true)
                         }
@@ -402,7 +368,7 @@ struct DayRibbonView: View {
         overview.categories.first { $0.id == id }?.colorHex ?? "#C7C7CC"
     }
 
-    private func tooltip(_ piece: DayOverview.Piece) -> String {
+    static func tooltip(_ piece: DayOverview.Piece, overview: DayOverview, locale: Locale) -> String {
         let time = "\(piece.start.formatted(.dateTime.hour().minute().locale(locale)))–\(piece.end.formatted(.dateTime.hour().minute().locale(locale)))"
         guard let segment = piece.segment else {
             return String(localized: "未记录 · \(time) · \(Format.duration(piece.seconds))")
@@ -410,6 +376,98 @@ struct DayRibbonView: View {
         let name = overview.categories.first { $0.id == segment.leadingCategoryID }?.name ?? String(localized: "未分类")
         return ([String(localized: "\(name) · \(time) · \(Format.duration(segment.recorded))")]
             + TimelineSegmentText.composition(segment)).joined(separator: "\n")
+    }
+}
+
+/// Today's hero: a column per stretch, as tall as its category is
+/// productive, gaps hatched low, and a marked now.
+struct DayColumnsView: View {
+    let overview: DayOverview
+    let productivity: (String) -> Int
+    let onSelect: (DayOverview.Piece) -> Void
+    @Environment(\.locale) private var locale
+    private var interval: DateInterval { overview.displayInterval }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            GeometryReader { geometry in
+                let width = geometry.size.width, height = geometry.size.height
+                let nowX = x(overview.now, width: width)
+                ZStack(alignment: .bottomLeading) {
+                    Rectangle().fill(.quaternary).frame(width: max(0, width - nowX), height: 2).offset(x: nowX)
+                    ForEach(pieces(width: width)) { piece in
+                        let left = x(piece.start, width: width)
+                        let columnWidth = max(1, x(piece.end, width: width) - left - 2)
+                        column(piece, width: columnWidth)
+                            .frame(width: columnWidth, height: columnHeight(piece, chart: height - 26))
+                            .offset(x: left)
+                            .help(DayRibbonView.tooltip(piece, overview: overview, locale: locale))
+                            .onTapGesture { if piece.item != nil { onSelect(piece) } }
+                    }
+                    RoundedRectangle(cornerRadius: 1.5).fill(.primary)
+                        .frame(width: 3, height: height - 20).offset(x: nowX - 1.5, y: 6)
+                }
+                .frame(width: width, height: height, alignment: .bottomLeading)
+                .overlay(alignment: .topLeading) {
+                    Text(overview.now, format: .dateTime.hour().minute().locale(locale))
+                        .font(.system(size: 11, weight: .bold)).monospacedDigit()
+                        .foregroundStyle(Color(nsColor: .windowBackgroundColor))
+                        .padding(.horizontal, 6).padding(.vertical, 1)
+                        .background(.primary, in: RoundedRectangle(cornerRadius: 6))
+                        .fixedSize().frame(width: 64).offset(x: min(max(0, nowX - 32), width - 64), y: -6)
+                }
+            }
+            .frame(height: 150)
+            GeometryReader { geometry in
+                ForEach(hours, id: \.self) { hour in
+                    let text = hour.formatted(.dateTime.hour().minute().locale(locale))
+                    Text(verbatim: text).font(.system(size: 11)).monospacedDigit().foregroundStyle(.tertiary)
+                        .fixedSize().frame(width: 60).offset(x: min(max(0, x(hour, width: geometry.size.width) - 30), geometry.size.width - 60))
+                }
+            }.frame(height: 14)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("时间带，\(interval.start.formatted(.dateTime.hour().minute().locale(locale))) 至 \(interval.end.formatted(.dateTime.hour().minute().locale(locale)))，已记录 \(Format.duration(overview.total))。片段详情见活动列表。")
+    }
+
+    @ViewBuilder private func column(_ piece: DayOverview.Piece, width: CGFloat) -> some View {
+        let radius = min(9, width / 2)
+        let shape = UnevenRoundedRectangle(topLeadingRadius: radius, bottomLeadingRadius: min(4, radius),
+                                           bottomTrailingRadius: min(4, radius), topTrailingRadius: radius)
+        if let segment = piece.segment {
+            let id = segment.leadingCategoryID
+            let color = RefinedStyle.category(id, hex: overview.categories.first { $0.id == id }?.colorHex ?? "#C7C7CC")
+            shape.fill(color).overlay(LinearGradient(colors: [.white.opacity(0.2), .clear], startPoint: .top, endPoint: .bottom).clipShape(shape))
+                .overlay { if id == "uncategorized" { HatchFill().clipShape(shape) } }
+        } else {
+            HatchFill().background(.quaternary.opacity(0.4)).clipShape(shape)
+        }
+    }
+
+    /// Productivity -2...+2 sets the height; a gap stays low.
+    private func columnHeight(_ piece: DayOverview.Piece, chart: CGFloat) -> CGFloat {
+        guard let segment = piece.segment else { return chart * 0.3 }
+        let score = max(-2, min(2, productivity(segment.leadingCategoryID)))
+        return chart * (0.45 + CGFloat(score + 2) * 0.1375)
+    }
+
+    private var hours: [Date] {
+        let calendar = Calendar.current
+        let first = calendar.dateInterval(of: .hour, for: interval.start)?.start ?? interval.start
+        let span = interval.duration / 3600
+        let step = span > 12 ? 3 : 2
+        return stride(from: 0, through: Int(span.rounded(.up)), by: step)
+            .compactMap { calendar.date(byAdding: .hour, value: $0, to: first) }
+            .filter { $0 >= interval.start && $0 <= interval.end }
+    }
+
+    private func x(_ date: Date, width: CGFloat) -> CGFloat {
+        width * max(0, min(1, date.timeIntervalSince(interval.start) / interval.duration))
+    }
+
+    private func pieces(width: CGFloat) -> [DayOverview.Piece] {
+        let resolution = TimelineSegmenter.resolution(points: 6, pointsPerHour: width / max(interval.duration / 3600, 1))
+        return DayOverview.pieces(overview.items, resolution: resolution, grouping: .category, forDrawing: true)
     }
 }
 
@@ -482,11 +540,11 @@ struct TimeRankingCard: View {
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 8) {
                             Circle().fill(RefinedStyle.category(category.id, hex: category.colorHex)).frame(width: 7, height: 7)
-                            Text(category.name).lineLimit(1).frame(width: 62, alignment: .leading)
+                            Text(category.name).lineLimit(1).frame(width: 80, alignment: .leading)
                             bar(category, limit: limit, over: status?.isOver ?? false, scale: scale)
                             Text(Format.duration(category.seconds)).monospacedDigit().frame(width: 52, alignment: .trailing)
                         }.frame(minHeight: 24)
-                        if let status { caption(status).padding(.leading, 77) }
+                        if let status { caption(status).padding(.leading, 95) }
                     }.font(.system(size: 12)).contentShape(Rectangle())
                 }.buttonStyle(.plain).help("\(category.name) · \(Format.duration(category.seconds))")
             }

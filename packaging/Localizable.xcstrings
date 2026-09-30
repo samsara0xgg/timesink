@@ -1971,16 +1971,6 @@
         }
       }
     },
-    "今天还有活动没分类": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Some activities still need a category"
-          }
-        }
-      }
-    },
     "今天还没有被打断。": {
       "localizations": {
         "en": {
@@ -2359,16 +2349,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "All activity"
-          }
-        }
-      }
-    },
-    "共 %@。分好以后，以后自动归类。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ in total. Categorize them once to apply the same rules in future."
           }
         }
       }
@@ -2811,16 +2791,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld%% of recorded time · Estimated by category"
-          }
-        }
-      }
-    },
-    "去分类": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Categorize"
           }
         }
       }
