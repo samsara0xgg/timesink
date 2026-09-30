@@ -29,8 +29,11 @@ public enum Format {
     /// way `duration` shows it, then subtracted, so "6h 36m", "5h 49m" and
     /// "+47m" always agree.
     public static func minuteDelta(_ a: TimeInterval, _ b: TimeInterval) -> TimeInterval {
-        TimeInterval(Int(max(0, a) / 60) - Int(max(0, b) / 60)) * 60
+        TimeInterval(minutes(a) - minutes(b)) * 60
     }
+
+    /// Whole minutes, cut the way `duration` shows them.
+    public static func minutes(_ t: TimeInterval) -> Int { Int(max(0, t) / 60) }
 
     /// Formats a countdown as zero-padded "mm:ss" (C4 focus sessions --
     /// label countdown, popover running state, HUD). Negative/zero clamps to

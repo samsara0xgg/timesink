@@ -36,6 +36,7 @@ struct HourlyActivityChart: View {
     /// Only the hours that have data, e.g. 7:00–18:00 rather than 0–24.
     private var span: Range<Int> { ChartAxis.hourSpan(totals.filter { $0.value > 0 }.keys) ?? 0..<24 }
 
+
     private func description(_ hour: Int) -> String {
         HeatmapData.Key(weekday: 0, hour: hour).timeLabel(locale) + " · " + Format.duration(totals[hour] ?? 0)
     }

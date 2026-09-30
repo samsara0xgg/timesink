@@ -9,14 +9,13 @@ import SwiftUI
 /// `MenuBarDashboard.swift`'s header comment).
 
 /// Shared "floating card" chrome for every drill-down pane -- the `NSPanel`
-/// itself is borderless/transparent (`PanelHost.makePanel`), so the visual
-/// chrome lives entirely in the SwiftUI content.
+/// itself is borderless/transparent (`PanelHost.makePanel`) with its own
+/// window shadow, so the droplet's glass lives entirely in the SwiftUI content.
 private struct FlyoutCard: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .padding(14)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-            .shadow(color: .black.opacity(0.22), radius: 14, y: 6)
+            .padding(16)
+            .glassSurface(cornerRadius: 26)
     }
 }
 
@@ -101,37 +100,54 @@ struct CompareBaseView: View {
     let delta: TimeInterval?
     var width: CGFloat = DrillWidths.compare
 
-    private var yesterdayValue: TimeInterval? { delta.map { todayValue - $0 } }
-    /// Whole minutes, as `Format.duration` shows them.
-    private func minutes(_ t: TimeInterval) -> TimeInterval { (t / 60).rounded(.down) * 60 }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label).font(.headline)
-            HStack {
-                Text("今日").font(.caption).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(label).font(.headline)
                 Spacer()
-                Text(Format.duration(todayValue)).font(.caption).monospacedDigit()
+                Text("截至 \(Date.now, format: .dateTime.hour().minute())").font(.caption).foregroundStyle(.secondary)
             }
-            if let yesterdayValue, let delta {
+            // Rounded to whole minutes before subtracting, so the three numbers add up.
+            let today = Format.minutes(todayValue)
+            if let delta {
+                let yesterday = Format.minutes(todayValue - delta)
+                let difference = Format.minutes(todayValue) - Format.minutes(todayValue - delta)
+                let top = Double(max(today, yesterday, 1))
+                row("今天", minutes: today, fraction: Double(today) / top, color: .primary, secondary: false)
+                row("昨天同一时刻", minutes: yesterday, fraction: Double(yesterday) / top, color: .secondary.opacity(0.5), secondary: true)
+                Divider()
                 HStack {
-                    Text("昨日同时段").font(.caption).foregroundStyle(.secondary)
+                    Text("差").foregroundStyle(.secondary)
                     Spacer()
-                    Text(Format.duration(yesterdayValue)).font(.caption).monospacedDigit()
-                    // The difference of the two minutes shown, so the three numbers add up.
-                    Text(Format.durationDelta(minutes(todayValue) - minutes(yesterdayValue)))
-                        .font(.caption2.weight(.bold)).monospacedDigit()
-                        .foregroundStyle(.secondary)
-                }
+                    Text(difference >= 0 ? "多 \(Self.text(abs(difference)))" : "少 \(Self.text(abs(difference)))")
+                        .fontWeight(.semibold).monospacedDigit()
+                }.font(.callout)
             } else {
-                Text("昨日暂无同时段数据可比较").font(.caption2).foregroundStyle(.secondary)
+                row("今天", minutes: today, fraction: 1, color: .primary, secondary: false)
+                Text("昨日暂无同时段数据可比较").font(.caption).foregroundStyle(.secondary)
             }
-            Text("昨天只算到现在。时长多少不评判好坏。")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+            Text("三个数都先取整到分钟再相减，所以永远对得上。时长多少不评判好坏。")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
         .frame(width: width, alignment: .leading)
         .flyoutCard()
+    }
+
+    static func text(_ minutes: Int) -> String { Format.chineseDuration(Double(minutes) * 60) }
+
+    private func row(_ title: LocalizedStringKey, minutes: Int, fraction: Double, color: Color, secondary: Bool) -> some View {
+        VStack(spacing: 5) {
+            HStack {
+                Text(title).foregroundStyle(secondary ? .secondary : .primary)
+                Spacer()
+                Text(Self.text(minutes)).monospacedDigit().foregroundStyle(secondary ? .secondary : .primary)
+            }.font(.callout)
+            GeometryReader { geo in
+                Capsule().fill(.quaternary)
+                Capsule().fill(color).frame(width: geo.size.width * min(1, max(0, fraction)))
+            }.frame(height: 8)
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -212,6 +228,7 @@ struct CategoryDetailView: View {
             HourlyActivityChart(bars: hourBars.enumerated().map { hour, hours in
                 HourlyBigView.Bar(hour: hour, categoryID: name, colorHex: colorHex, seconds: hours * 3600)
             })
+            .padding(8).glassPlatter(cornerRadius: 14)
             if !subs.isEmpty {
                 VStack(alignment: .leading, spacing: 3) {
                     ForEach(subs) { sub in
@@ -302,9 +319,13 @@ struct HourlyBigView: View {
                     }
                 }
             }
-            Text(mode == .today ? "今天 · 00:00–24:00" : "近 7 天 · 按小时累计")
-                .font(.caption).foregroundStyle(.secondary)
+            if mode == .last7 {
+                Text("近 7 天 · 按小时累计").font(.caption).foregroundStyle(.secondary)
+            }
             HourlyActivityChart(bars: bars.sorted { $0.categoryID < $1.categoryID })
+                .padding(8).glassPlatter(cornerRadius: 14)
+            Text("纵轴按数据取整到 15 分钟；横轴只画有记录的时段。")
+                .font(.caption).foregroundStyle(.secondary)
             legend(categoryOrder)
         }
         .frame(width: width, alignment: .leading)
@@ -341,38 +362,84 @@ struct BudgetProgressView: View {
     var width: CGFloat = DrillWidths.budget
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Text("今日限额").font(.headline)
+                Text("限额").font(.headline)
                 Spacer()
-                Text("\(rows.count) 项启用").font(.caption).foregroundStyle(.secondary)
+                Text("\(rows.count) 项").font(.caption).foregroundStyle(.secondary)
             }
-            // Bar keeps at least 48pt beside the 124pt of dot, spacing and totals.
-            let nameWidth = RefinedStyle.nameColumn(rows.map(\.name), font: .preferredFont(forTextStyle: .caption1), cap: width - 172)
-            ForEach(rows) { row in
-                // Warned the same way as the popover's limit rows.
-                let warning = row.limit - row.spent <= row.limit * Double(warnPercent) / 100
-                HStack(spacing: 8) {
-                    Circle().fill(RefinedStyle.category(row.id, hex: row.colorHex)).frame(width: 8, height: 8)
-                    Text(row.name).font(.caption).lineLimit(1).frame(width: nameWidth, alignment: .leading)
-                    GeometryReader { geo in
-                        let ratio = row.limit > 0 ? min(1, row.spent / row.limit) : 0
-                        Capsule().fill(warning ? RefinedStyle.warning : RefinedStyle.category(row.id, hex: row.colorHex))
-                            .frame(width: max(4, geo.size.width * ratio))
-                            .frame(maxHeight: .infinity, alignment: .center)
-                    }
-                    .frame(height: 6)
-                    Text("\(Format.duration(row.spent)) / \(Format.duration(row.limit))")
-                        .font(.caption2).monospacedDigit().foregroundStyle(warning ? AnyShapeStyle(RefinedStyle.warning) : AnyShapeStyle(.secondary))
-                        .frame(width: 92, alignment: .trailing)
-                }
-            }
-            Text("剩 \(warnPercent)% 时预警，每类每日「预警 + 上限」各一次")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+            ForEach(rows) { LimitRowView(row: $0, warnPercent: warnPercent) }
+            Text("快到时黄色提醒一次，超出时红色加图标。只提醒，不拦截。")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
         .frame(width: width, alignment: .leading)
         .flyoutCard()
+    }
+}
+
+/// Where a limit stands. Minutes are rounded before subtracting, like every
+/// other difference the popover shows.
+enum LimitState: Equatable {
+    case over(minutes: Int)
+    case near(minutes: Int)
+    case fine
+
+    /// Near: at most `warnPercent` of the limit is left.
+    static func of(spent: TimeInterval, limit: TimeInterval, warnPercent: Int) -> LimitState {
+        let limitMinutes = Format.minutes(limit)
+        let left = limitMinutes - Format.minutes(spent)
+        if left < 0 { return .over(minutes: -left) }
+        if Double(left) <= Double(limitMinutes) * Double(warnPercent) / 100 { return .near(minutes: left) }
+        return .fine
+    }
+
+    /// Near and over limits are drawn as rows; the rest fold into one line.
+    static func fold(_ rows: [BudgetProgressView.Row], warnPercent: Int)
+        -> (shown: [BudgetProgressView.Row], fine: [BudgetProgressView.Row]) {
+        let isFine = { (row: BudgetProgressView.Row) in of(spent: row.spent, limit: row.limit, warnPercent: warnPercent) == .fine }
+        return (rows.filter { !isFine($0) }, rows.filter(isFine))
+    }
+}
+
+/// One limit: over is red with a warning icon, near is amber with a gauge,
+/// otherwise the category's own color. Never color alone.
+struct LimitRowView: View {
+    let row: BudgetProgressView.Row
+    let warnPercent: Int
+
+    var body: some View {
+        let state = LimitState.of(spent: row.spent, limit: row.limit, warnPercent: warnPercent)
+        let color: Color = switch state {
+        case .over: .red
+        case .near: RefinedStyle.warning
+        case .fine: RefinedStyle.category(row.id, hex: row.colorHex)
+        }
+        VStack(spacing: 5) {
+            HStack(spacing: 8) {
+                switch state {
+                case .over(let minutes):
+                    Label("\(row.name)超出 \(minutes) 分钟", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                case .near(let minutes):
+                    Label("\(row.name)还剩 \(minutes) 分钟", systemImage: "gauge.with.dots.needle.67percent")
+                        .foregroundStyle(RefinedStyle.warning)
+                case .fine:
+                    HStack(spacing: 6) {
+                        Circle().fill(color).frame(width: 8, height: 8)
+                        Text(row.name)
+                    }
+                }
+                Spacer(minLength: 4)
+                Text("\(Format.minutes(row.spent)) / \(Format.minutes(row.limit)) 分钟")
+                    .monospacedDigit().foregroundStyle(.secondary)
+            }
+            .lineLimit(1)
+            GeometryReader { geo in
+                Capsule().fill(.quaternary)
+                Capsule().fill(color).frame(width: geo.size.width * (row.limit > 0 ? min(1, row.spent / row.limit) : 0))
+            }.frame(height: 6)
+        }
+        .font(.callout)
+        .accessibilityElement(children: .combine)
     }
 }
 
