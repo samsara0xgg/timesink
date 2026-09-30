@@ -802,11 +802,15 @@ final class ActivitiesModel {
                               fraction: $0.value / max(1, segment.recorded))
                     }
                 }
+                let ticks = highlight ? [] : segment.excursions.map { excursion in
+                    (offset: excursion.start.timeIntervalSince(segment.start),
+                     color: RefinedStyle.category(excursion.categoryID, hex: categories[excursion.categoryID]?.colorHex ?? "#98989D"))
+                }
                 return TimelineBlock(start: segment.start, end: segment.end,
                                      color: RefinedStyle.category(categoryID, hex: categories[categoryID]?.colorHex ?? "#98989D"),
                                      label: segment.dominant.label, tooltip: tooltip(segment),
                                      activity: segment.dominant.selection, matchesFilter: live,
-                                     segment: segment, mix: mix, isHighlight: highlight)
+                                     segment: segment, mix: mix, ticks: ticks, isHighlight: highlight)
             }
         }
         let base = blocks(TimelineSegmenter.segments(items, resolution: resolution, forDrawing: true),

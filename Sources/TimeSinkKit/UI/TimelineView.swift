@@ -31,6 +31,9 @@ struct TimelineBlock: Identifiable {
     var segment: TimelineSegment? = nil
     /// Per-category shares, only for blocks that mix several rows.
     var mix: [Share] = []
+    /// Moments the block's time left its category, as offsets from `start`,
+    /// coloured by where it went -- brief switches folded into the block.
+    var ticks: [(offset: TimeInterval, color: Color)] = []
     /// Highlight layer blocks drawn over a filtered day.
     var isHighlight = false
     // A live block that grows keeps its view identity; zoom steps that keep a
@@ -162,7 +165,7 @@ struct DayTimelineView: View {
                 .buttonStyle(.bordered).controlSize(.small)
                 Text(TimelineZoom.resolutionLabel(for: hourHeight))
                     .font(.caption2).foregroundStyle(.tertiary)
-                    .help("缩小时，短于这个时长的切换并入所在的任务，零星的短暂记录不单独画出；放大可以看到更细的记录。")
+                    .help("缩小时，短于这个时长的切换并入所在的任务，块左边的小刻度标出切到别的分类的时刻；零星的短暂记录不单独画出。放大可以看到更细的记录。")
                 selectionSummary
                 if !allDay.isEmpty {
                     Text(String(localized: "全天日程：\(allDay.joined(separator: String(localized: "、")))"))
@@ -305,6 +308,9 @@ struct DayTimelineView: View {
                         .frame(width: 3).padding(.vertical, 2).padding(.trailing, 2)
                     }
                 }
+                .overlay(alignment: .topLeading) {
+                    if !block.ticks.isEmpty, blockHeight >= 10, !dimmed { ticks(block, height: blockHeight) }
+                }
                 .overlay {
                     if current {
                         RoundedRectangle(cornerRadius: 3).strokeBorder(Color.primary, lineWidth: 2)
@@ -331,6 +337,23 @@ struct DayTimelineView: View {
         .help(block.tooltip + (block.matchesFilter ? "" : String(localized: "\n点击后清除筛选并定位此活动")))
         .accessibilityLabel(block.tooltip)
         .accessibilityAddTraits(current ? .isSelected : [])
+    }
+
+    /// Short marks on the left edge where the block's time went elsewhere;
+    /// marks closer than 3 pt read as one.
+    private func ticks(_ block: TimelineBlock, height blockHeight: CGFloat) -> some View {
+        var marks: [(y: CGFloat, color: Color)] = []
+        for tick in block.ticks {
+            let y = min(blockHeight - 3, max(1, tick.offset / 3600 * hourHeight))
+            if let last = marks.last, y - last.y < 3 { continue }
+            marks.append((y, tick.color))
+        }
+        return ZStack(alignment: .topLeading) {
+            ForEach(marks.indices, id: \.self) { index in
+                Capsule().fill(marks[index].color).frame(width: 6, height: 2).offset(x: 1, y: marks[index].y)
+            }
+        }
+        .allowsHitTesting(false)
     }
 
     private func offset(_ date: Date) -> CGFloat { max(0, date.timeIntervalSince(dayStart) / 3600 * hourHeight) }

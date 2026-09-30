@@ -68,6 +68,9 @@ final class TimelineSegmenterTests: XCTestCase {
         let segments = TimelineSegmenter.segments(items, resolution: 450)
         XCTAssertEqual(segments.count, 1)
         XCTAssertEqual(segments[0].parts.map(\.appName), ["editor", "chat"])
+        // The glance stays visible as a mark where it happened.
+        XCTAssertEqual(segments[0].excursions.map(\.start), [items[1].span.start])
+        XCTAssertEqual(segments[0].excursions.map(\.categoryID), ["chat"])
     }
 
     /// Back-and-forth reads as one mixed stretch, not a stack of slices.
@@ -76,7 +79,9 @@ final class TimelineSegmenterTests: XCTestCase {
             let start = Double(index) * 60
             return item(start, start + 60, app: index % 2 == 0 ? "editor" : "terminal")
         }
-        XCTAssertEqual(TimelineSegmenter.segments(items, resolution: 450).count, 1)
+        let segments = TimelineSegmenter.segments(items, resolution: 450)
+        XCTAssertEqual(segments.count, 1)
+        XCTAssertTrue(segments[0].excursions.isEmpty, "switching apps within one category is not leaving it")
     }
 
     /// Ten minutes spent mostly elsewhere stay visible between two long tasks,
