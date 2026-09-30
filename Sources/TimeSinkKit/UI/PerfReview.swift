@@ -24,6 +24,9 @@ import GRDB
         let settle: Double
         /// Passes over 16.7 ms: frames a 60 Hz display dropped.
         let drops: Int
+        /// Main-thread CPU time in the window: unlike `busy`, not inflated
+        /// when other processes compete for the cores.
+        let cpu: Double
     }
 
     @MainActor final class Monitor {
@@ -51,9 +54,11 @@ import GRDB
 
     static func measure(_ label: String, window: Double = 1.0, _ change: () -> Void) async -> Sample {
         monitor.passes.removeAll()
+        let cpu0 = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
         let t0 = CACurrentMediaTime()
         change()
         try? await Task.sleep(for: .seconds(window))
+        let cpu = Double(clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - cpu0) / 1e6
         let after = monitor.passes.filter { $0.end >= t0 && $0.start <= t0 + window }
         let sample = Sample(
             label: label,
@@ -61,10 +66,11 @@ import GRDB
             busy: after.map { min($0.end, t0 + window) - max($0.start, t0) }.reduce(0, +) * 1000,
             longest: after.map(\.ms).max() ?? 0,
             settle: (after.last(where: { $0.ms > 2 }).map { $0.end - t0 } ?? 0) * 1000,
-            drops: after.filter { $0.ms > 16.7 }.count)
+            drops: after.filter { $0.ms > 16.7 }.count,
+            cpu: cpu)
         samples.append(sample)
-        print(String(format: "PERF %@ first=%.1f busy=%.1f longest=%.1f settle=%.0f drops=%d",
-                     label, sample.firstFrame, sample.busy, sample.longest, sample.settle, sample.drops))
+        print(String(format: "PERF %@ first=%.1f busy=%.1f cpu=%.1f longest=%.1f settle=%.0f drops=%d",
+                     label, sample.firstFrame, sample.busy, sample.cpu, sample.longest, sample.settle, sample.drops))
         return sample
     }
 
@@ -90,6 +96,27 @@ import GRDB
             }
         }
         if environment["TIMESINK_PERF_ONLY"] == "switch" { report(); return }
+        if environment["TIMESINK_PERF_ONLY"] == "activities" {
+            model.sidebarSelection = .activities
+            model.range = .today()
+            try await Task.sleep(for: .seconds(1))
+            for step in [-1, 1, -1, 1, -1, 1, -1, 1] {
+                _ = await measure("activities_day_\(step > 0 ? "next" : "prev")") { model.range.shift(step) }
+            }
+            let items = model.rangedSpans(for: model.range)
+            for item in [items[items.count / 5], items[items.count * 3 / 5], items[items.count / 2], items[items.count / 5]] {
+                _ = await measure("activities_select") { activities.select(ActivitiesModel.selection(for: item), start: item.span.start) }
+            }
+            for _ in 1...4 {
+                _ = await measure("activities_zoom_in") { activities.timelineHourHeight = TimelineZoom.stops.last ?? activities.timelineHourHeight }
+                _ = await measure("activities_zoom_out") { activities.timelineHourHeight = TimelineZoom.stops.first ?? activities.timelineHourHeight }
+            }
+            for index in 1...3 {
+                _ = await measure("write_activities_\(index)") { model.engineDataChangedForTesting(writtenFrom: Date().addingTimeInterval(-30)) }
+            }
+            try await scroll(window: window, label: "scroll_activities")
+            report(); return
+        }
 
         // A tracker write lands about every 1.5 s while recording.
         for (name, page) in pages {
@@ -256,8 +283,8 @@ import GRDB
         print("PERF summary (ms; median of repeats, worst longest)")
         for (key, values) in groups.sorted(by: { $0.key < $1.key }) {
             func median(_ path: KeyPath<Sample, Double>) -> Double { values.map { $0[keyPath: path] }.sorted()[values.count / 2] }
-            print(String(format: "PERF_SUMMARY %@ n=%d first=%.1f busy=%.1f longest=%.1f settle=%.0f drops=%d", key, values.count,
-                         median(\.firstFrame), median(\.busy), values.map(\.longest).max() ?? 0, median(\.settle), values.map(\.drops).max() ?? 0))
+            print(String(format: "PERF_SUMMARY %@ n=%d first=%.1f busy=%.1f cpu=%.1f longest=%.1f settle=%.0f drops=%d", key, values.count,
+                         median(\.firstFrame), median(\.busy), median(\.cpu), values.map(\.longest).max() ?? 0, median(\.settle), values.map(\.drops).max() ?? 0))
         }
     }
 
