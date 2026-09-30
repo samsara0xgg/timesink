@@ -9,6 +9,7 @@ struct InterruptionRadarCard: View {
     @State private var mode = Mode.interruptions
     @State private var data: DayInterruptions?
     @State private var longest: DateInterval?
+    @State private var runs: [BandRun] = []
     @State private var hoveredSource: String?
 
     enum Period: Hashable { case today, week }
@@ -21,6 +22,7 @@ struct InterruptionRadarCard: View {
         if let last = Self.last, last.key == LoadKey(model: model, period: period) {
             _data = State(initialValue: last.data)
             _longest = State(initialValue: last.longest)
+            _runs = State(initialValue: last.runs)
         }
     }
     enum Mode: Hashable { case interruptions, all }
@@ -38,7 +40,7 @@ struct InterruptionRadarCard: View {
             day = Calendar.current.startOfDay(for: Date())
         }
     }
-    @MainActor private static var last: (key: LoadKey, data: DayInterruptions, longest: DateInterval?)?
+    @MainActor private static var last: (key: LoadKey, data: DayInterruptions, longest: DateInterval?, runs: [BandRun])?
     /// The card is built in its own pass after the page (80 ms later, so the
     /// two never share a frame): Trends then opens at its pre-radar cost,
     /// and an empty panel of the card's last height holds its place.
@@ -86,6 +88,21 @@ struct InterruptionRadarCard: View {
 
     @ViewBuilder private func content(_ data: DayInterruptions) -> some View {
         let sources = data.sources
+        columns(data, sources)
+        if period == .today, !runs.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 10) {
+                    Text("时间带").font(.system(size: 11, weight: .semibold))
+                    Text(mode == .all ? "所有切换，路过的不画" : "只画打断和拦下").font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                TimeBand(runs: runs, data: data, sources: sources, showsPeeks: mode == .all, highlighted: hoveredSource,
+                         color: { RefinedStyle.category($0, hex: model.resolver.categoriesByID[$0]?.colorHex ?? "#C7C7CC") },
+                         hourLabel: { model.time($0) })
+            }
+        }
+    }
+
+    private func columns(_ data: DayInterruptions, _ sources: [DayInterruptions.Source]) -> some View {
         HStack(alignment: .top, spacing: 20) {
             InterruptionRadar(data: data, sources: Array(sources.prefix(4)), showsPeeks: mode == .all, highlighted: hoveredSource)
                 .frame(width: 250, height: 250)
@@ -211,7 +228,7 @@ struct InterruptionRadarCard: View {
     private func load() async {
         let key = LoadKey(model: model, period: period)
         if let last = Self.last, last.key == key {
-            if data != last.data { data = last.data; longest = last.longest }
+            if data != last.data { data = last.data; longest = last.longest; runs = last.runs }
             return
         }
         let calendar = Calendar.current
@@ -227,19 +244,29 @@ struct InterruptionRadarCard: View {
         }
         guard !Task.isCancelled else { return }
         if period == .today {
-            // Stretches of continuous recording, split by away gaps.
+            // Stretches of continuous recording, split by away gaps, and the
+            // same spans as category runs for the time band.
             var stretches: [DateInterval] = []
-            for item in model.rangedSpans(for: DateRangeSelection.today()).sorted(by: { $0.span.start < $1.span.start }) {
-                if let last = stretches.last, item.span.start.timeIntervalSince(last.end) <= InterruptionClassifier.awayGap {
+            var bandRuns: [BandRun] = []
+            for item in model.rangedSpans(for: DateRangeSelection.today()).sorted(by: { $0.span.start < $1.span.start })
+            where item.span.end > item.span.start {
+                let joined = stretches.last.map { item.span.start.timeIntervalSince($0.end) <= InterruptionClassifier.awayGap } ?? false
+                if joined, let last = stretches.last {
                     stretches[stretches.count - 1] = DateInterval(start: last.start, end: max(last.end, item.span.end))
-                } else if item.span.end > item.span.start {
+                } else {
                     stretches.append(DateInterval(start: item.span.start, end: item.span.end))
+                }
+                if joined, let last = bandRuns.last, last.categoryID == item.categoryID {
+                    bandRuns[bandRuns.count - 1].end = max(last.end, item.span.end)
+                } else {
+                    bandRuns.append(BandRun(start: item.span.start, end: item.span.end, categoryID: item.categoryID))
                 }
             }
             longest = merged.longestUnbroken(activity: stretches)
+            runs = bandRuns
         }
         data = merged
-        Self.last = (key, merged, longest)
+        Self.last = (key, merged, longest, runs)
     }
 }
 
@@ -309,5 +336,83 @@ private struct InterruptionRadar: View {
         }
         .accessibilityElement()
         .accessibilityLabel(String(localized: "打断雷达：\(data.interruptions.count) 次打断"))
+    }
+}
+
+struct BandRun: Equatable {
+    var start: Date
+    var end: Date
+    var categoryID: String
+}
+
+/// The day as one strip (F2 时间带): category runs, away time left empty,
+/// interruptions as red ticks (a bar when longer than 5 minutes), focus
+/// blocks hollow, and peeks grey under 所有切换. Hovering a source fades
+/// every other tick.
+private struct TimeBand: View {
+    let runs: [BandRun]
+    let data: DayInterruptions
+    let sources: [DayInterruptions.Source]
+    let showsPeeks: Bool
+    let highlighted: String?
+    let color: (String) -> Color
+    let hourLabel: (Date) -> String
+
+    private var span: DateInterval {
+        let calendar = Calendar.current
+        let first = runs.first?.start ?? .now, last = max(runs.last?.end ?? .now, .now)
+        let from = calendar.dateInterval(of: .hour, for: first)?.start ?? first
+        let to = calendar.dateInterval(of: .hour, for: last)?.end ?? last
+        return DateInterval(start: from, end: max(to, from.addingTimeInterval(3600)))
+    }
+
+    var body: some View {
+        let span = span
+        let hours = stride(from: span.start, through: span.end, by: 3600).map { $0 }
+        let step = max(1, hours.count / 8)
+        VStack(spacing: 3) {
+            Canvas { context, size in
+                func x(_ date: Date) -> CGFloat { CGFloat(date.timeIntervalSince(span.start) / span.duration) * size.width }
+                let bar = CGRect(x: 0, y: 8, width: size.width, height: 12)
+                context.fill(Path(roundedRect: bar, cornerRadius: 3), with: .color(.primary.opacity(0.05)))
+                for run in runs {
+                    let rect = CGRect(x: x(run.start), y: bar.minY, width: max(1, x(run.end) - x(run.start) - 0.5), height: bar.height)
+                    context.fill(Path(rect), with: .color(color(run.categoryID).opacity(0.75)))
+                }
+                let sourceOf = { (episode: SwitchEpisode) in
+                    sources.first { episode.destination.hasPrefix($0.destination + "\u{1F}") || episode.destination == $0.destination }?.id
+                }
+                if showsPeeks {
+                    for episode in data.peeks {
+                        let dim = highlighted != nil && sourceOf(episode) != highlighted
+                        context.fill(Path(CGRect(x: x(episode.start) - 0.75, y: 2, width: 1.5, height: 24)),
+                                     with: .color(.secondary.opacity(dim ? 0.2 : 0.7)))
+                    }
+                }
+                for episode in data.interruptions {
+                    let dim = highlighted != nil && sourceOf(episode) != highlighted
+                    let width = episode.dwell > 300 ? max(2, x(episode.end) - x(episode.start)) : 2
+                    context.fill(Path(roundedRect: CGRect(x: x(episode.start) - 1, y: 0, width: width, height: 28), cornerRadius: 1),
+                                 with: .color(.red.opacity(dim ? 0.2 : 0.9)))
+                }
+                for date in data.blocked {
+                    context.stroke(Path(ellipseIn: CGRect(x: x(date) - 3.5, y: 10.5, width: 7, height: 7)), with: .color(.primary), lineWidth: 1.5)
+                }
+                let now = x(.now)
+                if now < size.width {
+                    context.fill(Path(CGRect(x: now - 0.5, y: 0, width: 1, height: 28)), with: .color(.primary))
+                }
+            }
+            .frame(height: 28)
+            GeometryReader { geometry in
+                ForEach(Array(hours.enumerated()).filter { $0.offset % step == 0 }, id: \.offset) { _, hour in
+                    Text(hourLabel(hour)).font(.system(size: 10)).foregroundStyle(.secondary).fixedSize()
+                        .position(x: min(max(16, CGFloat(hour.timeIntervalSince(span.start) / span.duration) * geometry.size.width), geometry.size.width - 16), y: 6)
+                }
+            }
+            .frame(height: 12)
+        }
+        .accessibilityElement()
+        .accessibilityLabel(String(localized: "时间带：\(data.interruptions.count) 次打断"))
     }
 }

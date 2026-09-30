@@ -2925,6 +2925,16 @@
         }
       }
     },
+    "只画打断和拦下": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Interruptions and blocks only"
+          }
+        }
+      }
+    },
     "只看打断": {
       "localizations": {
         "en": {
@@ -4455,6 +4465,16 @@
         }
       }
     },
+    "所有切换，路过的不画": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every switch except pass-throughs"
+          }
+        }
+      }
+    },
     "所有应用和网站": {
       "localizations": {
         "en": {
@@ -5267,12 +5287,32 @@
         }
       }
     },
+    "时间带": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Time Band"
+          }
+        }
+      }
+    },
     "时间带，%@ 至 %@，已记录 %@。片段详情见活动列表。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Time band, %@ to %@, %@ recorded. See Activity for segment details."
+          }
+        }
+      }
+    },
+    "时间带：%lld 次打断": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Time band, interruptions: %lld"
           }
         }
       }
