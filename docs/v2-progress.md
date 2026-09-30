@@ -15,17 +15,21 @@ Branch: v2-liquid-glass (local only, never pushed).
 - [x] Ticks by the new rule, zoom slider (in the timeline card, see perf), TipKit tip, block context menu, VoiceOver counts
 - [x] Settings › 记录与隐私 › 什么算打断 (15/30/60 s, typing toggle)
 - [x] Menu bar: focus capsule with draining sand (variable draw on macOS 26), menus with icons
+- [x] m7: a block grows out of its tick when zooming splits it out
 - [ ] Glass morph between hourglass and capsules: a status item shows only an image and text, so the capsule is an image, no morph
 - [ ] Reduce Transparency / Increase Contrast / Reduce Motion captures: code paths exist, not captured (needs system settings)
 - [x] Strings merged, check_strings green
 
 ## Tier 2
 - [x] F3 回到刚才: capsule, popover button, ⋯ menu, ⌃⌥← (held only while offered), Settings toggle
-- [x] F2 打断雷达 in Trends (today / 7 days, interruptions / all switches)
-- [ ] Settings panes regrouped (通用/记录/智能/…): not done
+- [x] F2 打断雷达 in Trends (today / 7 days, interruptions / all switches), time band; built in its own pass
+- [ ] F2 回来后多久才动手: key-seconds are counted per span, not timed, so the delay can't be measured honestly
+- [x] Settings regrouped: 通用 (with 关于), 记录, 智能, 通知与提示, 同步, 隐私 (with 权限 and export); 专注与限额 stays on its page
 
 ## Tier 3
-- [ ] F1 sessions, F4 离开补记, F5 recap, App Intents: not done
+- [x] F4 离开补记: capsule + popover prompt, calendar suggestion, awayNote table (v12), dashed frames on the timeline, settings toggle
+- [ ] F1 sessions, F5 recap: not done (F5 builds on F1's sessions)
+- [ ] App Intents: `swift build` does not run the App Intents metadata step, so intents would not register; needs an Xcode build
 
 ## Real-data interruption counts (15 s, dwell only)
 9-24 42 · 9-25 38 · 9-28 33 · 9-29 14 (timeline thread: 30 / 46 / 21 / 12).
@@ -45,3 +49,11 @@ Faster or level everywhere except the warm switch to Trends: the radar card adds
 ~25 ms to the longest frame (v1 ~127-141 ms, 2.0 ~147-162 ms over three
 interleaved runs); the first frame after the click is ~50 ms in both. No single
 part of the card carries it (canvas, rows, header and stats each bisected).
+
+## Interruption count reconciliation (`tsprobe waterfall`, real-data copy)
+Day: 1 timeline method (my rerun) → 2 distracting dwell only → 3 60 s merge by window → 4 gap-only away → 5 app
+9-24: 48 → 49 → 42 → 42 → 42 · 9-25: 47 → 46 → 38 → 38 → 38 · 9-28: 34 → 39 → 33 → 33 → 33 · 9-29: 17 → 16 → 14 → 14 → 14.
+Merging by app or site instead of by window gives 40 / 34 / 29 / 12. The timeline thread's own
+30 / 46 / 21 / 12 differs from my rerun on 9-24 and 9-28: it grouped unmapped browser pages under
+the browser's category (misc: 78 and 85 episodes) where the app resolves them per page (uncategorized).
+Every step is the agreed rule, so the classifier stays as is.
