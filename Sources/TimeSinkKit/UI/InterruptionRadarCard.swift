@@ -16,6 +16,12 @@ struct InterruptionRadarCard: View {
     init(model: AppModel, period: Period = .today) {
         self.model = model
         _period = State(initialValue: period)
+        // The last result, when it still holds, so the page's first frame is
+        // final instead of laid out again when the load lands.
+        if let last = Self.last, last.key == LoadKey(model: model, period: period) {
+            _data = State(initialValue: last.data)
+            _longest = State(initialValue: last.longest)
+        }
     }
     enum Mode: Hashable { case interruptions, all }
 
@@ -23,7 +29,16 @@ struct InterruptionRadarCard: View {
         let period: Period
         let version: Int
         let rule: InterruptionRule
+        let day: Date
+
+        @MainActor init(model: AppModel, period: Period) {
+            self.period = period
+            version = model.dataVersion
+            rule = model.interruptionRule
+            day = Calendar.current.startOfDay(for: Date())
+        }
     }
+    @MainActor private static var last: (key: LoadKey, data: DayInterruptions, longest: DateInterval?)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -48,7 +63,7 @@ struct InterruptionRadarCard: View {
         }
         .padding(18)
         .workspacePanel()
-        .pageTask(id: LoadKey(period: period, version: model.dataVersion, rule: model.interruptionRule)) { await load() }
+        .pageTask(id: LoadKey(model: model, period: period)) { await load() }
     }
 
     @ViewBuilder private func content(_ data: DayInterruptions) -> some View {
@@ -176,6 +191,11 @@ struct InterruptionRadarCard: View {
     }
 
     private func load() async {
+        let key = LoadKey(model: model, period: period)
+        if let last = Self.last, last.key == key {
+            if data != last.data { data = last.data; longest = last.longest }
+            return
+        }
         let calendar = Calendar.current
         let today = calendar.dateInterval(of: .day, for: Date())!
         let days = period == .today ? [today] : (0..<7).reversed().compactMap { offset in
@@ -201,6 +221,7 @@ struct InterruptionRadarCard: View {
             longest = merged.longestUnbroken(activity: stretches)
         }
         data = merged
+        Self.last = (key, merged, longest)
     }
 }
 
