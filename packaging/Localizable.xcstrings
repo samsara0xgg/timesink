@@ -2001,16 +2001,6 @@
         }
       }
     },
-    "今日已记录时长": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Recorded time today"
-          }
-        }
-      }
-    },
     "休息": {
       "localizations": {
         "en": {
@@ -2915,16 +2905,6 @@
         }
       }
     },
-    "只显示图标": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Icon only"
-          }
-        }
-      }
-    },
     "只有 1 次，不给建议": {
       "localizations": {
         "en": {
@@ -3313,6 +3293,26 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "图标": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Icon"
+          }
+        }
+      }
+    },
+    "在 Chrome 中": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In Chrome"
           }
         }
       }
@@ -4275,16 +4275,6 @@
         }
       }
     },
-    "当前分类与时长": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Current category and duration"
-          }
-        }
-      }
-    },
     "当前范围内没有活动记录": {
       "localizations": {
         "en": {
@@ -4681,6 +4671,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Drag the knob around the ring, 15 minutes to 2 hours"
+          }
+        }
+      }
+    },
+    "拦截的网站": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blocked websites"
           }
         }
       }
@@ -6347,16 +6347,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Daily at %@"
-          }
-        }
-      }
-    },
-    "每天 %@ 发一条通知：记录时长、投入、专注次数和评分。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Send a daily notification at %@ with recorded time, productive time, focus sessions and score."
           }
         }
       }
@@ -8359,6 +8349,16 @@
         }
       }
     },
+    "隐藏的应用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hidden apps"
+          }
+        }
+      }
+    },
     "隔离预览 · 示例数据": {
       "localizations": {
         "en": {
@@ -8445,6 +8445,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Darker color means a longer average activity duration."
+          }
+        }
+      }
+    },
+    "默认时长": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Default length"
           }
         }
       }

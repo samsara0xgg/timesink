@@ -129,9 +129,9 @@ import WebKit
             model.organizationTab = .uncategorized
             // No 隐私: its Chrome permission check blocks an unsigned build.
             for (name, tab) in [("general", SettingsTab.general), ("recording", .recording), ("llm", .llm),
-                                ("notifications", .notifications), ("account", .account)] {
+                                ("notifications", .notifications), ("focus", .focus), ("account", .account)] {
                 model.settingsTab = tab
-                try await shoot("settings-\(name)", SettingsView(model: model), size: NSSize(width: 640, height: 600), dark: dark)
+                try await shoot("settings-\(name)", SettingsView(model: model), size: NSSize(width: 700, height: 500), dark: dark)
             }
             model.range = .today()
             model.sidebarSelection = .today

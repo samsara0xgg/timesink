@@ -14,7 +14,6 @@ struct FocusWorkspaceView: View {
     @State private var editCategories = false
     @State private var editingBudget: String?
     @State private var warn = 20
-    @State private var summary = false
     @State private var error: String?
     private struct LoadKey: Equatable { let version: Int; let running: Int64? }
 
@@ -40,20 +39,7 @@ struct FocusWorkspaceView: View {
         }
         .onPageChange(of: LoadKey(version: model.dataVersion, running: model.focus?.running?.id)) { load() }
         .sheet(isPresented: $editApps) { FocusBlockedAppsEditor(model: model, blockedApps: $blockedApps) }
-        .popover(isPresented: $editCategories) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("拦截这些分类的网站").font(.headline)
-                ForEach(model.resolver.categoriesByID.values.sorted { $0.sortOrder < $1.sortOrder }, id: \.id) { category in
-                    Toggle(isOn: Binding(get: { model.settings.focusBlockedCategories.contains(category.id) }, set: { enabled in
-                        var ids = Set(model.settings.focusBlockedCategories)
-                        if enabled { ids.insert(category.id) } else { ids.remove(category.id) }
-                        model.settings.setFocusBlockedCategories(ids.sorted()); model.settingsChanged()
-                    })) { CategoryChip(category: category) }
-                }
-                Text("修改从下一次专注开始生效。").font(.system(size: 11)).foregroundStyle(.secondary)
-                Button("完成") { editCategories = false }.frame(maxWidth: .infinity, alignment: .trailing)
-            }.padding(18).frame(width: 260)
-        }
+        .popover(isPresented: $editCategories) { FocusCategoriesEditor(model: model) { editCategories = false } }
     }
 
     private var sessionColumn: some View {
@@ -111,23 +97,10 @@ struct FocusWorkspaceView: View {
                     budgetRow(budget)
                 }
                 Divider().padding(.top, 4)
-                HStack {
-                    Text("限额只发提醒，不拦截任何东西；拦截只在专注会话里发生。").font(.system(size: 11)).foregroundStyle(.secondary)
-                    Spacer(minLength: 8)
-                    Stepper("剩余 \(warn)% 时提醒", value: $warn, in: 10...30, step: 10).font(.system(size: 11)).controlSize(.small).fixedSize()
-                        .onChange(of: warn) { _, value in model.settings.setBudgetWarnPercent(value) }
-                }.padding(.top, 8)
+                Text("限额只发提醒，不拦截任何东西；拦截只在专注会话里发生。").font(.system(size: 11)).foregroundStyle(.secondary)
+                    .padding(.top, 8)
             }.font(.system(size: 13)).frame(maxWidth: .infinity, alignment: .leading).padding(18).workspacePanel()
             weekChart
-            VStack(alignment: .leading, spacing: 10) {
-                Toggle("每日小结", isOn: $summary).toggleStyle(.switch).fontWeight(.semibold)
-                    .onChange(of: summary) { _, value in
-                        model.settings.setDailySummaryEnabled(value)
-                        if value { model.requestNotificationPermission() }
-                    }
-                Text("每天 \(model.time(Calendar.current.date(bySettingHour: model.settings.dailySummaryHour, minute: 0, second: 0, of: Date()) ?? Date())) 发一条通知：记录时长、投入、专注次数和评分。")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
-            }.font(.system(size: 13)).frame(maxWidth: .infinity, alignment: .leading).padding(18).workspacePanel()
         }
     }
 
@@ -230,7 +203,7 @@ struct FocusWorkspaceView: View {
         minutes = model.settings.focusDurationMinutes
         blockedApps = model.settings.focusBlockedApps
         appBlock = model.settings.focusAppBlockEnabled; siteBlock = model.settings.focusSiteBlockEnabled
-        warn = model.settings.budgetWarnPercent; summary = model.settings.dailySummaryEnabled
+        warn = model.settings.budgetWarnPercent
     }
     private func load() {
         do {
@@ -238,6 +211,26 @@ struct FocusWorkspaceView: View {
             budgets = try model.budgetStore?.budgets() ?? []
             used = model.rangedSpans(for: .today()).reduce(into: [:]) { $0[$1.categoryID, default: 0] += $1.span.duration }
         } catch { self.error = String(localized: "专注记录暂时无法读取。") }
+    }
+}
+
+/// Which categories' sites a focus session blocks in Chrome.
+struct FocusCategoriesEditor: View {
+    let model: AppModel
+    let done: () -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("拦截这些分类的网站").font(.headline)
+            ForEach(model.resolver.categoriesByID.values.sorted { $0.sortOrder < $1.sortOrder }, id: \.id) { category in
+                Toggle(isOn: Binding(get: { model.settings.focusBlockedCategories.contains(category.id) }, set: { enabled in
+                    var ids = Set(model.settings.focusBlockedCategories)
+                    if enabled { ids.insert(category.id) } else { ids.remove(category.id) }
+                    model.settings.setFocusBlockedCategories(ids.sorted()); model.settingsChanged()
+                })) { CategoryChip(category: category) }
+            }
+            Text("修改从下一次专注开始生效。").font(.system(size: 11)).foregroundStyle(.secondary)
+            Button("完成", action: done).frame(maxWidth: .infinity, alignment: .trailing)
+        }.padding(18).frame(width: 260)
     }
 }
 

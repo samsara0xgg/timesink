@@ -11,7 +11,7 @@ public enum SidebarItem: Hashable, CaseIterable {
 /// by `SettingsView`'s `TabView(selection:)` and written by notification
 /// routing (`.settingsBudget` → `.budget`).
 public enum SettingsTab: Hashable {
-    case general, recording, categories, rules, uncategorized, llm, budget, account, privacy, permissions, notifications, about
+    case general, recording, categories, rules, uncategorized, llm, budget, focus, account, privacy, permissions, notifications, about
 }
 
 /// App-wide observable state: the shared stores/engine, the current date-range

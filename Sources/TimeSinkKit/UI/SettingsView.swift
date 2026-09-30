@@ -8,42 +8,38 @@ struct SettingsView: View {
     private let tabs: [(SettingsTab, String, String)] = [
         (.general, String(localized: "通用"), "gearshape"), (.recording, String(localized: "记录"), "hourglass"),
         (.llm, String(localized: "智能"), "sparkles"), (.notifications, String(localized: "通知与提示"), "bell"),
+        (.focus, String(localized: "专注与限额"), "scope"),
         (.account, String(localized: "同步"), "icloud"), (.privacy, String(localized: "隐私"), "lock")
     ]
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 2) {
-                ForEach(tabs, id: \.0) { tab in
-                    Button { model.settingsTab = tab.0 } label: {
-                        VStack(spacing: 4) {
-                            Image(systemName: tab.2).font(.system(size: 22, weight: .regular))
-                            Text(tab.1).font(.system(size: 11)).lineLimit(1).fixedSize()
-                        }.frame(minWidth: 64).padding(.horizontal, 6).frame(height: 52)
-                            .foregroundStyle(model.settingsTab == tab.0 ? Color.accentColor : .secondary)
-                            .background(model.settingsTab == tab.0 ? Color.primary.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 7))
-                    }.buttonStyle(.plain).accessibilityAddTraits(model.settingsTab == tab.0 ? .isSelected : [])
-                }
-            }.padding(.vertical, 8).frame(maxWidth: .infinity).background(.bar)
-            Divider()
+        NavigationSplitView {
+            List(selection: Binding(get: { model.settingsTab }, set: { if let tab = $0 { model.settingsTab = tab } })) {
+                ForEach(tabs, id: \.0) { tab in Label(tab.1, systemImage: tab.2).tag(tab.0) }
+            }
+            .navigationSplitViewColumnWidth(200)
+            .toolbar(removing: .sidebarToggle)
+        } detail: {
             Group {
                 switch model.settingsTab {
                 case .recording: RefinedRecordingPane(model: model)
                 case .privacy: RefinedPrivacyPane(model: model)
                 case .notifications: RefinedNotificationsPane(model: model)
+                case .focus: FocusSettingsPane(model: model)
                 case .account: AccountSettingsPane(model: model)
                 case .llm: LLMSettingsPane(model: model)
                 default: RefinedGeneralPane(model: model)
                 }
-            }.frame(maxWidth: .infinity, maxHeight: .infinity)
-        // Tabs size to their labels ("Smart Categorization" needs 111 pt), so
-        // the window grows past 640 pt only where a language needs it.
-        }.frame(minWidth: 640, minHeight: 560).background(WorkspaceBackground())
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .navigationTitle(tabs.first { $0.0 == model.settingsTab }?.1 ?? "")
+        }
+        .frame(minWidth: 700, minHeight: 480)
         .onAppear { redirectLegacyTab() }
         .onChange(of: model.settingsTab) { _, _ in redirectLegacyTab() }
     }
     private func redirectLegacyTab() {
         switch model.settingsTab {
-        case .budget: model.sidebarSelection = .focus; model.settingsTab = .notifications
+        case .budget: model.settingsTab = .focus
         case .categories, .rules, .uncategorized: model.sidebarSelection = .organization; model.settingsTab = .general
         // 2.0 folded 权限 into 隐私 and 关于 into 通用.
         case .permissions: model.settingsTab = .privacy
@@ -72,10 +68,10 @@ struct RefinedGeneralPane: View {
                 }
                 }
                 Picker("菜单栏显示", selection: Binding(get: { model.menuDisplayMode }, set: { model.setMenuDisplayMode($0) })) {
-                    Text("只显示图标").tag("icon")
-                    Text("今日已记录时长").tag("total")
-                    Text("当前分类与时长").tag("category")
-                }
+                    Text("图标").tag("icon")
+                    Text("时长").tag("total")
+                    Text("分类").tag("category")
+                }.pickerStyle(.segmented).fixedSize()
                 VStack(alignment: .leading, spacing: 4) {
                     LabeledContent("打开弹出层") { ShortcutRecorder(model: model).frame(width: 122, height: 24) }
                 if !model.popoverShortcutAvailable {
@@ -368,6 +364,45 @@ struct RefinedNotificationsPane: View {
             budgetAlerts = model.settings.budgetNotificationsEnabled; focusAlerts = model.settings.focusNotificationsEnabled; sound = model.settings.notificationSound
             returnOffer = model.returnEnabled; awayPrompt = model.awayPromptEnabled
         }
+    }
+}
+
+/// 专注与限额: what a focus session starts with.
+struct FocusSettingsPane: View {
+    let model: AppModel
+    @State private var minutes = 45
+    @State private var blockedApps: [String] = []
+    @State private var editApps = false
+    @State private var editCategories = false
+    var body: some View {
+        Form {
+            Section {
+                Picker("默认时长", selection: $minutes) {
+                    ForEach(FocusPresets.minutes, id: \.self) { Text(verbatim: "\($0)").tag($0) }
+                    if !FocusPresets.minutes.contains(minutes) { Text(verbatim: "\(minutes)").tag(minutes) }
+                }.pickerStyle(.segmented).fixedSize().onChange(of: minutes) { _, value in model.settings.setFocusDurationMinutes(value) }
+                LabeledContent("隐藏的应用") {
+                    HStack(spacing: 4) {
+                        ForEach(Array(blockedApps.prefix(5)), id: \.self) { AppIcon(bundleID: $0, size: 18).help(AppIcon.name(for: $0)) }
+                        if blockedApps.isEmpty { Text("未选择").foregroundStyle(.secondary) }
+                        Button("编辑…") { editApps = true }.controlSize(.small).padding(.leading, 6)
+                    }
+                }
+                LabeledContent {
+                    HStack(spacing: 6) {
+                        Text(model.settings.focusBlockedCategories.isEmpty ? String(localized: "未选择") : model.settings.focusBlockedCategories.compactMap { model.resolver.categoriesByID[$0]?.name }.joined(separator: String(localized: "、")))
+                            .foregroundStyle(.secondary).lineLimit(1)
+                        Button("编辑…") { editCategories = true }.controlSize(.small)
+                            .popover(isPresented: $editCategories) { FocusCategoriesEditor(model: model) { editCategories = false } }
+                    }
+                } label: {
+                    Text("拦截的网站")
+                    Text("在 Chrome 中")
+                }
+            }
+        }.formStyle(.grouped)
+        .sheet(isPresented: $editApps) { FocusBlockedAppsEditor(model: model, blockedApps: $blockedApps) }
+        .onAppear { minutes = model.settings.focusDurationMinutes; blockedApps = model.settings.focusBlockedApps }
     }
 }
 
