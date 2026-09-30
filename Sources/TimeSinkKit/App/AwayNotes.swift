@@ -22,6 +22,9 @@ extension AppModel {
         else { return }
         let away = now.timeIntervalSince(left)
         guard away >= Self.awayMinimum, away <= Self.awayMaximum else { return }
+        // A pause you chose is not time away.
+        let events = (try? observationStore?.stateEvents(in: DateInterval(start: left, end: now))) ?? []
+        guard !events.contains(where: { $0.kind == "tracking_pause" }) else { return }
         let day = Calendar.current.startOfDay(for: now)
         if awayAsked.day != day { awayAsked = (day, 0) }
         guard awayAsked.count < Self.awayAsksPerDay else { return }

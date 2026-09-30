@@ -39,6 +39,14 @@ final class AwayNoteTests: XCTestCase {
         XCTAssertNil(model.awayOffer, "over 4 hours")
     }
 
+    func testAPauseIsNotTimeAway() throws {
+        let (model, store) = try makeModel()
+        let left = Date().addingTimeInterval(-1500)
+        model.observationStore?.logState("tracking_pause", at: left.addingTimeInterval(5))
+        try away(model, store, left: left, back: Date())
+        XCTAssertNil(model.awayOffer)
+    }
+
     func testAtMostFiveADay() throws {
         let (model, store) = try makeModel()
         var asked = 0
