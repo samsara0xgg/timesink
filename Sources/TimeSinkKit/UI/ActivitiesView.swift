@@ -33,6 +33,7 @@ struct ActivitiesView: View {
     /// The enable card is an offer, not a state to fix: once declined it
     /// stays away (Settings keeps the switch).
     @AppStorage("calendarBandDismissed") private var calendarBandDismissed = false
+    @AppStorage("ticksTipDone") private var ticksTipDone = false
 
     private var searchBinding: Binding<String> {
         Binding(get: { model.activitySearch }, set: { model.activitySearch = $0 })
@@ -109,11 +110,6 @@ struct ActivitiesView: View {
         .pageSearchable(text: searchBinding, prompt: "搜索应用、网址、标题")
         .pageToolbar {
             ToolbarItem {
-                if ActivitiesModel.showsTimeline(activities.shownRange ?? model.range) {
-                    TimelineZoomControl(hourHeight: $activities.timelineHourHeight)
-                }
-            }
-            ToolbarItem {
                 Button { showsInspector.toggle() } label: { Image(systemName: "sidebar.right") }
                     .help("显示活动检查器")
             }
@@ -122,11 +118,9 @@ struct ActivitiesView: View {
                     Button("所有分类", systemImage: "square.grid.2x2") { model.activityFilter = nil }
                     Divider()
                     ForEach(model.resolver.categoriesByID.values.sorted { $0.sortOrder < $1.sortOrder }, id: \.id) { category in
-                        Button { model.activityFilter = category.id } label: {
-                            Label { Text(category.name) } icon: {
-                                Image(systemName: "circle.fill").foregroundStyle(RefinedStyle.category(category.id, hex: category.colorHex))
-                            }
-                        }
+                        // Plain items: a coloured icon per category cost ~27 ms on
+                        // every switch to this page (the toolbar rebuilds them).
+                        Button(category.name) { model.activityFilter = category.id }
                     }
                 } label: {
                     Label(model.activityFilter.flatMap { model.resolver.categoriesByID[$0]?.name } ?? String(localized: "所有分类"), systemImage: "line.3.horizontal.decrease")
@@ -199,12 +193,16 @@ struct ActivitiesView: View {
     private func timelineCard(_ range: DateRangeSelection) -> some View {
         let dwell = Int(activities.interruptionRule.dwell)
         return VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            HStack(alignment: .center, spacing: 8) {
                 Text("时间线").font(.system(size: 13, weight: .semibold))
                 Text("短于 \(TimelineZoom.thresholdLabel(for: activities.timelineHourHeight)) 的切换并入所在的块")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
                     .contentTransition(.numericText())
                 Spacer(minLength: 0)
+                // In the card rather than the window toolbar: toolbar items
+                // rebuild on every switch to the page, a slider ~15 ms.
+                TimelineZoomControl(hourHeight: $activities.timelineHourHeight)
+                    .glassSurface(in: Capsule())
             }
             .padding(.horizontal, 4).padding(.bottom, 6)
             HStack(spacing: 14) {
@@ -235,7 +233,7 @@ struct ActivitiesView: View {
                             },
                             onAssign: assign)
                 .ticksTip(activities.timelineBlocks.contains { !$0.ticks.isEmpty }
-                          ? TicksTip(threshold: TimelineZoom.thresholdLabel(for: activities.timelineHourHeight), dwell: dwell) : nil) {
+                          ? TicksTip(threshold: TimelineZoom.thresholdLabel(for: activities.timelineHourHeight), dwell: dwell) : nil, done: $ticksTipDone) {
                     withAnimation(RefinedStyle.motion(reduced: reduceMotion)) {
                         activities.timelineHourHeight = TimelineZoom.step(activities.timelineHourHeight, by: 2)
                     }
@@ -1102,3 +1100,4 @@ final class ActivitiesModel {
         "\(event.title)\n\(hhmm(event.start))–\(hhmm(event.end)) · \(event.calendarTitle)"
     }
 }
+

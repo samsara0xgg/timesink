@@ -563,11 +563,20 @@ struct TicksTip: Tip {
 }
 
 extension View {
-    /// TipKit's popover needs macOS 15.4 with this SDK; earlier systems skip the tip.
+    /// TipKit's popover needs macOS 15.4 with this SDK; earlier systems skip
+    /// the tip. Once it is gone the modifier goes too: a live popoverTip
+    /// costs about 30 ms on every switch to the page.
     @ViewBuilder
-    func ticksTip(_ tip: TicksTip?, zoom: @escaping @MainActor @Sendable () -> Void) -> some View {
-        if #available(macOS 15.4, *) {
-            popoverTip(tip, arrowEdge: .leading) { _ in zoom() }
+    func ticksTip(_ tip: TicksTip?, done: Binding<Bool>, zoom: @escaping @MainActor @Sendable () -> Void) -> some View {
+        if done.wrappedValue {
+            self
+        } else if #available(macOS 15.4, *) {
+            popoverTip(tip, arrowEdge: .leading) { _ in zoom(); TicksTip().invalidate(reason: .actionPerformed) }
+                .task {
+                    for await status in TicksTip().statusUpdates {
+                        if case .invalidated = status { done.wrappedValue = true; return }
+                    }
+                }
         } else {
             self
         }
