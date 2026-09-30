@@ -10,12 +10,12 @@ struct OnboardingView: View {
     @State private var chromeState: PermissionState = .notDetermined
     @State private var screenState: PermissionState = .notDetermined
     @State private var calendarState: PermissionState = .notDetermined
+    @State private var drawn = false
 
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 8) {
-                Image(systemName: "hourglass").font(.system(size: 56, weight: .light)).foregroundStyle(.tint)
-                    .frame(height: 68)
+                hourglass.font(.system(size: 56, weight: .light)).foregroundStyle(.tint).frame(height: 68)
                 Text("欢迎使用 TimeSink").font(.system(size: 22, weight: .semibold))
                 Text("它在菜单栏里安静地记下你的时间，把一天连成片。所有记录都留在这台 Mac 上。")
                     .font(.system(size: 13)).foregroundStyle(.secondary).multilineTextAlignment(.center)
@@ -68,6 +68,23 @@ struct OnboardingView: View {
                 do { try await Task.sleep(for: .seconds(2)) } catch { return }
             }
         }
+    }
+
+    /// m8: the hourglass draws itself in, stroke by stroke, the first time.
+    @ViewBuilder private var hourglass: some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26, *) {
+            ZStack {
+                if drawn { Image(systemName: "hourglass").transition(.symbolEffect(.drawOn.byLayer)) }
+            }
+            .frame(width: 68)
+            .onAppear { withAnimation { drawn = true } }
+        } else {
+            Image(systemName: "hourglass")
+        }
+        #else
+        Image(systemName: "hourglass")
+        #endif
     }
 
     private func permission(_ icon: String, _ title: String, required: Bool, _ detail: String,

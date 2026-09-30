@@ -536,6 +536,7 @@ struct MenuBarDashboardView: View {
     @Environment(\.openSettings) private var openSettings
     /// Grows with the text size, so larger text widens the popover instead of truncating.
     @ScaledMetric(relativeTo: .body) private var width: CGFloat = RefinedStyle.popoverWidth
+    @Namespace private var focusMorph
     @ScaledMetric(relativeTo: .largeTitle) private var heroSize: CGFloat = 34
     @ScaledMetric(relativeTo: .title) private var scoreSize: CGFloat = 24
 
@@ -586,7 +587,9 @@ struct MenuBarDashboardView: View {
             Group {
                 switch kind {
                 case .focus:
+                    // m1: the start button grows into the timer, and back.
                     FocusRunningView(model: model).padding(14).frame(maxWidth: .infinity, alignment: .leading).glassPlatter()
+                        .matchedGeometryEffect(id: "focus", in: focusMorph, properties: reduceMotion ? [] : .frame)
                     focusTodayRow
                 case .permission:
                     permissionPlatter
@@ -993,6 +996,7 @@ struct MenuBarDashboardView: View {
                 Button { startFocus(minutes: focusMinutes) } label: {
                     Label("开始专注", systemImage: "scope").frame(maxWidth: .infinity)
                 }
+                .matchedGeometryEffect(id: "focus", in: focusMorph, properties: reduceMotion ? [] : .frame)
                 .glassProminentButton().controlSize(.large)
                 .disabled(model.focus == nil)
             }
