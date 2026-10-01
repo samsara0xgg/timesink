@@ -98,8 +98,13 @@ public final class AppModel {
     /// every category scoring below 1 -- including `uncategorized`, which on
     /// real data is the single largest bucket -- so it read as "time tracked
     /// today" while under-reporting it ~3x. The focus figure is still shown,
-    /// captioned, in the popover (`MenuBarDashboard`).
+    /// captioned, in the popover (`MenuBarDashboard`). The "productive" display
+    /// mode is the captioned variant ("投入 2h"), see `menuProductiveTitle`.
     public var menuTitle: String = "0m"
+    /// Menu bar label for the "productive" mode: "投入 " + today's focus time,
+    /// the same figure as the Today page's 投入 card. Stored, not computed in
+    /// the label body, so the label stays a plain read of model properties.
+    public var menuProductiveTitle: String = String(localized: "投入 \("0m")")
     public var currentCategoryTitle: String {
         _ = dataVersion
         guard let span = engine.currentActivity else { return trackingPaused ? String(localized: "已暂停") : String(localized: "空闲") }
@@ -116,7 +121,7 @@ public final class AppModel {
     /// itself isn't observable, so the menu bar label reads this property
     /// instead; the General settings pane's toggle writes both in lockstep.
     public var menuTextEnabled: Bool
-    public var menuDisplayMode = "total"
+    public var menuDisplayMode = "productive"
     public func setMenuDisplayMode(_ value: String) {
         menuDisplayMode = value
         menuTextEnabled = value != "icon"
@@ -341,7 +346,7 @@ public final class AppModel {
         self.resolver = resolver
         self.engine = engine
         self.menuTextEnabled = settings.menuBarTextEnabled
-        self.menuDisplayMode = settings.get("menuDisplayMode") ?? (settings.menuBarTextEnabled ? "total" : "icon")
+        self.menuDisplayMode = settings.get("menuDisplayMode") ?? (settings.menuBarTextEnabled ? "productive" : "icon")
         self.showScore = settings.get("showScore") != "false"
         self.firstWeekday = settings.get("firstWeekday") == "1" ? 1 : 2
         self.timeFormat = settings.get("timeFormat") ?? "system"
@@ -450,6 +455,7 @@ public final class AppModel {
         let byCategory = Aggregator.durationByCategory(items)
         todayTotalTitle = Format.duration(Aggregator.totalDuration(items.map(\.span)))
         menuTitle = todayTotalTitle
+        menuProductiveTitle = String(localized: "投入 \(Format.duration(Aggregator.focusTime(durationByCategory: byCategory, categories: resolver.categoriesByID)))")
         if let pulse = Aggregator.pulse(durationByCategory: byCategory, categories: resolver.categoriesByID) {
             todayPulseTitle = "\(pulse)"
         } else {

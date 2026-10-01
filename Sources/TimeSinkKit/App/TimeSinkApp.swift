@@ -317,7 +317,8 @@ struct MenuBarLabel: View {
             // once and never lets the main thread go (the hang after
             // pausing). The popover shows the countdown.
             else if model.trackingPaused { Text("已暂停") } else if model.menuTextEnabled {
-                Text(model.menuDisplayMode == "category" ? model.currentCategoryTitle : model.menuTitle).monospacedDigit()
+                Text(model.menuDisplayMode == "category" ? model.currentCategoryTitle
+                     : model.menuDisplayMode == "productive" ? model.menuProductiveTitle : model.menuTitle).monospacedDigit()
             }
             }
         }

@@ -4447,6 +4447,16 @@
         }
       }
     },
+    "投入 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Productive %@"
+          }
+        }
+      }
+    },
     "投入": {
       "localizations": {
         "en": {

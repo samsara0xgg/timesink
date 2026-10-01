@@ -72,6 +72,7 @@ struct RefinedGeneralPane: View {
                 Picker("菜单栏显示", selection: Binding(get: { model.menuDisplayMode }, set: { model.setMenuDisplayMode($0) })) {
                     Text("图标").tag("icon")
                     Text("时长").tag("total")
+                    Text("投入").tag("productive")
                     Text("分类").tag("category")
                 }.pickerStyle(.segmented).fixedSize()
                 VStack(alignment: .leading, spacing: 4) {
