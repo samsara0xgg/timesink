@@ -53,6 +53,7 @@ struct SettingsView: View {
 struct RefinedGeneralPane: View {
     @Bindable var model: AppModel
     @State private var loginEnabled = false
+    @State private var language = ""
     @State private var error: String?
     var body: some View {
         Form {
@@ -92,11 +93,27 @@ struct RefinedGeneralPane: View {
                 Picker("时间格式", selection: $model.timeFormat) {
                     Text("跟随系统").tag("system"); Text("24 小时").tag("24"); Text("12 小时").tag("12")
                 }
+                VStack(alignment: .leading, spacing: 4) {
+                    Picker("语言", selection: $language) {
+                        Text("跟随系统").tag("")
+                        Text(verbatim: "中文").tag("zh-Hans") // l10n: data
+                        Text(verbatim: "English").tag("en")
+                    }
+                    Text("重启 TimeSink 后生效。").font(.system(size: 11)).foregroundStyle(.secondary)
+                }
             }
             if let error { Text(error).foregroundStyle(.red) }
             AboutSection(model: model)
         }.formStyle(.grouped)
-        .onAppear { loginEnabled = SMAppService.mainApp.status == .enabled }
+        .onAppear {
+            loginEnabled = SMAppService.mainApp.status == .enabled
+            // AppleLanguages also holds the system list when never overridden; only our own two values count as a choice.
+            language = UserDefaults.standard.persistentDomain(forName: Bundle.main.bundleIdentifier ?? "")?["AppleLanguages"].flatMap { ($0 as? [String])?.first } ?? ""
+        }
+        .onChange(of: language) { _, value in
+            if value.isEmpty { UserDefaults.standard.removeObject(forKey: "AppleLanguages") }
+            else { UserDefaults.standard.set([value], forKey: "AppleLanguages") }
+        }
     }
 }
 
