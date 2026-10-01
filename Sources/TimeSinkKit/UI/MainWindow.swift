@@ -24,7 +24,7 @@ struct MainWindowView: View {
     var body: some View {
         NavigationSplitView {
             SidebarView(model: model)
-                .navigationSplitViewColumnWidth(min: 180, ideal: 212, max: 250)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 260)
         } detail: {
             detailContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

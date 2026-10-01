@@ -48,7 +48,7 @@ struct SidebarView: View {
 
     private func navigationLabel(_ title: String, symbol: String) -> some View {
         Label { Text(title) } icon: {
-            Image(systemName: symbol).foregroundStyle(Color.accentColor)
+            Image(systemName: symbol)
         }
     }
 }
