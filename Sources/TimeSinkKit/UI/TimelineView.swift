@@ -291,8 +291,7 @@ struct DayTimelineView: View {
         VStack(spacing: 0) {
             ForEach(hours, id: \.self) { hour in
                 HStack(alignment: .top, spacing: 4) {
-                    Text(hour, format: .dateTime.hour().minute())
-                        .font(.caption2).monospacedDigit().foregroundStyle(.secondary)
+                    HourLabel(hour: hour, clearance: 18 / hourHeight * 3600, showsNow: Calendar.current.isDateInToday(day))
                         .frame(width: labelWidth, alignment: .leading)
                     Rectangle().fill(Color(nsColor: .separatorColor)).frame(height: 1)
                 }
@@ -421,6 +420,27 @@ struct DayTimelineView: View {
 
     private func offset(_ date: Date) -> CGFloat { max(0, date.timeIntervalSince(dayStart) / 3600 * hourHeight) }
     private func height(_ duration: TimeInterval) -> CGFloat { max(2, duration / 3600 * hourHeight) }
+}
+
+/// An hour on the axis; it steps aside while the now pill sits on it.
+private struct HourLabel: View {
+    let hour: Date
+    let clearance: TimeInterval
+    let showsNow: Bool
+
+    var body: some View {
+        if showsNow {
+            TimelineView(.periodic(from: .now, by: 30)) { context in
+                label.opacity(abs(context.date.timeIntervalSince(hour)) < clearance ? 0 : 1)
+            }
+        } else {
+            label
+        }
+    }
+
+    private var label: some View {
+        Text(hour, format: .dateTime.hour().minute()).font(.caption2).monospacedDigit().foregroundStyle(.secondary)
+    }
 }
 
 /// Where "now" is, redrawn on its own every 30 s so nothing else does.

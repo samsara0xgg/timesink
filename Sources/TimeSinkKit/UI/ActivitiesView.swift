@@ -195,9 +195,15 @@ struct ActivitiesView: View {
         return VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center, spacing: 8) {
                 Text("时间线").font(.system(size: 13, weight: .semibold))
-                Text("短于 \(TimelineZoom.thresholdLabel(for: activities.timelineHourHeight)) 的切换并入所在的块")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
-                    .contentTransition(.numericText())
+                    .help(String(localized: "短于 \(TimelineZoom.thresholdLabel(for: activities.timelineHourHeight)) 的切换并入所在的块"))
+                let merge = String(localized: "短于 \(TimelineZoom.thresholdLabel(for: activities.timelineHourHeight)) 的切换并入所在的块")
+                // Shown whole or not at all; the title's tooltip always has it.
+                ViewThatFits(in: .horizontal) {
+                    Text(merge).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize()
+                        .contentTransition(.numericText())
+                    Color.clear.frame(width: 0, height: 0)
+                }
+                .help(merge)
                 Spacer(minLength: 0)
                 // In the card rather than the window toolbar: toolbar items
                 // rebuild on every switch to the page, a slider ~15 ms.
@@ -208,13 +214,13 @@ struct ActivitiesView: View {
             HStack(spacing: 14) {
                 legend("相关的切换") { RoundedRectangle(cornerRadius: 1).fill(.primary.opacity(0.75)).frame(width: 9, height: 2) }
                 legend("打断") { RoundedRectangle(cornerRadius: 1).fill(.red).frame(width: 9, height: 2) }
-                legend("专注中被拦下") { Circle().strokeBorder(.primary, lineWidth: 1.5).frame(width: 7, height: 7) }
+                legend("被拦下") { Circle().strokeBorder(.primary, lineWidth: 1.5).frame(width: 7, height: 7) }
                 legend("专注") {
                     RoundedRectangle(cornerRadius: 3).strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, dash: [2, 2]))
                         .frame(width: 14, height: 8)
                 }
-                Text("停留不到 \(dwell) 秒、没打字的不画").foregroundStyle(.tertiary).lineLimit(1)
             }
+            .help(String(localized: "停留不到 \(dwell) 秒、没打字的不画"))
             .font(.system(size: 11)).foregroundStyle(.secondary)
             .padding(.horizontal, 4).padding(.bottom, 10)
             DayTimelineView(day: range.interval.start, blocks: activities.timelineBlocks,
@@ -246,7 +252,7 @@ struct ActivitiesView: View {
     }
 
     private func legend(_ title: LocalizedStringKey, @ViewBuilder mark: () -> some View) -> some View {
-        HStack(spacing: 5) { mark(); Text(title) }.lineLimit(1)
+        HStack(spacing: 5) { mark(); Text(title) }.lineLimit(1).fixedSize()
     }
 
     @ViewBuilder private var timeFilterBanner: some View {

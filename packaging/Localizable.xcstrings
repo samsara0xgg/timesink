@@ -2309,6 +2309,16 @@
         }
       }
     },
+    "分": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "m"
+          }
+        }
+      }
+    },
     "分心": {
       "localizations": {
         "en": {
@@ -5037,6 +5047,16 @@
         }
       }
     },
+    "时": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "h"
+          }
+        }
+      }
+    },
     "时段": {
       "localizations": {
         "en": {
@@ -6598,7 +6618,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Switches under %@ merge into their block"
+            "value": "Switches under %@ merge in"
           }
         }
       }
@@ -7099,6 +7119,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Named: %@, %lld min"
+          }
+        }
+      }
+    },
+    "被拦下": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blocked"
           }
         }
       }
