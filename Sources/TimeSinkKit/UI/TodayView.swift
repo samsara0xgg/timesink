@@ -102,7 +102,7 @@ struct TodayView: View {
             let value = dashboard.pulse.map { "\($0)" } ?? "—"
             Text(verbatim: value).font(.system(size: 30, weight: .semibold)).tracking(-0.5).monospacedDigit().refinedNumberMotion(value)
         }
-        return Grid(horizontalSpacing: 12, verticalSpacing: 12) {
+        return Grid(alignment: .topLeading, horizontalSpacing: 12, verticalSpacing: 12) {
             if wide {
                 GridRow { recorded; engaged; focus; if model.showScore { score } }
             } else {
@@ -116,9 +116,10 @@ struct TodayView: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title).font(.system(size: 12)).foregroundStyle(.secondary)
             value()
-            Text(detail).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2, reservesSpace: true)
+            Text(detail).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2...)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        // Every card in a row takes the tallest one's height, tops aligned.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, 16).padding(.vertical, 14).workspacePanel()
     }
 

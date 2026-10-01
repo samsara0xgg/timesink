@@ -22,21 +22,30 @@ struct DurationHero: View {
     var animated = true
     var body: some View {
         let minutes = Format.minutes(seconds)
-        let unit = Font.system(size: size * 0.42, weight: .medium)
-        HStack(alignment: .firstTextBaseline, spacing: 2) {
-            if minutes >= 60 {
-                Text(minutes / 60, format: .number)
-                Text("小时").font(unit).foregroundStyle(.secondary)
-            }
-            if minutes < 60 || minutes % 60 > 0 {
-                Text(minutes % 60, format: .number)
-                Text("分钟").font(unit).foregroundStyle(.secondary)
-            }
+        // Short units when the long ones would wrap; never more than one line.
+        ViewThatFits(in: .horizontal) {
+            parts(minutes, hour: Text("小时"), minute: Text("分钟"))
+            parts(minutes, hour: Text("时"), minute: Text("分"))
         }
         .font(.system(size: size, weight: .semibold)).tracking(-0.5).monospacedDigit()
         .refinedNumberMotion(animated ? "\(minutes)" : "")
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Format.chineseDuration(Double(minutes) * 60))
+    }
+
+    private func parts(_ minutes: Int, hour: Text, minute: Text) -> some View {
+        let unit = Font.system(size: size * 0.42, weight: .medium)
+        return HStack(alignment: .firstTextBaseline, spacing: 2) {
+            if minutes >= 60 {
+                Text(minutes / 60, format: .number)
+                hour.font(unit).foregroundStyle(.secondary)
+            }
+            if minutes < 60 || minutes % 60 > 0 {
+                Text(minutes % 60, format: .number)
+                minute.font(unit).foregroundStyle(.secondary)
+            }
+        }
+        .lineLimit(1).fixedSize()
     }
 }
 
