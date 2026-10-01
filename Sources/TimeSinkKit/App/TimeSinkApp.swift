@@ -268,6 +268,22 @@ public struct TimeSinkApp: App {
     }
 }
 
+/// Rounds its content's size up to whole points.
+struct WholePointSize: ViewModifier {
+    func body(content: Content) -> some View { Rounded { content } }
+
+    private struct Rounded: Layout {
+        func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+            let size = subviews.first?.sizeThatFits(proposal) ?? .zero
+            return CGSize(width: size.width.rounded(.up), height: size.height.rounded(.up))
+        }
+
+        func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+            subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
+        }
+    }
+}
+
 /// The menu bar's icon + optional text label. Text is today's total tracked
 /// time (`model.menuTitle`, which mirrors `todayTotalTitle`), hidden entirely when
 /// `menuTextEnabled` is off so only the icon remains. The icon itself swaps
@@ -320,6 +336,11 @@ struct MenuBarLabel: View {
             }
             }
         }
+        // The status item sizes itself to this label but keeps whole
+        // points: a fractional width (the paused countdown measured 60.5pt)
+        // came back as 60, got set to 60.5 again, and so on forever, which
+        // was the hang after clicking pause.
+        .modifier(WholePointSize())
         .background(StatusButtonBridge { button in
             model.popoverShortcut.action = { [weak button] in button?.performClick(nil) }
             model.registerPopoverShortcut()
