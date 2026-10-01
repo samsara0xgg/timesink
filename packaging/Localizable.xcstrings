@@ -3775,16 +3775,6 @@
         }
       }
     },
-    "已暂停 ": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Paused "
-          }
-        }
-      }
-    },
     "已用 %@ / %@。今天不会再提醒；可在「专注与限额」中调整。": {
       "localizations": {
         "en": {
