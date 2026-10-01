@@ -57,7 +57,7 @@ public actor SessionNamer {
     /// Words that name no task on their own.
     static let vague: Set<String> = ["review", "reviews", "reviewing", "development", "develop", "coding", "code", "work", "working",
                                      "browsing", "research", "chat", "chatting", "task", "tasks", "session", "project", "debugging",
-                                     "and", "of", "the", "a", "on", "in", "for", "with", "开发", "工作", "浏览", "聊天", "审查", "任务"]
+                                     "and", "of", "the", "a", "on", "in", "for", "with", "开发", "工作", "浏览", "聊天", "审查", "任务"] // l10n: data
 
     /// Title parts that say nothing about the task: app names, and a part
     /// repeated across most titles (" - Claude Code", " — Google Chrome").

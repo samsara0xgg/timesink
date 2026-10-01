@@ -328,7 +328,8 @@ struct DayTimelineView: View {
         }
         .overlay(alignment: .topLeading) {
             GeometryReader { geometry in
-                let sessionWidth: CGFloat = sessions.isEmpty ? 0 : 132
+                // Wider when there is room, so names read in full, as the design draws it.
+                let sessionWidth: CGFloat = sessions.isEmpty ? 0 : min(240, max(132, geometry.size.width * 0.22))
                 let width = max(0, geometry.size.width - labelWidth - 8 - (sessions.isEmpty ? 0 : sessionWidth + 10))
                 let activityWidth = min(440, events.isEmpty ? width : width * 0.62)
                 let sessionX = labelWidth + 8 + activityWidth + 10
@@ -410,8 +411,8 @@ struct DayTimelineView: View {
                 .overlay(alignment: .topLeading) {
                     if tall >= 18 {
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(mark.title)
-                                .font(.system(size: 11, weight: mark.named ? .medium : .regular))
+                            (mark.named ? Text(Image(systemName: "sparkles")).foregroundStyle(mark.color) + Text(" ") + Text(mark.title) : Text(mark.title))
+                                .font(.system(size: 12, weight: mark.named ? .medium : .regular))
                                 .foregroundStyle(mark.named ? .primary : .secondary)
                                 .lineLimit(tall >= 48 ? 2 : 1)
                             if tall >= 34 {

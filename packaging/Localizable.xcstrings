@@ -349,6 +349,16 @@
         }
       }
     },
+    "%@–%@ · 记录 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@–%2$@ · %3$@ recorded"
+          }
+        }
+      }
+    },
     "%@已到今日上限": {
       "localizations": {
         "en": {
@@ -1121,6 +1131,26 @@
         }
       }
     },
+    "Apple 智能在本机起的名，只读了标题和应用名": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Named on this Mac by Apple Intelligence from titles and app names only"
+          }
+        }
+      }
+    },
+    "Apple 智能把握不够，没有起名，下面列出应用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Intelligence was not sure enough to name it; the apps are listed below"
+          }
+        }
+      }
+    },
     "Chrome 未运行": {
       "localizations": {
         "en": {
@@ -1437,6 +1467,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Unavailable, please try again"
+          }
+        }
+      }
+    },
+    "不归入项目": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Project"
           }
         }
       }
@@ -1885,6 +1925,26 @@
         }
       }
     },
+    "从 %@ 起拆开 · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Split from %1$@ · %2$@"
+          }
+        }
+      }
+    },
+    "以后同类的会话也用这个名字": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use this name for sessions like this from now on"
+          }
+        }
+      }
+    },
     "休息": {
       "localizations": {
         "en": {
@@ -1933,6 +1993,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Meetings %@"
+          }
+        }
+      }
+    },
+    "会话": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sessions"
+          }
+        }
+      }
+    },
+    "会话名称": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Session Name"
+          }
+        }
+      }
+    },
+    "会话：%@，%@，%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Session: %1$@, %2$@, %3$@"
           }
         }
       }
@@ -1993,6 +2083,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "You are away from your Mac. This time is excluded; recording resumes when you return."
+          }
+        }
+      }
+    },
+    "你起的名字，同类会话沿用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your name, reused for sessions like this"
           }
         }
       }
@@ -2639,6 +2739,16 @@
         }
       }
     },
+    "取自停留最久的窗口标题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "From the window title held longest"
+          }
+        }
+      }
+    },
     "叠加日程，只读取标题、时间与人数。": {
       "localizations": {
         "en": {
@@ -2655,6 +2765,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Also %@"
+          }
+        }
+      }
+    },
+    "另有 %lld 个应用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld more apps"
           }
         }
       }
@@ -2895,6 +3015,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Sync is off"
+          }
+        }
+      }
+    },
+    "名字依据的标题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Titles Behind the Name"
           }
         }
       }
@@ -4067,6 +4197,16 @@
         }
       }
     },
+    "归入": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Assign To"
+          }
+        }
+      }
+    },
     "当前不会保存屏幕画面": {
       "localizations": {
         "en": {
@@ -4467,6 +4607,16 @@
         }
       }
     },
+    "拆分这个会话": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Split This Session"
+          }
+        }
+      }
+    },
     "拖动圆环上的把手，15 分钟到 2 小时": {
       "localizations": {
         "en": {
@@ -4787,6 +4937,16 @@
         }
       }
     },
+    "改名": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rename"
+          }
+        }
+      }
+    },
     "放大时间线": {
       "localizations": {
         "en": {
@@ -4863,6 +5023,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "News"
+          }
+        }
+      }
+    },
+    "新项目…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New Project…"
           }
         }
       }
@@ -5489,6 +5659,16 @@
         }
       }
     },
+    "未归入": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unassigned"
+          }
+        }
+      }
+    },
     "未授权": {
       "localizations": {
         "en": {
@@ -5811,6 +5991,16 @@
         }
       }
     },
+    "标题太分散，没有起名，下面列出应用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Titles too scattered to name it; the apps are listed below"
+          }
+        }
+      }
+    },
     "标题规则…": {
       "localizations": {
         "en": {
@@ -5937,6 +6127,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Syncing: %lld up, %lld down"
+          }
+        }
+      }
+    },
+    "正在本机起名…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Naming on this Mac…"
           }
         }
       }
@@ -6253,6 +6453,16 @@
         }
       }
     },
+    "没有起名": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unnamed"
+          }
+        }
+      }
+    },
     "活动": {
       "localizations": {
         "en": {
@@ -6409,6 +6619,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Marked automatically from a calendar event"
+          }
+        }
+      }
+    },
+    "由这些应用组成": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Made Up Of"
           }
         }
       }
@@ -6669,6 +6889,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Idle after"
+          }
+        }
+      }
+    },
+    "离开或换事持续这么久，就开新会话。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Away or on something else this long starts a new session."
+          }
+        }
+      }
+    },
+    "离开或换事满": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New session after"
           }
         }
       }
@@ -8157,6 +8397,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Highly productive"
+          }
+        }
+      }
+    },
+    "项目": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Project"
+          }
+        }
+      }
+    },
+    "项目名称": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Project Name"
           }
         }
       }

@@ -150,7 +150,7 @@ struct RefinedRecordingPane: View {
                     Picker("离开或换事满", selection: Binding(get: { model.sessionThreshold }, set: { model.sessionThreshold = $0 })) {
                         ForEach(SessionSegmenter.thresholdChoices, id: \.self) { Text("\(Int($0 / 60)) 分钟").tag($0) }
                     }
-                    caption(String(localized: "离开电脑这么久，或者换了一件事、持续这么久，就开始一个新会话；更短的切换留在原来的会话里。"))
+                    caption(String(localized: "离开或换事持续这么久，就开新会话。"))
                 }
             }
             Section("屏幕采集") {
