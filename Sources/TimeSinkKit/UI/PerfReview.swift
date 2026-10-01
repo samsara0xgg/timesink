@@ -193,6 +193,8 @@ import GRDB
     /// Repeats one interaction for a sampling profiler: `sample <pid>` while it runs.
     private static func profileLoop(_ loop: String, model: AppModel, activities: ActivitiesModel, window: NSWindow) async throws {
         let pause = Duration.milliseconds(500)
+        var keep: [NSWindow] = []
+        defer { keep.forEach { $0.orderOut(nil) } }
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: RefinedStyle.popoverWidth, height: 700),
                             styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         if ["scroll", "day", "select"].contains(loop) {
@@ -237,6 +239,32 @@ import GRDB
                 model.range.shift(-1)
                 try await Task.sleep(for: pause)
                 model.range.shift(1)
+            case "pause":
+                // The popover's pause button, with the popover open.
+                if panel.contentViewController == nil {
+                    // Sized by its content, as a menu bar window is.
+                    let controller = NSHostingController(rootView: AnyView(MenuBarDashboardView(model: model).environment(\.locale, RefinedPreview.locale)))
+                    controller.sizingOptions = [.preferredContentSize]
+                    panel.contentViewController = controller
+                    RefinedPreview.moveToBuiltInDisplay(panel)
+                    panel.orderFrontRegardless()
+                    model.menuTextEnabled = false // as installed: icon only until paused
+                    let label = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 160, height: 24), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+                    let labelController = NSHostingController(rootView: MenuBarLabel(model: model))
+                    labelController.sizingOptions = [.preferredContentSize]
+                    label.contentViewController = labelController
+                    RefinedPreview.moveToBuiltInDisplay(label)
+                    label.orderFrontRegardless()
+                    keep += [panel, label]
+                    try await Task.sleep(for: .milliseconds(900))
+                }
+                let started = Date()
+                model.pauseTracking(minutes: 15)
+                print(String(format: "PAUSE_RETURNED %.0f ms", Date().timeIntervalSince(started) * 1000)); fflush(stdout)
+                try await Task.sleep(for: pause)
+                print(String(format: "PAUSE_TICK %.0f ms", Date().timeIntervalSince(started) * 1000), keep.first?.frame.size ?? .zero); fflush(stdout)
+                model.resumeTracking()
+                try await Task.sleep(for: pause)
             case "popover":
                 let view = NSHostingView(rootView: AnyView(MenuBarDashboardView(model: model).environment(\.locale, RefinedPreview.locale)))
                 panel.contentView = view
