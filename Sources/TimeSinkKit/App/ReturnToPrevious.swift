@@ -20,7 +20,7 @@ extension AppModel {
                 returnCategory = (span.start, span.appBundleID, categoryID)
             }
             productivity = resolver.categoriesByID[categoryID]?.productivity ?? 0
-            distracting = InterruptionRule.distractingCategories.contains(categoryID)
+            distracting = resolver.distractingIDs.contains(categoryID)
         }
         returnTracker.observe(current: span, productivity: productivity, distracting: distracting, now: now,
                               rule: interruptionRule, focusing: focus?.running != nil)

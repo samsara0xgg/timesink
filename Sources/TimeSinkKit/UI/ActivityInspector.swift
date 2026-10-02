@@ -314,7 +314,7 @@ struct ActivityInspector: View {
         }
         let rule = activities.interruptionRule
         for excursion in block.segment?.excursions ?? []
-        where !InterruptionRule.distractingCategories.contains(excursion.categoryID)
+        where !model.resolver.distractingIDs.contains(excursion.categoryID)
             && (excursion.seconds >= rule.dwell || excursion.keySeconds >= InterruptionRule.typedKeySeconds) {
             result.append(Out(start: excursion.start, seconds: excursion.seconds, label: excursion.label,
                               bundleID: block.segment?.parts.first { $0.selection == excursion.row }?.appBundleID ?? "",

@@ -1108,6 +1108,7 @@ final class ActivitiesModel {
                                           matching: ((CategorizedSpan) -> Bool)? = nil,
                                           interruptions: DayInterruptions? = nil,
                                           rule: InterruptionRule = InterruptionRule()) -> [TimelineBlock] {
+        let distracting = Set(categories.values.filter(\.distracting).map(\.id))
         func blocks(_ segments: [TimelineSegment], highlight: Bool, live: Bool) -> [TimelineBlock] {
             segments.map { segment in
                 let categoryID = segment.dominant.categoryID
@@ -1120,7 +1121,7 @@ final class ActivitiesModel {
                               fraction: $0.value / max(1, segment.recorded))
                     }
                 }
-                let ticks = highlight ? [] : Self.ticks(segment, interruptions: interruptions, rule: rule)
+                let ticks = highlight ? [] : Self.ticks(segment, interruptions: interruptions, rule: rule, distracting: distracting)
                 return TimelineBlock(start: segment.start, end: segment.end,
                                      color: RefinedStyle.category(categoryID, hex: categories[categoryID]?.colorHex ?? "#98989D"),
                                      label: segment.dominant.label, tooltip: tooltip(segment),
@@ -1141,11 +1142,11 @@ final class ActivitiesModel {
     /// row) that lasted past the threshold or had typing. Peeks and passes
     /// are never drawn.
     nonisolated static func ticks(_ segment: TimelineSegment, interruptions: DayInterruptions?,
-                                  rule: InterruptionRule) -> [TimelineTick] {
+                                  rule: InterruptionRule, distracting: Set<String>) -> [TimelineTick] {
         let range = segment.start..<segment.end
         var ticks: [TimelineTick] = []
         for excursion in segment.excursions
-        where !InterruptionRule.distractingCategories.contains(excursion.categoryID)
+        where !distracting.contains(excursion.categoryID)
             && (excursion.seconds >= rule.dwell || excursion.keySeconds >= InterruptionRule.typedKeySeconds) {
             ticks.append(TimelineTick(offset: excursion.start.timeIntervalSince(segment.start), seconds: excursion.seconds,
                                       kind: .related, label: excursion.label))

@@ -9,7 +9,7 @@ final class DatabaseTests: XCTestCase {
         let db = try makeDB()
         let store = CategoryStore(db)
         let cats = try store.allCategories()
-        XCTAssertEqual(cats.count, 12)
+        XCTAssertEqual(cats.count, 13)
         XCTAssertEqual(cats.first?.id, "softwareDev")   // sortOrder 排序
         XCTAssertEqual(cats.first?.productivity, 2)
     }
@@ -75,7 +75,7 @@ final class DatabaseTests: XCTestCase {
         let db = try makeDB()
         let store = CategoryStore(db)
         try store.setUserDomain("a.com", categoryID: "news")
-        try store.insertLLMDomain("a.com", categoryID: "shopping")
+        try store.insertLLMDomain("a.com", categoryID: "business")
         XCTAssertEqual(try store.domainMap()["a.com"]?.categoryID, "news")
     }
     func testBuiltinRulesAndAppsSeeded() throws {
@@ -88,7 +88,8 @@ final class DatabaseTests: XCTestCase {
         let db = try makeDB()
         let s = SettingsStore(db)
         XCTAssertEqual(s.idleThreshold, 180)
-        XCTAssertFalse(s.llmEnabled)
+        XCTAssertFalse(s.jevEnabled)
+        XCTAssertEqual(s.jevMonthlyCap, 1.0)
         s.setIdleThreshold(300)
         XCTAssertEqual(s.idleThreshold, 300)
     }

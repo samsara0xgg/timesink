@@ -13,7 +13,8 @@ public enum SeedImporter {
 
     /// Parses `domain,categoryID` rows, skipping `#`-comment lines and any
     /// line that isn't exactly two comma-separated columns. Rows whose
-    /// `categoryID` isn't one of `Taxonomy.categories`'s ids are dropped.
+    /// `categoryID` isn't one of `Taxonomy.categories`'s ids are dropped; a
+    /// retired id (`shopping`) is read as the category that took its place.
     public static func parseCSV(_ text: String) -> [(domain: String, categoryID: String)] {
         let validIDs = Set(Taxonomy.categories.map(\.id))
         var pairs: [(domain: String, categoryID: String)] = []
@@ -22,7 +23,7 @@ public enum SeedImporter {
             let columns = line.split(separator: ",", omittingEmptySubsequences: false)
             guard columns.count == 2 else { continue }
             let domain = String(columns[0])
-            let categoryID = String(columns[1])
+            let categoryID = Taxonomy.retiredIDs[String(columns[1])] ?? String(columns[1])
             guard validIDs.contains(categoryID) else { continue }
             pairs.append((domain: domain, categoryID: categoryID))
         }

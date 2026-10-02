@@ -8,26 +8,101 @@ public final class CategoryStore: Sendable {
         self.writer = writer
     }
 
-    /// The database keeps a built-in category's seed (Chinese) name. It is
-    /// swapped for the app's language on the way out and back on the way in,
-    /// so a name the user never edited follows the language, one they did
-    /// edit is left alone, and saving a colour change never stores a
-    /// translation.
+    /// The assignable categories may not outnumber this; Jev is asked about
+    /// all of them in every request. `uncategorized` is not counted.
+    public static let maxCategories = 15
+
+    /// The database keeps a built-in category's seed (Chinese) name and
+    /// description. They are swapped for the app's language on the way out
+    /// and back on the way in, so text the user never edited follows the
+    /// language, text they did edit is left alone, and saving a colour change
+    /// never stores a translation.
     public func allCategories() throws -> [Category] {
-        try writer.read { db in
-            try Category.fetchAll(db, sql: "SELECT * FROM category ORDER BY sortOrder ASC")
-        }.map { c in
+        try rawCategories().map { c in
             var c = c
             if c.name == Taxonomy.seedName(c.id), let local = Taxonomy.localizedName(c.id) { c.name = local }
+            if c.description == Taxonomy.seedDescription(c.id), let local = Taxonomy.localizedDescription(c.id) { c.description = local }
             return c
+        }
+    }
+
+    /// As stored, in the seed language: what Jev is sent.
+    public func rawCategories() throws -> [Category] {
+        try writer.read { db in
+            try Category.fetchAll(db, sql: "SELECT * FROM category ORDER BY sortOrder ASC")
         }
     }
 
     public func updateCategory(_ c: Category) throws {
         var c = c
         if c.name == Taxonomy.localizedName(c.id), let seed = Taxonomy.seedName(c.id) { c.name = seed }
+        if c.description == Taxonomy.localizedDescription(c.id), let seed = Taxonomy.seedDescription(c.id) { c.description = seed }
         try writer.write { db in
             try c.update(db)
+        }
+    }
+
+    public enum CategoryError: Error, Equatable {
+        case limitReached, notFound, cannotRemove, sameCategory
+    }
+
+    /// Adds a user category after the last one. The id is generated; ids of
+    /// built-ins keep their old spelling for the rows that point at them.
+    @discardableResult
+    public func addCategory(name: String, colorHex: String, description: String = "", productivity: Int = 0,
+                            distracting: Bool = false) throws -> Category {
+        try writer.write { db in
+            let count = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM category WHERE id <> 'uncategorized'") ?? 0
+            guard count < Self.maxCategories else { throw CategoryError.limitReached }
+            let order = (try Int.fetchOne(db, sql: "SELECT MAX(sortOrder) FROM category") ?? -1) + 1
+            let c = Category(id: "custom-" + UUID().uuidString.lowercased().prefix(8), name: name, colorHex: colorHex,
+                             productivity: productivity, sortOrder: order, description: description, distracting: distracting)
+            try c.insert(db)
+            return c
+        }
+    }
+
+    /// Moves everything classified as `id` to `target` and removes `id`:
+    /// rules, app and domain mappings, segment overrides, budgets, focus
+    /// blocks, suggestions and Jev verdicts. `settings`, when given, has its
+    /// cached focus-block list corrected too.
+    public func mergeCategory(_ id: String, into target: String, settings: SettingsStore? = nil) throws {
+        guard id != target else { throw CategoryError.sameCategory }
+        guard id != "uncategorized" else { throw CategoryError.cannotRemove }
+        try writer.write { db in
+            guard try Category.exists(db, key: id), try Category.exists(db, key: target) else { throw CategoryError.notFound }
+            try Self.moveReferences(db, from: id, to: target)
+            try db.execute(sql: "DELETE FROM category WHERE id = ?", arguments: [id])
+        }
+        if let settings {
+            var seen = Set<String>()
+            settings.setFocusBlockedCategories(settings.focusBlockedCategories.map { $0 == id ? target : $0 }.filter { seen.insert($0).inserted })
+        }
+    }
+
+    /// Delete with a home for what was in it: the same operation as a merge.
+    public func deleteCategory(_ id: String, reassignTo target: String, settings: SettingsStore? = nil) throws {
+        try mergeCategory(id, into: target, settings: settings)
+    }
+
+    /// Points every row that names category `from` at `to`. The budget of
+    /// `to` wins over one for `from`.
+    static func moveReferences(_ db: Database, from: String, to: String) throws {
+        for table in ["domainCategory", "urlRule", "appCategory", "titleRule", "spanCategoryOverride",
+                      "classificationSuggestion", "jevVerdict"] where try db.tableExists(table) {
+            try db.execute(sql: "UPDATE \(table) SET categoryID = ? WHERE categoryID = ?", arguments: [to, from])
+        }
+        if try db.tableExists("jevVerdict") {
+            try db.execute(sql: "UPDATE jevVerdict SET runnerUp = ? WHERE runnerUp = ?", arguments: [to, from])
+        }
+        try db.execute(sql: "UPDATE OR IGNORE budget SET categoryID = ? WHERE categoryID = ?", arguments: [to, from])
+        try db.execute(sql: "DELETE FROM budget WHERE categoryID = ?", arguments: [from])
+        try db.execute(sql: "UPDATE OR IGNORE budgetAlert SET categoryID = ? WHERE categoryID = ?", arguments: [to, from])
+        try db.execute(sql: "DELETE FROM budgetAlert WHERE categoryID = ?", arguments: [from])
+        if let blocked = try String.fetchOne(db, sql: "SELECT value FROM setting WHERE key = 'focusBlockedCategories'") {
+            var seen = Set<String>()
+            let moved = blocked.split(separator: ",").map { $0 == Substring(from) ? to : String($0) }.filter { seen.insert($0).inserted }
+            try db.execute(sql: "UPDATE setting SET value = ? WHERE key = 'focusBlockedCategories'", arguments: [moved.joined(separator: ",")])
         }
     }
 

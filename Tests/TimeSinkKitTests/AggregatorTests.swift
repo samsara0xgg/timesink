@@ -112,7 +112,7 @@ final class AggregatorTests: XCTestCase {
         XCTAssertNil(Aggregator.pulse(durationByCategory: [:], categories: cats))
     }
     func testFocusTime() {
-        let by = ["softwareDev": 7200.0, "business": 600.0, "communication": 900.0, "entertainment": 3600.0]
+        let by = ["softwareDev": 7200.0, "research": 600.0, "communication": 900.0, "entertainment": 3600.0]
         XCTAssertEqual(Aggregator.focusTime(durationByCategory: by, categories: cats), 7800)
     }
     func testProfileWeekdayMondayIndexZero() {

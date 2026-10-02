@@ -30,7 +30,7 @@ final class HeatmapInteractionTests: XCTestCase {
         XCTAssertEqual(cell.availableDays, 4)
         XCTAssertEqual(cell.recordedDays, 2)
         XCTAssertEqual(cell.averageSeconds, 600)
-        XCTAssertEqual(cell.categories.first?.name, "软件开发")
+        XCTAssertEqual(cell.categories.first?.name, "编程开发")
         XCTAssertEqual(cell.apps.first?.name, "editor")
         XCTAssertEqual(cell.days.reduce(0) { $0 + $1.seconds }, cell.seconds)
     }

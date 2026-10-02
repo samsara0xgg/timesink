@@ -40,7 +40,7 @@ struct TimelineBlock: Identifiable {
     /// Highlight layer blocks drawn over a filtered day.
     var isHighlight = false
     /// Light category colours read better with dark text.
-    var darkInk: Bool { ["entertainment", "uncategorized", "misc", "utilities"].contains(activity?.categoryID ?? "") }
+    var darkInk: Bool { ["entertainment", "uncategorized", "misc", "utilities", "research"].contains(activity?.categoryID ?? "") }
     /// The leading row's longest title, drawn after the label when it fits.
     var subtitle: String? {
         guard let title = segment?.dominant.longest.span.title, !title.isEmpty, title != label else { return nil }

@@ -4,6 +4,7 @@ import XCTest
 final class InterruptionClassifierTests: XCTestCase {
     private let productivity = ["softwareDev": 2, "business": 1, "communication": 0, "socialMedia": -2,
                                 "misc": 0, "uncategorized": 0, "news": -1]
+    private let distracting: Set<String> = ["communication", "socialMedia", "entertainment", "news"]
 
     /// Spans laid end to end from t=0: (app, category, seconds, keySeconds).
     /// A `nil` app is away time of that many seconds.
@@ -21,7 +22,7 @@ final class InterruptionClassifierTests: XCTestCase {
     }
 
     private func kinds(_ parts: [(String?, String, Double, Int)], rule: InterruptionRule = InterruptionRule()) -> [SwitchEpisode.Kind] {
-        InterruptionClassifier.episodes(day(parts), productivity: productivity, rule: rule).map(\.kind)
+        InterruptionClassifier.episodes(day(parts), productivity: productivity, distracting: distracting, rule: rule).map(\.kind)
     }
 
     func testAPassThroughUnderThreeSecondsIsAPass() {
@@ -35,7 +36,7 @@ final class InterruptionClassifierTests: XCTestCase {
     func testTwoKeySecondsMakeAnInterruptionHoweverShort() {
         let episodes = InterruptionClassifier.episodes(
             day([("xcode", "softwareDev", 60, 0), ("wechat", "communication", 5, 2), ("xcode", "softwareDev", 60, 0)]),
-            productivity: productivity)
+            productivity: productivity, distracting: distracting)
         XCTAssertEqual(episodes.map(\.kind), [.interruption])
         XCTAssertEqual(episodes.first?.reason, .typed)
     }
@@ -54,7 +55,7 @@ final class InterruptionClassifierTests: XCTestCase {
     func testConsecutiveDistractingWindowsAddUp() {
         let episodes = InterruptionClassifier.episodes(
             day([("xcode", "softwareDev", 60, 0), ("wechat", "communication", 8, 0), ("x", "socialMedia", 9, 0), ("xcode", "softwareDev", 60, 0)]),
-            productivity: productivity)
+            productivity: productivity, distracting: distracting)
         XCTAssertEqual(episodes.map(\.kind), [.interruption])
         XCTAssertEqual(episodes.first?.dwell, 17)
         XCTAssertEqual(episodes.first?.destination.hasPrefix("x"), true, "the window holding the most dwell")
@@ -88,7 +89,7 @@ final class InterruptionClassifierTests: XCTestCase {
             day([("xcode", "softwareDev", 60, 0), ("wechat", "communication", 20, 0), ("xcode", "softwareDev", 30, 0),
                  ("wechat", "communication", 20, 0), ("xcode", "softwareDev", 30, 0), ("wechat", "communication", 20, 0),
                  ("xcode", "softwareDev", 90, 0), ("wechat", "communication", 20, 0), ("xcode", "softwareDev", 10, 0)]),
-            productivity: productivity)
+            productivity: productivity, distracting: distracting)
         XCTAssertEqual(episodes.map(\.kind), [.interruption, .interruption])
         XCTAssertEqual(episodes.map(\.visits), [3, 1])
     }
@@ -97,14 +98,14 @@ final class InterruptionClassifierTests: XCTestCase {
         let episodes = InterruptionClassifier.episodes(
             day([("xcode", "softwareDev", 60, 0), ("wechat", "communication", 6, 0), ("xcode", "softwareDev", 20, 0),
                  ("wechat", "communication", 6, 3), ("xcode", "softwareDev", 60, 0)]),
-            productivity: productivity)
+            productivity: productivity, distracting: distracting)
         XCTAssertEqual(episodes.map(\.kind), [.interruption])
         XCTAssertEqual(episodes.first?.reason, .typed)
     }
 
     func testAnEpisodeStillOpenAtTheEndIsKept() {
         let episodes = InterruptionClassifier.episodes(
-            day([("xcode", "softwareDev", 60, 0), ("x", "socialMedia", 40, 0)]), productivity: productivity)
+            day([("xcode", "softwareDev", 60, 0), ("x", "socialMedia", 40, 0)]), productivity: productivity, distracting: distracting)
         XCTAssertEqual(episodes.map(\.kind), [.interruption])
         XCTAssertEqual(episodes.first?.returned, false)
     }
@@ -114,7 +115,7 @@ final class InterruptionClassifierTests: XCTestCase {
             day([("xcode", "softwareDev", 60, 0), ("wechat", "communication", 20, 0), ("xcode", "softwareDev", 120, 0),
                  ("wechat", "communication", 20, 3), ("xcode", "softwareDev", 120, 0), ("wechat", "communication", 5, 0),
                  ("xcode", "softwareDev", 120, 0)]),
-            productivity: productivity))
+            productivity: productivity, distracting: distracting))
         XCTAssertEqual(result.interruptions.count, 2)
         XCTAssertEqual(result.sources.first?.count, 2)
         XCTAssertEqual(result.sources.first?.typed, 1)

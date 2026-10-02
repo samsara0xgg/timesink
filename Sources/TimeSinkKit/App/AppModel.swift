@@ -178,9 +178,10 @@ public final class AppModel {
         if let running = interruptionTasks[day] { return await running.value }
         let items = rangedSpans(for: day)
         let productivity = resolver.categoriesByID.mapValues(\.productivity)
+        let distracting = resolver.distractingIDs
         let blocked = ((try? observationStore?.stateEvents(in: day)) ?? []).filter { $0.kind == "focus_block" }.map(\.at)
         let task = Task.detached(priority: .userInitiated) {
-            DayInterruptions(episodes: InterruptionClassifier.episodes(items, productivity: productivity, rule: rule),
+            DayInterruptions(episodes: InterruptionClassifier.episodes(items, productivity: productivity, distracting: distracting, rule: rule),
                              blocked: blocked)
         }
         interruptionTasks[day] = task
@@ -318,6 +319,8 @@ public final class AppModel {
     /// progress", which is also the correct steady state pre-assembly.
     public var focusStore: FocusSessionStore?
     public var focus: FocusSessionController?
+    /// Jev: the cached category verdicts and the worker that keeps them current.
+    public var jev: JevService?
 
     private let logger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "appModel")
 
@@ -402,7 +405,6 @@ public final class AppModel {
             scheduleEngineDataChanged()
         }
         refreshPendingCount()
-        engine.llmCoordinator?.onSuggestion = { [weak self] in self?.dataChanged() }
     }
 
     /// Spans in the current `range`, clipped to it, and categorized.

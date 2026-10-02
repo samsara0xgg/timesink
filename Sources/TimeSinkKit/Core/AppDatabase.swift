@@ -90,8 +90,11 @@ public enum AppDatabase {
             }
 
             // Seed the fixed taxonomy of 12 categories.
-            for category in Taxonomy.categories {
-                try category.insert(db)
+            for c in Taxonomy.legacyCategories {
+                try db.execute(
+                    sql: "INSERT INTO category (id, name, colorHex, productivity, sortOrder) VALUES (?, ?, ?, ?, ?)",
+                    arguments: [c.id, c.name, c.colorHex, c.productivity, c.sortOrder]
+                )
             }
 
             // Seed builtin app -> category defaults.
@@ -352,6 +355,53 @@ public enum AppDatabase {
             // Where you joined a session onto the one before it. A new table
             // only, so a rollback never sees it.
             try db.create(table: "sessionJoin") { t in t.column("at", .datetime).primaryKey() }
+        }
+        migrator.registerMigration("v15") { db in
+            // Jev categories. A built-in row keeps a name or productivity the
+            // user already changed; one still at the old default takes the
+            // new one. Everything pointing at `shopping` moves to `business`.
+            try db.alter(table: "category") { t in
+                t.add(column: "description", .text).notNull().defaults(to: "")
+                t.add(column: "distracting", .boolean).notNull().defaults(to: false)
+                t.add(column: "isBuiltin", .boolean).notNull().defaults(to: false)
+            }
+            // The verdict per distinct window content; "" stands for none so
+            // the key is a plain unique index. `source` is 'jev' or 'user'.
+            try db.create(table: "jevVerdict") { t in
+                t.column("appBundleID", .text).notNull()
+                t.column("domain", .text).notNull().defaults(to: "")
+                t.column("title", .text).notNull().defaults(to: "")
+                t.column("document", .text).notNull().defaults(to: "")
+                t.column("categoryID", .text).notNull().references("category")
+                t.column("prob", .double).notNull()
+                t.column("runnerUp", .text).notNull().defaults(to: "")
+                t.column("runnerUpProb", .double).notNull().defaults(to: 0)
+                t.column("promptVersion", .text).notNull()
+                t.column("at", .datetime).notNull()
+                t.column("source", .text).notNull().defaults(to: "jev")
+                t.primaryKey(["appBundleID", "domain", "title", "document"])
+            }
+            let old = Dictionary(uniqueKeysWithValues: Taxonomy.legacyCategories.map { ($0.id, $0) })
+            for c in Taxonomy.categories {
+                if let was = old[c.id] {
+                    try db.execute(sql: """
+                        UPDATE category SET
+                            name = CASE WHEN name = ? THEN ? ELSE name END,
+                            productivity = CASE WHEN productivity = ? THEN ? ELSE productivity END,
+                            sortOrder = ?, description = ?, distracting = ?, isBuiltin = 1
+                        WHERE id = ?
+                        """, arguments: [was.name, c.name, was.productivity, c.productivity, c.sortOrder, c.description, c.distracting, c.id])
+                } else {
+                    try c.insert(db)
+                }
+            }
+            for (retired, into) in Taxonomy.retiredIDs {
+                try CategoryStore.moveReferences(db, from: retired, to: into)
+                try db.execute(sql: "DELETE FROM category WHERE id = ?", arguments: [retired])
+            }
+            // Asking for a sentence about a domain is a different consent from
+            // sending titles; the old switch, endpoint and model do not carry over.
+            try db.execute(sql: "DELETE FROM setting WHERE key IN ('llmEnabled', 'llmEndpoint', 'llmModel')")
         }
         return migrator
     }

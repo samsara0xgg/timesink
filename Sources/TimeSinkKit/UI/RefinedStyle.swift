@@ -32,7 +32,8 @@ enum RefinedStyle {
             "softwareDev": ("#3478F6", "#0A84FF"), "learning": ("#34C759", "#30D158"),
             "writing": ("#30B0C7", "#40C8E0"), "business": ("#AF52DE", "#BF5AF2"),
             "utilities": ("#8E8E93", "#A1A1A6"), "communication": ("#FF9F0A", "#FF9F0A"),
-            "news": ("#5856D6", "#5E5CE6"), "shopping": ("#FF2D55", "#FF375F"),
+            "news": ("#5856D6", "#5E5CE6"), "jobSearch": ("#A2845E", "#AC8E68"),
+            "research": ("#64D2FF", "#70D7FF"),
             "socialMedia": ("#FF3B30", "#FF453A"), "entertainment": ("#FFD60A", "#FFD60A"),
             "misc": ("#98989D", "#7C7C82"), "uncategorized": ("#C7C7CC", "#55575E")
         ]

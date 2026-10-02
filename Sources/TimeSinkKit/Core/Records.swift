@@ -22,13 +22,23 @@ public struct Category: Codable, Equatable, Sendable, FetchableRecord, Persistab
     public var colorHex: String
     public var productivity: Int
     public var sortOrder: Int
+    /// What belongs here, in the user's words. Sent to Jev with the name, so
+    /// it is part of what a verdict means (`JevPrompt.version`).
+    public var description: String
+    /// Time here can interrupt work (`InterruptionRule`).
+    public var distracting: Bool
+    public var isBuiltin: Bool
 
-    public init(id: String, name: String, colorHex: String, productivity: Int, sortOrder: Int) {
+    public init(id: String, name: String, colorHex: String, productivity: Int, sortOrder: Int,
+                description: String = "", distracting: Bool = false, isBuiltin: Bool = false) {
         self.id = id
         self.name = name
         self.colorHex = colorHex
         self.productivity = productivity
         self.sortOrder = sortOrder
+        self.description = description
+        self.distracting = distracting
+        self.isBuiltin = isBuiltin
     }
 }
 

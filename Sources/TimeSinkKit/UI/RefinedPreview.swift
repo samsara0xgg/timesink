@@ -333,7 +333,7 @@ public enum RefinedPreview {
         model.focus = FocusSessionController(store: sessions, settings: settings)
         model.observationStore = ObservationStore(db)
         settings.setFocusBlockedApps(["com.apple.MobileSMS", "com.apple.Music"])
-        settings.setFocusBlockedCategories(["socialMedia", "entertainment", "shopping"])
+        settings.setFocusBlockedCategories(["socialMedia", "entertainment", "news"])
         for offset in 0..<4 {
             let start = today.addingTimeInterval(Double(-offset * 86400 + 10 * 3600))
             let session = try sessions.start(at: start, plannedSeconds: 2700)

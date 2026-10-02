@@ -23,9 +23,9 @@ public struct InterruptionRule: Sendable, Equatable, Hashable {
     public static let typedKeySeconds = 2
     /// Returns to the same destination within this count once.
     public static let repeatWindow: TimeInterval = 60
-    /// Only these count as candidates. Uncategorized and misc time never
-    /// does -- it is listed for sorting instead.
-    public static let distractingCategories: Set<String> = ["communication", "socialMedia", "entertainment", "shopping", "news"]
+    // Which categories count as candidates is the `distracting` flag on each
+    // category (`CategoryResolver.distractingIDs`); uncategorized and misc time
+    // is listed for sorting instead.
     /// Productivity at which a category is work you can be interrupted from.
     public static let productiveFloor = 1
 }
@@ -72,7 +72,7 @@ public enum InterruptionClassifier {
     /// is not an interruption of work.
     public static let awayGap: TimeInterval = 30
 
-    public static func episodes(_ items: [CategorizedSpan], productivity: [String: Int],
+    public static func episodes(_ items: [CategorizedSpan], productivity: [String: Int], distracting: Set<String>,
                                 rule: InterruptionRule = InterruptionRule()) -> [SwitchEpisode] {
         struct Open {
             var start: Date
@@ -117,7 +117,7 @@ public enum InterruptionClassifier {
             guard let originCategory = origin else { continue }
             if open == nil { open = Open(start: span.start, end: span.end) }
             open!.end = max(open!.end, span.end)
-            guard InterruptionRule.distractingCategories.contains(item.categoryID),
+            guard distracting.contains(item.categoryID),
                   item.categoryID != originCategory else { continue }
             let identity = ActivityIdentity(item)
             let key = identity.selection.rowID + "\u{1F}" + (span.title ?? "")
