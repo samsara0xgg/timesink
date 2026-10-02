@@ -36,9 +36,9 @@ struct TodayTimelineCard: View {
     @State private var grown = false
     @State private var filling: Date?
 
-    private static let chartHeight: CGFloat = 140
+    private static let chartHeight: CGFloat = 144
     private static let top: CGFloat = 26
-    private static let blockHeight: CGFloat = 44
+    private static let blockHeight: CGFloat = 46
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -48,6 +48,7 @@ struct TodayTimelineCard: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, Design.Space.xl).padding(.top, 18).padding(.bottom, 12)
+        .frame(maxHeight: .infinity, alignment: .top)
         .designCard()
         .onAppear { grown = true }
     }
@@ -126,9 +127,9 @@ struct TodayTimelineCard: View {
         let ticks = hourTicks(width)
         return ZStack(alignment: .topLeading) {
             ForEach(ticks) { tick in
-                Rectangle().fill(Design.line2).frame(width: 1, height: 100).offset(x: tick.x)
+                Rectangle().fill(Design.line2).frame(width: 1, height: 106).offset(x: tick.x)
                 Text(verbatim: tick.text).font(.num(11)).foregroundStyle(Design.ink3).fixedSize()
-                    .position(x: min(max(tick.x, 22), width - 22), y: 114)
+                    .position(x: min(max(tick.x, 22), width - 22), y: 122)
             }
         }
     }
@@ -188,9 +189,11 @@ struct TodayTimelineCard: View {
                 if row.guessed { StripeOverlay().clipShape(shape) }
                 shape.strokeBorder(LinearGradient(colors: [.white.opacity(scheme == .dark ? 0.25 : 0.38), .clear, .black.opacity(0.10)],
                                                   startPoint: .top, endPoint: .bottom), lineWidth: 1)
-                if w >= 34 {
+                // The label shows only if it fits whole; never an ellipsis.
+                ViewThatFits(in: .horizontal) {
                     Text(TodayFmt.clock(row.session.recorded)).font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
-                        .lineLimit(1).padding(.horizontal, 6)
+                        .lineLimit(1).fixedSize().padding(.horizontal, 6)
+                    Color.clear.frame(width: 0, height: 0)
                 }
             }
             .frame(width: w, height: Self.blockHeight)
