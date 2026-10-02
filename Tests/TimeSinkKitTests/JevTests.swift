@@ -17,7 +17,9 @@ final class StubJevTransport: JevTransport, @unchecked Sendable {
     func post(_ request: URLRequest) async throws -> (data: Data, status: Int) {
         lock.withLock { recorded.append(request) }
         let body = try JSONSerialization.jsonObject(with: request.httpBody ?? Data()) as? [String: Any]
-        let state = (body?["state"] as? [String: String]) ?? [:]
+        let raw = (body?["state"] as? [String: Any]) ?? [:]
+        var state = raw.compactMapValues { $0 as? String }
+        if let list = raw["用户以前确认过的例子"] as? [Any] { state["examples"] = String(list.count) }
         let r = reply(state)
         let json: [String: Any] = [
             "answers": ["category": ["choice": r.choice, "probabilities": r.probabilities, "confidence": 0.5]],

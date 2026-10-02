@@ -48,6 +48,30 @@ struct JevState: Sendable {
     var document: String
     /// OCR text of a screenshot; nil unless "send screenshot text" is on.
     var screenText: String? = nil
+    /// Few-shot examples of the user's own choices; only on low-confidence re-asks.
+    var examples: [JevExample]? = nil
+}
+
+/// One thing the user settled before: a confirmed or corrected screen, a rule of theirs, or a seed row.
+struct JevExample: Equatable, Sendable {
+    var bundleID: String
+    var app: String
+    var domain: String
+    var title: String
+    var document: String
+    /// Category display name.
+    var category: String
+
+    static let cap = 20
+    static let sameAppCap = 8
+
+    /// Same bundle id (and same domain when `domain` is not empty) first, up to 8, then the rest
+    /// in the order given (most recent first), up to 20 in all.
+    static func select(from all: [JevExample], bundleID: String, domain: String) -> [JevExample] {
+        let near = all.filter { $0.bundleID == bundleID && (domain.isEmpty || $0.domain == domain) }.prefix(sameAppCap)
+        let rest = all.filter { ex in !near.contains(ex) }.prefix(cap - near.count)
+        return Array(near) + rest
+    }
 }
 
 public struct JevAnswer: Equatable, Sendable {
@@ -64,6 +88,9 @@ public struct JevAnswer: Equatable, Sendable {
 public enum JevPrompt {
     public static let instructions = "这段电脑使用时间属于哪个活动类别？根据应用、网址、窗口标题判断。"  // l10n: data
     public static let instructionsWithScreenText = "这段电脑使用时间属于哪个活动类别？根据应用、网址、窗口标题和屏幕上的文字判断。"  // l10n: data
+    static let exampleListKey = "用户以前确认过的例子"  // l10n: data
+    static let exampleCategoryKey = "用户定的分类"  // l10n: data
+    static let examplesNote = "用户以前确认过的例子代表他的分类习惯，类似的内容按同样方式分。"  // l10n: data
     static let screenTextLimit = 1_200
 
     private static let emailRegex = try! NSRegularExpression(pattern: #"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"#)
@@ -123,11 +150,19 @@ public struct JevClient: Sendable {
         func cut(_ s: String) -> String { String(s.prefix(fieldLimit)) }
         let list = criteria.map { "\(q($0.id)):\(q($0.text))" }.joined(separator: ",")
         let screen = state.screenText.map(JevPrompt.redact)
+        let examples = (state.examples ?? []).isEmpty ? nil : state.examples
+        func item(_ e: JevExample) -> String {
+            let pairs = [("app", e.app), ("domain", e.domain), ("title", String(e.title.prefix(80))), ("document", String(e.document.prefix(60))),
+                         (JevPrompt.exampleCategoryKey, e.category)]
+            return "{" + pairs.map { "\(q($0.0)):\(q($0.1))" }.joined(separator: ",") + "}"
+        }
+        let exampleJSON = examples.map { ",\(q(JevPrompt.exampleListKey)):[" + $0.map(item).joined(separator: ",") + "]" } ?? ""
+        let instructions = (screen == nil ? JevPrompt.instructions : JevPrompt.instructionsWithScreenText) + (examples == nil ? "" : JevPrompt.examplesNote)
         let json = """
             {"model":\(q(model)),"state":{"app":\(q(state.app)),"bundle_id":\(q(state.bundleID)),"domain":\(q(state.domain)),\
             "url":\(q(cut(state.url))),"window_title":\(q(cut(state.title))),"document":\(q(cut(state.document)))\
-            \(screen.map { ",\"screen_text\":\(q($0))" } ?? "")},\
-            "questions":{"category":{"type":"choice","instructions":\(q(screen == nil ? JevPrompt.instructions : JevPrompt.instructionsWithScreenText)),\
+            \(screen.map { ",\"screen_text\":\(q($0))" } ?? "")\(exampleJSON)},\
+            "questions":{"category":{"type":"choice","instructions":\(q(instructions)),\
             "criteria":{\(list)}}}}
             """
         return Data(json.utf8)

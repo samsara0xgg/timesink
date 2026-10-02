@@ -23,6 +23,7 @@ public struct VerdictKey: Hashable, Sendable {
 
 /// A row of `jevVerdict`. `source == "user"` is a correction or confirmation
 /// by the user; it is never re-asked and wins over everything automatic.
+/// `source == "seed"` is an example only: resolution ignores it.
 public struct JevVerdict: Codable, Equatable, Sendable, FetchableRecord, PersistableRecord {
     public static let databaseTableName = "jevVerdict"
     public var appBundleID: String
@@ -36,11 +37,13 @@ public struct JevVerdict: Codable, Equatable, Sendable, FetchableRecord, Persist
     public var promptVersion: String
     public var at: Date
     public var source: String
-    /// 0: not asked with screen text, 1: this verdict used it, 2: asked, the answer was no better.
+    /// 0: not asked with screen text, 1: this verdict used it, 2: asked again (examples, with or without screen text), the screen text was not used.
     public var screenText: Int = 0
 
     public var key: VerdictKey { VerdictKey(appBundleID: appBundleID, domain: domain, title: title, document: document) }
     public var isUser: Bool { source == "user" }
+    /// Written by hand from outside; only ever an example for Jev, never a verdict.
+    public var isSeed: Bool { source == "seed" }
 }
 
 /// What the classifier keeps per automatic verdict.
@@ -115,23 +118,48 @@ extension CategoryStore {
     }
 
     /// Jev verdicts of the current prompt under `threshold` that were never asked
-    /// with screen text, each with the latest capture text (over 40 characters)
-    /// of one of its spans. Lowest probability first.
-    func screenTextRetries(since: Date, promptVersion: String, below threshold: Double) throws -> [(verdict: JevVerdict, appName: String, url: String, text: String)] {
+    /// again, each with the latest capture text (over 40 characters, if any) of one
+    /// of its spans. Lowest probability first.
+    func lowConfidenceRetries(since: Date, promptVersion: String, below threshold: Double) throws -> [(verdict: JevVerdict, appName: String, url: String, text: String?)] {
         try writer.read { db in
             try Row.fetchAll(db, sql: """
                 SELECT v.*, s.appName AS spanApp, COALESCE(s.url, '') AS spanURL, c.text AS captureText, MAX(c.at) AS latest
                 FROM jevVerdict v
                 JOIN span s ON s.appBundleID = v.appBundleID AND COALESCE(s.domain, '') = v.domain
                            AND COALESCE(s.title, '') = v.title AND COALESCE(s.document, '') = v.document
-                JOIN capture c ON c.spanID = s.id
+                LEFT JOIN capture c ON c.spanID = s.id AND length(c.text) > 40
                 WHERE v.source = 'jev' AND v.prob < ? AND v.screenText = 0 AND v.promptVersion = ?
-                  AND s."end" > ? AND length(c.text) > 40
+                  AND s."end" > ?
                 GROUP BY v.appBundleID, v.domain, v.title, v.document
                 ORDER BY v.prob
                 """, arguments: [threshold, promptVersion, since]).map { row in
                 (try JevVerdict(row: row), row["spanApp"], row["spanURL"], row["captureText"])
             }
+        }
+    }
+
+    /// What the user has settled, most recent first: their verdicts, the seed rows, then
+    /// their own title, url, domain and app rules, named by category display name.
+    func jevExamples() throws -> [JevExample] {
+        try writer.read { db in
+            let names = Dictionary(uniqueKeysWithValues: try Category.fetchAll(db).map { ($0.id, $0.name) })
+            let apps = Dictionary(try Row.fetchAll(db, sql: "SELECT appBundleID, MAX(appName) AS n FROM span GROUP BY appBundleID").map { ($0["appBundleID"] as String, $0["n"] as String) },
+                                  uniquingKeysWith: { a, _ in a })
+            var dated: [(Date, JevExample)] = []
+            func add(_ at: Date, bundle: String = "", domain: String = "", title: String = "", document: String = "", category: String) {
+                guard let name = names[category] else { return }
+                dated.append((at, JevExample(bundleID: bundle, app: apps[bundle] ?? bundle, domain: domain, title: String(title.prefix(80)),
+                                             document: String(document.prefix(60)), category: name)))
+            }
+            for v in try JevVerdict.fetchAll(db, sql: "SELECT * FROM jevVerdict WHERE source IN ('user', 'seed') ORDER BY at DESC") {
+                add(v.at, bundle: v.appBundleID, domain: v.domain, title: v.title, document: v.document, category: v.categoryID)
+            }
+            for r in try TitleRule.fetchAll(db) where r.source == "user" && r.enabled { add(r.createdAt, title: r.pattern, category: r.categoryID) }
+            for r in try URLRule.fetchAll(db).sorted(by: { $0.pattern < $1.pattern }) where r.source == "user" { add(.distantPast, title: r.pattern, category: r.categoryID) }
+            for r in try DomainCategoryRow.fetchAll(db).sorted(by: { $0.domain < $1.domain }) where r.source == "user" { add(.distantPast, domain: r.domain, category: r.categoryID) }
+            for r in try AppCategoryRow.fetchAll(db).sorted(by: { $0.bundleID < $1.bundleID }) where r.source == "user" { add(.distantPast, bundle: r.bundleID, category: r.categoryID) }
+            // Stable among equal dates, so a run with the same data sends the same examples.
+            return dated.enumerated().sorted { ($0.element.0, $1.offset) > ($1.element.0, $0.offset) }.map(\.element.1)
         }
     }
 
@@ -211,7 +239,7 @@ extension CategoryStore {
         try writer.read { db in
             let current = Set(try Row.fetchAll(db, sql: "SELECT appBundleID, domain, title, document, promptVersion, source FROM jevVerdict").compactMap { row -> VerdictKey? in
                 let source: String = row["source"], version: String = row["promptVersion"]
-                guard source == "user" || version == promptVersion else { return nil }
+                guard source != "jev" || version == promptVersion else { return nil }
                 return VerdictKey(appBundleID: row["appBundleID"], domain: row["domain"], title: row["title"], document: row["document"])
             })
             let rows = try Row.fetchAll(db, sql: """

@@ -34,7 +34,7 @@ public actor JevWorker {
 
     private enum Target: Sendable {
         case combo(JevCombo)
-        /// A low-confidence verdict asked again with screen text.
+        /// A low-confidence verdict asked again with examples and/or screen text.
         case retry(JevVerdict)
         case capture(JevCapture)
     }
@@ -44,8 +44,9 @@ public actor JevWorker {
     }
 
     /// One pass over everything seen since `since`: window contents without a
-    /// verdict, then (only with "send screenshot text" on) unsure verdicts
-    /// asked again with screen text and bare-title AI-app screens.
+    /// verdict, then unsure verdicts asked again with the user's examples (plus
+    /// screen text when "send screenshot text" is on), then (that switch only)
+    /// bare-title AI-app screens.
     public func run(since: Date, maxConcurrent: Int = 10) async -> RunResult {
         var result = RunResult()
         guard settings.jevEnabled, let key = apiKey(), !key.isEmpty, let endpoint = URL(string: settings.jevEndpoint) else { return result }
@@ -67,23 +68,30 @@ public actor JevWorker {
                       (try? categoryStore.saveVerdict(v)) != nil else { return false }
                 return true
             }
-            guard settings.jevScreenText, !halted else { return result }
+            guard !halted else { return result }
 
-            let retries = try categoryStore.screenTextRetries(since: since, promptVersion: version, below: JevService.lowConfidence).map { r in
-                Job(state: JevState(app: r.appName, bundleID: r.verdict.appBundleID, domain: r.verdict.domain, url: r.url,
-                                    title: r.verdict.title, document: r.verdict.document, screenText: r.text), target: .retry(r.verdict))
+            // Unsure verdicts are asked again with the user's own examples (and screen text, when that switch is on).
+            let screenOn = settings.jevScreenText
+            let examples = try categoryStore.jevExamples()
+            let retries = try categoryStore.lowConfidenceRetries(since: since, promptVersion: version, below: JevService.lowConfidence).compactMap { r -> Job? in
+                let picked = JevExample.select(from: examples, bundleID: r.verdict.appBundleID, domain: r.verdict.domain)
+                let text = screenOn ? r.text : nil
+                guard text != nil || !picked.isEmpty else { return nil }   // nothing new to say: the same question again
+                return Job(state: JevState(app: r.appName, bundleID: r.verdict.appBundleID, domain: r.verdict.domain, url: r.url,
+                                           title: r.verdict.title, document: r.verdict.document, screenText: text,
+                                           examples: picked.isEmpty ? nil : picked), target: .retry(r.verdict))
             }
             halted = await Self.pass(retries, client: client, criteria: criteria, settings: settings, maxConcurrent: maxConcurrent, into: &result) { job, answer in
                 guard case .retry(let old) = job.target else { return false }
                 let combo = JevCombo(key: old.key, appName: "", url: "", seconds: 0)
                 if var v = Self.verdict(for: combo, answer: answer, ids: ids, version: version), v.prob > old.prob {
-                    v.screenText = 1
+                    v.screenText = job.state.screenText == nil ? 2 : 1
                     return (try? categoryStore.saveVerdict(v)) != nil
                 }
                 try? categoryStore.markScreenAsked(old.key)
                 return true
             }
-            guard !halted else { return result }
+            guard settings.jevScreenText, !halted else { return result }
 
             let captures = try categoryStore.pendingCaptures(since: since, promptVersion: version).map { c in
                 Job(state: JevState(app: c.appName, bundleID: c.bundleID, domain: "", url: "", title: c.title, document: "", screenText: c.text),

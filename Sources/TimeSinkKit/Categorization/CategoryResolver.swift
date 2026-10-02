@@ -153,7 +153,7 @@ public final class CategoryResolver {
             self.overrides = overrides
             var user: [VerdictKey: String] = [:], jev: [VerdictKey: JevVerdictEntry] = [:]
             for v in try categoryStore.verdicts() {
-                if v.isUser { user[v.key] = v.categoryID } else if jevEnabled { jev[v.key] = JevVerdictEntry(categoryID: v.categoryID, prob: v.prob, usedScreenText: v.screenText == 1) }
+                if v.isUser { user[v.key] = v.categoryID } else if jevEnabled && !v.isSeed { jev[v.key] = JevVerdictEntry(categoryID: v.categoryID, prob: v.prob, usedScreenText: v.screenText == 1) }
             }
             let shots = jevEnabled && jevScreenText ? try categoryStore.captureVerdictsBySpan() : [:]
             context = ClassificationContext(domainMap: domainMap, appMap: appMap, urlRules: sortedRules,
