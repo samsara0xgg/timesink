@@ -25,9 +25,12 @@ enum ChartAxis {
     }
 
     /// "四 24" (weekday without 周, day of month); today is "今天".
-    static func dayLabel(_ day: Date, now: Date, calendar: Calendar) -> String {
+    static func dayLabel(_ day: Date, now: Date, calendar: Calendar, locale: Locale = AppLanguage.locale) -> String {
         if calendar.isDate(day, inSameDayAs: now) { return String(localized: "今天") }
-        let weekday = calendar.veryShortStandaloneWeekdaySymbols[calendar.component(.weekday, from: day) - 1]
+        // In the app's language, not the system's.
+        var named = calendar
+        named.locale = locale
+        let weekday = named.veryShortStandaloneWeekdaySymbols[calendar.component(.weekday, from: day) - 1]
         return "\(weekday) \(calendar.component(.day, from: day))"
     }
 
@@ -49,4 +52,10 @@ enum ChartAxis {
         }
         return result
     }
+}
+
+/// The language the interface is in (the person's choice in Settings, or the
+/// system's), for dates written in words.
+enum AppLanguage {
+    static var locale: Locale { Locale(identifier: Locale.preferredLanguages.first ?? "en") }
 }

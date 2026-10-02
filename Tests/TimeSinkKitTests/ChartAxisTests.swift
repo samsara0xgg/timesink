@@ -36,7 +36,8 @@ final class ChartAxisTests: XCTestCase {
         calendar.locale = Locale(identifier: "zh_CN")
         let thursday = calendar.date(from: DateComponents(year: 2026, month: 9, day: 24))!
         let now = calendar.date(from: DateComponents(year: 2026, month: 9, day: 30, hour: 10))!
-        XCTAssertEqual(ChartAxis.dayLabel(thursday, now: now, calendar: calendar), "四 24")
+        XCTAssertEqual(ChartAxis.dayLabel(thursday, now: now, calendar: calendar, locale: Locale(identifier: "zh_CN")), "四 24")
+        XCTAssertEqual(ChartAxis.dayLabel(thursday, now: now, calendar: calendar, locale: Locale(identifier: "en_US")), "T 24")
         XCTAssertEqual(ChartAxis.dayLabel(calendar.startOfDay(for: now), now: now, calendar: calendar), String(localized: "今天"))
     }
 
