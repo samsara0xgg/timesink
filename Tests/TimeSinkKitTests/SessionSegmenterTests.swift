@@ -107,4 +107,21 @@ final class SessionSegmenterTests: XCTestCase {
         let longer = SessionSegmenter.sessions(day([("xcode", "softwareDev", 30, "timesink"), ("ghostty", "softwareDev", 8, "timesink")]))[0]
         XCTAssertEqual(short.nameKey, longer.nameKey)
     }
+
+    func testSessionKPIsCountSwitchesAndInterruptions() {
+        let items = day([("xcode", "softwareDev", 20, "timesink"), ("ghostty", "softwareDev", 10, "timesink"), ("xcode", "softwareDev", 10, "timesink")])
+        let session = SessionSegmenter.sessions(items)[0]
+        let episode = { (minute: Double, kind: SwitchEpisode.Kind) in
+            SwitchEpisode(start: ts(minute * 60), end: ts(minute * 60 + 60), dwell: 60, keySeconds: 0, destination: "x", destinationLabel: "x",
+                          destinationBundleID: "x", destinationDomain: nil, destinationCategoryID: "entertainment", originCategoryID: "softwareDev",
+                          kind: kind, reason: nil, visits: 1, returned: true)
+        }
+        let kpis = SessionKPIs.make(session, items: items, episodes: [episode(5, .interruption), episode(15, .interruption), episode(25, .peek), episode(90, .interruption)])
+        XCTAssertEqual(kpis.switches, 2)
+        XCTAssertEqual(kpis.interruptions, 2)
+        XCTAssertEqual(kpis.interruptionInterval, session.recorded / 2)
+        XCTAssertEqual(kpis.switchRate, 2 / (session.recorded / 60), accuracy: 0.0001)
+        XCTAssertEqual(kpis.topApp, "xcode")
+        XCTAssertEqual(kpis.topShare, 0.75, accuracy: 0.0001)
+    }
 }

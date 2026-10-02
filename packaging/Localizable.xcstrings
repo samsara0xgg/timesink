@@ -595,28 +595,6 @@
         }
       }
     },
-    "%lld 小时": {
-      "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld hour"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld hours"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "%lld 条": {
       "localizations": {
         "en": {
@@ -1249,16 +1227,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "No Project"
-          }
-        }
-      }
-    },
-    "不用了": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No Thanks"
           }
         }
       }
@@ -2577,16 +2545,6 @@
         }
       }
     },
-    "可在「设置 · 记录与隐私」中随时开启日历叠加": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Turn on Calendar Overlay anytime in Settings › Recording & Privacy"
-          }
-        }
-      }
-    },
     "可选": {
       "localizations": {
         "en": {
@@ -2963,16 +2921,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Block in Chrome"
-          }
-        }
-      }
-    },
-    "在时间轴上叠加你的日历日程，自动标注会议时间；会议期间空闲不会触发挂起。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Show your calendar on the timeline and mark meeting time automatically. Being idle during a meeting does not pause tracking."
           }
         }
       }
@@ -4095,16 +4043,6 @@
         }
       }
     },
-    "打开系统设置": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Open System Settings"
-          }
-        }
-      }
-    },
     "打开系统设置…": {
       "localizations": {
         "en": {
@@ -4615,16 +4553,6 @@
         }
       }
     },
-    "无法叠加日程或自动标注会议。前往系统设置重新授权日历访问后即可生效。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Events can't be shown or meetings marked. Allow calendar access in System Settings to turn this on."
-          }
-        }
-      }
-    },
     "无法开始专注": {
       "localizations": {
         "en": {
@@ -4701,26 +4629,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Calendar · Optional"
-          }
-        }
-      }
-    },
-    "日历叠加": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Calendar Overlay"
-          }
-        }
-      }
-    },
-    "日历访问被拒绝": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Calendar Access Denied"
           }
         }
       }
@@ -7999,16 +7907,6 @@
         }
       }
     },
-    "%lld 小时 %lld 分": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld h %2$lld min"
-          }
-        }
-      }
-    },
     "%lld 段": {
       "localizations": {
         "en": {
@@ -8771,16 +8669,6 @@
         }
       }
     },
-    "这周专注了 %@。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ of focus this week."
-          }
-        }
-      }
-    },
     "这周还没有专注。": {
       "localizations": {
         "en": {
@@ -9019,26 +8907,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Engagement"
-          }
-        }
-      }
-    },
-    "这周还没开过专注，平均每 %lld 分钟被打断一次。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No focus this week yet. You are pulled away every %lld minutes on average."
-          }
-        }
-      }
-    },
-    "这周专注了 %@，平均每 %lld 分钟被打断一次。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@ of focus this week. You are pulled away every %2$lld minutes on average."
           }
         }
       }
@@ -10199,6 +10067,128 @@
           "stringUnit": {
             "state": "translated",
             "value": "Colour"
+          }
+        }
+      }
+    },
+    "和上一段是同一个项目，紧接着。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Same project as the previous one, right after it."
+          }
+        }
+      }
+    },
+    "和上一段是同一类，紧接着。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Same kind as the previous one, right after it."
+          }
+        }
+      }
+    },
+    "切换": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switches"
+          }
+        }
+      }
+    },
+    "平均 %@ 一次": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "every %@"
+          }
+        }
+      }
+    },
+    "打断 %lld": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld interruption"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld interruptions"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "每分钟 %@ 次": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ per minute"
+          }
+        }
+      }
+    },
+    "没被打断": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "none"
+          }
+        }
+      }
+    },
+    "跨度 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "span %@"
+          }
+        }
+      }
+    },
+    "这周专注 %@。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ of focus this week."
+          }
+        }
+      }
+    },
+    "这周没开过专注，每 %lld 分钟被打断一次。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No focus yet this week; interrupted every %lld min."
+          }
+        }
+      }
+    },
+    "这周专注 %@，每 %lld 分钟被打断一次。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ of focus this week; interrupted every %2$lld min."
           }
         }
       }

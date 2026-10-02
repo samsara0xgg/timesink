@@ -147,7 +147,7 @@ final class AggregatorTests: XCTestCase {
         XCTAssertEqual(Format.duration(0, locale: en), "0m")
         XCTAssertEqual(Format.duration(3661, locale: zh), "1 小时 1 分")
         XCTAssertEqual(Format.duration(660, locale: zh), "11 分")
-        XCTAssertEqual(Format.duration(3 * 3600, locale: zh), "3 小时 0 分")
+        XCTAssertEqual(Format.duration(3 * 3600, locale: zh), "3 小时")
         XCTAssertEqual(Format.duration(25 * 3600 + 23 * 60, locale: zh), "25 小时 23 分")
         XCTAssertEqual(Format.duration(30, locale: zh), "不到 1 分")
         XCTAssertEqual(Format.duration(0, locale: zh), "0 分")

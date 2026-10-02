@@ -28,6 +28,7 @@ struct SessionInspector: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
+                kpiRow
                 actions
                 mergeSuggestion
                 projectRow
@@ -42,6 +43,38 @@ struct SessionInspector: View {
         .onChange(of: session.start) { _, _ in editingName = false; newProject = false; recatOpen = false }
         .task(id: session.start) { loadCaptures() }
         .sheet(item: $selectedCapture) { CaptureReviewSheet(capture: $0) }
+    }
+
+    private var kpis: SessionKPIs {
+        SessionKPIs.make(session, items: model.rangedSpans(for: DateInterval(start: session.start, end: session.end)),
+                         episodes: activities.dayInterruptions?.episodes ?? [])
+    }
+
+    /// 时长, 切换, 打断 and 主要应用 at a glance.
+    private var kpiRow: some View {
+        let k = kpis
+        let known = activities.dayInterruptions != nil
+        let interval: String = k.interruptionInterval.map { String(localized: "平均 \(Format.duration($0)) 一次") } ?? String(localized: "没被打断")
+        return Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
+            GridRow {
+                kpi("时长", Format.duration(session.recorded), note: String(localized: "跨度 \(Format.duration(session.duration))"))
+                kpi("切换", String(localized: "\(k.switches) 次"), note: String(localized: "每分钟 \(String(format: "%.1f", k.switchRate)) 次"))
+            }
+            GridRow {
+                kpi("打断", known ? String(localized: "\(k.interruptions) 次") : "—", note: known ? interval : "")
+                kpi("主要应用", k.topApp ?? "—", note: String(localized: "占 \(Int((k.topShare * 100).rounded()))%"))
+            }
+        }
+        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Design.track))
+    }
+
+    private func kpi(_ label: LocalizedStringKey, _ value: String, note: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label).font(.system(size: 11)).foregroundStyle(Design.ink3)
+            Text(verbatim: value).font(.num(16, .bold)).foregroundStyle(Design.ink).lineLimit(1)
+            Text(verbatim: note).font(.num(11)).foregroundStyle(Design.ink3).lineLimit(1)
+        }.frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var previous: WorkSession? { activities.sessions.last { $0.start < session.start } }
@@ -68,8 +101,8 @@ struct SessionInspector: View {
                 HStack(spacing: 8) {
                     Text("✦").foregroundStyle(Design.accent)
                     Group {
-                        if sameProject { Text("和上一段是同一个项目，隔了 \(Format.chineseDuration(max(0, gap)))。") }
-                        else { Text("和上一段是同一类，只隔了 \(Format.chineseDuration(max(0, gap)))。") }
+                        if sameProject { gap < 60 ? Text("和上一段是同一个项目，紧接着。") : Text("和上一段是同一个项目，隔了 \(Format.duration(gap))。") }
+                        else { gap < 60 ? Text("和上一段是同一类，紧接着。") : Text("和上一段是同一类，只隔了 \(Format.duration(gap))。") }
                     }.font(.system(size: 12)).foregroundStyle(Design.ink2)
                     Spacer(minLength: 4)
                     Button("合并成一段") { withAnimation(Design.motion(Design.settle, reduced: reduceMotion)) { activities.join(session, model: model) } }

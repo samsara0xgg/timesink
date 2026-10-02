@@ -30,7 +30,7 @@ struct FocusWorkspaceView: View {
                             VStack(spacing: Design.Space.lg) { sessionColumn.revealOnce(index: 2); weekChart }
                                 .frame(maxWidth: .infinity)
                             VStack(spacing: Design.Space.lg) { budgetColumn; if model.focus?.running == nil { blockCard.revealOnce(index: 5) } }
-                                .frame(maxWidth: .infinity)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
                     } else {
                         VStack(spacing: Design.Space.lg) {
@@ -68,9 +68,9 @@ struct FocusWorkspaceView: View {
         let gap = interruptions.flatMap { $0.count > 0 ? max(1, Int(($0.recorded / Double($0.count) / 60).rounded())) : nil }
         let sentence: Text
         if let gap {
-            sentence = sessions.isEmpty ? Text("这周还没开过专注，平均每 \(gap) 分钟被打断一次。") : Text("这周专注了 \(time)，平均每 \(gap) 分钟被打断一次。")
+            sentence = sessions.isEmpty ? Text("这周没开过专注，每 \(gap) 分钟被打断一次。") : Text("这周专注 \(time)，每 \(gap) 分钟被打断一次。")
         } else {
-            sentence = sessions.isEmpty ? Text("这周还没有专注。") : Text("这周专注了 \(time)。")
+            sentence = sessions.isEmpty ? Text("这周还没有专注。") : Text("这周专注 \(time)。")
         }
         return PageHeaderRow(lead: Text("近 7 天"), sentence: sentence, stats: [
             StripStat(id: 0, label: "本周专注", value: TodayFmt.clock(total), note: String(localized: "\(sessions.count) 次"), color: Design.accentInk),
@@ -137,7 +137,7 @@ struct FocusWorkspaceView: View {
         }
         .font(.system(size: 13))
         .padding(.horizontal, Design.Space.xl).padding(.vertical, 18)
-        .frame(maxWidth: .infinity, alignment: .topLeading).designCard()
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).designCard()
     }
 
     /// A filled row: a title, what it covers (click to edit), a switch.
@@ -169,7 +169,7 @@ struct FocusWorkspaceView: View {
                 Divider().padding(.top, 4)
                 Text("限额只发提醒，不拦截任何东西；拦截只在专注会话里发生。").font(.system(size: 11)).foregroundStyle(.secondary)
                     .padding(.top, 8)
-            }.font(.system(size: 13)).frame(maxWidth: .infinity, alignment: .leading).padding(18).workspacePanel().revealOnce(index: 3)
+            }.font(.system(size: 13)).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(18).workspacePanel().revealOnce(index: 3)
         }
     }
 
