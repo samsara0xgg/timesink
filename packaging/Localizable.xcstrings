@@ -4712,7 +4712,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Collapse"
+            "value": "Show less"
           }
         }
       }
@@ -8995,6 +8995,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Projects are read from repository names in window titles; those that cannot be are guessed from the time around them, marked so you can confirm."
+          }
+        }
+      }
+    },
+    "还有 %lld 个项目 ›": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld more project ›"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld more projects ›"
+                }
+              }
+            }
           }
         }
       }

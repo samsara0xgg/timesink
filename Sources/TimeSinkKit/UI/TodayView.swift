@@ -70,17 +70,17 @@ struct TodayView: View {
                 TodayStats(plan: plan, model: model, today: today).frame(width: 600)
             }.frame(height: 92)
             HStack(alignment: .top, spacing: Design.Space.lg) {
-                nowCard(plan).frame(width: 392, height: 256)
-                timeline(plan).frame(height: 256)
+                nowCard(plan).frame(width: 392, height: 232)
+                timeline(plan).frame(height: 232)
             }
             HStack(alignment: .top, spacing: Design.Space.lg) {
                 projectsCard(plan).frame(width: 392)
                 categoriesCard(plan).frame(width: 400)
                 todosCard(plan).frame(maxWidth: .infinity)
             }
-            // What is left under the first two rows, never less than 400: a
+            // What is left under the first two rows, never less than 372: a
             // card's long list scrolls inside it instead of stretching the page.
-            .frame(height: max(400, height - 8 - 92 - 256 - 3 * Design.Space.lg - 24))
+            .frame(height: max(372, height - 8 - 92 - 232 - 3 * Design.Space.lg - 24))
         }
     }
 
@@ -90,10 +90,10 @@ struct TodayView: View {
                 TodayHeadline(plan: plan, model: model)
                 TodayStats(plan: plan, model: model, today: today).frame(height: 84)
             }.frame(maxWidth: .infinity, alignment: .leading)
-            timeline(plan).frame(height: 256)
+            timeline(plan).frame(height: 232)
             Grid(horizontalSpacing: Design.Space.lg, verticalSpacing: Design.Space.lg) {
-                GridRow { nowCard(plan).frame(height: 256); projectsCard(plan).frame(height: 256) }
-                GridRow { categoriesCard(plan).frame(height: 400); todosCard(plan).frame(height: 400) }
+                GridRow { nowCard(plan).frame(height: 232); projectsCard(plan).frame(height: 300) }
+                GridRow { categoriesCard(plan).frame(height: 372); todosCard(plan).frame(height: 372) }
             }
         }
     }
@@ -313,7 +313,7 @@ private struct TodayNowCard: View {
                 .refinedNumberMotion(TodayFmt.long(row.session.recorded))
         }
         HStack(spacing: 6) {
-            ForEach(row.session.apps.prefix(3), id: \.bundleID) { app in
+            ForEach(row.session.apps.filter { $0.seconds >= 60 }.prefix(3), id: \.bundleID) { app in
                 Text(verbatim: "\(app.name) \(TodayFmt.long(app.seconds))").font(.system(size: 11)).lineLimit(1)
                     .foregroundStyle(Design.ink).padding(.horizontal, 9).frame(height: 24)
                     .background(Design.chip, in: Capsule())
@@ -372,27 +372,53 @@ private struct TodayProjectsCard: View {
     let plan: TodayPlan
     @Binding var filter: ProjectFilter
     @Binding var selected: Date?
+    @State private var expanded = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    private static let rowHeight: CGFloat = 80
+    private static let chrome: CGFloat = 18 * 2 + 28 + 8 + 30
+    private static let linkHeight: CGFloat = 30
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text("项目").cardTitle()
-                Text("点一下只看它").font(.system(size: 12)).foregroundStyle(Design.ink3)
-            }.padding(.bottom, 6)
-            ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(plan.projects) { project in row(project) }
+        GeometryReader { proxy in
+            // As many rows as fit under the heading and above the note; the
+            // rest sit behind "还有 N 个项目" rather than being cut off.
+            let all = plan.projects
+            let room = proxy.size.height - Self.chrome
+            let overflow = all.count > max(1, Int(room / Self.rowHeight))
+            let fit = max(1, Int((room - (overflow ? Self.linkHeight : 0)) / Self.rowHeight))
+            let shown = expanded || !overflow ? all : Array(all.prefix(fit))
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text("项目").cardTitle()
+                    Text("点一下只看它").font(.system(size: 12)).foregroundStyle(Design.ink3)
+                }.padding(.bottom, 6)
+                if expanded {
+                    ScrollView { rows(shown) }.scrollIndicators(.never)
+                } else {
+                    rows(shown)
                 }
+                if overflow {
+                    Button {
+                        withAnimation(Design.motion(Design.settle, reduced: reduceMotion)) { expanded.toggle() }
+                    } label: {
+                        Group {
+                            if expanded { Text("收起") } else { Text("还有 \(all.count - shown.count) 个项目 ›") }
+                        }.font(.system(size: 12)).foregroundStyle(Design.link).padding(.vertical, 6)
+                    }.buttonStyle(.plain)
+                }
+                Spacer(minLength: 0)
+                Text("项目从窗口标题里的仓库名认出来；认不出的按前后时间推测，会标出来让你确认。")
+                    .font(.system(size: 11)).foregroundStyle(Design.ink3).fixedSize(horizontal: false, vertical: true).padding(.top, 8)
             }
-            .scrollIndicators(.never).scrollBounceBehavior(.basedOnSize)
-            .mask(LinearGradient(stops: [.init(color: .black, location: 0.9), .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
-            Text("项目从窗口标题里的仓库名认出来；认不出的按前后时间推测，会标出来让你确认。")
-                .font(.system(size: 11)).foregroundStyle(Design.ink3).fixedSize(horizontal: false, vertical: true).padding(.top, 8)
+            .padding(.horizontal, Design.Space.xl).padding(.vertical, 18)
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
         }
-        .padding(.horizontal, Design.Space.xl).padding(.vertical, 18)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .designCard()
+    }
+
+    private func rows(_ projects: [TodayPlan.Project]) -> some View {
+        VStack(spacing: 0) { ForEach(projects) { row($0) } }
     }
 
     private func isOn(_ project: TodayPlan.Project) -> Bool { filter == .some(project.name) }
@@ -542,6 +568,8 @@ private struct TodayTodosCard: View {
             } else {
                 ForEach(plan.todos) { todo in row(todo).transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .leading))) }
                 Spacer(minLength: 0)
+                Text("补记画成虚线框，和电脑上的时间分开统计，不计入评分。")
+                    .font(.system(size: 11)).foregroundStyle(Design.ink3).fixedSize(horizontal: false, vertical: true)
             }
         }
         .animation(reduceMotion ? nil : Design.settle, value: plan.todos.map(\.id))
@@ -574,7 +602,7 @@ private struct TodayTodosCard: View {
                                 title: String(localized: "\(Format.chineseDuration(seconds))还没分类"),
                                 note: names.joined(separator: String(localized: "、")), action: "去分类")
         case .focus(let day, let minutes):
-            let note = day.flatMap { day in minutes.map { String(localized: "最近一次是 \(day.formatted(.dateTime.month().day())) · \($0) 分钟") } }
+            let note = day.flatMap { day in minutes.map { String(localized: "最近一次是 \(day.formatted(.dateTime.month().day().locale(model.textLocale))) · \($0) 分钟") } }
                 ?? String(localized: "选一个时长，开始计时")
             return Presentation(symbol: "scope", color: Design.accent, title: String(localized: "今天还没专注过"), note: note, action: "开始")
         }
