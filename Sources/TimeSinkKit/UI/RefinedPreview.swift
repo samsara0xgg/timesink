@@ -468,12 +468,12 @@ private struct RefinedMotionProof: View {
     private func column(reduced: Bool) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(reduced ? "减弱动态效果 · 150ms 淡变" : "普通模式 · 280ms 数字滚动") // l10n: data
-                .font(.system(size: 12)).foregroundStyle(.secondary)
-            Text("今天已记录").font(.system(size: 12)).foregroundStyle(.secondary) // l10n: data
+                .font(.body).foregroundStyle(Design.ink2)
+            Text("今天已记录").font(.body).foregroundStyle(Design.ink2) // l10n: data
             Text(stage.motionValue).font(.system(size: 34, weight: .semibold)).tracking(-0.68).monospacedDigit()
                 .modifier(RefinedNumberMotion(value: stage.motionValue, reducedOverride: reduced))
-            Text("隔离预览 · 示例数据").font(.system(size: 11)).foregroundStyle(.secondary) // l10n: data
-        }.frame(maxWidth: .infinity, alignment: .leading).padding(20).workspacePanel()
+            Text("隔离预览 · 示例数据").font(.note).foregroundStyle(Design.ink2) // l10n: data
+        }.frame(maxWidth: .infinity, alignment: .leading).padding(20).designCard()
     }
 }
 private struct RefinedBlockProof: NSViewRepresentable {

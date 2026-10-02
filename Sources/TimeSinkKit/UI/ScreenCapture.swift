@@ -55,6 +55,7 @@ import WebKit
                               styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                               backing: .buffered, defer: false)
             window.contentViewController = controller
+            window.initialFirstResponder = controller.view
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
             window.toolbarStyle = .unified
@@ -151,6 +152,7 @@ import WebKit
                               styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                               backing: .buffered, defer: false)
         window.contentViewController = controller
+        window.initialFirstResponder = controller.view
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.appearance = NSApp.appearance

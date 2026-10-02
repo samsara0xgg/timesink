@@ -48,7 +48,7 @@ struct RefinedRulesPane: View {
         VStack(spacing: 0) {
             HStack {
                 Text("按优先级匹配；拖动可调整同一范围的标题规则顺序。")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .font(.body).foregroundStyle(Design.ink2)
                 Spacer()
                 Menu {
                     Button("标题规则…") { pendingTitle = .init(prefill: "", scopeKey: "", scopeLabel: "", categoryID: "softwareDev") }
@@ -61,11 +61,11 @@ struct RefinedRulesPane: View {
                     Button { onClearFilter() } label: {
                         HStack(spacing: 4) {
                             Text("只看 \(model.resolver.categoriesByID[categoryFilter]?.name ?? "")")
-                            Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
+                            Image(systemName: "xmark").font(.note.weight(.bold))
                         }
-                    }.buttonStyle(PillButtonStyle(height: 24, font: .system(size: 11)))
+                    }.buttonStyle(PillButtonStyle(height: 24, font: .note))
                 }
-                Text("\(visible.count) 条").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text("\(visible.count) 条").font(.note).foregroundStyle(Design.ink2)
             }.padding(.horizontal, 14).padding(.bottom, 12)
             header
             ScrollView {
@@ -82,8 +82,8 @@ struct RefinedRulesPane: View {
                     }
                 }
             }
-            if let error { Text(error).font(.system(size: 12)).foregroundStyle(.red).padding(12) }
-        }.workspacePanel().task { load(); loadHits() }
+            if let error { Text(error).font(.body).foregroundStyle(Design.alert).padding(12) }
+        }.designCard().task { load(); loadHits() }
         .onPageChange(of: model.dataEditVersion) { load(); loadHits() }
         .onPageChange(of: model.dataVersion) { loadHits() }
         .sheet(item: $pendingTitle) { TitleRuleEditor(model: model, pending: $0) }
@@ -92,14 +92,14 @@ struct RefinedRulesPane: View {
                 Text("新建网址规则").font(.system(size: 17, weight: .semibold))
                 TextField("网址包含，或 re: 正则表达式", text: $newPattern).textFieldStyle(.roundedBorder)
                 Picker("归为", selection: $newCategory) { ForEach(model.resolver.categoriesByID.values.sorted { $0.sortOrder < $1.sortOrder }, id: \.id) { Text($0.name).tag($0.id) } }
-                Text("仅检查记录中的网址；不访问网页。至少 3 个字符。").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text("仅检查记录中的网址；不访问网页。至少 3 个字符。").font(.note).foregroundStyle(Design.ink2)
                 HStack {
                     Spacer()
                     Button("取消") { newPattern = ""; urlError = nil; showURL = false }.keyboardShortcut(.cancelAction)
                     Button("添加规则", action: addURL).buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
                         .disabled(Self.urlPattern(newPattern) == nil)
                 }
-                if let urlError { Text(urlError).foregroundStyle(.red) }
+                if let urlError { Text(urlError).foregroundStyle(Design.alert) }
             }.padding(24).frame(width: 460)
         }
     }
@@ -112,22 +112,22 @@ struct RefinedRulesPane: View {
             Text("归为").frame(width: chipWidth, alignment: .leading)
             Text("近 7 天").frame(width: 84, alignment: .trailing)
             Text("来源").frame(width: 48)
-        }.font(.system(size: 11)).foregroundStyle(.secondary).padding(.horizontal, 14).frame(height: 28).background(.quaternary.opacity(0.45))
+        }.font(.note).foregroundStyle(Design.ink2).padding(.horizontal, 14).frame(height: 28).background(.quaternary.opacity(0.45))
     }
     private func rule(_ row: RuleRow) -> some View {
         HStack(spacing: 10) {
             Toggle(String(localized: "启用规则：\(row.displayPattern)"), isOn: Binding(get: { row.enabled }, set: { setEnabled(row, $0) })).toggleStyle(.checkbox).controlSize(.small).labelsHidden().frame(width: 28, alignment: .leading)
-            Image(systemName: "line.3.horizontal").font(.system(size: 11)).foregroundStyle(.tertiary).frame(width: 16)
+            Image(systemName: "line.3.horizontal").font(.note).foregroundStyle(Design.ink2).frame(width: 16)
                 .opacity(row.type == String(localized: "标题") && row.source == "user" ? 1 : 0)
-            Text(row.type).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).padding(.vertical, 3).padding(.horizontal, 4)
+            Text(row.type).font(.note).foregroundStyle(Design.ink2).lineLimit(1).padding(.vertical, 3).padding(.horizontal, 4)
                 .frame(minWidth: 42).background(.quaternary, in: RoundedRectangle(cornerRadius: 5)).frame(width: 56, alignment: .leading)
             HStack(spacing: 3) {
-                if !row.scopeLabel.isEmpty { Text(row.scopeLabel + " ·").foregroundStyle(.secondary) }
+                if !row.scopeLabel.isEmpty { Text(row.scopeLabel + " ·").foregroundStyle(Design.ink2) }
                 Text(row.displayPattern)
-            }.font(.system(size: 13)).foregroundStyle(row.enabled ? .primary : .secondary).lineLimit(1).truncationMode(.middle).frame(maxWidth: .infinity, alignment: .leading).help(row.scopeLabel + " " + row.displayPattern)
+            }.font(.body).foregroundStyle(row.enabled ? .primary : .secondary).lineLimit(1).truncationMode(.middle).frame(maxWidth: .infinity, alignment: .leading).help(row.scopeLabel + " " + row.displayPattern)
             CategoryChip(category: model.resolver.categoriesByID[row.category]).lineLimit(1).frame(width: chipWidth, alignment: .leading)
-            Text(row.seconds == 0 ? "—" : Format.duration(row.seconds, compact: true)).font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit().frame(width: 84, alignment: .trailing)
-            Text(row.source == "user" ? "你" : "内置").font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).frame(width: 48)
+            Text(row.seconds == 0 ? "—" : Format.duration(row.seconds, compact: true)).font(.body).foregroundStyle(Design.ink2).monospacedDigit().frame(width: 84, alignment: .trailing)
+            Text(row.source == "user" ? "你" : "内置").font(.note).foregroundStyle(Design.ink2).lineLimit(1).frame(width: 48)
         }.padding(.horizontal, 14).frame(minHeight: 42)
             .contextMenu {
                 if isOrderable(row) {

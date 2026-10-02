@@ -46,39 +46,39 @@ struct ToConfirmCard: View {
                     LazyVStack(spacing: 0) { ForEach(rows) { row in line(row); Divider() } }
                 }.scrollIndicators(.never).frame(maxHeight: 260)
             }
-            if let error { Text(error).font(.system(size: 12)).foregroundStyle(.red) }
+            if let error { Text(error).font(.body).foregroundStyle(Design.alert) }
         }
-        .padding(.horizontal, Design.Space.xl).padding(.vertical, 18)
+        .padding(Design.Space.card)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .designCard().revealOnce(index: 1)
+        .designCard()
         .pageTask(id: LoadKey(version: model.dataVersion, range: model.range)) { load() }
     }
 
     private func empty(_ text: LocalizedStringKey) -> some View {
-        Text(text).font(.system(size: 12)).foregroundStyle(Design.ink3).padding(.vertical, 6)
+        Text(text).font(.body).foregroundStyle(Design.ink2).padding(.vertical, 6)
     }
 
     private func line(_ row: ToConfirmRow) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: Design.Space.md) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(row.label).font(.system(size: 13, weight: .medium)).lineLimit(1)
-                    if !row.detail.isEmpty { Text(row.detail).font(.system(size: 12)).foregroundStyle(Design.ink3).lineLimit(1) }
+                    Text(row.label).font(.body.weight(.medium)).lineLimit(1)
+                    if !row.detail.isEmpty { Text(row.detail).font(.body).foregroundStyle(Design.ink2).lineLimit(1) }
                 }
                 (Text("Jev 倾向 \(row.pickName) \(Int((row.verdict.prob * 100).rounded()))%")
                     + (row.runnerUpName.map { Text(" · 其次 \($0) \(Int((row.verdict.runnerUpProb * 100).rounded()))%") } ?? Text(verbatim: "")))
-                    .font(.system(size: 11)).foregroundStyle(Design.ink2).lineLimit(1)
+                    .font(.note).foregroundStyle(Design.ink2).lineLimit(1)
             }
             Spacer(minLength: 8)
-            Text(Format.duration(row.verdict.seconds, compact: true)).font(.num(12)).foregroundStyle(Design.ink2)
-            Button("确认") { set(row, row.verdict.categoryID, .none) }.buttonStyle(PillButtonStyle(height: 24, font: .system(size: 11)))
+            Text(Format.duration(row.verdict.seconds, compact: true)).font(.body.monospacedDigit()).foregroundStyle(Design.ink2)
+            Button("确认") { set(row, row.verdict.categoryID, .none) }.buttonStyle(PillButtonStyle(height: 24, font: .note))
             Menu {
                 picks(row, rule: .none)
                 Divider()
                 if !row.verdict.key.domain.isEmpty { Menu("改为并存为网站规则") { picks(row, rule: .domain) } }
                 Menu("改为并存为应用规则") { picks(row, rule: .app) }
             } label: { Text("改分类") }
-                .menuStyle(.button).buttonStyle(PillButtonStyle(height: 24, font: .system(size: 11))).fixedSize()
+                .menuStyle(.button).buttonStyle(PillButtonStyle(height: 24, font: .note)).fixedSize()
         }.frame(minHeight: 44)
     }
 

@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 
+/// 专注: start a focus session, see this week's, and set daily limits.
 struct FocusWorkspaceView: View {
     let model: AppModel
     @State private var minutes = 45
@@ -18,31 +19,30 @@ struct FocusWorkspaceView: View {
     @State private var last: FocusSession?
     @State private var interruptions: (count: Int, recorded: TimeInterval)?
     @State private var suggestions: [LimitSuggestion] = []
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private struct LoadKey: Equatable { let version: Int; let running: Int64? }
 
     var body: some View {
         GeometryReader { geometry in
+            let width = geometry.size.width - 2 * Design.Space.page
             ScrollView {
                 VStack(alignment: .leading, spacing: Design.Space.lg) {
-                    header(width: geometry.size.width - 2 * Design.Space.page)
-                    if geometry.size.width >= 860 {
+                    header(width: width)
+                    if width >= PageLayout.wideWidth {
                         HStack(alignment: .top, spacing: Design.Space.lg) {
-                            VStack(spacing: Design.Space.lg) { sessionColumn.revealOnce(index: 2); weekChart }
+                            VStack(spacing: Design.Space.lg) { sessionColumn; weekChart }
                                 .frame(maxWidth: .infinity)
-                            VStack(spacing: Design.Space.lg) { budgetColumn; if model.focus?.running == nil { blockCard.revealOnce(index: 5) } }
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            VStack(spacing: Design.Space.lg) { budgetColumn; if model.focus?.running == nil { blockCard } }
+                                .frame(maxWidth: .infinity)
                         }
                     } else {
-                        VStack(spacing: Design.Space.lg) {
-                            sessionColumn.revealOnce(index: 2)
-                            budgetColumn
-                            weekChart
-                            if model.focus?.running == nil { blockCard.revealOnce(index: 5) }
-                        }
+                        sessionColumn
+                        budgetColumn
+                        weekChart
+                        if model.focus?.running == nil { blockCard }
                     }
                 }
-                .padding(.horizontal, Design.Space.page).padding(.top, 8).padding(.bottom, 24)
-                .frame(maxWidth: 1600).frame(maxWidth: .infinity)
+                .pagePadding()
             }.scrollIndicators(.never)
         }.background(WorkspaceBackground())
         .onAppear { loadSettings(); load() }
@@ -57,13 +57,12 @@ struct FocusWorkspaceView: View {
         .popover(isPresented: $editCategories) { FocusCategoriesEditor(model: model) { editCategories = false } }
     }
 
-    /// This week's focus, from the focus log: the sentence and four numbers
-    /// that stood in the toolbar before.
+    /// This week's focus, from the focus log, and how often you are pulled away.
     private func header(width: CGFloat) -> some View {
         let total = sessions.reduce(0) { $0 + $1.end.timeIntervalSince($1.start) }
         let longest = sessions.map { $0.end.timeIntervalSince($0.start) }.max() ?? 0
         let blocks = sessions.reduce(0) { $0 + $1.appBlocks + $1.siteBlocks }
-        let time = Text(TodayFmt.long(total)).font(.system(size: 28, weight: .bold, design: .rounded)).monospacedDigit()
+        let time = Text(TodayFmt.long(total)).monospacedDigit()
         // How often you are pulled away, from the last seven days.
         let gap = interruptions.flatMap { $0.count > 0 ? max(1, Int(($0.recorded / Double($0.count) / 60).rounded())) : nil }
         let sentence: Text
@@ -72,105 +71,105 @@ struct FocusWorkspaceView: View {
         } else {
             sentence = sessions.isEmpty ? Text("这周还没有专注。") : Text("这周专注 \(time)。")
         }
-        return PageHeaderRow(lead: Text("近 7 天"), sentence: sentence, stats: [
-            StripStat(id: 0, label: "本周专注", value: TodayFmt.clock(total), note: String(localized: "\(sessions.count) 次"), color: Design.accentInk),
+        return PageHeader(sentence: sentence, stats: [
+            StripStat(id: 0, label: "专注", value: String(localized: "\(sessions.count) 次"), note: String(localized: "做完 \(sessions.filter(\.completed).count) 次")),
             StripStat(id: 1, label: "最长一次", value: longest > 0 ? TodayFmt.clock(longest) : "—"),
             StripStat(id: 2, label: "拦下", value: String(localized: "\(blocks) 次"), note: String(localized: "分心被挡回")),
             StripStat(id: 3, label: "打断", value: interruptions.map { String(localized: "\($0.count) 次") } ?? "—",
-                      note: interruptions.map { String(localized: "日均 \($0.count / 7) 次") } ?? "", color: Design.interruption)
-        ], width: width)
+                      note: interruptions.map { String(localized: "近 7 天 · 日均 \($0.count / 7) 次") } ?? "")
+        ], width: width) {
+            HeaderLabel(text: Text("本周"))
+        } actions: {
+            AddLimitMenu(model: model)
+        }
     }
 
     private var sessionColumn: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: Design.Space.md) {
             if model.focus?.running != nil {
                 FocusRunningView(model: model).frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 CardHeading(title: "专注", caption: Text("拖动圆环上的把手，15 分钟到 2 小时")).frame(maxWidth: .infinity, alignment: .leading)
                 FocusDial(minutes: $minutes)
-                HStack(spacing: 8) {
+                HStack(spacing: 2) {
                     ForEach(FocusPresets.minutes, id: \.self) { preset in
-                        Button { withAnimation(Design.motion(Design.settle, reduced: false)) { minutes = preset } } label: {
-                            Text("\(preset) 分钟").font(.num(12, minutes == preset ? .bold : .regular))
-                        }.buttonStyle(PillButtonStyle(height: 28, font: .system(size: 12)))
+                        SegmentButton(selected: minutes == preset) {
+                            withAnimation(Design.motion(Design.layout, reduced: reduceMotion)) { minutes = preset }
+                        } label: { Text("\(preset) 分钟").monospacedDigit() }
                     }
                 }
                 Button(action: start) {
                     Label("开始 \(minutes) 分钟专注", systemImage: "play.fill").frame(maxWidth: .infinity)
-                }.buttonStyle(AccentButtonStyle(height: 44)).disabled(model.focus == nil)
+                }.buttonStyle(AccentButtonStyle(height: 36)).disabled(model.focus == nil)
             }
-            if let error { Text(error).font(.system(size: 12)).foregroundStyle(.red) }
-        }.font(.system(size: 13)).frame(maxWidth: .infinity).padding(20).workspacePanel()
+            if let error { Text(error).font(.note).foregroundStyle(Design.alert) }
+        }
+        .cardBox()
     }
 
     /// 隐藏应用 and the Chrome block, with what each does and a sample of the
     /// prompt you see when a hidden app is switched to.
     private var blockCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Design.Space.md) {
             CardHeading(title: "专注时拦什么", caption: Text("只在专注时生效"))
-                VStack(spacing: 8) {
-                    toggleRow("隐藏应用", isOn: $appBlock, edit: { editApps = true }) {
-                        HStack(spacing: 4) {
-                            ForEach(Array(blockedApps.prefix(3)), id: \.self) { app in
-                                AppIcon(bundleID: app, size: 18).help(AppIcon.name(for: app))
-                            }
-                            if blockedApps.isEmpty { Text("未选择").font(.system(size: 12)).foregroundStyle(.secondary) }
+            VStack(spacing: Design.Space.sm) {
+                toggleRow("隐藏应用", isOn: $appBlock, edit: { editApps = true }) {
+                    HStack(spacing: Design.Space.xs) {
+                        ForEach(Array(blockedApps.prefix(3)), id: \.self) { app in
+                            AppIcon(bundleID: app, size: 18).help(AppIcon.name(for: app))
                         }
-                    }.onChange(of: appBlock) { _, value in model.settings.setFocusAppBlockEnabled(value) }
-                    toggleRow("在 Chrome 中拦截", isOn: $siteBlock, edit: { editCategories = true }) {
-                        Text(model.settings.focusBlockedCategories.isEmpty ? String(localized: "未选择") : model.settings.focusBlockedCategories.compactMap { model.resolver.categoriesByID[$0]?.name }.joined(separator: String(localized: "、")))
-                            .font(.system(size: 12)).lineLimit(1).foregroundStyle(.secondary)
-                    }.onChange(of: siteBlock) { _, value in model.settings.setFocusSiteBlockEnabled(value) }
-                }
-            VStack(alignment: .leading, spacing: 6) {
-                Text("切过去的隐藏应用会被挡回来，菜单栏可以临时放行 5 分钟。").font(.system(size: 11)).foregroundStyle(Design.ink3)
-                HStack(spacing: 10) {
-                    HStack(spacing: 8) {
-                        Text("\(AppIcon.name(for: blockedApps.first ?? "com.tencent.xinWeChat")) 已隐藏").font(.system(size: 12, weight: .semibold))
-                        Text("允许 5 分钟").font(.system(size: 12)).foregroundStyle(Design.link)
+                        if blockedApps.isEmpty { Text("未选择").foregroundStyle(Design.ink2) }
                     }
-                    .padding(.horizontal, 14).frame(height: 32).glassSurface(in: Capsule())
-                    Text("示例").font(.system(size: 11)).foregroundStyle(Design.ink3)
-                }
+                }.onChange(of: appBlock) { _, value in model.settings.setFocusAppBlockEnabled(value) }
+                toggleRow("在 Chrome 中拦截", isOn: $siteBlock, edit: { editCategories = true }) {
+                    Text(model.settings.focusBlockedCategories.isEmpty ? String(localized: "未选择") : model.settings.focusBlockedCategories.compactMap { model.resolver.categoriesByID[$0]?.name }.joined(separator: String(localized: "、")))
+                        .lineLimit(1).foregroundStyle(Design.ink2)
+                }.onChange(of: siteBlock) { _, value in model.settings.setFocusSiteBlockEnabled(value) }
             }
-            Text("专注时菜单栏显示倒计时；结束后这一段会标成专注，在今天和活动里单独显示。").font(.system(size: 11)).foregroundStyle(Design.ink3)
+            Text("切过去的隐藏应用会被挡回来，菜单栏可以临时放行 5 分钟。").font(.note).foregroundStyle(Design.ink2)
+            HStack(spacing: Design.Space.md) {
+                HStack(spacing: Design.Space.sm) {
+                    Text("\(AppIcon.name(for: blockedApps.first ?? "com.tencent.xinWeChat")) 已隐藏").fontWeight(.semibold)
+                    Text("允许 5 分钟").foregroundStyle(Design.ink2)
+                }
+                .padding(.horizontal, Design.Space.md).frame(height: 32).floatingCard()
+                Text("示例").font(.note).foregroundStyle(Design.ink2)
+            }
+            .padding(.vertical, Design.Space.xs)
+            Text("专注时菜单栏显示倒计时；结束后这一段会标成专注，在今天和活动里单独显示。").font(.note).foregroundStyle(Design.ink2)
         }
-        .font(.system(size: 13))
-        .padding(.horizontal, Design.Space.xl).padding(.vertical, 18)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).designCard()
+        .cardBox()
     }
 
     /// A filled row: a title, what it covers (click to edit), a switch.
     private func toggleRow<Detail: View>(_ title: LocalizedStringKey, isOn: Binding<Bool>, edit: @escaping () -> Void,
                                          @ViewBuilder detail: () -> Detail) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: Design.Space.md) {
             Text(title)
-            Spacer(minLength: 8)
+            Spacer(minLength: Design.Space.sm)
             Button(action: edit) { detail() }.buttonStyle(.plain).help("编辑…")
             Toggle(title, isOn: isOn).labelsHidden().toggleStyle(.switch).controlSize(.small)
         }
-        .padding(.horizontal, 12).frame(minHeight: 40)
-        .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(.horizontal, Design.Space.md).frame(minHeight: 40)
+        .background(Design.floor, in: RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous))
     }
 
     private var budgetColumn: some View {
-        VStack(spacing: Design.Space.lg) {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .firstTextBaseline) {
-                    CardHeading(title: "限额"); Spacer()
-                    Text("快到时黄色，超出时红色加图标").font(.system(size: 11)).foregroundStyle(Design.ink3)
-                }.padding(.bottom, 4)
-                if budgets.isEmpty && suggestions.isEmpty { Text("添加一个分类的每日时长上限。").font(.system(size: 12)).foregroundStyle(.secondary).padding(.vertical, 10) }
-                ForEach(Array(budgets.enumerated()), id: \.element.categoryID) { index, budget in
-                    if index > 0 { Divider() }
-                    budgetRow(budget)
-                }
-                if !suggestions.isEmpty { suggestionRows }
-                Divider().padding(.top, 4)
-                Text("限额只发提醒，不拦截任何东西；拦截只在专注会话里发生。").font(.system(size: 11)).foregroundStyle(.secondary)
-                    .padding(.top, 8)
-            }.font(.system(size: 13)).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(18).workspacePanel().revealOnce(index: 3)
+        VStack(alignment: .leading, spacing: 0) {
+            CardHeading(title: "限额", caption: Text("每个分类每天的上限"))
+                .padding(.bottom, Design.Space.xs)
+            if budgets.isEmpty && suggestions.isEmpty {
+                Text("添加一个分类的每日时长上限。").foregroundStyle(Design.ink2).padding(.vertical, Design.Space.md)
+            }
+            ForEach(Array(budgets.enumerated()), id: \.element.categoryID) { index, budget in
+                if index > 0 { Divider() }
+                budgetRow(budget)
+            }
+            if !suggestions.isEmpty { suggestionRows }
+            Text("限额只发提醒，不拦截任何东西；拦截只在专注时发生。").font(.note).foregroundStyle(Design.ink2)
+                .padding(.top, Design.Space.md)
         }
+        .cardBox()
     }
 
     /// 建议: from the last seven days of use, the categories worth a limit.
@@ -178,29 +177,30 @@ struct FocusWorkspaceView: View {
         VStack(alignment: .leading, spacing: 0) {
             Group {
                 if budgets.isEmpty { Text("还没设。按近 7 天的用量，建议这几个：") } else { Text("再加几个？按近 7 天的用量：") }
-            }.font(.system(size: 12)).foregroundStyle(Design.ink3).padding(.top, 10).padding(.bottom, 4)
+            }.font(.note).foregroundStyle(Design.ink2).padding(.top, Design.Space.md).padding(.bottom, Design.Space.xs)
             ForEach(suggestions) { item in
                 let color = RefinedStyle.category(item.id, hex: item.colorHex)
-                HStack(spacing: 10) {
+                HStack(spacing: Design.Space.md) {
                     VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 6) { Circle().fill(color).frame(width: 7, height: 7); Text(item.name).font(.system(size: 13, weight: .semibold)) }
-                        Text("近 7 天 \(Format.duration(item.week))").font(.num(11)).foregroundStyle(Design.ink3)
+                        HStack(spacing: 6) { Circle().fill(color).frame(width: 7, height: 7); Text(item.name).fontWeight(.semibold) }
+                        Text("近 7 天 \(Format.duration(item.week))").font(.note).monospacedDigit().foregroundStyle(Design.ink2)
                     }
-                    Spacer(minLength: 6)
+                    Spacer(minLength: Design.Space.sm)
                     HStack(alignment: .bottom, spacing: 2) {
                         let top = max(item.days.max() ?? 1, Double(item.capMinutes * 60))
                         ForEach(item.days.indices, id: \.self) { index in
-                            RoundedRectangle(cornerRadius: 1.5).fill(item.days[index] > Double(item.capMinutes * 60) ? Design.interruption : color.opacity(0.6))
+                            RoundedRectangle(cornerRadius: 1.5).fill(item.days[index] > Double(item.capMinutes * 60) ? Design.alert : color.opacity(0.6))
                                 .frame(width: 5, height: max(2, 22 * item.days[index] / top))
                         }
                     }.frame(height: 22, alignment: .bottom)
                     VStack(alignment: .trailing, spacing: 2) {
-                        Text("每天 \(item.capMinutes) 分钟").font(.num(11)).foregroundStyle(Design.ink2)
-                        Text(item.over > 0 ? "超出 \(item.over) 天" : "都在内").font(.num(11)).foregroundStyle(item.over > 0 ? Design.interruption : Design.ink3)
+                        Text("每天 \(item.capMinutes) 分钟").foregroundStyle(Design.ink2)
+                        Text(item.over > 0 ? "超出 \(item.over) 天" : "都在内").foregroundStyle(item.over > 0 ? Design.alert : Design.ink2)
                     }
-                    Button("添加") { addSuggestion(item) }.buttonStyle(PillButtonStyle(height: 26))
+                    .font(.note).monospacedDigit()
+                    Button("添加") { addSuggestion(item) }.buttonStyle(PillButtonStyle(height: 24))
                 }
-                .padding(.vertical, 8)
+                .padding(.vertical, Design.Space.sm)
                 Divider()
             }
         }
@@ -229,45 +229,39 @@ struct FocusWorkspaceView: View {
             Int(sessions.filter { calendar.isDate($0.start, inSameDayAs: day) }.reduce(0) { $0 + $1.end.timeIntervalSince($1.start) } / 60)
         }
         let top = max(perDay.max() ?? 0, 1)
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                CardHeading(title: "本周的专注")
-                Spacer()
-                Text("\(sessions.count) 次 · \(Format.duration(sessions.reduce(0) { $0 + $1.end.timeIntervalSince($1.start) }))")
-                    .font(.system(size: 11)).foregroundStyle(.secondary).monospacedDigit()
-            }
-            HStack(alignment: .bottom, spacing: 6) {
+        return VStack(alignment: .leading, spacing: Design.Space.md) {
+            CardHeading(title: "本周每天", caption: Text("分钟"))
+            HStack(alignment: .bottom, spacing: Design.Space.sm) {
                 ForEach(days.indices, id: \.self) { index in
                     let value = perDay[index], today = calendar.isDateInToday(days[index])
-                    VStack(spacing: 4) {
-                        Text(value > 0 ? "\(value)" : " ").font(.system(size: 11)).foregroundStyle(.secondary).monospacedDigit()
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    VStack(spacing: Design.Space.xs) {
+                        Text(value > 0 ? "\(value)" : " ").font(.note).monospacedDigit().foregroundStyle(Design.ink2)
+                        RoundedRectangle(cornerRadius: Design.Radius.mark, style: .continuous)
                             .fill(value == 0 ? AnyShapeStyle(Design.track) : today ? AnyShapeStyle(Design.accent) : AnyShapeStyle(Design.accent.opacity(0.4)))
                             .frame(height: value == 0 ? 4 : max(4, 56 * CGFloat(value) / CGFloat(top)))
-                        Text(days[index].formatted(.dateTime.weekday(.narrow).locale(model.textLocale))).font(.system(size: 11)).foregroundStyle(Design.ink3)
+                        Text(days[index].formatted(.dateTime.weekday(.narrow).locale(model.textLocale))).font(.note)
+                            .fontWeight(today ? .semibold : .regular).foregroundStyle(today ? Design.ink : Design.ink2)
                     }.frame(maxWidth: .infinity)
                 }
             }.frame(height: 90, alignment: .bottom)
             if sessions.isEmpty {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("这周还没有专注").font(.system(size: 13, weight: .semibold))
-                    Text("开一次，这里会按天记下时长和拦下的次数").font(.system(size: 12)).foregroundStyle(Design.ink3)
-                }
+                Text("开一次专注，这里会按天记下时长。").foregroundStyle(Design.ink2)
             }
             if let last {
                 let planned = last.plannedSeconds / 60
                 Divider()
-                HStack(spacing: 12) {
+                HStack(spacing: Design.Space.md) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("上一次：\(last.start.formatted(.dateTime.month().day().locale(model.textLocale))) \(model.time(last.start))").font(.system(size: 13, weight: .semibold))
-                        Text(lastNote(last)).font(.system(size: 12)).foregroundStyle(Design.ink3)
+                        Text("上一次：\(last.start.formatted(.dateTime.month().day().locale(model.textLocale))) \(model.time(last.start))").fontWeight(.semibold)
+                        Text(lastNote(last)).font(.note).foregroundStyle(Design.ink2)
                     }
-                    Spacer(minLength: 8)
+                    Spacer(minLength: Design.Space.sm)
                     Button("再来一次 \(planned) 分钟") { minutes = planned; start() }
-                        .buttonStyle(PillButtonStyle(height: 28)).disabled(model.focus == nil || model.focus?.running != nil)
+                        .buttonStyle(PillButtonStyle()).disabled(model.focus == nil || model.focus?.running != nil)
                 }
             }
-        }.font(.system(size: 13)).padding(18).workspacePanel().revealOnce(index: 4)
+        }
+        .cardBox()
     }
 
     private func budgetRow(_ budget: Budget) -> some View {
@@ -278,38 +272,38 @@ struct FocusWorkspaceView: View {
         let status = LimitStatus(spent: seconds, limit: limit, warningPercent: warn)
         let within = { if case .within = status { true } else { false } }()
         let color: Color = switch status {
-        case .over: .red
-        case .near: RefinedStyle.warning
+        case .over: Design.alert
+        case .near: Design.warning
         case .within: RefinedStyle.category(budget.categoryID, hex: category?.colorHex ?? "808080")
         }
         return Button { editingBudget = budget.categoryID } label: {
-            VStack(spacing: 8) {
+            VStack(spacing: Design.Space.sm) {
                 HStack(spacing: 6) {
                     switch status {
                     case .over(let minutes):
-                        Label("\(name)超出 \(minutes) 分钟", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red).fontWeight(.semibold)
+                        Label("\(name)超出 \(minutes) 分钟", systemImage: "exclamationmark.triangle.fill").foregroundStyle(Design.alert).fontWeight(.semibold)
                     case .near(let minutes):
-                        Label("\(name)还剩 \(minutes) 分钟", systemImage: "gauge.with.dots.needle.67percent").foregroundStyle(RefinedStyle.warning).fontWeight(.semibold)
+                        Label("\(name)还剩 \(minutes) 分钟", systemImage: "gauge.with.dots.needle.67percent").foregroundStyle(Design.warning).fontWeight(.semibold)
                     case .within:
                         Circle().fill(color).frame(width: 7, height: 7)
-                        Text(name)
+                        Text(name).foregroundStyle(Design.ink)
                     }
-                    Spacer(minLength: 8)
-                    Text("\(Int(seconds / 60)) / \(budget.dailySeconds / 60) 分钟").foregroundStyle(.secondary).monospacedDigit()
-                }.font(.system(size: 12))
+                    Spacer(minLength: Design.Space.sm)
+                    Text("\(Int(seconds / 60)) / \(budget.dailySeconds / 60) 分钟").foregroundStyle(Design.ink2).monospacedDigit()
+                }
                 GeometryReader { geometry in
                     ZStack(alignment: .leading) {
-                        Capsule().fill(.quaternary)
-                        Capsule().fill(within ? AnyShapeStyle(.secondary) : AnyShapeStyle(color))
+                        Capsule().fill(Design.track)
+                        Capsule().fill(within ? Design.ink2.opacity(0.6) : color)
                             .frame(width: geometry.size.width * min(1, seconds / max(1, limit)))
                     }
-                }.frame(height: 5)
-            }.padding(.vertical, 12).contentShape(Rectangle())
+                }.frame(height: 6)
+            }.padding(.vertical, Design.Space.md).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .opacity(budget.enabled ? 1 : 0.5)
         .popover(isPresented: Binding(get: { editingBudget == budget.categoryID }, set: { if !$0 { editingBudget = nil } })) {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: Design.Space.md) {
                 CategoryChip(category: category)
                 Stepper("\(budget.dailySeconds / 60) 分钟", value: Binding(get: { budget.dailySeconds / 60 }, set: { value in
                     writeBudget { try model.budgetStore?.setBudget(categoryID: budget.categoryID, dailySeconds: value * 60) }
@@ -322,7 +316,7 @@ struct FocusWorkspaceView: View {
                     editingBudget = nil
                     writeBudget { try model.budgetStore?.deleteBudget(categoryID: budget.categoryID) }
                 }
-            }.padding(18).frame(width: 240)
+            }.padding(Design.Space.card).frame(width: 240)
         }
         .contextMenu { Button("删除限额", systemImage: "trash", role: .destructive) { writeBudget { try model.budgetStore?.deleteBudget(categoryID: budget.categoryID) } } }
     }
@@ -412,8 +406,8 @@ struct FocusCategoriesEditor: View {
     let model: AppModel
     let done: () -> Void
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("拦截这些分类的网站").font(.headline)
+        VStack(alignment: .leading, spacing: Design.Space.md) {
+            Text("拦截这些分类的网站").cardTitle()
             ForEach(model.resolver.categoriesByID.values.sorted { $0.sortOrder < $1.sortOrder }, id: \.id) { category in
                 Toggle(isOn: Binding(get: { model.settings.focusBlockedCategories.contains(category.id) }, set: { enabled in
                     var ids = Set(model.settings.focusBlockedCategories)
@@ -421,47 +415,46 @@ struct FocusCategoriesEditor: View {
                     model.settings.setFocusBlockedCategories(ids.sorted()); model.settingsChanged()
                 })) { CategoryChip(category: category) }
             }
-            Text("修改从下一次专注开始生效。").font(.system(size: 11)).foregroundStyle(.secondary)
+            Text("修改从下一次专注开始生效。").font(.note).foregroundStyle(Design.ink2)
             Button("完成", action: done).frame(maxWidth: .infinity, alignment: .trailing)
-        }.padding(18).frame(width: 260)
+        }.padding(Design.Space.card).frame(width: 260)
     }
 }
 
+/// 分类: what is sorted automatically, what is waiting, and the rules.
 struct OrganizationView: View {
     @Bindable var model: AppModel
     @State private var pending: (count: Int, seconds: TimeInterval)?
     @State private var coverage: (auto: TimeInterval, total: TimeInterval)?
     @State private var byCategory: [String: TimeInterval] = [:]
     @State private var category: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private struct CoverageKey: Equatable { let version: Int }
 
     var body: some View {
         GeometryReader { geometry in
             let width = geometry.size.width - 2 * Design.Space.page
-            Group {
-                if width >= 1000 {
+            if width >= PageLayout.wideWidth {
+                VStack(alignment: .leading, spacing: Design.Space.lg) {
+                    header(width: width)
+                    HStack(alignment: .top, spacing: Design.Space.lg) {
+                        VStack(spacing: Design.Space.lg) { ToConfirmCard(model: model); queue; rules }
+                        CategoryListCard(model: model, seconds: byCategory, selected: $category).frame(width: 400)
+                    }
+                }
+                .pagePadding()
+            } else {
+                ScrollView {
                     VStack(alignment: .leading, spacing: Design.Space.lg) {
                         header(width: width)
-                        HStack(alignment: .top, spacing: Design.Space.lg) {
-                            VStack(spacing: Design.Space.lg) { ToConfirmCard(model: model); queue; rules }
-                            CategoryListCard(model: model, seconds: byCategory, selected: $category).frame(width: 440).revealOnce(index: 4)
-                        }
+                        ToConfirmCard(model: model)
+                        queue
+                        CategoryListCard(model: model, seconds: byCategory, selected: $category).frame(height: 460)
+                        rules.frame(height: 420)
                     }
-                    .padding(.horizontal, Design.Space.page).padding(.top, 8).padding(.bottom, 24)
-                } else {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: Design.Space.lg) {
-                            header(width: width)
-                            ToConfirmCard(model: model)
-                            queue
-                            CategoryListCard(model: model, seconds: byCategory, selected: $category).frame(height: 460).revealOnce(index: 3)
-                            rules.frame(height: 420)
-                        }
-                        .padding(.horizontal, Design.Space.page).padding(.top, 8).padding(.bottom, 24)
-                    }.scrollIndicators(.never)
-                }
+                    .pagePadding()
+                }.scrollIndicators(.never)
             }
-            .frame(maxWidth: 1600).frame(maxWidth: .infinity)
         }
         .background(WorkspaceBackground())
         .pageTask(id: CoverageKey(version: model.dataVersion)) { await loadCoverage() }
@@ -470,37 +463,40 @@ struct OrganizationView: View {
 
     /// 应用 / 建议: what is not sorted yet, with a suggestion to accept.
     private var queue: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Design.Space.sm) {
             CardHeading(title: "应用与建议", caption: pending.map { Text("\($0.count) 项待分类") })
             UncategorizedSettingsPane(model: model) { count, seconds in pending = (count, seconds) }
         }
-        .padding(.horizontal, Design.Space.xl).padding(.vertical, 18)
+        .padding(Design.Space.card)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .designCard().revealOnce(index: 2)
+        .designCard()
     }
 
     private var rules: some View {
-        RefinedRulesPane(model: model, categoryFilter: category, onClearFilter: { withAnimation(Design.settle) { category = nil } })
-            .frame(maxHeight: .infinity).revealOnce(index: 3)
+        RefinedRulesPane(model: model, categoryFilter: category, onClearFilter: {
+            withAnimation(Design.motion(Design.layout, reduced: reduceMotion)) { category = nil }
+        })
+        .frame(maxHeight: .infinity)
     }
 
     private func header(width: CGFloat) -> some View {
         let percent = coverage.map { Int(($0.auto / max(1, $0.total) * 100).rounded()) }
         let sentence: Text
         if let percent, let coverage, coverage.total >= 60 {
-            sentence = Text("\(Text("\(percent)%").font(.system(size: 28, weight: .bold, design: .rounded)).monospacedDigit()) 的时间已经自动分好了。")
+            sentence = Text("\(Text(verbatim: "\(percent)%").monospacedDigit()) 的时间已经自动分好了。")
         } else if coverage != nil {
             sentence = Text("近 7 天还没有记录。")
         } else {
             sentence = Text(verbatim: " ")
         }
         let categories = model.resolver.categoriesByID.values.filter { $0.id != "uncategorized" }.count
-        return PageHeaderRow(lead: Text("近 7 天"), sentence: sentence, stats: [
-            StripStat(id: 0, label: "自动分好", value: percent.map { "\($0)%" } ?? "—", note: String(localized: "按规则和应用类型"), color: Design.accentInk),
-            StripStat(id: 1, label: "待分类", value: pending.map { String(localized: "\($0.count) 项") } ?? "—",
+        return PageHeader(sentence: sentence, stats: [
+            StripStat(id: 0, label: "待分类", value: pending.map { String(localized: "\($0.count) 项") } ?? "—",
                       note: pending.map { String(localized: "近 30 天共 \(Format.duration($0.seconds))") } ?? ""),
-            StripStat(id: 2, label: "分类", value: String(localized: "\(categories) 个"), note: String(localized: "投入程度决定评分"))
-        ], width: width)
+            StripStat(id: 1, label: "分类", value: String(localized: "\(categories) 个"), note: String(localized: "投入程度决定评分"))
+        ], width: width) {
+            HeaderLabel(text: Text("近 7 天"))
+        } actions: { EmptyView() }
     }
 
     /// Seven days, read and classified off the main thread: how much is

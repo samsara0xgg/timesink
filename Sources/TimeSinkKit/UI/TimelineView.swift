@@ -217,10 +217,10 @@ struct DayTimelineView: View {
             VStack(alignment: .leading, spacing: 8) {
                 if !allDay.isEmpty {
                     Text(String(localized: "全天日程：\(allDay.joined(separator: String(localized: "、")))"))
-                        .font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                        .font(.note).foregroundStyle(Design.ink2).lineLimit(2)
                 }
                 if blocks.isEmpty {
-                    Text("这一天没有活动记录").font(.caption).foregroundStyle(.secondary)
+                    Text("这一天没有活动记录").font(.note).foregroundStyle(Design.ink2)
                 }
                 ScrollView {
                     hourGrid
@@ -245,7 +245,7 @@ struct DayTimelineView: View {
                     }
                     .onEnded { _ in
                         pinchBase = nil
-                        withAnimation(reduceMotion ? nil : RefinedStyle.stateAnimation) {
+                        withAnimation(Design.motion(Design.layout, reduced: reduceMotion)) {
                             hourHeight = TimelineZoom.stop(for: hourHeight)
                         }
                     })
@@ -328,7 +328,7 @@ struct DayTimelineView: View {
                     Text(dayStart.addingTimeInterval(hour * 3600), format: .dateTime.hour().minute())
                 }
             }
-            .font(.caption2).monospacedDigit().fixedSize().hidden()
+            .font(.note).monospacedDigit().fixedSize().hidden()
             .onGeometryChange(for: CGFloat.self, of: \.size.width) { labelWidth = max(44, ceil($0)) }
         }
         .overlay(alignment: .topLeading) {
@@ -369,7 +369,7 @@ struct DayTimelineView: View {
                             .overlay(alignment: .topLeading) {
                                 if height(duration) >= 16 {
                                     Label(String(localized: "\(note.label) · \(Format.minutes(duration)) 分钟"), systemImage: note.symbol)
-                                        .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                                        .font(.note).foregroundStyle(Design.ink2).lineLimit(1)
                                         .padding(.horizontal, 8).padding(.top, 3)
                                 }
                             }
@@ -387,7 +387,7 @@ struct DayTimelineView: View {
                         RoundedRectangle(cornerRadius: 7).fill(event.color.opacity(0.12))
                             .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(event.color.opacity(0.7), lineWidth: 1))
                             .overlay(alignment: .topLeading) {
-                                Text(event.title).font(.system(size: 10.5)).foregroundStyle(.secondary)
+                                Text(event.title).font(.note).foregroundStyle(Design.ink2)
                                     .lineLimit(1).padding(.horizontal, 6).padding(.top, 2)
                             }
                             .frame(width: eventWidth, height: height(event.duration))
@@ -421,7 +421,7 @@ struct DayTimelineView: View {
                                 .foregroundStyle(mark.named ? .primary : .secondary)
                                 .lineLimit(tall >= 48 ? 2 : 1)
                             if tall >= 34 {
-                                Text(mark.detail).font(.system(size: 10)).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
+                                Text(mark.detail).font(.note).foregroundStyle(Design.ink2).monospacedDigit().lineLimit(1)
                             }
                         }
                         .padding(.leading, 11).padding(.trailing, 6).padding(.top, 4)
@@ -502,7 +502,7 @@ private struct HourLabel: View {
     }
 
     private var label: some View {
-        Text(hour, format: .dateTime.hour().minute()).font(.caption2).monospacedDigit().foregroundStyle(.secondary)
+        Text(hour, format: .dateTime.hour().minute()).font(.note).monospacedDigit().foregroundStyle(Design.ink2)
     }
 }
 
@@ -520,7 +520,7 @@ private struct NowLine: View {
                 Capsule().fill(.red).frame(width: width + 8, height: 2)
                     .offset(x: x - 4, y: y - 1)
                 Text(context.date, format: .dateTime.hour(.twoDigits(amPM: .omitted)).minute())
-                    .font(.system(size: 10.5, weight: .bold)).monospacedDigit().foregroundStyle(.white)
+                    .font(.note.weight(.bold)).monospacedDigit().foregroundStyle(.white)
                     .padding(.horizontal, 5).padding(.vertical, 1)
                     .background(.red, in: RoundedRectangle(cornerRadius: 5))
                     .fixedSize()
@@ -636,10 +636,10 @@ private struct TimelineBlocksCanvas: View, Animatable {
         if blockHeight >= TimelineZoom.labelPoints {
             // Light categories take dark ink, the rest white.
             let ink: Color = block.darkInk ? .black.opacity(0.82) : .white
-            let label = context.resolve(Text(block.label).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(ink))
+            let label = context.resolve(Text(block.label).font(.note.weight(.semibold)).foregroundStyle(ink))
             let duration = context.resolve(Text(Format.duration(block.segment?.recorded ?? block.duration))
-                .font(.system(size: 11.5)).monospacedDigit().foregroundStyle(ink.opacity(0.9)))
-            let title = block.subtitle.map { context.resolve(Text($0).font(.system(size: 11.5)).foregroundStyle(ink.opacity(0.85))) }
+                .font(.note).monospacedDigit().foregroundStyle(ink.opacity(0.9)))
+            let title = block.subtitle.map { context.resolve(Text($0).font(.note).foregroundStyle(ink.opacity(0.85))) }
             let unbounded = CGSize(width: CGFloat.infinity, height: .infinity)
             let durationSize = duration.measure(in: unbounded)
             let labelSize = label.measure(in: unbounded)

@@ -21,28 +21,28 @@ struct HeatmapCard: View {
     private var columnTotals: [Double] { (0..<24).map { hour in (0..<7).reduce(0) { $0 + data[.init(weekday: $1, hour: hour)].averageSeconds } / 7 } }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("什么时候在用电脑").font(.system(size: 13, weight: .semibold))
-                Spacer(minLength: 8)
-                Picker("热力图指标", selection: $showsScore) { Text("时长").tag(false); Text("评分").tag(true) }
-                    .pickerStyle(.segmented).labelsHidden().frame(width: 120)
-                Text(showsScore ? "近 30 天 · 按星期汇总" : "近 30 天平均 · 中性色，越深越投入").font(.system(size: 11)).fixedSize().foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: Design.Space.md) {
+            HStack(alignment: .center) {
+                CardHeading(title: "什么时候在用电脑",
+                            caption: Text("\(data.window.start.formatted(.dateTime.month().day().locale(AppLanguage.locale)))–\(data.window.end.addingTimeInterval(-1).formatted(.dateTime.month().day().locale(AppLanguage.locale))) · 每格是同一星期、同一小时的平均"))
+                Spacer(minLength: Design.Space.sm)
+                Segmented(options: [false, true], selection: $showsScore, height: 24) { score in
+                    score ? Text("评分") : Text("时长")
+                }
+                .accessibilityLabel("热力图指标")
             }
-            Text("\(data.window.start.formatted(.dateTime.month().day().locale(AppLanguage.locale)))–\(data.window.end.addingTimeInterval(-1).formatted(.dateTime.month().day().locale(AppLanguage.locale))) · 每格汇总同一星期、同一小时的记录")
-                .font(.caption).foregroundStyle(.secondary)
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .top, spacing: 24) {
                     VStack(alignment: .leading, spacing: 10) { grid; legend }.frame(minWidth: 520)
-                    previewSummary.padding(12).frame(width: 230).background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
+                    previewSummary.padding(Design.Space.md).frame(width: 230).background(Design.floor, in: RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous))
                 }
                 VStack(alignment: .leading, spacing: 12) { grid; legend; Divider(); previewSummary }
             }
             if interaction.pinned != nil { dateDetails }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .statCardBackground()
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: interaction.pinned != nil)
+        .cardBox()
+        .animation(Design.motion(Design.page, reduced: reduceMotion), value: interaction.pinned != nil)
     }
 
     private var grid: some View {
@@ -53,7 +53,7 @@ struct HeatmapCard: View {
             ForEach(weekdays, id: \.self) { weekday in
                 GridRow {
                     Text(HeatmapData.Key(weekday: weekday, hour: 0).weekdayLabel)
-                        .font(.system(size: 11)).foregroundStyle(previewKey.weekday == weekday ? .primary : .secondary)
+                        .font(.note).foregroundStyle(previewKey.weekday == weekday ? .primary : .secondary)
                         .frame(width: 34, alignment: .leading)
                     ForEach(hours, id: \.self) { hour in
                         cell(data[.init(weekday: weekday, hour: hour)]).frame(width: cellWidth)
@@ -64,7 +64,7 @@ struct HeatmapCard: View {
                             Capsule().fill(Color.secondary.opacity(0.12))
                             Capsule().fill(Color.secondary.opacity(0.55)).frame(width: bar.size.width * rows[weekday] / max(1, rows.max() ?? 1))
                         }.frame(height: 6)
-                        Text(Format.duration(rows[weekday])).font(.system(size: 11)).foregroundStyle(.secondary).monospacedDigit().frame(width: 48, alignment: .trailing)
+                        Text(Format.duration(rows[weekday], compact: true)).font(.note).foregroundStyle(Design.ink2).monospacedDigit().frame(width: 48, alignment: .trailing)
                     }.frame(width: 96).help("每个\(HeatmapData.Key(weekday: weekday, hour: 0).weekdayLabel)平均记录时长")
                 }
             }
@@ -76,11 +76,11 @@ struct HeatmapCard: View {
                             .frame(width: max(2, cellWidth - 6), height: max(2, 22 * columns[hour] / max(1, columns.max() ?? 1)))
                             .frame(height: 22, alignment: .bottom)
                         Text(hour % 3 == 0 ? HeatmapData.Key.hourLabel(hour, locale: locale) : " ")
-                            .font(.system(size: 11)).monospacedDigit().foregroundStyle(.secondary)
+                            .font(.note).monospacedDigit().foregroundStyle(Design.ink2)
                     }.frame(width: cellWidth).help("\(HeatmapData.Key(weekday: 0, hour: hour).timeLabel(locale)) 平均 \(Format.chineseDuration(columns[hour]))")
                 }
                 Color.clear.frame(width: 12, height: 1)
-                Text("平均 / 日").font(.system(size: 11)).foregroundStyle(.tertiary).frame(width: 96)
+                Text("平均 / 日").font(.note).foregroundStyle(Design.ink2).frame(width: 96)
             }
         }
         }
@@ -138,7 +138,7 @@ struct HeatmapCard: View {
                 Text("样本不足：累计不足 15 分钟")
             }
         }
-        .font(.caption2).foregroundStyle(.secondary)
+        .font(.note).foregroundStyle(Design.ink2)
         .accessibilityElement(children: .combine)
     }
 
@@ -157,23 +157,23 @@ struct HeatmapCard: View {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text(showsScore ? preview.scoreLabel : Format.duration(preview.averageSeconds)).font(.title3.weight(.semibold))
                     .foregroundStyle(showsScore && !preview.isLowSample ? scoreColor(preview.pulse) : Color.primary)
-                Text("累计 \(Format.duration(preview.seconds))").font(.caption).monospacedDigit()
+                Text("累计 \(Format.duration(preview.seconds))").font(.note).monospacedDigit()
                 Spacer(minLength: 0)
             }
             Text("每个\(preview.key.weekdayLabel)平均 \(Format.duration(preview.averageSeconds)) · \(preview.availableDays) 天中有 \(preview.recordedDays) 天记录")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.note).foregroundStyle(Design.ink2)
             Text("平均含无记录日，不含尚未到来的时段；分数按活动时长加权。")
-                .font(.caption2).foregroundStyle(.secondary)
+                .font(.note).foregroundStyle(Design.ink2)
             if preview.seconds > 0 {
                 contributionLine(String(localized: "主要分类"), entries: Array(preview.categories.prefix(3)))
                 contributionLine(String(localized: "主要应用"), entries: Array(preview.apps.prefix(3)))
             } else {
                 Text("此时段没有记录，不代表生产力为零。")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.note).foregroundStyle(Design.ink2)
             }
             Text(interaction.pinned != nil ? "已固定 · 点选其他格子可切换，Esc 取消"
                  : "悬停预览 · 点击查看日期 · 方向键浏览，回车固定")
-                .font(.caption2).foregroundStyle(.secondary)
+                .font(.note).foregroundStyle(Design.ink2)
         }
         .frame(minHeight: 156, alignment: .topLeading)
         .accessibilityElement(children: .contain)
@@ -181,7 +181,7 @@ struct HeatmapCard: View {
 
     private func contributionLine(_ label: String, entries: [HeatmapData.Contribution]) -> some View {
         Text(String(localized: "\(label)：") + entries.map { "\($0.name) \(Format.duration($0.seconds))" }.joined(separator: " · "))
-            .font(.caption).fixedSize(horizontal: false, vertical: true)
+            .font(.note).fixedSize(horizontal: false, vertical: true)
     }
 
     private var dateDetails: some View {
@@ -194,23 +194,23 @@ struct HeatmapCard: View {
                         Text(day.date.formatted(.dateTime.month().day().locale(AppLanguage.locale)))
                         if repeatedHour(on: day.date) {
                             Text(day.interval.start.formatted(.dateTime.timeZone(.iso8601(.short))))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Design.ink2)
                         }
                         Spacer(minLength: 4)
                         Text(day.seconds > 0 ? Format.duration(day.seconds) : String(localized: "无记录"))
                         Text(day.seconds >= 900 ? "\(day.pulse ?? 0) 分" : "—")
-                            .foregroundStyle(.secondary).frame(width: 44, alignment: .trailing)
-                        Image(systemName: "chevron.right").font(.caption2)
+                            .foregroundStyle(Design.ink2).frame(width: 44, alignment: .trailing)
+                        Image(systemName: "chevron.right").font(.note)
                     }
                     .padding(.vertical, 5).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain).disabled(day.seconds == 0)
-                .font(.caption).monospacedDigit()
+                .font(.note).monospacedDigit()
                 .help(day.seconds == 0 ? "这一天此时段没有记录" : day.seconds < 900 ? "此日期的样本不足 15 分钟，暂不显示分数" : "查看这一天此时段的活动")
                 .accessibilityLabel("查看 \(day.date.formatted(date: .abbreviated, time: .omitted)) \(preview.key.timeLabel(locale)) 的活动，\(Format.duration(day.seconds))")
             }
             if preview.days.isEmpty {
-                Text("所选范围内这个时段尚未到来。").font(.caption).foregroundStyle(.secondary)
+                Text("所选范围内这个时段尚未到来。").font(.note).foregroundStyle(Design.ink2)
             }
         }
     }

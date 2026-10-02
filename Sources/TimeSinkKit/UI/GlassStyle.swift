@@ -175,53 +175,6 @@ struct GlassButton: ViewModifier {
 }
 
 extension View {
-    /// m4: content fades out under the toolbar instead of meeting a hard line.
-    @ViewBuilder func softScrollEdges() -> some View {
-        #if compiler(>=6.2)
-        if #available(macOS 26, *) { scrollEdgeEffectStyle(.soft, for: .top) } else { self }
-        #else
-        self
-        #endif
-    }
-
     func glassProminentButton() -> some View { modifier(GlassProminentButton()) }
     func glassButton() -> some View { modifier(GlassButton()) }
-}
-
-/// A row of capsule choices on a glass platter, the chosen one lifted:
-/// the design's lens, where a segmented control would draw square cells.
-struct LensPicker<Value: Hashable, Label: View>: View {
-    let options: [Value]
-    @Binding var selection: Value
-    @ViewBuilder let label: (Value) -> Label
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Namespace private var lens
-
-    var body: some View {
-        HStack(spacing: 2) {
-            ForEach(options, id: \.self) { option in
-                Button {
-                    withAnimation(RefinedStyle.motion(reduced: reduceMotion)) { selection = option }
-                } label: {
-                    label(option)
-                        .font(.body.weight(selection == option ? .semibold : .regular)).monospacedDigit()
-                        .lineLimit(1).fixedSize()
-                        .foregroundStyle(selection == option ? .primary : .secondary)
-                        .padding(.horizontal, 11).frame(minHeight: 28)
-                        .background {
-                            if selection == option {
-                                Capsule().fill(.background.opacity(0.9)).shadow(color: .black.opacity(0.12), radius: 2, y: 1)
-                                    .matchedGeometryEffect(id: "lens", in: lens)
-                            }
-                        }
-                        .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(selection == option ? .isSelected : [])
-            }
-        }
-        .padding(3)
-        .background(.primary.opacity(0.07), in: Capsule())
-        .fixedSize()
-    }
 }

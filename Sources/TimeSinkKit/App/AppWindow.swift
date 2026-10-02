@@ -71,6 +71,9 @@ private struct AppWindowProbe: NSViewRepresentable {
             case .main:
                 // The green button: full screen, not just zoom.
                 window.collectionBehavior.insert(.fullScreenPrimary)
+                // The window, not the bar's search field, has the keyboard
+                // when it opens: ⌘F is how you get to the field.
+                window.initialFirstResponder = window.contentView
                 AppWindow.mainWindow = window
             case .settings: AppWindow.settingsWindow = window
             }

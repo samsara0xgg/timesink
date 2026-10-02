@@ -19,24 +19,24 @@ struct CategoryListCard: View {
                 Spacer()
                 let blocker = CategoryEditing.addBlocker(assignableCount: categories.count)
                 Button { adding = true } label: { Label("新建", systemImage: "plus") }
-                    .buttonStyle(PillButtonStyle(height: 24, font: .system(size: 11))).disabled(blocker != nil)
+                    .buttonStyle(PillButtonStyle(height: 24, font: .note)).disabled(blocker != nil)
                     .help(blocker ?? "")
             }
             if let blocker = CategoryEditing.addBlocker(assignableCount: categories.count) {
-                Text(blocker).font(.system(size: 11)).foregroundStyle(Design.ink3)
+                Text(blocker).font(.note).foregroundStyle(Design.ink2)
             }
-            HStack(spacing: 10) {
+            HStack(spacing: Design.Space.md) {
                 Spacer()
                 Text("投入程度").frame(width: 92, alignment: .center)
                 Text("近 7 天").frame(width: 56, alignment: .trailing)
-            }.font(.system(size: 11)).foregroundStyle(Design.ink3).padding(.horizontal, 8).padding(.top, 4)
+            }.font(.note).foregroundStyle(Design.ink2).padding(.horizontal, 8).padding(.top, 4)
             ScrollView {
                 VStack(spacing: 2) { ForEach(categories, id: \.id) { row($0) } }
             }.scrollIndicators(.never)
             Text("投入程度 +1 以上的算投入。今天页的投入时间、趋势页的评分都按这个算，改了会一起变。")
-                .font(.system(size: 11)).foregroundStyle(Design.ink3).fixedSize(horizontal: false, vertical: true).padding(.top, 6)
+                .font(.note).foregroundStyle(Design.ink2).fixedSize(horizontal: false, vertical: true).padding(.top, 6)
         }
-        .padding(.horizontal, Design.Space.xl).padding(.vertical, 18)
+        .padding(Design.Space.card)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .designCard()
         .task { load() }
@@ -48,35 +48,35 @@ struct CategoryListCard: View {
     private func row(_ category: Category) -> some View {
         let on = selected == category.id
         let color = RefinedStyle.category(category.id, hex: category.colorHex)
-        return HStack(spacing: 10) {
+        return HStack(spacing: Design.Space.md) {
             Button {
-                withAnimation(Design.motion(Design.settle, reduced: reduceMotion)) { selected = on ? nil : category.id }
+                withAnimation(Design.motion(Design.layout, reduced: reduceMotion)) { selected = on ? nil : category.id }
             } label: {
                 HStack(spacing: 8) {
                     Circle().fill(color).frame(width: 9, height: 9)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(category.name).font(.system(size: 13, weight: on ? .bold : .regular)).lineLimit(1)
+                        Text(category.name).fontWeight(on ? .semibold : .regular).foregroundStyle(Design.ink).lineLimit(1)
                         if !category.description.isEmpty {
-                            Text(category.description).font(.system(size: 10)).foregroundStyle(Design.ink3).lineLimit(1).help(category.description)
+                            Text(category.description).font(.note).foregroundStyle(Design.ink2).lineLimit(1).help(category.description)
                         }
                     }
                     if category.distracting {
-                        Image(systemName: "bolt.horizontal.circle").font(.system(size: 10)).foregroundStyle(Design.ink3)
+                        Image(systemName: "bolt.horizontal.circle").font(.note).foregroundStyle(Design.ink2)
                             .help("会打断工作").accessibilityLabel("会打断工作")
                     }
                     Text(ruleCounts[category.id, default: 0] > 0 ? "\(ruleCounts[category.id, default: 0])" : "")
-                        .font(.num(11)).foregroundStyle(Design.ink3)
+                        .font(.note.monospacedDigit()).foregroundStyle(Design.ink2)
                     Spacer(minLength: 0)
                 }.contentShape(Rectangle())
             }.buttonStyle(.plain)
             scale(category, color: color)
-            Button { editing = category } label: { Image(systemName: "pencil").font(.system(size: 11)).foregroundStyle(Design.ink3) }
+            Button { editing = category } label: { Image(systemName: "pencil").font(.note).foregroundStyle(Design.ink2) }
                 .buttonStyle(.plain).help("编辑分类").accessibilityLabel("编辑分类")
-            Text(seconds[category.id].map { Format.duration($0, compact: true) } ?? "—").font(.num(12)).foregroundStyle(Design.ink2)
+            Text(seconds[category.id].map { Format.duration($0, compact: true) } ?? "—").font(.body.monospacedDigit()).foregroundStyle(Design.ink2)
                 .frame(width: 56, alignment: .trailing)
         }
-        .padding(.horizontal, 8).frame(height: 44)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(on ? Design.rowHover : .clear))
+        .padding(.horizontal, Design.Space.sm).frame(height: 44)
+        .background(RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous).fill(on ? Design.selectedFill : .clear))
     }
 
     /// Five steps, -2 to +2: filled up to the chosen one. +1 and above count as focus.
@@ -111,7 +111,7 @@ struct CategoryListCard: View {
         updated.productivity = level
         do {
             try model.categoryStore.updateCategory(updated)
-            withAnimation(Design.motion(Design.press, reduced: reduceMotion)) { categories[index] = updated }
+            withAnimation(Design.motion(Design.quick, reduced: reduceMotion)) { categories[index] = updated }
             // The same two calls the settings pane makes: no classification
             // depends on productivity, so no memo is dropped.
             model.resolver.refreshCategories()

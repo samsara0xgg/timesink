@@ -66,7 +66,7 @@ struct DayRibbonView: View {
                     if !compact {
                         ForEach(events.filter { !$0.isAllDay }) { event in
                             let rect = bounds(start: event.start, end: event.end, width: geometry.size.width)
-                            Text(event.title).font(.system(size: 11)).lineLimit(1).padding(.horizontal, 4)
+                            Text(event.title).font(.note).lineLimit(1).padding(.horizontal, 4)
                                 .frame(width: rect.width, height: 16, alignment: .leading)
                                 .background(.quaternary, in: RoundedRectangle(cornerRadius: 3))
                                 .offset(x: rect.minX).help(event.title)
@@ -120,7 +120,7 @@ struct DayRibbonView: View {
                     Label("专注会话", systemImage: "minus").foregroundStyle(.tint)
                     Label("日程", systemImage: "rectangle")
                     Label("未记录", systemImage: "rectangle.dashed")
-                }.font(.system(size: 11)).foregroundStyle(.secondary)
+                }.font(.note).foregroundStyle(Design.ink2)
             }
         }
         .accessibilityElement(children: .ignore)
@@ -218,18 +218,4 @@ enum LimitStatus: Equatable {
     }
 
     var isOver: Bool { if case .over = self { true } else { false } }
-}
-
-struct RefinedRowButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        RefinedRowButtonBody(configuration: configuration)
-    }
-    private struct RefinedRowButtonBody: View {
-        let configuration: Configuration
-        @State private var hovered = false
-        var body: some View {
-            configuration.label.background(Color.primary.opacity(configuration.isPressed ? 0.10 : hovered ? 0.05 : 0))
-                .onHover { hovered = $0 }
-        }
-    }
 }

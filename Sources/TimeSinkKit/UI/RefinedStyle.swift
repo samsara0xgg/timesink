@@ -4,12 +4,7 @@ import SwiftUI
 /// Values transcribed from the approved Refined artifact, not a new theme.
 enum RefinedStyle {
     static let popoverWidth: CGFloat = 340
-    static let panelRadius: CGFloat = 12
-    static let stateAnimation = Animation.spring(response: 0.36, dampingFraction: 0.78)
-    static let numberAnimation = Animation.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.28)
-    static func motion(reduced: Bool) -> Animation {
-        reduced ? .easeOut(duration: 0.15) : stateAnimation
-    }
+    static func motion(reduced: Bool) -> Animation { Design.motion(Design.layout, reduced: reduced) }
 
     static func adaptive(_ light: String, _ dark: String) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in
@@ -83,7 +78,7 @@ struct RefinedNumberMotion: ViewModifier {
     func body(content: Content) -> some View {
         content
             .contentTransition(reduceMotion ? .opacity : .numericText())
-            .animation(reduceMotion ? .easeOut(duration: 0.15) : RefinedStyle.numberAnimation, value: value)
+            .animation(Design.motion(Design.layout, reduced: reduceMotion), value: value)
     }
 }
 
@@ -101,9 +96,9 @@ struct CategoryChip: View {
                 .frame(width: 6, height: 6)
             Text(category?.name ?? String(localized: "未分类")).lineLimit(1)
         }
-        .font(.system(size: 11)).foregroundStyle(.secondary)
+        .font(.note).foregroundStyle(Design.ink2)
         .padding(.horizontal, 6).padding(.vertical, 3)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 5))
+        .background(Design.hoverFill, in: RoundedRectangle(cornerRadius: Design.Radius.mark))
     }
 }
 
@@ -162,7 +157,7 @@ struct ActivityIcon: View {
         if let domain {
             RoundedRectangle(cornerRadius: size * 0.24, style: .continuous)
                 .fill(.quaternary)
-                .overlay(Text(Self.monogram(for: domain)).font(.system(size: size * 0.55, weight: .semibold, design: .rounded)).foregroundStyle(.secondary))
+                .overlay(Text(Self.monogram(for: domain)).font(.system(size: size * 0.55, weight: .semibold)).foregroundStyle(Design.ink2))
                 .frame(width: size, height: size)
                 .accessibilityHidden(true)
         } else {
@@ -176,7 +171,7 @@ struct RecordingPauseMenu: View {
     var body: some View {
         if model.trackingPaused {
             Button("继续记录", systemImage: "play.fill") { model.resumeTracking() }
-                .buttonStyle(.borderless).font(.system(size: 11))
+                .buttonStyle(.borderless).font(.note)
         } else {
             Menu {
                 Text("暂停应用、网站、标题和屏幕采集")
@@ -184,7 +179,7 @@ struct RecordingPauseMenu: View {
                 Button("暂停 1 小时", systemImage: "clock") { model.pauseTracking(minutes: 60) }
                 Button("直到手动恢复", systemImage: "hand.raised") { model.pauseTracking(minutes: nil) }
             } label: { Label("暂停", systemImage: "pause") }
-            .menuStyle(.borderlessButton).fixedSize().font(.system(size: 11))
+            .menuStyle(.borderlessButton).fixedSize().font(.note)
             .help("暂停所有记录；暂停期间不补记")
         }
     }

@@ -1,24 +1,11 @@
 import SwiftUI
 import Charts
 
-/// Shared card chrome: a filled rounded rect matching the reference
-/// screenshot's dashboard tiles.
-private struct CardBackground: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .padding(18)
-            .workspacePanel()
-    }
-}
-
-extension View {
-    func statCardBackground() -> some View { modifier(CardBackground()) }
-}
-
 /// Hours and minutes with small units, rounded like every difference beside it.
 struct DurationHero: View {
     let seconds: TimeInterval
-    let size: CGFloat
+    /// `.display` for the popover's total; `.body` where it sits in a line.
+    var font: Font = .display
     var animated = true
     var body: some View {
         let minutes = Format.minutes(seconds)
@@ -27,44 +14,34 @@ struct DurationHero: View {
             parts(minutes, hour: Text("小时"), minute: Text("分钟"))
             parts(minutes, hour: Text("时"), minute: Text("分"))
         }
-        .font(.system(size: size, weight: .semibold)).tracking(-0.5).monospacedDigit()
+        .font(font).monospacedDigit()
         .refinedNumberMotion(animated ? "\(minutes)" : "")
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Format.chineseDuration(Double(minutes) * 60))
     }
 
     private func parts(_ minutes: Int, hour: Text, minute: Text) -> some View {
-        let unit = Font.system(size: size * 0.42, weight: .medium)
         return HStack(alignment: .firstTextBaseline, spacing: 2) {
             if minutes >= 60 {
                 Text(minutes / 60, format: .number)
-                hour.font(unit).foregroundStyle(.secondary)
+                hour.font(.body).foregroundStyle(Design.ink2)
             }
             if minutes < 60 || minutes % 60 > 0 {
                 Text(minutes % 60, format: .number)
-                minute.font(unit).foregroundStyle(.secondary)
+                minute.font(.body).foregroundStyle(Design.ink2)
             }
         }
         .lineLimit(1).fixedSize()
     }
 }
 
-private struct CardTitle: View {
-    let text: String
-    var body: some View {
-        Text(text)
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-    }
-}
-
 /// Pulse -> color mapping for the heatmap's score cells and preview, so a
 /// score reads the same colour wherever it appears.
 func scoreColor(_ pulse: Int?) -> Color {
-    guard let pulse else { return .secondary }
-    if pulse >= 70 { return .green }
-    if pulse >= 40 { return .orange }
-    return .red
+    guard let pulse else { return Design.ink2 }
+    if pulse >= 70 { return Design.live }
+    if pulse >= 40 { return Design.warning }
+    return Design.alert
 }
 
 /// 生产力趋势: 30-day daily-pulse line -- untracked days are gapped (each
@@ -120,16 +97,7 @@ struct ScoreTrendCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                CardTitle(text: String(localized: "生产力趋势 · 近 30 天"))
-                Spacer()
-                if streak >= 2 {
-                    Text("连续 \(streak) 天 ≥ \(StatsModel.streakThreshold) 分")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.tint)
-                }
-            }
+        VStack(alignment: .leading, spacing: Design.Space.sm) {
             Chart {
                 ForEach(Array(runs.enumerated()), id: \.offset) { runIndex, run in
                     ForEach(run, id: \.index) { point in
@@ -141,22 +109,24 @@ struct ScoreTrendCard: View {
                         .interpolationMethod(.monotone)
                         .accessibilityLabel(day(forIndex: point.index).formatted(date: .abbreviated, time: .omitted))
                         .accessibilityValue("\(point.pulse) 分")
+                        .foregroundStyle(Design.ink)
                         PointMark(x: .value("日", point.index), y: .value("分数", point.pulse))
-                            .symbolSize(hoverIndex == point.index ? 60 : 18)
+                            .symbolSize(hoverIndex == point.index ? 50 : 14)
+                            .foregroundStyle(Design.ink)
                     }
                 }
                 RuleMark(y: .value("阈值", StatsModel.streakThreshold))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Design.ink2)
                 if let hoverIndex {
                     RuleMark(x: .value("日", hoverIndex))
-                        .foregroundStyle(.secondary.opacity(0.35))
+                        .foregroundStyle(Design.line)
                         .annotation(position: .top, alignment: .center) {
                             Text(tooltipText(forIndex: hoverIndex))
-                                .font(.caption2)
+                                .font(.note).monospacedDigit()
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 3)
-                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 4))
+                                .floatingCard()
                         }
                 }
             }
@@ -168,7 +138,7 @@ struct ScoreTrendCard: View {
                     AxisTick()
                     AxisValueLabel(anchor: index == 29 ? .topTrailing : (index == 0 ? .topLeading : .top),
                                    collisionResolution: .disabled) {
-                        Text(day(forIndex: index), format: .dateTime.month(.defaultDigits).day())
+                        Text(day(forIndex: index), format: .dateTime.month(.defaultDigits).day()).font(.note).foregroundStyle(Design.ink2)
                     }
                 }
             }
@@ -206,10 +176,9 @@ struct ScoreTrendCard: View {
                     Text("更新于 \(updatedAt.formatted(.dateTime.hour().minute().locale(locale)))")
                 }
             }
-            .font(.caption2).foregroundStyle(.secondary)
+            .font(.note).monospacedDigit().foregroundStyle(Design.ink2)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .statCardBackground()
     }
 
     private func nearestIndex(at location: CGPoint, proxy: ChartProxy, geo: GeometryProxy) -> Int? {

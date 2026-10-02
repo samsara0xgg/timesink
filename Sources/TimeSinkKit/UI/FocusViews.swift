@@ -138,12 +138,12 @@ struct FocusDial: View {
             Color.clear.frame(width: 34, height: 34).glassSurface(in: Circle())
                 .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
                 .scaleEffect(dragging && !reduceMotion ? 1.14 : 1)
-                .animation(reduceMotion ? nil : Design.press, value: dragging)
+                .animation(reduceMotion ? nil : Design.quick, value: dragging)
                 .offset(x: radius * cos(angle.radians), y: radius * sin(angle.radians))
             VStack(spacing: 2) {
                 Text("\(minutes)").font(.system(size: 50, weight: .semibold)).monospacedDigit().contentTransition(.numericText())
                 Text("分钟 · \(Date().addingTimeInterval(Double(minutes) * 60), format: .dateTime.hour().minute()) 结束")
-                    .font(.system(size: 13)).foregroundStyle(.secondary)
+                    .font(.body).foregroundStyle(Design.ink2)
             }
         }
         .frame(width: size, height: size)
@@ -191,25 +191,25 @@ struct FocusRunningView: View {
                             .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 7, lineCap: .round)).rotationEffect(.degrees(-90))
                         VStack(spacing: 2) {
                             Text(Format.mmss(focus.remaining)).font(.system(size: 22, weight: .semibold)).monospacedDigit()
-                            Text("还剩").font(.system(size: 11)).foregroundStyle(.secondary)
+                            Text("还剩").font(.note).foregroundStyle(Design.ink2)
                         }
                     }.frame(width: 104, height: 104)
                     VStack(alignment: .leading, spacing: 3) {
                         Text("\(running.start.addingTimeInterval(Double(running.plannedSeconds)), format: .dateTime.hour().minute()) 结束")
                         Text("已专注 \(Int((Double(running.plannedSeconds) - focus.remaining) / 60)) 分钟")
                         Text("已拦下 \(focus.appBlocks + focus.siteBlocks) 次分心")
-                            .font(.system(size: 11)).foregroundStyle(.secondary)
+                            .font(.note).foregroundStyle(Design.ink2)
                     }
                 }
                 if !running.blockedApps.isEmpty {
                     HStack(spacing: 5) {
-                        Text("隐藏应用").foregroundStyle(.secondary)
+                        Text("隐藏应用").foregroundStyle(Design.ink2)
                         ForEach(Array(running.blockedApps.sorted().prefix(3)), id: \.self) { AppIcon(bundleID: $0, size: 16).help(AppIcon.name(for: $0)) }
                         Text(running.blockedApps.sorted().prefix(3).map { AppIcon.name(for: $0) }.joined(separator: String(localized: "、"))).lineLimit(1)
-                    }.font(.system(size: 11))
+                    }.font(.note)
                 }
                 if !running.blockedCategories.isEmpty {
-                    let label = Text("拦截网站").font(.system(size: 11)).foregroundStyle(.secondary)
+                    let label = Text("拦截网站").font(.note).foregroundStyle(Design.ink2)
                     let chips = ForEach(Array(running.blockedCategories.sorted().prefix(3)), id: \.self) { CategoryChip(category: model.resolver.categoriesByID[$0]) }
                     // Chips move under the label rather than truncate.
                     ViewThatFits(in: .horizontal) {
@@ -222,7 +222,7 @@ struct FocusRunningView: View {
                     Spacer()
                     Button(String(localized: "延长 10 分钟")) { do { try focus.extend() } catch { self.error = String(localized: "未能延长专注，请重试。") } }
                 }.controlSize(.small)
-                if let error { Text(error).font(.system(size: 11)).foregroundStyle(.red) }
+                if let error { Text(error).font(.note).foregroundStyle(Design.alert) }
             }
             .confirmationDialog("提前结束这段专注？", isPresented: $confirmingEnd, titleVisibility: .visible) {
                 Button("结束会话", role: .destructive) { focus.finish(completed: false) }
@@ -246,12 +246,12 @@ struct FocusHUDContentView: View {
             Button(action: onReturn) {
                 HStack(spacing: 8) {
                     AppIcon(bundleID: appKey, size: 18)
-                    Text(hideCount == 0 ? appName : String(localized: "\(appName) 已隐藏")).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                    Text(Format.mmss(controller.remaining)).font(.system(size: 13)).foregroundStyle(.secondary).monospacedDigit()
+                    Text(hideCount == 0 ? appName : String(localized: "\(appName) 已隐藏")).font(.body.weight(.semibold)).lineLimit(1)
+                    Text(Format.mmss(controller.remaining)).font(.body).foregroundStyle(Design.ink2).monospacedDigit()
                 }.contentShape(Capsule())
             }.buttonStyle(.plain)
             if hideCount > 0 {
-                Button(action: onAllow) { Text("允许 5 分钟").font(.system(size: 12, weight: .medium)).padding(.horizontal, 10).padding(.vertical, 4) }
+                Button(action: onAllow) { Text("允许 5 分钟").font(.body.weight(.medium)).padding(.horizontal, 10).padding(.vertical, 4) }
                     .buttonStyle(.plain).glassSurface(interactive: true)
             }
         }

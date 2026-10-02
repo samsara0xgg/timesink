@@ -65,7 +65,7 @@ struct InterruptionRadarCard: View {
             })
         } else {
             Color.clear.frame(height: lastHeight).frame(maxWidth: .infinity)
-                .workspacePanel()
+                .designCard()
                 .task { try? await Task.sleep(for: .milliseconds(80)); built = true }
         }
     }
@@ -73,8 +73,8 @@ struct InterruptionRadarCard: View {
     private var card: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text("打断雷达").font(.system(size: 13, weight: .semibold))
-                Text("悬停一行，只看它").font(.system(size: 12)).foregroundStyle(.secondary)
+                Text("打断雷达").font(.body.weight(.semibold))
+                Text("悬停一行，只看它").font(.body).foregroundStyle(Design.ink2)
                 Spacer()
                 Picker("显示", selection: $mode) {
                     Text("只看打断").tag(Mode.interruptions)
@@ -92,15 +92,15 @@ struct InterruptionRadarCard: View {
             }
         }
         .padding(18)
-        .workspacePanel()
+        .designCard()
         .pageTask(id: LoadKey(model: model, period: period)) { await load() }
     }
 
     private var summary: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("打断").font(.system(size: 13, weight: .semibold))
+            Text("打断").font(.body.weight(.semibold))
             (Text(data?.interruptions.count ?? 0, format: .number).font(.system(size: 26, weight: .semibold)).monospacedDigit()
-                + Text(" 次").font(.system(size: 13)).foregroundStyle(.secondary))
+                + Text(" 次").font(.body).foregroundStyle(Design.ink2))
             Group {
                 if let data {
                     InterruptionRadar(data: data, sources: Array(data.sources.prefix(4)), showsPeeks: false, highlighted: nil)
@@ -119,13 +119,13 @@ struct InterruptionRadarCard: View {
                     Text("最长没被打断：\(model.time(longest.start))–\(model.time(longest.end))")
                 }
             }
-            .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            .font(.body).foregroundStyle(Design.ink2).fixedSize(horizontal: false, vertical: true)
             Button { onOpen?() } label: { HStack(spacing: 4) { Text("打开打断雷达"); Image(systemName: "chevron.right").imageScale(.small) } }
                 .controlSize(.small).glassButton().fixedSize().padding(.top, 4)
         }
         .padding(18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .workspacePanel()
+        .designCard()
         .pageTask(id: LoadKey(model: model, period: period)) { await load() }
     }
 
@@ -135,8 +135,8 @@ struct InterruptionRadarCard: View {
         if period == .today, !runs.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 10) {
-                    Text("时间带").font(.system(size: 11, weight: .semibold))
-                    Text(mode == .all ? "所有切换，路过的不画" : "只画打断和拦下").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text("时间带").font(.note.weight(.semibold))
+                    Text(mode == .all ? "所有切换，路过的不画" : "只画打断和拦下").font(.note).foregroundStyle(Design.ink2)
                 }
                 TimeBand(runs: runs, data: data, sources: sources, showsPeeks: mode == .all, highlighted: hoveredSource,
                          color: { RefinedStyle.category($0, hex: model.resolver.categoriesByID[$0]?.colorHex ?? "#C7C7CC") },
@@ -153,7 +153,7 @@ struct InterruptionRadarCard: View {
                 stats(data)
                 if sources.isEmpty {
                     Text(period == .today ? "今天还没有被打断。" : "这 7 天没有被打断。")
-                        .font(.system(size: 12)).foregroundStyle(.secondary).padding(.vertical, 8)
+                        .font(.body).foregroundStyle(Design.ink2).padding(.vertical, 8)
                 } else {
                     VStack(spacing: 0) {
                         ForEach(sources.prefix(6)) { source in
@@ -166,7 +166,7 @@ struct InterruptionRadarCard: View {
                 Label {
                     Text("切到聊天、社交、娱乐这类窗口，停留 \(Int(model.interruptionRule.dwell)) 秒以上或在那里打了字才算打断；看一眼就回来的不算，不到 3 秒的路过不画。")
                 } icon: { Image(systemName: "info.circle") }
-                    .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .font(.note).foregroundStyle(Design.ink2).fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -193,9 +193,9 @@ struct InterruptionRadarCard: View {
 
     private func cell(_ title: String, _ value: String, _ detail: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(title).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+            Text(title).font(.body).foregroundStyle(Design.ink2).lineLimit(1)
             Text(value).font(.system(size: 20, weight: .semibold)).monospacedDigit().lineLimit(1)
-            Text(detail).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+            Text(detail).font(.note).foregroundStyle(Design.ink2).lineLimit(1)
         }
         .padding(.horizontal, 12).frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -207,10 +207,10 @@ struct InterruptionRadarCard: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text(source.label).fontWeight(.semibold).lineLimit(1)
-                    Text("打断 \(source.count) 次").foregroundStyle(.secondary)
-                    if source.peeks > 0 { Text("· 另有 \(source.peeks) 次看一眼").foregroundStyle(.tertiary) }
-                }.font(.system(size: 13))
-                Text(how(source)).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                    Text("打断 \(source.count) 次").foregroundStyle(Design.ink2)
+                    if source.peeks > 0 { Text("· 另有 \(source.peeks) 次看一眼").foregroundStyle(Design.ink2) }
+                }.font(.body)
+                Text(how(source)).font(.body).foregroundStyle(Design.ink2).lineLimit(1)
             }
             Spacer(minLength: 8)
             VStack(alignment: .leading, spacing: 3) {
@@ -222,7 +222,7 @@ struct InterruptionRadarCard: View {
                                      with: .color(hours[hour] == nil ? Color.primary.opacity(0.12) : Color.red.opacity(0.8)))
                     }
                 }.frame(width: 70, height: 16)
-                Text(peak(hours)).font(.system(size: 11)).foregroundStyle(.tertiary)
+                Text(peak(hours)).font(.note).foregroundStyle(Design.ink2)
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(peak(hours))
@@ -250,7 +250,7 @@ struct InterruptionRadarCard: View {
     /// focus, or put a limit on the site's category.
     @ViewBuilder private func action(_ source: DayInterruptions.Source) -> some View {
         if source.count < 2 {
-            Text("只有 1 次，不给建议").font(.system(size: 11)).foregroundStyle(.tertiary)
+            Text("只有 1 次，不给建议").font(.note).foregroundStyle(Design.ink2)
         } else if source.domain == nil {
             let hidden = model.settings.focusBlockedApps.contains(source.bundleID)
             Button {
@@ -350,7 +350,7 @@ private struct InterruptionRadar: View {
             }
             for hour in stride(from: 0, to: 24, by: 6) {
                 let angle = Double(hour) / 24 * 2 * .pi - .pi / 2
-                let label = context.resolve(Text(verbatim: "\(hour)").font(.system(size: 10)).foregroundStyle(.secondary))
+                let label = context.resolve(Text(verbatim: "\(hour)").font(.note).foregroundStyle(Design.ink2))
                 context.draw(label, at: CGPoint(x: center.x + (outer + 10) * cos(angle), y: center.y + (outer + 10) * sin(angle)))
             }
             // Blocked focus attempts sit on the innermost ring.
@@ -449,7 +449,7 @@ private struct TimeBand: View {
             .frame(height: 28)
             GeometryReader { geometry in
                 ForEach(Array(hours.enumerated()).filter { $0.offset % step == 0 }, id: \.offset) { _, hour in
-                    Text(hourLabel(hour)).font(.system(size: 10)).foregroundStyle(.secondary).fixedSize()
+                    Text(hourLabel(hour)).font(.note).foregroundStyle(Design.ink2).fixedSize()
                         .position(x: min(max(16, CGFloat(hour.timeIntervalSince(span.start) / span.duration) * geometry.size.width), geometry.size.width - 16), y: 6)
                 }
             }

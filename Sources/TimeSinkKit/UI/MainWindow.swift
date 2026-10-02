@@ -1,16 +1,15 @@
 import SwiftUI
 
-/// The main window: one backdrop, the pages stacked on it, and a glass bar
-/// floating over the top (`ShellBar`). There is no sidebar and no window
-/// toolbar; pages that used to put buttons and a search field in the toolbar
-/// hand them to the bar (`pageBar`, `pageSearchable`).
+/// The main window: one floor, the pages stacked on it, and a flat bar at
+/// the top (`ShellBar`) that is the same on every page. There is no sidebar
+/// and no window toolbar; a page that can be searched binds the bar's field
+/// (`pageSearchable`), and its other controls sit in its own header.
 struct MainWindowView: View {
     let model: AppModel
 
     /// Keep computed data and activity navigation across page switches.
     @State private var stats = StatsModel()
     @State private var activities = ActivitiesModel()
-    @State private var focusError: String?
     /// Pages opened so far. They stay alive behind the visible one, so going
     /// back to a page shows it as it was instead of building it again.
     @State private var openedPages: Set<SidebarItem> = []
@@ -33,13 +32,12 @@ struct MainWindowView: View {
             DesignBackground().ignoresSafeArea()
             detailContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .softScrollEdges()
-                // The bar's height is the pages' top inset: they scroll under
-                // the glass, and start below it.
+                // The bar's height is the pages' top inset: they start below
+                // it and scroll under it.
                 .safeAreaInset(edge: .top, spacing: 0) { Color.clear.frame(height: Design.barHeight) }
         }
         .overlayPreferenceValue(PageBarKey.self) { items in
-            ShellBar(model: model, items: items, startFocus: startFocus)
+            ShellBar(model: model, items: items)
                 .frame(maxHeight: .infinity, alignment: .top)
         }
         .ignoresSafeArea(.container, edges: .top)
@@ -47,14 +45,6 @@ struct MainWindowView: View {
         .environment(\.locale, model.displayLocale)
         .environment(\.calendar, model.displayCalendar)
         .frame(minWidth: Design.windowMinSize.width, minHeight: Design.windowMinSize.height)
-        .alert("无法开始专注", isPresented: Binding(get: { focusError != nil }, set: { if !$0 { focusError = nil } })) {
-            Button("好") { focusError = nil }
-        } message: { Text(focusError ?? "") }
-    }
-
-    private func startFocus(_ minutes: Int) {
-        do { try model.focus?.start(minutes: minutes) }
-        catch { focusError = error.localizedDescription }
     }
 
     private var detailContent: some View {
@@ -112,14 +102,10 @@ private struct PageStack: Layout {
 /// takes no input or focus, and it keeps the size it last had on screen, so
 /// resizing the window lays it out once on return rather than while hidden.
 ///
-/// Switching hands over, never overlaps: the page you leave fades out at once
-/// and the one coming in slides in just behind it, left or right by where the
-/// two sit among the tabs. Reduce Motion keeps the fade and drops the slide.
+/// A switch is a short cross-fade in place: nothing slides or grows, and
+/// what the pages share (the header, the first row of cards) stays put.
 private struct KeptPage<Content: View>: View {
     let active: Bool
-    /// -1 for a page before the selected one, 1 for one after: which way it
-    /// waits, and so which way it leaves and arrives from.
-    let side: CGFloat
     let content: Content
     @State private var size: CGSize?
     @State private var arrived = false
@@ -128,16 +114,13 @@ private struct KeptPage<Content: View>: View {
 
     init(model: AppModel, page: SidebarItem, @ViewBuilder content: () -> Content) {
         active = model.sidebarSelection == page
-        let order = SidebarItem.allCases
-        let mine = order.firstIndex(of: page) ?? 0, selected = order.firstIndex(of: model.sidebarSelection) ?? 0
-        side = mine < selected ? -1 : 1
         self.content = content()
         _visibility = State(initialValue: PageVisibility(model: model, page: page))
     }
 
     var body: some View {
-        // A page opened for the first time starts hidden and arrives like any
-        // other, instead of appearing whole while the old one is still fading.
+        // A page opened for the first time starts hidden and fades in like
+        // any other, instead of appearing whole over the one fading out.
         let shown = active && arrived
         content
             .environment(visibility)
@@ -149,8 +132,9 @@ private struct KeptPage<Content: View>: View {
             // would also detach the page's AppKit views (the Activities list)
             // and reattach them on every return, ~40% of a switch.
             .opacity(shown ? 1 : 0)
-            .offset(x: shown || reduceMotion ? 0 : side * 14)
-            .animation(reduceMotion ? .easeOut(duration: 0.12) : shown ? Design.pageIn : Design.pageOut, value: shown)
+            // The page left goes at once; the page arriving fades in over
+            // the bare floor, never through a double exposure of the two.
+            .animation(shown ? Design.motion(Design.page, reduced: reduceMotion) : nil, value: shown)
             .accessibilityHidden(!active)
     }
 }

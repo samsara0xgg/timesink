@@ -850,7 +850,7 @@ struct MenuBarDashboardView: View {
         .opacity(dim ? 0.5 : 1)
     }
 
-    private func hero(_ seconds: TimeInterval, size: CGFloat) -> some View { DurationHero(seconds: seconds, size: size) }
+    private func hero(_ seconds: TimeInterval, size: CGFloat) -> some View { DurationHero(seconds: seconds, font: size >= 26 ? .display : .figure) }
 
     /// Wraps rather than truncating: English runs longer than the design's line.
     @ViewBuilder private var compareLine: some View {
@@ -925,7 +925,7 @@ struct MenuBarDashboardView: View {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(shown, id: \.id) { entry in
                     Button { openActivities(category: entry.id) } label: { categoryRow(entry, nameWidth: nameWidth) }
-                        .buttonStyle(RefinedRowButtonStyle())
+                        .buttonStyle(HoverRowStyle())
                         .background(shownKind == .category(entry.id) ? Color.primary.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: 8))
                         .drillDown(host: panelHost, kind: .category(entry.id), hostWindow: hostWindow, anchorView: anchorView,
                             expandedDrill: $expandedDrill, shownKind: $shownKind) { categoryDetailContent(entry) }
@@ -988,7 +988,7 @@ struct MenuBarDashboardView: View {
         let fold = LimitState.fold(rows, warnPercent: dashboard.budgetWarnPercent)
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                LensPicker(options: FocusPresets.minutes, selection: $focusMinutes) { Text(verbatim: "\($0)") }
+                Segmented(options: FocusPresets.minutes, selection: $focusMinutes) { Text(verbatim: "\($0)").monospacedDigit() }
                     .accessibilityLabel("专注时长")
                     .onChange(of: focusMinutes) { _, value in model.settings.setFocusDurationMinutes(value) }
                 // No bare-Space shortcut: the popover has no text field to

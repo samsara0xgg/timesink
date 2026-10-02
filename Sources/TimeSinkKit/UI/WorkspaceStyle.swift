@@ -18,13 +18,3 @@ struct WorkspaceBackground: View {
         if provided { Color.clear } else { DesignBackground() }
     }
 }
-
-private struct WorkspacePanel: ViewModifier {
-    func body(content: Content) -> some View {
-        content.designCard(radius: RefinedStyle.panelRadius)
-    }
-}
-
-extension View {
-    func workspacePanel() -> some View { modifier(WorkspacePanel()) }
-}

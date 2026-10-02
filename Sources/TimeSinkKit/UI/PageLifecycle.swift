@@ -61,11 +61,6 @@ extension View {
     func pageSearchable(text: Binding<String>, prompt: LocalizedStringKey, isEnabled: Bool = true) -> some View {
         modifier(PageSearch(text: text, prompt: prompt, isEnabled: isEnabled))
     }
-
-    /// Buttons in the window's bar, for as long as this page is shown.
-    func pageBar<Actions: View>(@ViewBuilder _ actions: () -> Actions) -> some View {
-        modifier(PageBar(actions: AnyView(actions())))
-    }
 }
 
 private struct PageChange<V: Equatable>: ViewModifier {
@@ -118,14 +113,5 @@ private struct PageSearch: ViewModifier {
     func body(content: Content) -> some View {
         content.preference(key: PageBarKey.self,
                            value: PageBarItems(search: isActive && isEnabled ? ShellSearch(text: text, prompt: prompt) : nil))
-    }
-}
-
-private struct PageBar: ViewModifier {
-    let actions: AnyView
-    @PageShown private var isActive
-
-    func body(content: Content) -> some View {
-        content.preference(key: PageBarKey.self, value: PageBarItems(actions: isActive ? actions : nil))
     }
 }

@@ -87,7 +87,6 @@ struct JevSettingsPane: View {
         }
         .formStyle(.grouped)
         .contentMargins(.top, 12, for: .scrollContent)
-        .softScrollEdges()
         .onAppear {
             enabled = model.settings.jevEnabled
             screenText = model.settings.jevScreenText

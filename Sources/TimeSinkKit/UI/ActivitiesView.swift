@@ -3,11 +3,9 @@ import SwiftUI
 import TipKit
 import Observation
 
-/// 活动 tab: a grouped category/domain/title breakdown (`ActivityListView`,
-/// flexible width) plus, for single-day-ish ranges, a vertical day timeline
-/// (`DayTimelineView`, fixed width) mapped from the same spans — plus (C3) a
-/// calendar band above both that walks through enable/guide/quiet states
-/// depending on the overlay setting and live calendar permission.
+/// 活动: what was recorded in a stretch of days. On a day, the sessions (or
+/// the detailed timeline) with an inspector beside them; over longer
+/// ranges, the grouped category/site/title list.
 struct ActivitiesView: View {
     let model: AppModel
 
@@ -74,8 +72,6 @@ struct ActivitiesView: View {
     }
 
     var body: some View {
-        // 2.0: two columns. On a day the timeline is the list; longer ranges
-        // keep the grouped list. The inspector floats on glass to the right.
         let range = activities.shownRange ?? model.range
         GeometryReader { geometry in
             let width = geometry.size.width - 2 * Design.Space.page
@@ -83,7 +79,7 @@ struct ActivitiesView: View {
                 header(range, width: width)
                 let daily = ActivitiesModel.showsTimeline(range)
                 if daily && !activities.sessions.isEmpty {
-                    SessionRibbon(model: model, activities: activities) { showsInspector = true }.revealOnce(index: 2)
+                    SessionRibbon(model: model, activities: activities) { showsInspector = true }
                 }
                 HStack(alignment: .top, spacing: Design.Space.lg) {
                     VStack(alignment: .leading, spacing: Design.Space.md) {
@@ -91,9 +87,7 @@ struct ActivitiesView: View {
                         if daily {
                             if mode == .sessions {
                                 SessionListCard(model: model, activities: activities, onSelect: { showsInspector = true }) { modeSwitch }
-                                    .revealOnce(index: 3)
                             } else {
-                                hintLine
                                 timelineCard(range)
                             }
                         } else {
@@ -101,7 +95,7 @@ struct ActivitiesView: View {
                                               matchCount: activities.matchCount, matchSeconds: activities.matchSeconds,
                                               meetingSeconds: activities.meetingSeconds)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .workspacePanel()
+                                .designCard()
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -113,26 +107,26 @@ struct ActivitiesView: View {
                                 ActivityInspector(model: model, activities: activities)
                             }
                         }
-                            .frame(width: 300)
-                            .frame(maxHeight: .infinity, alignment: .top)
-                            .glassSurface(cornerRadius: 18)
-                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                        .frame(width: 300)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                        .designCard()
+                        .transition(.opacity)
                     }
                 }
             }
-            .padding(.horizontal, Design.Space.page).padding(.top, 8).padding(.bottom, 16)
+            .pagePadding()
             .overlay(alignment: .bottom) {
                 if activities.joinToast != nil {
-                    HStack(spacing: 12) {
-                        Text("已并入上一段").font(.system(size: 12, weight: .semibold))
-                        Button("撤销") { withAnimation(Design.motion(Design.settle, reduced: reduceMotion)) { activities.undoJoin(model: model) } }
-                            .buttonStyle(.plain).font(.system(size: 12, weight: .semibold)).foregroundStyle(Design.link)
+                    HStack(spacing: Design.Space.md) {
+                        Text("已并入上一段").font(.body.weight(.semibold))
+                        Button("撤销") { withAnimation(Design.motion(Design.layout, reduced: reduceMotion)) { activities.undoJoin(model: model) } }
+                            .buttonStyle(PillButtonStyle(height: 24))
                     }
-                    .padding(.horizontal, 16).frame(height: 36).glassSurface(in: Capsule()).padding(.bottom, 24)
-                    .transition(reduceMotion ? .opacity : .scale(scale: 0.85, anchor: .bottom).combined(with: .opacity))
+                    .padding(.horizontal, Design.Space.lg).frame(height: 40).floatingCard().padding(.bottom, Design.Space.page)
+                    .transition(.opacity)
                 }
             }
-            .animation(reduceMotion ? nil : Design.reveal, value: activities.joinToast)
+            .animation(Design.motion(Design.page, reduced: reduceMotion), value: activities.joinToast)
         }
         .background(WorkspaceBackground())
         .background {
@@ -152,35 +146,6 @@ struct ActivitiesView: View {
             await activities.loadSessions(model: model)
         }
         .pageSearchable(text: searchBinding, prompt: "搜索应用、网址、标题")
-        .pageBar {
-            Button { showsInspector.toggle() } label: {
-                Image(systemName: "sidebar.right").font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(showsInspector ? Design.accentInk : Design.iconInk)
-                    .frame(width: Design.controlHeight, height: Design.controlHeight)
-                    .glassControl(interactive: true).contentShape(Circle())
-            }
-            .buttonStyle(.plain).help("显示活动检查器").accessibilityLabel("显示活动检查器")
-            Menu {
-                Button("所有分类", systemImage: "square.grid.2x2") { model.activityFilter = nil }
-                Divider()
-                ForEach(model.resolver.categoriesByID.values.sorted { $0.sortOrder < $1.sortOrder }, id: \.id) { category in
-                    // Plain items: a coloured icon per category cost ~27 ms on
-                    // every switch to this page (the menu rebuilds them).
-                    Button(category.name) { model.activityFilter = category.id }
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "line.3.horizontal.decrease").font(.system(size: 12, weight: .semibold))
-                    Text(model.activityFilter.flatMap { model.resolver.categoriesByID[$0]?.name } ?? String(localized: "所有分类"))
-                        .font(.system(size: 12, weight: .semibold)).lineLimit(1)
-                }
-                .foregroundStyle(model.activityFilter == nil ? Design.ink : Design.accentInk)
-                .padding(.horizontal, 14).frame(height: Design.controlHeight)
-                .glassControl(interactive: true).contentShape(Capsule())
-            }
-            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
-            .help("按分类筛选活动")
-        }
         .task {
             await Task.yield()
             activities.recompute(model: model, events: calendarEvents)
@@ -229,71 +194,73 @@ struct ActivitiesView: View {
 
     /// 会话 | 时间线: the same day as a list of sessions or as the detailed timeline.
     private var modeSwitch: some View {
-        HStack(spacing: 2) {
-            ForEach([Mode.sessions, .timeline], id: \.self) { item in
-                Button { withAnimation(Design.motion(Design.settle, reduced: reduceMotion)) { mode = item } } label: {
-                    Group { if item == .sessions { Text("会话") } else { Text("时间线") } }
-                        .font(.system(size: 12, weight: mode == item ? .bold : .regular))
-                        .foregroundStyle(mode == item ? Design.accentInk : Design.ink)
-                        .padding(.horizontal, 12).frame(height: 26)
-                        .background { if mode == item { Capsule().fill(Design.pillTop).shadow(color: .black.opacity(0.08), radius: 2, y: 1) } }
-                        .contentShape(Capsule())
-                }.buttonStyle(.plain)
-            }
-        }.padding(2).background(Capsule().fill(Design.track)).fixedSize()
+        Segmented(options: [Mode.sessions, .timeline], selection: $mode, height: 24) { item in
+            item == .sessions ? Text("会话") : Text("时间线")
+        }
     }
 
-    /// The page's lead: what was recorded, with the counts the window title
-    /// used to carry.
+    /// The range, the filter and the inspector; then what was recorded.
     private func header(_ range: DateRangeSelection, width: CGFloat) -> some View {
+        let loaded = activities.rangeCount != nil
         let count = activities.rangeCount ?? 0
-        let seconds = activities.rangeSeconds
-        let time = Text(TodayFmt.long(seconds)).font(.system(size: 28, weight: .bold, design: .rounded)).monospacedDigit()
-        let sentence: Text = count == 0 && activities.rangeCount != nil ? Text("这段时间还没有记录。") : Text("记录了 \(time)，共 \(count) 条。")
-        let filtered = activities.matchCount
-        var stats = [
-            StripStat(id: 0, label: "记录", value: "\(count)", note: String(localized: "条")),
-            StripStat(id: 1, label: "时长", value: TodayFmt.clock(seconds), color: Design.accentInk),
-        ]
-        if ActivitiesModel.showsTimeline(range) {
-            stats.append(StripStat(id: stats.count, label: "会话", value: "\(activities.sessions.count)", note: String(localized: "按 \(Int(model.sessionThreshold / 60)) 分钟的空档切开")))
+        let time = Text(TodayFmt.long(activities.rangeSeconds)).monospacedDigit()
+        let sentence: Text
+        if !loaded {
+            sentence = Text(verbatim: " ")
+        } else if count == 0 {
+            sentence = Text("这段时间还没有记录。")
+        } else if ActivitiesModel.showsTimeline(range), !activities.sessions.isEmpty {
+            sentence = Text("记录了 \(time)，分成 \(activities.sessions.count) 段会话。")
+        } else {
+            sentence = Text("记录了 \(time)。")
         }
+        var stats = [StripStat(id: 0, label: "记录", value: loaded ? "\(count)" : "—", note: String(localized: "条"))]
         if activities.meetingSeconds > 0 {
-            stats.append(StripStat(id: stats.count, label: "会议", value: TodayFmt.clock(activities.meetingSeconds), note: String(localized: "来自日历")))
-        } else if let filtered {
-            stats.append(StripStat(id: stats.count, label: "搜索命中", value: "\(filtered)", note: activities.matchSeconds.map { Format.duration($0) } ?? ""))
+            stats.append(StripStat(id: 1, label: "会议", value: TodayFmt.clock(activities.meetingSeconds), note: String(localized: "来自日历")))
         }
-        return PageHeaderRow(lead: Text(verbatim: range.label), sentence: sentence, stats: stats, width: width)
+        if let filtered = activities.matchCount {
+            stats.append(StripStat(id: 2, label: "搜索命中", value: "\(filtered)", note: activities.matchSeconds.map { Format.duration($0) } ?? ""))
+        }
+        return PageHeader(sentence: sentence, stats: stats, width: width) {
+            RangeControls(model: model)
+        } actions: {
+            filterMenu
+            SegmentButton(selected: showsInspector) { showsInspector.toggle() } label: {
+                Image(systemName: "sidebar.right").foregroundStyle(showsInspector ? Design.ink : Design.iconInk)
+            }
+            .help("显示检查器").accessibilityLabel("显示检查器")
+        }
     }
 
-    /// Calendar on one line (the events are drawn in the timeline's gaps),
-    /// keyboard on the right.
-    private var hintLine: some View {
-        HStack(spacing: 8) {
-            if !activities.calendarBlocks.isEmpty {
-                Image(systemName: "calendar")
-                Text("日历：\(activities.calendarBlocks.prefix(3).map { "\(model.time($0.start)) \($0.title)" }.joined(separator: String(localized: "，")))")
-                    .lineLimit(1).truncationMode(.tail)
-                Text("· 画在时间线的空白里").foregroundStyle(.tertiary).lineLimit(1)
+    private var filterMenu: some View {
+        Menu {
+            Button("所有分类") { model.activityFilter = nil }
+            Divider()
+            ForEach(model.resolver.categoriesByID.values.sorted { $0.sortOrder < $1.sortOrder }, id: \.id) { category in
+                // Plain items: a coloured icon per category cost ~27 ms on
+                // every switch to this page (the menu rebuilds them).
+                Button(category.name) { model.activityFilter = category.id }
             }
-            Spacer(minLength: 8)
-            Label("↑↓ 逐块 · ←→ 在刻度间跳", systemImage: "keyboard").foregroundStyle(.tertiary).lineLimit(1)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "line.3.horizontal.decrease").foregroundStyle(Design.iconInk)
+                Text(model.activityFilter.flatMap { model.resolver.categoriesByID[$0]?.name } ?? String(localized: "所有分类"))
+                    .fontWeight(model.activityFilter == nil ? .regular : .semibold).lineLimit(1)
+            }
         }
-        .font(.system(size: 12)).foregroundStyle(.secondary)
-        .padding(.horizontal, 4).frame(height: 24)
+        .menuStyle(.button).buttonStyle(PillButtonStyle()).menuIndicator(.hidden).fixedSize()
+        .help("按分类筛选活动")
     }
 
     private func timelineCard(_ range: DateRangeSelection) -> some View {
         let dwell = Int(activities.interruptionRule.dwell)
+        let merge = String(localized: "短于 \(TimelineZoom.thresholdLabel(for: activities.timelineHourHeight)) 的切换并入所在的块")
         return VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .center, spacing: 8) {
-                Text("时间线").font(.system(size: 13, weight: .semibold))
-                    .help(String(localized: "短于 \(TimelineZoom.thresholdLabel(for: activities.timelineHourHeight)) 的切换并入所在的块"))
-                let merge = String(localized: "短于 \(TimelineZoom.thresholdLabel(for: activities.timelineHourHeight)) 的切换并入所在的块")
+            HStack(alignment: .center, spacing: Design.Space.sm) {
+                Text("时间线").cardTitle().help(merge)
                 // Shown whole or not at all; the title's tooltip always has it.
                 ViewThatFits(in: .horizontal) {
-                    Text(merge).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize()
-                        .contentTransition(.numericText())
+                    Text(merge).font(.note).foregroundStyle(Design.ink2).fixedSize()
                     Color.clear.frame(width: 0, height: 0)
                 }
                 .help(merge)
@@ -302,21 +269,27 @@ struct ActivitiesView: View {
                 // In the card rather than the window toolbar: toolbar items
                 // rebuild on every switch to the page, a slider ~15 ms.
                 TimelineZoomControl(hourHeight: $activities.timelineHourHeight)
-                    .glassSurface(in: Capsule())
             }
-            .padding(.horizontal, 4).padding(.bottom, 6)
-            HStack(spacing: 14) {
-                legend("相关的切换") { RoundedRectangle(cornerRadius: 1).fill(.primary.opacity(0.75)).frame(width: 9, height: 2) }
-                legend("打断") { RoundedRectangle(cornerRadius: 1).fill(.red).frame(width: 9, height: 2) }
-                legend("被拦下") { Circle().strokeBorder(.primary, lineWidth: 1.5).frame(width: 7, height: 7) }
+            .padding(.bottom, Design.Space.sm)
+            HStack(spacing: Design.Space.md) {
+                legend("相关的切换") { RoundedRectangle(cornerRadius: 1).fill(Design.ink.opacity(0.75)).frame(width: 9, height: 2) }
+                legend("打断") { RoundedRectangle(cornerRadius: 1).fill(Design.alert).frame(width: 9, height: 2) }
+                legend("被拦下") { Circle().strokeBorder(Design.ink, lineWidth: 1.5).frame(width: 7, height: 7) }
                 legend("专注") {
-                    RoundedRectangle(cornerRadius: 3).strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, dash: [2, 2]))
+                    RoundedRectangle(cornerRadius: 3).strokeBorder(Design.accent, style: StrokeStyle(lineWidth: 1.5, dash: [2, 2]))
                         .frame(width: 14, height: 8)
                 }
+                Spacer(minLength: Design.Space.sm)
+                if !activities.calendarBlocks.isEmpty {
+                    // The events are drawn in the timeline's gaps.
+                    Label(activities.calendarBlocks.prefix(3).map { "\(model.time($0.start)) \($0.title)" }.joined(separator: String(localized: "，")),
+                          systemImage: "calendar")
+                        .lineLimit(1).truncationMode(.tail)
+                }
             }
-            .help(String(localized: "停留不到 \(dwell) 秒、没打字的不画"))
-            .font(.system(size: 11)).foregroundStyle(.secondary)
-            .padding(.horizontal, 4).padding(.bottom, 10)
+            .help(String(localized: "停留不到 \(dwell) 秒、没打字的不画；↑↓ 逐块，←→ 在刻度间跳"))
+            .font(.note).foregroundStyle(Design.ink2)
+            .padding(.bottom, Design.Space.md)
             DayTimelineView(day: range.interval.start, blocks: activities.timelineBlocks,
                             events: activities.calendarBlocks, allDay: activities.allDayTitles,
                             focusBlocks: activities.focusBlocks,
@@ -348,9 +321,9 @@ struct ActivitiesView: View {
                     }
                 }
         }
-        .padding(.horizontal, 12).padding(.top, 14).padding(.bottom, 4)
+        .padding(.horizontal, Design.Space.lg).padding(.top, Design.Space.lg)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .workspacePanel().revealOnce(index: 2)
+        .designCard()
     }
 
     private var sessionMarks: [SessionMark] {
@@ -372,24 +345,19 @@ struct ActivitiesView: View {
 
     @ViewBuilder private var timeFilterBanner: some View {
         if let interval = model.activityTimeInterval {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Label("热力图时段 · \(interval.start.formatted(.dateTime.month().day()))", systemImage: "square.grid.3x3")
-                    Text("\(model.time(interval.start))–\(model.time(interval.end))")
+            HStack(spacing: Design.Space.sm) {
+                Image(systemName: "square.grid.3x3").foregroundStyle(Design.iconInk)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("热力图时段 · \(interval.start.formatted(.dateTime.month().day())) \(model.time(interval.start))–\(model.time(interval.end))")
                         .monospacedDigit()
-                    Spacer(minLength: 0)
+                    Text("列表只算这个时段；时间线高亮命中的记录。").font(.note).foregroundStyle(Design.ink2)
                 }
-                HStack {
-                    Text("列表仅统计此时段；全天时间轴高亮命中记录。")
-                        .foregroundStyle(.secondary)
-                    Spacer(minLength: 4)
-                    Button("返回热力图") { model.returnToHeatmap() }
-                    Button("显示全天") { model.clearActivityTimeFilter() }
-                }
-                .font(.caption)
+                Spacer(minLength: Design.Space.sm)
+                Button("返回热力图") { model.returnToHeatmap() }.buttonStyle(PillButtonStyle())
+                Button("显示全天") { model.clearActivityTimeFilter() }.buttonStyle(PillButtonStyle())
             }
-            .padding(10)
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+            .padding(Design.Space.md)
+            .designCard()
         }
     }
 

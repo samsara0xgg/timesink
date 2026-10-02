@@ -78,7 +78,7 @@ private struct CategoryEditRow: View {
                     }
                 // The whole row is the name's, so an English name is not cut off.
                 TextField(String(localized: "\(category.name)的名称"), text: $category.name)
-                    .textFieldStyle(.plain).font(.system(size: 13, weight: .semibold))
+                    .textFieldStyle(.plain).font(.body.weight(.semibold))
                     .focused($isNameFocused).onSubmit { commitRefresh() }
             }
             Picker(String(localized: "\(category.name)的投入程度"), selection: $category.productivity) {
@@ -92,8 +92,8 @@ private struct CategoryEditRow: View {
                     .lineLimit(2, reservesSpace: true)
                 Spacer(minLength: 6)
                 Text(todaySeconds == 0 ? "—" : Format.duration(todaySeconds)).monospacedDigit().fixedSize()
-            }.font(.system(size: 11)).foregroundStyle(.secondary)
-        }.padding(.horizontal, 14).padding(.vertical, 12).workspacePanel()
+            }.font(.note).foregroundStyle(Design.ink2)
+        }.padding(.horizontal, Design.Space.md).padding(.vertical, Design.Space.md).designCard()
         .onChange(of: category.name) { _, _ in persistOnly() }
         .onChange(of: isNameFocused) { _, focused in
             if !focused { commitRefresh() }
@@ -194,6 +194,8 @@ struct UncategorizedSettingsPane: View {
     /// Whether the page is on screen; read by handlers only, never by `body`.
     @State private var isShown = true
     @State private var loadFailed = false
+    /// Until the first read lands there is nothing to say, not "nothing to sort".
+    @State private var loaded = false
     @State private var toast: Toast?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// How many items still wait and for how long, for the page's numbers.
@@ -225,6 +227,8 @@ struct UncategorizedSettingsPane: View {
             if rows.isEmpty && loadFailed {
                 ContentUnavailableView("待分类暂时无法读取", systemImage: "exclamationmark.triangle",
                                        description: Text("记录没有丢失。稍后切回这里会再试一次。"))
+            } else if rows.isEmpty && !loaded {
+                Color.clear.frame(height: 56).accessibilityLabel("正在读取待分类")
             } else if rows.isEmpty {
                 emptyState
             } else {
@@ -234,14 +238,14 @@ struct UncategorizedSettingsPane: View {
                         VStack(alignment: .leading, spacing: 3) {
                             // The count and the total tick down as rows are accepted.
                             Text("近 30 天有 \(pending.count) 项还没有分类，合计 \(Format.duration(pending.reduce(0) { $0 + $1.seconds }))")
-                                .font(.system(size: 13)).contentTransition(reduceMotion ? .opacity : .numericText())
-                                .animation(reduceMotion ? nil : Design.settle, value: pending.count)
-                            Text("按用时从多到少。建议只在你点接受后生效。").font(.system(size: 12)).foregroundStyle(Design.ink3)
+                                .font(.body).contentTransition(reduceMotion ? .opacity : .numericText())
+                                .animation(Design.motion(Design.layout, reduced: reduceMotion), value: pending.count)
+                            Text("按用时从多到少。建议只在你点接受后生效。").font(.body).foregroundStyle(Design.ink2)
                         }
                         Spacer(minLength: 8)
                         if !suggestions.isEmpty {
                             Button("接受全部建议") {
-                                withAnimation(Design.motion(Design.settle, reduced: reduceMotion)) {
+                                withAnimation(Design.motion(Design.layout, reduced: reduceMotion)) {
                                     for row in rows where accepted[row.id] == nil {
                                         if let suggestion = suggestions[row.id] { assign(row: row, categoryID: suggestion.categoryID, publish: false) }
                                     }
@@ -250,26 +254,25 @@ struct UncategorizedSettingsPane: View {
                             }.buttonStyle(PillButtonStyle(height: 28))
                         }
                     }
-                    if let error { Text(error).foregroundStyle(.red) }
+                    if let error { Text(error).foregroundStyle(Design.alert) }
                     ScrollView {
                         LazyVStack(spacing: 0) {
                             ForEach(pending) { row in
                                 listRow(row)
-                                    .transition(reduceMotion ? .opacity : .asymmetric(insertion: .opacity,
-                                        removal: .opacity.combined(with: .scale(scale: 0.96, anchor: .top))))
+                                    .transition(.opacity)
                             }
                         }
                     }.scrollIndicators(.never).frame(maxHeight: min(560, CGFloat(pending.count) * 58 + 4))
                 }
                 .overlay(alignment: .bottom) {
                     if let toast {
-                        HStack(spacing: 12) {
-                            Text(toast.message).font(.system(size: 12, weight: .semibold))
-                            Button("撤销") { undo(toast) }.buttonStyle(.plain).font(.system(size: 12, weight: .semibold)).foregroundStyle(Design.link)
+                        HStack(spacing: Design.Space.md) {
+                            Text(toast.message).font(.body.weight(.semibold))
+                            Button("撤销") { undo(toast) }.buttonStyle(PillButtonStyle(height: 24))
                         }
-                        .padding(.horizontal, 16).frame(height: 36)
-                            .glassSurface(in: Capsule()).padding(.bottom, 8)
-                            .transition(reduceMotion ? .opacity : .scale(scale: 0.85, anchor: .bottom).combined(with: .opacity))
+                        .padding(.horizontal, Design.Space.lg).frame(height: 40)
+                        .floatingCard().padding(.bottom, Design.Space.sm)
+                        .transition(.opacity)
                     }
                 }
                 .onChange(of: pending.map(\.id)) { _, _ in onSummary(pending.count, pending.reduce(0) { $0 + $1.seconds }) }
@@ -298,10 +301,10 @@ struct UncategorizedSettingsPane: View {
 
     private var emptyState: some View {
         HStack(spacing: 8) {
-            Image(systemName: "checkmark.circle").foregroundStyle(Design.liveInk)
+            Image(systemName: "checkmark.circle").foregroundStyle(Design.live)
             Text("近 30 天没有未分类的活动").foregroundStyle(Design.ink2)
         }
-        .font(.system(size: 13)).frame(maxWidth: .infinity, minHeight: 56)
+        .font(.body).frame(maxWidth: .infinity, minHeight: 56)
     }
 
     /// One app or site: what it is and how long, the suggestion, 其他… and 接受.
@@ -309,13 +312,13 @@ struct UncategorizedSettingsPane: View {
         HStack(spacing: 12) {
             ActivityIcon(bundleID: row.id, domain: row.isDomain ? row.id : nil, size: 32)
             VStack(alignment: .leading, spacing: 2) {
-                Text(row.label).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                Text(row.label).font(.body.weight(.semibold)).lineLimit(1)
                 Text(row.isDomain ? "网站 · 近 30 天 \(Format.duration(row.seconds))" : "应用 · 近 30 天 \(Format.duration(row.seconds))")
-                    .font(.num(12)).foregroundStyle(Design.ink3)
+                    .font(.body.monospacedDigit()).foregroundStyle(Design.ink2)
             }
             Spacer(minLength: 8)
             if let suggestion = suggestions[row.id] {
-                Label("建议", systemImage: "sparkles").font(.system(size: 12)).foregroundStyle(Design.ink3).labelStyle(.titleAndIcon)
+                Label("建议", systemImage: "sparkles").font(.body).foregroundStyle(Design.ink2).labelStyle(.titleAndIcon)
                 CategoryChip(category: model.resolver.categoriesByID[suggestion.categoryID])
             }
             Menu(suggestions[row.id] == nil ? "选择分类" : "其他…") {
@@ -333,14 +336,14 @@ struct UncategorizedSettingsPane: View {
 
     private func accept(_ row: Row, _ categoryID: String) {
         let suggestion = suggestions[row.id].flatMap { $0.key == row.id ? $0 : nil }
-        withAnimation(Design.motion(Design.settle, reduced: reduceMotion)) { assign(row: row, categoryID: categoryID) }
+        withAnimation(Design.motion(Design.layout, reduced: reduceMotion)) { assign(row: row, categoryID: categoryID) }
         guard accepted[row.id] != nil else { return }
         let name = model.resolver.categoriesByID[categoryID]?.name ?? ""
         let shown = Toast(message: String(localized: "\(row.label) 已归入 \(name)，以后也自动"), rowID: row.id, isDomain: row.isDomain, suggestion: suggestion)
-        withAnimation(Design.motion(Design.reveal, reduced: reduceMotion)) { toast = shown }
+        withAnimation(Design.motion(Design.page, reduced: reduceMotion)) { toast = shown }
         Task {
             try? await Task.sleep(for: .seconds(5))
-            if toast == shown { withAnimation(Design.motion(Design.settle, reduced: reduceMotion)) { toast = nil } }
+            if toast == shown { withAnimation(Design.motion(Design.layout, reduced: reduceMotion)) { toast = nil } }
         }
     }
 
@@ -353,7 +356,7 @@ struct UncategorizedSettingsPane: View {
                 try model.categoryStore.restoreSuggestion(suggestion)
                 suggestions[shown.rowID] = suggestion
             }
-            withAnimation(Design.motion(Design.settle, reduced: reduceMotion)) {
+            withAnimation(Design.motion(Design.layout, reduced: reduceMotion)) {
                 accepted[shown.rowID] = nil
                 toast = nil
             }
@@ -419,6 +422,7 @@ struct UncategorizedSettingsPane: View {
                 let freshIDs = Set(fresh.map(\.id))
                 rows = fresh + rows.filter { accepted[$0.id] != nil && !freshIDs.contains($0.id) }
                 loadFailed = false
+                loaded = true
             } catch {
                 settingsLogger.error("uncategorized recompute failed: \(String(describing: error), privacy: .public)")
                 loadFailed = true
