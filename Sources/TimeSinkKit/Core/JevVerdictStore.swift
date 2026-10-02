@@ -131,7 +131,9 @@ extension CategoryStore {
                 let key = VerdictKey(appBundleID: row["appBundleID"], domain: row["domain"], title: row["title"], document: row["document"])
                 let url: String = row["url"]
                 guard !current.contains(key),
-                      JevRules.match(appBundleID: key.appBundleID, domain: key.domain, url: url, title: key.title, document: key.document) == nil
+                      // Without the url: a span's own url varies inside one combo, so a hit that only the
+                      // url gives would leave the other spans of it with no verdict.
+                      JevRules.match(appBundleID: key.appBundleID, domain: key.domain, url: nil, title: key.title, document: key.document) == nil
                 else { return nil }
                 return JevCombo(key: key, appName: row["appName"], url: url, seconds: row["seconds"])
             }
