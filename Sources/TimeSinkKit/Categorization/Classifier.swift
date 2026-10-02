@@ -34,8 +34,21 @@ public struct ClassificationContext: Sendable {
     /// essentially all of a cold classification pass.
     let compiledURLRules: [CompiledURLRule]
 
+    /// What the user decided for one window content, and what Jev did.
+    /// Both empty when Jev is off (a user verdict stays valid then, but is
+    /// only read from the table while Jev is on, see `CategoryResolver`).
+    public var userVerdicts: [VerdictKey: String]
+    public var jevVerdicts: [VerdictKey: JevVerdictEntry]
+    /// The categories that exist; a hard rule or verdict that names another
+    /// is skipped. nil means do not check.
+    public var categoryIDs: Set<String>?
+
     public init(domainMap: [String: DomainEntry], appMap: [String: DomainEntry], urlRules: [URLRule],
-                titleRules: [TitleRule] = []) {
+                titleRules: [TitleRule] = [], userVerdicts: [VerdictKey: String] = [:],
+                jevVerdicts: [VerdictKey: JevVerdictEntry] = [:], categoryIDs: Set<String>? = nil) {
+        self.userVerdicts = userVerdicts
+        self.jevVerdicts = jevVerdicts
+        self.categoryIDs = categoryIDs
         self.domainMap = domainMap
         self.appMap = appMap
         self.urlRules = urlRules
@@ -153,7 +166,10 @@ struct CompiledTitleRule: Sendable {
 /// fields and a `ClassificationContext` snapshot, decides which category it
 /// belongs to.
 ///
-/// Priority order (first hit wins):
+/// Priority order (first hit wins), after the segment override the resolver
+/// checks first:
+/// 0. the user's own verdict for this exact window content (app, domain,
+///    title, document) -- the most specific thing they can say.
 /// 1. `title` matches a user-sourced `titleRule` in scope (`context.titleRules`
 ///    / `context.compiledTitleRules` is expected pre-sorted scoped-first by
 ///    the caller -- see `CategoryResolver.refresh()`) -- the most specific
@@ -165,6 +181,9 @@ struct CompiledTitleRule: Sendable {
 /// 3. `url` is non-nil: scan `context.urlRules` where `source == "user"` in
 ///    order, first `matches` wins (the array is expected to already be
 ///    sorted by the caller -- see `CategoryResolver.refresh()`).
+/// 3b. `domain == nil` and the user mapped the app.
+/// 3c. `JevRules`: local hard rules that need no model.
+/// 3d. a cached Jev verdict for this window content.
 /// 4. `title` matches a non-user-sourced (builtin) `titleRule` in scope.
 /// 5. `url` is non-nil: scan `context.urlRules` where `source != "user"` in
 ///    order, first `matches` wins (same pre-sorted array as tier 3, the
@@ -182,9 +201,14 @@ public enum Classifier {
         url: String?,
         domain: String?,
         title: String?,
+        document: String? = nil,
         context: ClassificationContext
     ) -> String {
         let scopeKey = domain ?? appBundleID
+        let verdictKey = VerdictKey(appBundleID: appBundleID, domain: domain, title: title, document: document)
+        func exists(_ id: String) -> Bool { context.categoryIDs?.contains(id) ?? true }
+
+        if let id = context.userVerdicts[verdictKey], exists(id) { return id }
         // Hoisted once per call (not per rule) and reused by tier 4 below --
         // stays nil for a nil/empty title, keeping that path zero-cost.
         var loweredTitle: String?
@@ -222,6 +246,16 @@ public enum Classifier {
                 return rule.categoryID
             }
         }
+
+        // 3b-3d. what the user mapped for the app, then hard rules, then Jev.
+        if domain == nil, let entry = context.appMap[appBundleID], entry.source == "user" {
+            return entry.categoryID
+        }
+        if let hit = JevRules.match(appBundleID: appBundleID, domain: domain, url: url, title: title, document: document),
+           exists(hit.categoryID) {
+            return hit.categoryID
+        }
+        if let verdict = context.jevVerdicts[verdictKey], exists(verdict.categoryID) { return verdict.categoryID }
 
         // 4. builtin title seeds.
         if let title, let loweredTitle {

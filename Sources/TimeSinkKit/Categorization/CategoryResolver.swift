@@ -29,9 +29,17 @@ public final class CategoryResolver {
     private let logger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "categoryResolver")
 
     public private(set) var categoriesByID: [String: Category] = [:]
+    /// Categories flagged `distracting`: what an interruption can be made of.
+    public private(set) var distractingIDs: Set<String> = []
     private var context = ClassificationContext(domainMap: [:], appMap: [:], urlRules: [], titleRules: [])
 
-    /// The four fields `Classifier.categoryID` actually reads. Holds
+    /// Whether cached verdicts count. Off, the resolver is what it was
+    /// before Jev: rules, then the shipped lists.
+    public var jevEnabled = false {
+        didSet { if jevEnabled != oldValue { refresh() } }
+    }
+
+    /// The fields `Classifier.categoryID` actually reads. Holds
     /// references to the span's existing strings, so building one is a few
     /// retains -- no copying, no joined-key allocation.
     fileprivate struct MemoKey: Hashable, Sendable {
@@ -39,6 +47,7 @@ public final class CategoryResolver {
         let url: String?
         let domain: String?
         let title: String?
+        let document: String?
     }
 
     /// Memoizes `Classifier.categoryID` per distinct input tuple. The span
@@ -115,7 +124,7 @@ public final class CategoryResolver {
             }
             var appMap = allApps.filter { !disabled.contains("app:" + $0.key) }
             for (app, entry) in allApps where entry.source == "user" && disabled.contains("app:" + app) {
-                if let builtin = Taxonomy.builtinApps.first(where: { $0.bundleID == app }) {
+                if let builtin = Taxonomy.builtinApps.first(where: { $0.bundleID == app }), categoryExists(builtin.categoryID, in: categories) {
                     appMap[app] = DomainEntry(categoryID: builtin.categoryID, source: "builtin")
                 }
             }
@@ -135,9 +144,15 @@ public final class CategoryResolver {
 
             let overrides = try categoryStore.segmentOverrides()
             categoriesByID = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
+            distractingIDs = Set(categories.filter(\.distracting).map(\.id))
             self.overrides = overrides
+            var user: [VerdictKey: String] = [:], jev: [VerdictKey: JevVerdictEntry] = [:]
+            for v in try categoryStore.verdicts() {
+                if v.isUser { user[v.key] = v.categoryID } else if jevEnabled { jev[v.key] = JevVerdictEntry(categoryID: v.categoryID, prob: v.prob) }
+            }
             context = ClassificationContext(domainMap: domainMap, appMap: appMap, urlRules: sortedRules,
-                                             titleRules: titleRules)
+                                             titleRules: titleRules, userVerdicts: user, jevVerdicts: jev,
+                                             categoryIDs: Set(categories.map(\.id)))
             memo.removeAll(keepingCapacity: true)
         } catch {
             logger.error("CategoryResolver.refresh failed, keeping previous context: \(String(describing: error), privacy: .public)")
@@ -169,10 +184,13 @@ public final class CategoryResolver {
         do {
             let categories = try categoryStore.allCategories()
             categoriesByID = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
+            distractingIDs = Set(categories.filter(\.distracting).map(\.id))
         } catch {
             logger.error("CategoryResolver.refreshCategories failed, keeping previous: \(String(describing: error), privacy: .public)")
         }
     }
+
+    private func categoryExists(_ id: String, in categories: [Category]) -> Bool { categories.contains { $0.id == id } }
 
     /// Memo occupancy, for `testMemoNeverExceedsCap` -- the memory bound is
     /// otherwise unobservable from outside.
@@ -206,13 +224,14 @@ public final class CategoryResolver {
     nonisolated private static func categoryID(for span: Span, context: ClassificationContext,
                                                memo: inout [MemoKey: String]) -> String {
         let key = MemoKey(appBundleID: span.appBundleID, url: span.url,
-                          domain: span.domain, title: span.title)
+                          domain: span.domain, title: span.title, document: span.document)
         if let hit = memo[key] { return hit }
         let resolved = Classifier.categoryID(
             appBundleID: span.appBundleID,
             url: span.url,
             domain: span.domain,
             title: span.title,
+            document: span.document,
             context: context
         )
         if memo.count >= Self.memoCap { memo.removeAll(keepingCapacity: true) }
@@ -254,7 +273,9 @@ public final class CategoryResolver {
                 return ($0.id ?? 0) > ($1.id ?? 0)
             }
         }
-        let preview = ClassificationContext(domainMap: domains, appMap: apps, urlRules: context.urlRules, titleRules: titles)
+        let preview = ClassificationContext(domainMap: domains, appMap: apps, urlRules: context.urlRules, titleRules: titles,
+                                            userVerdicts: context.userVerdicts, jevVerdicts: context.jevVerdicts,
+                                            categoryIDs: context.categoryIDs)
         var memo: [MemoKey: String] = [:]
         return items.filter { item in
             guard reachable(item.span) else { return false }
@@ -271,6 +292,8 @@ public final class CategoryResolver {
 
     nonisolated fileprivate static func matchingRuleKey(for span: Span, context: ClassificationContext, overrides: [Int64: String]) -> String? {
         if let id = span.id, overrides[id] != nil { return nil }
+        let verdictKey = VerdictKey(span)
+        if let id = context.userVerdicts[verdictKey], context.categoryIDs?.contains(id) ?? true { return nil }
         let scope = span.domain ?? span.appBundleID
         // The compiled rules sit index for index beside the raw ones: the
         // rules pane asks this for every span of the day, and the raw
@@ -303,14 +326,35 @@ public final class CategoryResolver {
             }
             return nil
         }
-        if let key = title(true) ?? domain("user") ?? url(true) ?? title(false) ?? url(false) ?? domain("curated") ?? domain("seed") { return key }
+        if let key = title(true) ?? domain("user") ?? url(true) { return key }
+        if span.domain == nil, context.appMap[span.appBundleID]?.source == "user" { return "app:" + span.appBundleID }
+        // A hard rule or a verdict decided it: no list rule gets the credit.
+        if automaticReason(for: span, context: context) != nil { return nil }
+        if let key = title(false) ?? url(false) ?? domain("curated") ?? domain("seed") { return key }
         if span.domain == nil, context.appMap[span.appBundleID] != nil { return "app:" + span.appBundleID }
         if let domain = span.domain, context.domainMap[domain]?.source == "llm" { return "domain:" + domain }
         return nil
     }
 
+    /// The hard rule, else the cached Jev verdict, that decides `span` once
+    /// the user's own rules have passed.
+    private enum Automatic { case rule(JevRules.Hit), jev(Double) }
+
+    nonisolated private static func automaticReason(for span: Span, context: ClassificationContext) -> Automatic? {
+        func exists(_ id: String) -> Bool { context.categoryIDs?.contains(id) ?? true }
+        if let hit = JevRules.match(appBundleID: span.appBundleID, domain: span.domain, url: span.url, title: span.title, document: span.document),
+           exists(hit.categoryID) { return .rule(hit) }
+        if let v = context.jevVerdicts[VerdictKey(span)], exists(v.categoryID) { return .jev(v.prob) }
+        return nil
+    }
+
+    nonisolated private func automaticReason(for span: Span, context: ClassificationContext) -> Automatic? {
+        Self.automaticReason(for: span, context: context)
+    }
+
     func explanation(for span: Span) -> String {
         if let id = span.id, overrides[id] != nil { return String(localized: "你单独调整了这条记录，其他活动不受影响。") }
+        if let id = context.userVerdicts[VerdictKey(span)], context.categoryIDs?.contains(id) ?? true { return String(localized: "你确认或改过这条内容的分类。") }
         let scope = span.domain ?? span.appBundleID
         func titleReason(user: Bool) -> String? {
             guard let title = span.title else { return nil }
@@ -334,11 +378,28 @@ public final class CategoryResolver {
             guard let url = span.url, let rule = context.urlRules.first(where: { ($0.source == "user") == user && Classifier.matches(pattern: $0.pattern, in: url) }) else { return nil }
             return String(localized: "\(user ? String(localized: "你的") : String(localized: "内置"))网址规则 · \(rule.pattern)")
         }
-        if let reason = titleReason(user: true) ?? domainReason("user") ?? urlReason(user: true)
-            ?? titleReason(user: false) ?? urlReason(user: false) ?? domainReason("curated") ?? domainReason("seed") { return reason }
+        if let reason = titleReason(user: true) ?? domainReason("user") ?? urlReason(user: true) { return reason }
+        if span.domain == nil, let entry = context.appMap[span.appBundleID], entry.source == "user" { return String(localized: "你的应用分类 · \(span.appName)") }
+        switch Self.automaticReason(for: span, context: context) {
+        case .rule(let hit): return Self.reason(hit)
+        case .jev(let prob): return String(localized: "Jev 判断 · 概率 \(String(format: "%.2f", prob))")
+        case nil: break
+        }
+        if let reason = titleReason(user: false) ?? urlReason(user: false) ?? domainReason("curated") ?? domainReason("seed") { return reason }
         if span.domain == nil, let entry = context.appMap[span.appBundleID] { return String(localized: "\(entry.source == "user" ? String(localized: "你的") : String(localized: "内置"))应用分类 · \(span.appName)") }
         if let domain = span.domain, context.domainMap[domain]?.source == "llm" { return String(localized: "智能分类 · 根据网站域名识别") }
         return String(localized: "还没有匹配的应用、网站或标题规则。选择分类后可以为以后自动归类。")
+    }
+
+    private static func reason(_ hit: JevRules.Hit) -> String {
+        switch hit.reason {
+        case .job(let word): String(localized: "内置求职规则 · \(word)")
+        case .ownApp: String(localized: "内置规则 · 自己的项目")
+        case .assistantIdle: String(localized: "内置规则 · 没有打开的对话")
+        case .blankTab: String(localized: "内置规则 · 空白标签页")
+        case .tool: String(localized: "内置规则 · 系统小工具")
+        case .cloudConsole: String(localized: "内置规则 · 云控制台")
+        }
     }
 
     public func categorized(_ spans: [Span]) -> [CategorizedSpan] {
