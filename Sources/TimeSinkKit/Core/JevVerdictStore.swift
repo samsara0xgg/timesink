@@ -36,6 +36,8 @@ public struct JevVerdict: Codable, Equatable, Sendable, FetchableRecord, Persist
     public var promptVersion: String
     public var at: Date
     public var source: String
+    /// 0: not asked with screen text, 1: this verdict used it, 2: asked, the answer was no better.
+    public var screenText: Int = 0
 
     public var key: VerdictKey { VerdictKey(appBundleID: appBundleID, domain: domain, title: title, document: document) }
     public var isUser: Bool { source == "user" }
@@ -45,6 +47,21 @@ public struct JevVerdict: Codable, Equatable, Sendable, FetchableRecord, Persist
 public struct JevVerdictEntry: Equatable, Sendable {
     public var categoryID: String
     public var prob: Double
+    /// The verdict was made from screenshot text.
+    public var usedScreenText = false
+}
+
+/// Where the first 200 characters of a screen's text, the key of a per-screen
+/// verdict, end. Counted in Unicode scalars, as SQLite's substr counts.
+func captureKey(_ text: String) -> String { String(String.UnicodeScalarView(text.unicodeScalars.prefix(200))) }
+
+/// A bare-title AI-app screen waiting for its verdict.
+struct JevCapture: Sendable {
+    let key: String
+    let text: String
+    let appName: String
+    let bundleID: String
+    let title: String
 }
 
 /// A distinct window content that has no usable verdict yet, with what the
@@ -77,14 +94,91 @@ extension CategoryStore {
     func saveVerdict(_ v: JevVerdict) throws {
         try writer.write { db in
             try db.execute(sql: """
-                INSERT INTO jevVerdict (appBundleID, domain, title, document, categoryID, prob, runnerUp, runnerUpProb, promptVersion, at, source)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'jev')
+                INSERT INTO jevVerdict (appBundleID, domain, title, document, categoryID, prob, runnerUp, runnerUpProb, promptVersion, at, source, screenText)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'jev', ?)
                 ON CONFLICT(appBundleID, domain, title, document) DO UPDATE SET
                     categoryID = excluded.categoryID, prob = excluded.prob, runnerUp = excluded.runnerUp,
-                    runnerUpProb = excluded.runnerUpProb, promptVersion = excluded.promptVersion, at = excluded.at
+                    runnerUpProb = excluded.runnerUpProb, promptVersion = excluded.promptVersion, at = excluded.at,
+                    screenText = excluded.screenText
                 WHERE jevVerdict.source = 'jev'
                 """, arguments: [v.appBundleID, v.domain, v.title, v.document, v.categoryID, v.prob, v.runnerUp,
-                                 v.runnerUpProb, v.promptVersion, v.at])
+                                 v.runnerUpProb, v.promptVersion, v.at, v.screenText])
+        }
+    }
+
+    /// A re-ask with screen text that did not beat the verdict: keep it, do not ask again.
+    func markScreenAsked(_ key: VerdictKey) throws {
+        try writer.write { db in
+            try db.execute(sql: "UPDATE jevVerdict SET screenText = 2 WHERE appBundleID = ? AND domain = ? AND title = ? AND document = ? AND source = 'jev'",
+                           arguments: [key.appBundleID, key.domain, key.title, key.document])
+        }
+    }
+
+    /// Jev verdicts of the current prompt under `threshold` that were never asked
+    /// with screen text, each with the latest capture text (over 40 characters)
+    /// of one of its spans. Lowest probability first.
+    func screenTextRetries(since: Date, promptVersion: String, below threshold: Double) throws -> [(verdict: JevVerdict, appName: String, url: String, text: String)] {
+        try writer.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT v.*, s.appName AS spanApp, COALESCE(s.url, '') AS spanURL, c.text AS captureText, MAX(c.at) AS latest
+                FROM jevVerdict v
+                JOIN span s ON s.appBundleID = v.appBundleID AND COALESCE(s.domain, '') = v.domain
+                           AND COALESCE(s.title, '') = v.title AND COALESCE(s.document, '') = v.document
+                JOIN capture c ON c.spanID = s.id
+                WHERE v.source = 'jev' AND v.prob < ? AND v.screenText = 0 AND v.promptVersion = ?
+                  AND s."end" > ? AND length(c.text) > 40
+                GROUP BY v.appBundleID, v.domain, v.title, v.document
+                ORDER BY v.prob
+                """, arguments: [threshold, promptVersion, since]).map { row in
+                (try JevVerdict(row: row), row["spanApp"], row["spanURL"], row["captureText"])
+            }
+        }
+    }
+
+    // MARK: - Per-screen verdicts (bare-title AI apps)
+
+    func saveCaptureVerdict(key: String, categoryID: String, prob: Double, runnerUp: String, runnerUpProb: Double, promptVersion: String) throws {
+        try writer.write { db in
+            try db.execute(sql: """
+                INSERT OR REPLACE INTO jevCaptureVerdict (textKey, categoryID, prob, runnerUp, runnerUpProb, promptVersion, at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, arguments: [key, categoryID, prob, runnerUp, runnerUpProb, promptVersion, Date()])
+        }
+    }
+
+    /// Screens of bare-title AI-app spans seen since `since` that have no
+    /// verdict of the current prompt, one per distinct text key, newest first.
+    func pendingCaptures(since: Date, promptVersion: String) throws -> [JevCapture] {
+        try writer.read { db in
+            let done = Set(try String.fetchAll(db, sql: "SELECT textKey FROM jevCaptureVerdict WHERE promptVersion = ?", arguments: [promptVersion]))
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT c.text AS text, c.appName AS appName, s.appBundleID AS bundleID, COALESCE(s.title, '') AS title,
+                       COALESCE(s.document, '') AS document, COALESCE(s.domain, '') AS domain
+                FROM capture c JOIN span s ON s.id = c.spanID
+                WHERE s."end" > ? AND TRIM(c.text) <> '' ORDER BY c.at DESC
+                """, arguments: [since])
+            var seen = Set<String>()
+            return rows.compactMap { row in
+                let text: String = row["text"], key = captureKey(text)
+                guard JevRules.match(appBundleID: row["bundleID"], domain: row["domain"], url: nil, title: row["title"], document: row["document"])?.reason == .assistantIdle,
+                      !done.contains(key), seen.insert(key).inserted else { return nil }
+                return JevCapture(key: key, text: text, appName: row["appName"], bundleID: row["bundleID"], title: row["title"])
+            }
+        }
+    }
+
+    /// Per span, the verdict of its latest capture that has one.
+    func captureVerdictsBySpan() throws -> [Int64: JevVerdictEntry] {
+        try writer.read { db in
+            var out: [Int64: JevVerdictEntry] = [:]
+            for row in try Row.fetchAll(db, sql: """
+                SELECT c.spanID AS spanID, v.categoryID AS categoryID, v.prob AS prob
+                FROM capture c JOIN jevCaptureVerdict v ON v.textKey = substr(c.text, 1, 200)
+                WHERE c.spanID IS NOT NULL ORDER BY c.at
+                """) {
+                out[row["spanID"]] = JevVerdictEntry(categoryID: row["categoryID"], prob: row["prob"], usedScreenText: true)
+            }
+            return out
         }
     }
 

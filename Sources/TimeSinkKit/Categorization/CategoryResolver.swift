@@ -39,6 +39,11 @@ public final class CategoryResolver {
         didSet { if jevEnabled != oldValue { refresh() } }
     }
 
+    /// Whether screenshot verdicts count (the "send screenshot text" switch).
+    public var jevScreenText = false {
+        didSet { if jevScreenText != oldValue { refresh() } }
+    }
+
     /// The fields `Classifier.categoryID` actually reads. Holds
     /// references to the span's existing strings, so building one is a few
     /// retains -- no copying, no joined-key allocation.
@@ -148,10 +153,11 @@ public final class CategoryResolver {
             self.overrides = overrides
             var user: [VerdictKey: String] = [:], jev: [VerdictKey: JevVerdictEntry] = [:]
             for v in try categoryStore.verdicts() {
-                if v.isUser { user[v.key] = v.categoryID } else if jevEnabled { jev[v.key] = JevVerdictEntry(categoryID: v.categoryID, prob: v.prob) }
+                if v.isUser { user[v.key] = v.categoryID } else if jevEnabled { jev[v.key] = JevVerdictEntry(categoryID: v.categoryID, prob: v.prob, usedScreenText: v.screenText == 1) }
             }
+            let shots = jevEnabled && jevScreenText ? try categoryStore.captureVerdictsBySpan() : [:]
             context = ClassificationContext(domainMap: domainMap, appMap: appMap, urlRules: sortedRules,
-                                             titleRules: titleRules, userVerdicts: user, jevVerdicts: jev,
+                                             titleRules: titleRules, userVerdicts: user, jevVerdicts: jev, captureVerdicts: shots,
                                              categoryIDs: Set(categories.map(\.id)))
             memo.removeAll(keepingCapacity: true)
         } catch {
@@ -223,17 +229,21 @@ public final class CategoryResolver {
 
     nonisolated private static func categoryID(for span: Span, context: ClassificationContext,
                                                memo: inout [MemoKey: String]) -> String {
+        // A span with its own screenshot verdict is not the same as another span with the same fields.
+        let own = span.id.flatMap { context.captureVerdicts[$0] } != nil
         let key = MemoKey(appBundleID: span.appBundleID, url: span.url,
                           domain: span.domain, title: span.title, document: span.document)
-        if let hit = memo[key] { return hit }
+        if !own, let hit = memo[key] { return hit }
         let resolved = Classifier.categoryID(
             appBundleID: span.appBundleID,
             url: span.url,
             domain: span.domain,
             title: span.title,
             document: span.document,
+            spanID: own ? span.id : nil,
             context: context
         )
+        if own { return resolved }
         if memo.count >= Self.memoCap { memo.removeAll(keepingCapacity: true) }
         memo[key] = resolved
         return resolved
@@ -274,7 +284,7 @@ public final class CategoryResolver {
             }
         }
         let preview = ClassificationContext(domainMap: domains, appMap: apps, urlRules: context.urlRules, titleRules: titles,
-                                            userVerdicts: context.userVerdicts, jevVerdicts: context.jevVerdicts,
+                                            userVerdicts: context.userVerdicts, jevVerdicts: context.jevVerdicts, captureVerdicts: context.captureVerdicts,
                                             categoryIDs: context.categoryIDs)
         var memo: [MemoKey: String] = [:]
         return items.filter { item in
@@ -327,6 +337,7 @@ public final class CategoryResolver {
             return nil
         }
         if let key = title(true) ?? domain("user") ?? url(true) { return key }
+        if jobHit(for: span, context: context) != nil { return nil }
         if span.domain == nil, context.appMap[span.appBundleID]?.source == "user" { return "app:" + span.appBundleID }
         // A hard rule or a verdict decided it: no list rule gets the credit.
         if automaticReason(for: span, context: context) != nil { return nil }
@@ -338,13 +349,27 @@ public final class CategoryResolver {
 
     /// The hard rule, else the cached Jev verdict, that decides `span` once
     /// the user's own rules have passed.
-    private enum Automatic { case rule(JevRules.Hit), jev(Double) }
+    private enum Automatic { case rule(JevRules.Hit), jev(Double, screenText: Bool) }
+
+    /// The job keyword rule, which outranks the user's app mapping.
+    nonisolated private static func jobHit(for span: Span, context: ClassificationContext) -> JevRules.Hit? {
+        JevRules.job(appBundleID: span.appBundleID, domain: span.domain, url: span.url, title: span.title, document: span.document)
+            .flatMap { context.categoryIDs?.contains($0.categoryID) ?? true ? $0 : nil }
+    }
+    nonisolated private func jobHit(for span: Span, context: ClassificationContext) -> JevRules.Hit? {
+        Self.jobHit(for: span, context: context)
+    }
 
     nonisolated private static func automaticReason(for span: Span, context: ClassificationContext) -> Automatic? {
         func exists(_ id: String) -> Bool { context.categoryIDs?.contains(id) ?? true }
         if let hit = JevRules.match(appBundleID: span.appBundleID, domain: span.domain, url: span.url, title: span.title, document: span.document),
-           exists(hit.categoryID) { return .rule(hit) }
-        if let v = context.jevVerdicts[VerdictKey(span)], exists(v.categoryID) { return .jev(v.prob) }
+           exists(hit.categoryID) {
+            if hit.reason == .assistantIdle, let id = span.id, let shot = context.captureVerdicts[id], exists(shot.categoryID) {
+                return .jev(shot.prob, screenText: true)
+            }
+            return .rule(hit)
+        }
+        if let v = context.jevVerdicts[VerdictKey(span)], exists(v.categoryID) { return .jev(v.prob, screenText: v.usedScreenText) }
         return nil
     }
 
@@ -379,10 +404,13 @@ public final class CategoryResolver {
             return String(localized: "\(user ? String(localized: "你的") : String(localized: "内置"))网址规则 · \(rule.pattern)")
         }
         if let reason = titleReason(user: true) ?? domainReason("user") ?? urlReason(user: true) { return reason }
+        if let hit = jobHit(for: span, context: context) { return Self.reason(hit) }
         if span.domain == nil, let entry = context.appMap[span.appBundleID], entry.source == "user" { return String(localized: "你的应用分类 · \(span.appName)") }
         switch Self.automaticReason(for: span, context: context) {
         case .rule(let hit): return Self.reason(hit)
-        case .jev(let prob): return String(localized: "Jev 判断 · 概率 \(String(format: "%.2f", prob))")
+        case .jev(let prob, let screenText):
+            let p = String(format: "%.2f", prob)
+            return screenText ? String(localized: "Jev 判断（含截图文字）· 概率 \(p)") : String(localized: "Jev 判断 · 概率 \(p)")
         case nil: break
         }
         if let reason = titleReason(user: false) ?? urlReason(user: false) ?? domainReason("curated") ?? domainReason("seed") { return reason }
@@ -399,6 +427,7 @@ public final class CategoryResolver {
         case .blankTab: String(localized: "内置规则 · 空白标签页")
         case .tool: String(localized: "内置规则 · 系统小工具")
         case .cloudConsole: String(localized: "内置规则 · 云控制台")
+        case .ownSite: String(localized: "内置规则 · 自己部署的项目")
         }
     }
 

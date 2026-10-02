@@ -39,14 +39,19 @@ public struct ClassificationContext: Sendable {
     /// only read from the table while Jev is on, see `CategoryResolver`).
     public var userVerdicts: [VerdictKey: String]
     public var jevVerdicts: [VerdictKey: JevVerdictEntry]
+    /// Per span id, the verdict of its latest screenshot; stands in for the
+    /// "no conversation open" rule of an AI app. Empty unless screen text is on.
+    public var captureVerdicts: [Int64: JevVerdictEntry]
     /// The categories that exist; a hard rule or verdict that names another
     /// is skipped. nil means do not check.
     public var categoryIDs: Set<String>?
 
     public init(domainMap: [String: DomainEntry], appMap: [String: DomainEntry], urlRules: [URLRule],
                 titleRules: [TitleRule] = [], userVerdicts: [VerdictKey: String] = [:],
-                jevVerdicts: [VerdictKey: JevVerdictEntry] = [:], categoryIDs: Set<String>? = nil) {
+                jevVerdicts: [VerdictKey: JevVerdictEntry] = [:], captureVerdicts: [Int64: JevVerdictEntry] = [:],
+                categoryIDs: Set<String>? = nil) {
         self.userVerdicts = userVerdicts
+        self.captureVerdicts = captureVerdicts
         self.jevVerdicts = jevVerdicts
         self.categoryIDs = categoryIDs
         self.domainMap = domainMap
@@ -181,8 +186,10 @@ struct CompiledTitleRule: Sendable {
 /// 3. `url` is non-nil: scan `context.urlRules` where `source == "user"` in
 ///    order, first `matches` wins (the array is expected to already be
 ///    sorted by the caller -- see `CategoryResolver.refresh()`).
+/// 3a. the job keyword hard rule (outranks the user's app mapping).
 /// 3b. `domain == nil` and the user mapped the app.
-/// 3c. `JevRules`: local hard rules that need no model.
+/// 3c. `JevRules`: the other local hard rules that need no model; an AI app
+///     with no conversation open takes its screenshot's verdict instead, if any.
 /// 3d. a cached Jev verdict for this window content.
 /// 4. `title` matches a non-user-sourced (builtin) `titleRule` in scope.
 /// 5. `url` is non-nil: scan `context.urlRules` where `source != "user"` in
@@ -202,6 +209,7 @@ public enum Classifier {
         domain: String?,
         title: String?,
         document: String? = nil,
+        spanID: Int64? = nil,
         context: ClassificationContext
     ) -> String {
         let scopeKey = domain ?? appBundleID
@@ -247,12 +255,20 @@ public enum Classifier {
             }
         }
 
-        // 3b-3d. what the user mapped for the app, then hard rules, then Jev.
+        // 3b-3d. the job keyword rule, then what the user mapped for the app,
+        // then the other hard rules, then Jev.
+        if let hit = JevRules.job(appBundleID: appBundleID, domain: domain, url: url, title: title, document: document),
+           exists(hit.categoryID) {
+            return hit.categoryID
+        }
         if domain == nil, let entry = context.appMap[appBundleID], entry.source == "user" {
             return entry.categoryID
         }
         if let hit = JevRules.match(appBundleID: appBundleID, domain: domain, url: url, title: title, document: document),
            exists(hit.categoryID) {
+            if hit.reason == .assistantIdle, let spanID, let shot = context.captureVerdicts[spanID], exists(shot.categoryID) {
+                return shot.categoryID
+            }
             return hit.categoryID
         }
         if let verdict = context.jevVerdicts[verdictKey], exists(verdict.categoryID) { return verdict.categoryID }

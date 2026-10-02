@@ -14,6 +14,8 @@ public enum JevRules {
         case blankTab
         case tool
         case cloudConsole
+        /// The owner's own local or deployed projects.
+        case ownSite
     }
 
     public struct Hit: Equatable, Sendable {
@@ -47,14 +49,21 @@ public enum JevRules {
     ]
     private static let consoleHosts = ["console.aws.amazon.com", "signin.aws.amazon.com"]
 
-    public static func match(appBundleID: String, domain: String?, url: String?, title: String?, document: String?) -> Hit? {
+    private static let ownSiteHosts = ["localhost", "127.0.0.1", "vercel.app"]
+
+    /// The job keyword rule alone. It outranks the user's app rule.
+    public static func job(appBundleID: String, domain: String?, url: String?, title: String?, document: String?) -> Hit? {
         let domain = domain ?? "", url = url ?? "", title = title ?? "", document = document ?? ""
         let haystack = "\(domain) \(title) \(document) \(url)"
         let regex = terminals.contains(appBundleID) || title.contains("Claude Code") ? jobRegexWithoutResume : jobRegex
-        if let hit = regex.firstMatch(in: haystack, range: NSRange(haystack.startIndex..., in: haystack)),
-           let range = Range(hit.range, in: haystack) {
-            return Hit(categoryID: "jobSearch", reason: .job(String(haystack[range])))
-        }
+        guard let hit = regex.firstMatch(in: haystack, range: NSRange(haystack.startIndex..., in: haystack)),
+              let range = Range(hit.range, in: haystack) else { return nil }
+        return Hit(categoryID: "jobSearch", reason: .job(String(haystack[range])))
+    }
+
+    public static func match(appBundleID: String, domain: String?, url: String?, title: String?, document: String?) -> Hit? {
+        let domain = domain ?? "", url = url ?? "", title = title ?? "", document = document ?? ""
+        if let hit = job(appBundleID: appBundleID, domain: domain, url: url, title: title, document: document) { return hit }
         let trimmed = title.trimmingCharacters(in: .whitespaces)
         if appBundleID == "com.google.Chrome", blankTabTitles.contains(trimmed), domain.isEmpty {
             return Hit(categoryID: "utilities", reason: .blankTab)
@@ -69,6 +78,9 @@ public enum JevRules {
         }
         if consoleHosts.contains(where: { domain == $0 || domain.hasSuffix("." + $0) }) {
             return Hit(categoryID: "softwareDev", reason: .cloudConsole)
+        }
+        if ownSiteHosts.contains(where: { domain == $0 || domain.hasSuffix("." + $0) }) {
+            return Hit(categoryID: "softwareDev", reason: .ownSite)
         }
         return nil
     }

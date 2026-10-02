@@ -37,8 +37,8 @@ public enum JevError: LocalizedError, Equatable {
     }
 }
 
-/// What is sent about a window: exactly these six fields and nothing else.
-/// Never screen text, never a screenshot.
+/// What is sent about a window: these six fields, plus `screenText` only when
+/// the owner switched it on. Never a screenshot.
 struct JevState: Sendable {
     var app: String
     var bundleID: String
@@ -46,6 +46,8 @@ struct JevState: Sendable {
     var url: String
     var title: String
     var document: String
+    /// OCR text of a screenshot; nil unless "send screenshot text" is on.
+    var screenText: String? = nil
 }
 
 public struct JevAnswer: Equatable, Sendable {
@@ -61,6 +63,21 @@ public struct JevAnswer: Equatable, Sendable {
 /// would answer could.
 public enum JevPrompt {
     public static let instructions = "这段电脑使用时间属于哪个活动类别？根据应用、网址、窗口标题判断。"  // l10n: data
+    public static let instructionsWithScreenText = "这段电脑使用时间属于哪个活动类别？根据应用、网址、窗口标题和屏幕上的文字判断。"  // l10n: data
+    static let screenTextLimit = 1_200
+
+    private static let emailRegex = try! NSRegularExpression(pattern: #"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"#)
+    private static let digitRunRegex = try! NSRegularExpression(pattern: #"\d(?:[ -]?\d){5,}"#)
+
+    /// What leaves the machine of a screenshot's text: no emails, no runs of 6+
+    /// digits (spaces and dashes allowed inside), at most 1,200 characters.
+    public static func redact(_ text: String) -> String {
+        var out = text
+        for regex in [emailRegex, digitRunRegex] {
+            out = regex.stringByReplacingMatches(in: out, range: NSRange(out.startIndex..., in: out), withTemplate: "")
+        }
+        return String(out.prefix(screenTextLimit))
+    }
 
     /// `uncategorized` is never offered. Descriptions are what teach Jev a
     /// category, so each criterion is "name：description".
@@ -105,10 +122,13 @@ public struct JevClient: Sendable {
         func q(_ s: String) -> String { (try? String(data: JSONEncoder().encode(s), encoding: .utf8)) ?? "\"\"" }
         func cut(_ s: String) -> String { String(s.prefix(fieldLimit)) }
         let list = criteria.map { "\(q($0.id)):\(q($0.text))" }.joined(separator: ",")
+        let screen = state.screenText.map(JevPrompt.redact)
         let json = """
             {"model":\(q(model)),"state":{"app":\(q(state.app)),"bundle_id":\(q(state.bundleID)),"domain":\(q(state.domain)),\
-            "url":\(q(cut(state.url))),"window_title":\(q(cut(state.title))),"document":\(q(cut(state.document)))},\
-            "questions":{"category":{"type":"choice","instructions":\(q(JevPrompt.instructions)),"criteria":{\(list)}}}}
+            "url":\(q(cut(state.url))),"window_title":\(q(cut(state.title))),"document":\(q(cut(state.document)))\
+            \(screen.map { ",\"screen_text\":\(q($0))" } ?? "")},\
+            "questions":{"category":{"type":"choice","instructions":\(q(screen == nil ? JevPrompt.instructions : JevPrompt.instructionsWithScreenText)),\
+            "criteria":{\(list)}}}}
             """
         return Data(json.utf8)
     }

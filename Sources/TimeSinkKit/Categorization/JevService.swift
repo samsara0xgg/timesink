@@ -11,7 +11,7 @@ public final class JevService {
     /// First enable asks about this many days back.
     public static let lookbackDays = 30
     /// Verdicts under this are listed for review.
-    public static let lowConfidence = 0.6
+    nonisolated public static let lowConfidence = 0.6
 
     private let categoryStore: CategoryStore
     private let settings: SettingsStore
@@ -33,6 +33,7 @@ public final class JevService {
         self.resolver = resolver
         self.worker = JevWorker(categoryStore: categoryStore, settings: settings, transport: transport, apiKey: apiKey)
         resolver.jevEnabled = settings.jevEnabled
+        resolver.jevScreenText = settings.jevScreenText
     }
 
     public var isEnabled: Bool { settings.jevEnabled }
@@ -49,6 +50,16 @@ public final class JevService {
         resolver.jevEnabled = on
         onChange?()
         if on { start(); nudge() }
+    }
+
+    public var screenTextEnabled: Bool { settings.jevScreenText }
+
+    /// A separate consent from the main switch: screenshot text is sent only while this is on.
+    public func setScreenText(_ on: Bool) {
+        settings.setJevScreenText(on)
+        resolver.jevScreenText = on
+        onChange?()
+        if on { nudge() }
     }
 
     /// Starts the background loop; a no-op while one runs. Call at launch.

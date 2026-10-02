@@ -8,6 +8,7 @@ public final class SettingsStore: Sendable {
     private static let idleThresholdKey = "idleThreshold"
     private static let jevEnabledKey = "jevEnabled"
     private static let jevEndpointKey = "jevEndpoint"
+    private static let jevScreenTextKey = "jevScreenText"
     private static let jevMonthlyCapKey = "jevMonthlyCapUSD"
     private static let budgetWarnPercentKey = "budgetWarnPercent"
     private static let dailySummaryEnabledKey = "dailySummaryEnabled"
@@ -87,6 +88,16 @@ public final class SettingsStore: Sendable {
 
     public func setJevEnabled(_ v: Bool) {
         set(Self.jevEnabledKey, v ? "true" : "false")
+    }
+
+    /// Off by default and independent of `jevEnabled`: the OCR text of
+    /// screenshots is sent only when this is on (and Jev itself is).
+    public var jevScreenText: Bool {
+        self.get(Self.jevScreenTextKey) == "true"
+    }
+
+    public func setJevScreenText(_ v: Bool) {
+        set(Self.jevScreenTextKey, v ? "true" : "false")
     }
 
     public var jevEndpoint: String {

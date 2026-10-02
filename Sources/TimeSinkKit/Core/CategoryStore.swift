@@ -89,7 +89,7 @@ public final class CategoryStore: Sendable {
     /// `to` wins over one for `from`.
     static func moveReferences(_ db: Database, from: String, to: String) throws {
         for table in ["domainCategory", "urlRule", "appCategory", "titleRule", "spanCategoryOverride",
-                      "classificationSuggestion", "jevVerdict"] where try db.tableExists(table) {
+                      "classificationSuggestion", "jevVerdict", "jevCaptureVerdict"] where try db.tableExists(table) {
             try db.execute(sql: "UPDATE \(table) SET categoryID = ? WHERE categoryID = ?", arguments: [to, from])
         }
         if try db.tableExists("jevVerdict") {

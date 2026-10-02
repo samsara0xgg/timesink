@@ -403,6 +403,20 @@ public enum AppDatabase {
             // sending titles; the old switch, endpoint and model do not carry over.
             try db.execute(sql: "DELETE FROM setting WHERE key IN ('llmEnabled', 'llmEndpoint', 'llmModel')")
         }
+        migrator.registerMigration("v16") { db in
+            // 0: not asked with screen text, 1: this verdict used it, 2: asked, the answer was no better.
+            try db.alter(table: "jevVerdict") { t in t.add(column: "screenText", .integer).notNull().defaults(to: 0) }
+            // Verdicts for bare-title AI-app screens, keyed by the first 200 characters of the OCR text.
+            try db.create(table: "jevCaptureVerdict") { t in
+                t.column("textKey", .text).primaryKey()
+                t.column("categoryID", .text).notNull().references("category")
+                t.column("prob", .double).notNull()
+                t.column("runnerUp", .text).notNull().defaults(to: "")
+                t.column("runnerUpProb", .double).notNull().defaults(to: 0)
+                t.column("promptVersion", .text).notNull()
+                t.column("at", .datetime).notNull()
+            }
+        }
         return migrator
     }
 }

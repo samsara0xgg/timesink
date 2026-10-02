@@ -32,7 +32,20 @@ public actor JevWorker {
         self.apiKey = apiKey
     }
 
-    /// One pass over everything seen since `since`.
+    private enum Target: Sendable {
+        case combo(JevCombo)
+        /// A low-confidence verdict asked again with screen text.
+        case retry(JevVerdict)
+        case capture(JevCapture)
+    }
+    private struct Job: Sendable {
+        let state: JevState
+        let target: Target
+    }
+
+    /// One pass over everything seen since `since`: window contents without a
+    /// verdict, then (only with "send screenshot text" on) unsure verdicts
+    /// asked again with screen text and bare-title AI-app screens.
     public func run(since: Date, maxConcurrent: Int = 10) async -> RunResult {
         var result = RunResult()
         guard settings.jevEnabled, let key = apiKey(), !key.isEmpty, let endpoint = URL(string: settings.jevEndpoint) else { return result }
@@ -41,62 +54,101 @@ public actor JevWorker {
             let criteria = JevPrompt.criteria(categories)
             let version = JevPrompt.version(categories)
             let ids = Set(criteria.map(\.id))
-            let todo = try categoryStore.pendingCombos(since: since, promptVersion: version)
             let client = JevClient(endpoint: endpoint, apiKey: key, transport: transport)
-
-            typealias Outcome = (combo: JevCombo, answer: Result<JevAnswer, any Error>, seconds: Double)
             let settings = settings, categoryStore = categoryStore
-            func capReached() -> Bool { settings.jevSpend() >= settings.jevMonthlyCap }
 
-            result = await withTaskGroup(of: Outcome.self, returning: RunResult.self) { group in
-                var result = RunResult()
-                var next = 0
-                var stop = false
-                func launch() {
-                    guard !stop, next < todo.count else { return }
-                    if capReached() { stop = true; result.stoppedByCap = true; return }
-                    let combo = todo[next]
-                    next += 1
-                    result.calls += 1
-                    let state = JevState(app: combo.appName, bundleID: combo.key.appBundleID, domain: combo.key.domain,
-                                         url: combo.url, title: combo.key.title, document: combo.key.document)
-                    group.addTask {
-                        let t0 = ContinuousClock.now
-                        do {
-                            let answer = try await client.decide(state, criteria: criteria)
-                            return (combo, .success(answer), Self.seconds(since: t0))
-                        } catch {
-                            return (combo, .failure(error), Self.seconds(since: t0))
-                        }
-                    }
+            func combo(_ c: JevCombo) -> Job {
+                Job(state: JevState(app: c.appName, bundleID: c.key.appBundleID, domain: c.key.domain, url: c.url,
+                                    title: c.key.title, document: c.key.document), target: .combo(c))
+            }
+            var halted = await Self.pass(try categoryStore.pendingCombos(since: since, promptVersion: version).map(combo), client: client,
+                                         criteria: criteria, settings: settings, maxConcurrent: maxConcurrent, into: &result) { job, answer in
+                guard case .combo(let c) = job.target, let v = Self.verdict(for: c, answer: answer, ids: ids, version: version),
+                      (try? categoryStore.saveVerdict(v)) != nil else { return false }
+                return true
+            }
+            guard settings.jevScreenText, !halted else { return result }
+
+            let retries = try categoryStore.screenTextRetries(since: since, promptVersion: version, below: JevService.lowConfidence).map { r in
+                Job(state: JevState(app: r.appName, bundleID: r.verdict.appBundleID, domain: r.verdict.domain, url: r.url,
+                                    title: r.verdict.title, document: r.verdict.document, screenText: r.text), target: .retry(r.verdict))
+            }
+            halted = await Self.pass(retries, client: client, criteria: criteria, settings: settings, maxConcurrent: maxConcurrent, into: &result) { job, answer in
+                guard case .retry(let old) = job.target else { return false }
+                let combo = JevCombo(key: old.key, appName: "", url: "", seconds: 0)
+                if var v = Self.verdict(for: combo, answer: answer, ids: ids, version: version), v.prob > old.prob {
+                    v.screenText = 1
+                    return (try? categoryStore.saveVerdict(v)) != nil
                 }
-                for _ in 0..<maxConcurrent { launch() }
-                while let done = await group.next() {
-                    switch done.answer {
-                    case .success(let answer):
-                        result.latencies.append(done.seconds)
-                        result.inputTokens += answer.inputTokens
-                        result.costUSD += answer.cost
-                        settings.addJevSpend(answer.cost)
-                        if let verdict = Self.verdict(for: done.combo, answer: answer, ids: ids, version: version),
-                           (try? categoryStore.saveVerdict(verdict)) != nil {
-                            result.saved += 1
-                        } else {
-                            result.failed += 1
-                        }
-                    case .failure(let error):
-                        result.failed += 1
-                        result.error = error.localizedDescription
-                        if (error as? JevError)?.stopsTheRun == true { stop = true }
-                    }
-                    launch()
-                }
-                return result
+                try? categoryStore.markScreenAsked(old.key)
+                return true
+            }
+            guard !halted else { return result }
+
+            let captures = try categoryStore.pendingCaptures(since: since, promptVersion: version).map { c in
+                Job(state: JevState(app: c.appName, bundleID: c.bundleID, domain: "", url: "", title: c.title, document: "", screenText: c.text),
+                    target: .capture(c))
+            }
+            _ = await Self.pass(captures, client: client, criteria: criteria, settings: settings, maxConcurrent: maxConcurrent, into: &result) { job, answer in
+                guard case .capture(let c) = job.target, ids.contains(answer.choice) else { return false }
+                let ranked = answer.probabilities.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }
+                let runnerUp = ranked.first { $0.key != answer.choice }
+                return (try? categoryStore.saveCaptureVerdict(
+                    key: c.key, categoryID: answer.choice, prob: answer.probabilities[answer.choice] ?? answer.confidence,
+                    runnerUp: runnerUp?.key ?? "", runnerUpProb: runnerUp?.value ?? 0, promptVersion: version)) != nil
             }
         } catch {
             result.error = error.localizedDescription
         }
         return result
+    }
+
+    /// Runs `jobs` a few at a time, adding to `result`. True when the run
+    /// must stop altogether (monthly cap, or a key or balance error).
+    private static func pass(_ jobs: [Job], client: JevClient, criteria: [(id: String, text: String)], settings: SettingsStore,
+                             maxConcurrent: Int, into result: inout RunResult,
+                             apply: @escaping @Sendable (Job, JevAnswer) -> Bool) async -> Bool {
+        typealias Outcome = (job: Job, answer: Result<JevAnswer, any Error>, seconds: Double)
+        func capReached() -> Bool { settings.jevSpend() >= settings.jevMonthlyCap }
+        var next = 0
+        var stop = false
+        var snapshot = result
+        await withTaskGroup(of: Outcome.self) { group in
+            func launch() {
+                guard !stop, next < jobs.count else { return }
+                if capReached() { stop = true; snapshot.stoppedByCap = true; return }
+                let job = jobs[next]
+                next += 1
+                snapshot.calls += 1
+                group.addTask {
+                    let t0 = ContinuousClock.now
+                    do {
+                        let answer = try await client.decide(job.state, criteria: criteria)
+                        return (job, .success(answer), Self.seconds(since: t0))
+                    } catch {
+                        return (job, .failure(error), Self.seconds(since: t0))
+                    }
+                }
+            }
+            for _ in 0..<maxConcurrent { launch() }
+            while let done = await group.next() {
+                switch done.answer {
+                case .success(let answer):
+                    snapshot.latencies.append(done.seconds)
+                    snapshot.inputTokens += answer.inputTokens
+                    snapshot.costUSD += answer.cost
+                    settings.addJevSpend(answer.cost)
+                    if apply(done.job, answer) { snapshot.saved += 1 } else { snapshot.failed += 1 }
+                case .failure(let error):
+                    snapshot.failed += 1
+                    snapshot.error = error.localizedDescription
+                    if (error as? JevError)?.stopsTheRun == true { stop = true }
+                }
+                launch()
+            }
+        }
+        result = snapshot
+        return stop
     }
 
     private static func seconds(since start: ContinuousClock.Instant) -> Double {
