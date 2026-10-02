@@ -134,7 +134,7 @@ final class JevScreenTextTests: XCTestCase {
         let prefix = String(repeating: "p", count: 200)
         try capture(a1, prefix + " fix the swift build", ago: 7000)   // same first 200 chars as the next one
         try capture(a2, prefix + " different tail", ago: 5000)
-        try capture(a3, "cover letter for the role at Acme", ago: 3500)
+        try capture(a3, "cover letter for the role at Acme, tailored to the posting", ago: 3500)
         let transport = StubJevTransport { state in
             (state["screen_text"] ?? "").contains("cover letter") ? ("jobSearch", ["jobSearch": 0.9, "writing": 0.05], 0.0001)
                                                                   : ("research", ["research": 0.8, "softwareDev": 0.1], 0.0001)
@@ -158,13 +158,34 @@ final class JevScreenTextTests: XCTestCase {
 
     func testASpanWithSeveralCapturesTakesTheLatestVerdict() async throws {
         let s = try insert("com.openai.codex", title: "Codex")
-        try capture(s, "old screen about swift", ago: 3000)
-        try capture(s, "newer screen about cover letter", ago: 2000)
+        try capture(s, "old screen about swift and some more words to pass the floor", ago: 3000)
+        try capture(s, "newer screen about cover letter with enough words to pass", ago: 2000)
         let transport = StubJevTransport { state in
             (state["screen_text"] ?? "").contains("cover letter") ? ("jobSearch", ["jobSearch": 0.9], 0) : ("research", ["research": 0.9], 0)
         }
         _ = await worker(transport, screenText: true).run(since: longAgo)
         XCTAssertEqual(resolver().categoryID(for: s), "jobSearch")
+    }
+
+    func testScreenVerdictBeatsAUserAppRuleAndShortTextIsNotAsked() async throws {
+        try store.setUserApp("com.openai.codex", categoryID: "softwareDev")
+        let s = try insert("com.openai.codex", title: "Codex")
+        let short = try insert("com.openai.codex", title: "Codex")
+        let bare = try insert("com.openai.codex", title: "Codex")
+        try capture(s, "a long enough screen about the portfolio design mockup")
+        try capture(short, "short text")
+        let transport = StubJevTransport { _ in ("writing", ["writing": 0.9], 0) }
+        _ = await worker(transport, screenText: true).run(since: longAgo)
+        XCTAssertEqual(transport.requests.count, 1, "text of 40 characters or fewer is not sent")
+        let r = resolver()
+        XCTAssertEqual(r.categoryID(for: bare), "softwareDev")
+        XCTAssertEqual(r.categoryID(for: short), "softwareDev")
+        XCTAssertEqual(r.matchingRuleKey(for: short), "app:com.openai.codex")
+        XCTAssertEqual(r.matchingRuleKey(for: s), nil)
+        XCTAssertEqual(r.explanation(for: short), "你的应用分类 · App")
+        XCTAssertTrue(r.explanation(for: s).hasPrefix("Jev 判断（含截图文字）"))
+        XCTAssertEqual(r.categoryID(for: s), "writing")
+        XCTAssertEqual(resolver(screenText: false).categoryID(for: s), "softwareDev")
     }
 
     // MARK: - Rule order

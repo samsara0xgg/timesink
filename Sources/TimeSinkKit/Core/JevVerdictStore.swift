@@ -155,7 +155,7 @@ extension CategoryStore {
                 SELECT c.text AS text, c.appName AS appName, s.appBundleID AS bundleID, COALESCE(s.title, '') AS title,
                        COALESCE(s.document, '') AS document, COALESCE(s.domain, '') AS domain
                 FROM capture c JOIN span s ON s.id = c.spanID
-                WHERE s."end" > ? AND TRIM(c.text) <> '' ORDER BY c.at DESC
+                WHERE s."end" > ? AND length(c.text) > 40 ORDER BY c.at DESC
                 """, arguments: [since])
             var seen = Set<String>()
             return rows.compactMap { row in

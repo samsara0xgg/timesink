@@ -187,9 +187,9 @@ struct CompiledTitleRule: Sendable {
 ///    order, first `matches` wins (the array is expected to already be
 ///    sorted by the caller -- see `CategoryResolver.refresh()`).
 /// 3a. the job keyword hard rule (outranks the user's app mapping).
+/// 3a'. an AI app with no conversation open and a verdict for its screenshot.
 /// 3b. `domain == nil` and the user mapped the app.
 /// 3c. `JevRules`: the other local hard rules that need no model; an AI app
-///     with no conversation open takes its screenshot's verdict instead, if any.
 /// 3d. a cached Jev verdict for this window content.
 /// 4. `title` matches a non-user-sourced (builtin) `titleRule` in scope.
 /// 5. `url` is non-nil: scan `context.urlRules` where `source != "user"` in
@@ -261,14 +261,16 @@ public enum Classifier {
            exists(hit.categoryID) {
             return hit.categoryID
         }
+        // A screenshot verdict for an AI app with no conversation open also outranks the app mapping.
+        if let spanID, let shot = context.captureVerdicts[spanID], exists(shot.categoryID),
+           JevRules.match(appBundleID: appBundleID, domain: domain, url: url, title: title, document: document)?.reason == .assistantIdle {
+            return shot.categoryID
+        }
         if domain == nil, let entry = context.appMap[appBundleID], entry.source == "user" {
             return entry.categoryID
         }
         if let hit = JevRules.match(appBundleID: appBundleID, domain: domain, url: url, title: title, document: document),
            exists(hit.categoryID) {
-            if hit.reason == .assistantIdle, let spanID, let shot = context.captureVerdicts[spanID], exists(shot.categoryID) {
-                return shot.categoryID
-            }
             return hit.categoryID
         }
         if let verdict = context.jevVerdicts[verdictKey], exists(verdict.categoryID) { return verdict.categoryID }

@@ -337,7 +337,7 @@ public final class CategoryResolver {
             return nil
         }
         if let key = title(true) ?? domain("user") ?? url(true) { return key }
-        if jobHit(for: span, context: context) != nil { return nil }
+        if jobHit(for: span, context: context) != nil || shotVerdict(for: span, context: context) != nil { return nil }
         if span.domain == nil, context.appMap[span.appBundleID]?.source == "user" { return "app:" + span.appBundleID }
         // A hard rule or a verdict decided it: no list rule gets the credit.
         if automaticReason(for: span, context: context) != nil { return nil }
@@ -355,6 +355,16 @@ public final class CategoryResolver {
     nonisolated private static func jobHit(for span: Span, context: ClassificationContext) -> JevRules.Hit? {
         JevRules.job(appBundleID: span.appBundleID, domain: span.domain, url: span.url, title: span.title, document: span.document)
             .flatMap { context.categoryIDs?.contains($0.categoryID) ?? true ? $0 : nil }
+    }
+    /// The verdict of the span's screenshot, for an AI app with no conversation open.
+    nonisolated private static func shotVerdict(for span: Span, context: ClassificationContext) -> JevVerdictEntry? {
+        guard let id = span.id, let shot = context.captureVerdicts[id], context.categoryIDs?.contains(shot.categoryID) ?? true,
+              JevRules.match(appBundleID: span.appBundleID, domain: span.domain, url: span.url, title: span.title, document: span.document)?.reason == .assistantIdle
+        else { return nil }
+        return shot
+    }
+    nonisolated private func shotVerdict(for span: Span, context: ClassificationContext) -> JevVerdictEntry? {
+        Self.shotVerdict(for: span, context: context)
     }
     nonisolated private func jobHit(for span: Span, context: ClassificationContext) -> JevRules.Hit? {
         Self.jobHit(for: span, context: context)
@@ -405,6 +415,7 @@ public final class CategoryResolver {
         }
         if let reason = titleReason(user: true) ?? domainReason("user") ?? urlReason(user: true) { return reason }
         if let hit = jobHit(for: span, context: context) { return Self.reason(hit) }
+        if let shot = shotVerdict(for: span, context: context) { return String(localized: "Jev 判断（含截图文字）· 概率 \(String(format: "%.2f", shot.prob))") }
         if span.domain == nil, let entry = context.appMap[span.appBundleID], entry.source == "user" { return String(localized: "你的应用分类 · \(span.appName)") }
         switch Self.automaticReason(for: span, context: context) {
         case .rule(let hit): return Self.reason(hit)
