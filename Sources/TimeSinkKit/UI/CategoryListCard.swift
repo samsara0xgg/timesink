@@ -8,11 +8,23 @@ struct CategoryListCard: View {
     @Binding var selected: String?
     @State private var categories: [Category] = []
     @State private var ruleCounts: [String: Int] = [:]
+    @State private var editing: Category?
+    @State private var adding = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            CardHeading(title: "分类", caption: Text("点一个只看它的规则"))
+            HStack {
+                CardHeading(title: "分类", caption: Text("点一个只看它的规则"))
+                Spacer()
+                let blocker = CategoryEditing.addBlocker(assignableCount: categories.count)
+                Button { adding = true } label: { Label("新建", systemImage: "plus") }
+                    .buttonStyle(PillButtonStyle(height: 24, font: .system(size: 11))).disabled(blocker != nil)
+                    .help(blocker ?? "")
+            }
+            if let blocker = CategoryEditing.addBlocker(assignableCount: categories.count) {
+                Text(blocker).font(.system(size: 11)).foregroundStyle(Design.ink3)
+            }
             HStack(spacing: 10) {
                 Spacer()
                 Text("投入程度").frame(width: 92, alignment: .center)
@@ -29,6 +41,8 @@ struct CategoryListCard: View {
         .designCard()
         .task { load() }
         .onPageChange(of: model.dataEditVersion) { load() }
+        .sheet(isPresented: $adding) { CategoryEditSheet(model: model, category: nil) { adding = false } }
+        .sheet(item: $editing) { category in CategoryEditSheet(model: model, category: category) { editing = nil } }
     }
 
     private func row(_ category: Category) -> some View {
@@ -40,13 +54,24 @@ struct CategoryListCard: View {
             } label: {
                 HStack(spacing: 8) {
                     Circle().fill(color).frame(width: 9, height: 9)
-                    Text(category.name).font(.system(size: 13, weight: on ? .bold : .regular)).lineLimit(1)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(category.name).font(.system(size: 13, weight: on ? .bold : .regular)).lineLimit(1)
+                        if !category.description.isEmpty {
+                            Text(category.description).font(.system(size: 10)).foregroundStyle(Design.ink3).lineLimit(1).help(category.description)
+                        }
+                    }
+                    if category.distracting {
+                        Image(systemName: "bolt.horizontal.circle").font(.system(size: 10)).foregroundStyle(Design.ink3)
+                            .help("会打断工作").accessibilityLabel("会打断工作")
+                    }
                     Text(ruleCounts[category.id, default: 0] > 0 ? "\(ruleCounts[category.id, default: 0])" : "")
                         .font(.num(11)).foregroundStyle(Design.ink3)
                     Spacer(minLength: 0)
                 }.contentShape(Rectangle())
             }.buttonStyle(.plain)
             scale(category, color: color)
+            Button { editing = category } label: { Image(systemName: "pencil").font(.system(size: 11)).foregroundStyle(Design.ink3) }
+                .buttonStyle(.plain).help("编辑分类").accessibilityLabel("编辑分类")
             Text(seconds[category.id].map { Format.duration($0, compact: true) } ?? "—").font(.num(12)).foregroundStyle(Design.ink2)
                 .frame(width: 56, alignment: .trailing)
         }

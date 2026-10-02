@@ -95,6 +95,22 @@ public final class JevService {
         try categoryStore.lowConfidenceVerdicts(in: range, below: Self.lowConfidence)
     }
 
+    public struct Status: Equatable, Sendable {
+        public var classified: Int
+        public var queued: Int
+        public var pausedAtCap: Bool
+        public var offline: Bool
+    }
+
+    /// What the settings screen's status line reports.
+    public func status() throws -> Status {
+        let categories = try categoryStore.rawCategories()
+        let since = Calendar.current.date(byAdding: .day, value: -Self.lookbackDays, to: Date()) ?? Date()
+        let queued = try categoryStore.pendingCombos(since: since, promptVersion: JevPrompt.version(categories)).count
+        return Status(classified: try categoryStore.verdicts().filter { $0.source == "jev" }.count, queued: queued,
+                      pausedAtCap: monthSpend >= monthlyCap, offline: lastRun?.error != nil)
+    }
+
     public enum SavedRule: Sendable { case none, domain, app }
 
     /// Confirms or changes one verdict. It becomes the user's verdict, which
