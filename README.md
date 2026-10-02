@@ -4,7 +4,15 @@
 
 **Know where your day goes.** A native macOS menu bar app that automatically tracks apps and websites, helps you understand your habits, and protects time for focused work.
 
-[Download for macOS](https://d2e75eb005kjod.cloudfront.net/TimeSink.dmg) · [Features](#from-activity-to-understanding) · [Engineering](#engineering-highlights) · [Privacy](#your-data-your-choice) · [Build from source](#build-from-source)
+[Download for macOS](https://d2e75eb005kjod.cloudfront.net/TimeSink.dmg) · [Coming soon](#coming-soon-automatic-categories-with-jev) · [Features](#from-activity-to-understanding) · [Engineering](#engineering-highlights) · [Privacy](#your-data-your-choice) · [Build from source](#build-from-source)
+
+> ### Coming soon: automatic categories with Jev
+>
+> The next release hands most categorization to Jev, TypeSafe's decision model, called through OpenRouter. Each distinct activity (app, site, window title) is judged once and cached, and your own rules always take priority. If Jev isn't sure, it asks again with examples you've already confirmed. Anything still uncertain goes to a To confirm list instead of being guessed.
+>
+> - On 30 days of real usage, 98% of tracked time landed in the right category, up from 73% with the old rule-based classifier. This was measured on 262 activities that two independent labelers agreed on.
+> - Classifying the full 30 days cost about $0.25. Ongoing use stays under a monthly cap you set (default $1).
+> - It's optional, off by default, and uses your own OpenRouter key. It sends the app name, domain, window title and document name. Optionally, it also sends text read from screenshots, with emails and long numbers removed.
 
 ![TimeSink — automatic activity tracking, time analysis, and focus tools for macOS](docs/assets/readme/timesink-poster.png)
 
