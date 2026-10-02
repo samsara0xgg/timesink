@@ -183,6 +183,14 @@ import WebKit
                 }
                 try await shoot("main-\(name)", MainWindowView(model: model, activities: activities), size: size, dark: dark,
                                 settle: page == .stats ? 3500 : 1200)
+                if page == .activities {
+                    // The same day with its longest session open in the inspector.
+                    let sessioned = ActivitiesModel()
+                    sessioned.recompute(model: model, events: [])
+                    await sessioned.loadSessions(model: model)
+                    sessioned.selectedSession = sessioned.sessions.max { $0.recorded < $1.recorded }?.start
+                    try await shoot("main-sessions", MainWindowView(model: model, activities: sessioned), size: size, dark: dark, settle: 1500)
+                }
             }
             model.sidebarSelection = .organization
             for (name, tab) in [("categories", SettingsTab.categories), ("rules", .rules)] {
