@@ -20,16 +20,20 @@ struct FocusWorkspaceView: View {
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
-                if geometry.size.width >= 860 {
-                    HStack(alignment: .top, spacing: 12) {
-                        sessionColumn.frame(maxWidth: .infinity)
-                        budgetColumn.frame(maxWidth: .infinity)
-                    }.padding(.horizontal, 24).padding(.top, 22).padding(.bottom, 28)
-                } else {
-                    VStack(spacing: 12) { sessionColumn; budgetColumn }
-                        .padding(.horizontal, 24).padding(.top, 22).padding(.bottom, 28)
+                VStack(alignment: .leading, spacing: Design.Space.lg) {
+                    header(width: geometry.size.width - 2 * Design.Space.page)
+                    if geometry.size.width >= 860 {
+                        HStack(alignment: .top, spacing: Design.Space.lg) {
+                            sessionColumn.frame(maxWidth: .infinity).revealOnce(index: 2)
+                            budgetColumn.frame(maxWidth: .infinity)
+                        }
+                    } else {
+                        VStack(spacing: Design.Space.lg) { sessionColumn.revealOnce(index: 2); budgetColumn }
+                    }
                 }
-            }
+                .padding(.horizontal, Design.Space.page).padding(.top, 8).padding(.bottom, 24)
+                .frame(maxWidth: 1600).frame(maxWidth: .infinity)
+            }.scrollIndicators(.never)
         }.background(WorkspaceBackground())
         .onAppear { loadSettings(); load() }
         // Settings can change elsewhere while the page is hidden; popovers
@@ -42,13 +46,36 @@ struct FocusWorkspaceView: View {
         .popover(isPresented: $editCategories) { FocusCategoriesEditor(model: model) { editCategories = false } }
     }
 
+    /// This week's focus, from the focus log: the sentence and four numbers
+    /// that stood in the toolbar before.
+    private func header(width: CGFloat) -> some View {
+        let total = sessions.reduce(0) { $0 + $1.end.timeIntervalSince($1.start) }
+        let longest = sessions.map { $0.end.timeIntervalSince($0.start) }.max() ?? 0
+        let blocks = sessions.reduce(0) { $0 + $1.appBlocks + $1.siteBlocks }
+        let time = Text(TodayFmt.long(total)).font(.system(size: 28, weight: .bold, design: .rounded)).monospacedDigit()
+        let sentence: Text = sessions.isEmpty ? Text("这周还没有专注。") : Text("这周专注了 \(time)。")
+        return PageHeaderRow(lead: Text("本周"), sentence: sentence, stats: [
+            StripStat(id: 0, label: "专注", value: TodayFmt.clock(total), color: Design.accentInk),
+            StripStat(id: 1, label: "次数", value: String(localized: "\(sessions.count) 次"), note: longest > 0 ? String(localized: "最长 \(Format.chineseDuration(longest))") : ""),
+            StripStat(id: 2, label: "拦下", value: String(localized: "\(blocks) 次"), note: String(localized: "分心被挡回")),
+            StripStat(id: 3, label: "限额", value: String(localized: "\(budgets.count) 个"), note: String(localized: "只提醒，不拦截"))
+        ], width: width)
+    }
+
     private var sessionColumn: some View {
         VStack(spacing: 12) {
             if model.focus?.running != nil {
                 FocusRunningView(model: model).frame(maxWidth: .infinity, alignment: .leading)
             } else {
+                CardHeading(title: "专注", caption: Text("拖动圆环上的把手，15 分钟到 2 小时")).frame(maxWidth: .infinity, alignment: .leading)
                 FocusDial(minutes: $minutes)
-                Text("拖动圆环上的把手，15 分钟到 2 小时").font(.system(size: 12)).foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    ForEach(FocusPresets.minutes, id: \.self) { preset in
+                        Button { withAnimation(Design.motion(Design.settle, reduced: false)) { minutes = preset } } label: {
+                            Text("\(preset) 分钟").font(.num(12, minutes == preset ? .bold : .regular))
+                        }.buttonStyle(PillButtonStyle(height: 28, font: .system(size: 12)))
+                    }
+                }
                 VStack(spacing: 8) {
                     toggleRow("隐藏应用", isOn: $appBlock, edit: { editApps = true }) {
                         HStack(spacing: 4) {
@@ -65,7 +92,7 @@ struct FocusWorkspaceView: View {
                 }
                 Button(action: start) {
                     Label("开始 \(minutes) 分钟专注", systemImage: "play.fill").frame(maxWidth: .infinity)
-                }.glassProminentButton().controlSize(.extraLarge).disabled(model.focus == nil)
+                }.buttonStyle(AccentButtonStyle(height: 44)).disabled(model.focus == nil)
             }
             if let error { Text(error).font(.system(size: 12)).foregroundStyle(.red) }
         }.font(.system(size: 13)).frame(maxWidth: .infinity).padding(20).workspacePanel()
@@ -85,11 +112,11 @@ struct FocusWorkspaceView: View {
     }
 
     private var budgetColumn: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: Design.Space.lg) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("限额").fontWeight(.semibold); Spacer()
-                    Text("快到时黄色，超出时红色加图标").font(.system(size: 11)).foregroundStyle(.secondary)
+                    CardHeading(title: "限额"); Spacer()
+                    Text("快到时黄色，超出时红色加图标").font(.system(size: 11)).foregroundStyle(Design.ink3)
                 }.padding(.bottom, 4)
                 if budgets.isEmpty { Text("添加一个分类的每日时长上限。").font(.system(size: 12)).foregroundStyle(.secondary).padding(.vertical, 10) }
                 ForEach(Array(budgets.enumerated()), id: \.element.categoryID) { index, budget in
@@ -99,7 +126,7 @@ struct FocusWorkspaceView: View {
                 Divider().padding(.top, 4)
                 Text("限额只发提醒，不拦截任何东西；拦截只在专注会话里发生。").font(.system(size: 11)).foregroundStyle(.secondary)
                     .padding(.top, 8)
-            }.font(.system(size: 13)).frame(maxWidth: .infinity, alignment: .leading).padding(18).workspacePanel()
+            }.font(.system(size: 13)).frame(maxWidth: .infinity, alignment: .leading).padding(18).workspacePanel().revealOnce(index: 3)
             weekChart
         }
     }
@@ -115,7 +142,7 @@ struct FocusWorkspaceView: View {
         let top = max(minutes.max() ?? 0, 1)
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Text("本周的专注").fontWeight(.semibold)
+                CardHeading(title: "本周的专注")
                 Spacer()
                 Text("\(sessions.count) 次 · \(Format.duration(sessions.reduce(0) { $0 + $1.end.timeIntervalSince($1.start) }))")
                     .font(.system(size: 11)).foregroundStyle(.secondary).monospacedDigit()
@@ -126,13 +153,13 @@ struct FocusWorkspaceView: View {
                     VStack(spacing: 4) {
                         Text(value > 0 ? "\(value)" : " ").font(.system(size: 11)).foregroundStyle(.secondary).monospacedDigit()
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(value == 0 ? AnyShapeStyle(.quaternary) : today ? AnyShapeStyle(.primary) : AnyShapeStyle(.primary.opacity(0.35)))
+                            .fill(value == 0 ? AnyShapeStyle(Design.track) : today ? AnyShapeStyle(Design.accent) : AnyShapeStyle(Design.accent.opacity(0.4)))
                             .frame(height: value == 0 ? 4 : max(4, 56 * CGFloat(value) / CGFloat(top)))
-                        Text(days[index], format: .dateTime.weekday(.narrow)).font(.system(size: 11)).foregroundStyle(.tertiary)
+                        Text(days[index].formatted(.dateTime.weekday(.narrow).locale(model.textLocale))).font(.system(size: 11)).foregroundStyle(Design.ink3)
                     }.frame(maxWidth: .infinity)
                 }
             }.frame(height: 90, alignment: .bottom)
-        }.font(.system(size: 13)).padding(18).workspacePanel()
+        }.font(.system(size: 13)).padding(18).workspacePanel().revealOnce(index: 4)
     }
 
     private func budgetRow(_ budget: Budget) -> some View {

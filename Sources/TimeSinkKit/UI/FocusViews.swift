@@ -113,6 +113,8 @@ struct FocusDial: View {
     @Binding var minutes: Int
     private let range = 15...120
     private let size: CGFloat = 236, radius: CGFloat = 98, line: CGFloat = 18
+    @State private var dragging = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let fraction = min(1, CGFloat(minutes) / CGFloat(range.upperBound))
@@ -131,10 +133,12 @@ struct FocusDial: View {
             }
             Circle().stroke(.quaternary, lineWidth: line).frame(width: radius * 2, height: radius * 2)
             Circle().trim(from: 0, to: fraction)
-                .stroke(.tint, style: StrokeStyle(lineWidth: line, lineCap: .round))
+                .stroke(Design.accent, style: StrokeStyle(lineWidth: line, lineCap: .round))
                 .rotationEffect(.degrees(-90)).frame(width: radius * 2, height: radius * 2)
             Color.clear.frame(width: 34, height: 34).glassSurface(in: Circle())
                 .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
+                .scaleEffect(dragging && !reduceMotion ? 1.14 : 1)
+                .animation(reduceMotion ? nil : Design.press, value: dragging)
                 .offset(x: radius * cos(angle.radians), y: radius * sin(angle.radians))
             VStack(spacing: 2) {
                 Text("\(minutes)").font(.system(size: 50, weight: .semibold)).monospacedDigit().contentTransition(.numericText())
@@ -144,13 +148,20 @@ struct FocusDial: View {
         }
         .frame(width: size, height: size)
         .contentShape(Circle())
+        // A click of the trackpad at every 5-minute detent, and a firmer one
+        // on the hour marks.
+        .onChange(of: minutes) { old, new in
+            guard old != new else { return }
+            NSHapticFeedbackManager.defaultPerformer.perform(new % 60 == 0 ? .levelChange : .alignment, performanceTime: .now)
+        }
         .gesture(DragGesture(minimumDistance: 0).onChanged { value in
+            if !dragging { dragging = true }
             let dx = value.location.x - size / 2, dy = value.location.y - size / 2
             var turn = (atan2(dy, dx) + .pi / 2) / (2 * .pi)
             if turn < 0 { turn += 1 }
             let stepped = Int((turn * CGFloat(range.upperBound) / 5).rounded()) * 5
             minutes = min(range.upperBound, max(range.lowerBound, stepped == 0 ? range.upperBound : stepped))
-        })
+        }.onEnded { _ in dragging = false })
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("专注时长")
         .accessibilityValue("\(minutes) 分钟")

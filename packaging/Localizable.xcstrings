@@ -9060,6 +9060,98 @@
           }
         }
       }
+    },
+    "%lld 个": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld limit"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld limits"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "分心被挡回": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Distractions turned back"
+          }
+        }
+      }
+    },
+    "只提醒，不拦截": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reminds, never blocks"
+          }
+        }
+      }
+    },
+    "拦下": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blocked"
+          }
+        }
+      }
+    },
+    "最长 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Longest %@"
+          }
+        }
+      }
+    },
+    "次数": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sessions"
+          }
+        }
+      }
+    },
+    "这周专注了 %@。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ of focus this week."
+          }
+        }
+      }
+    },
+    "这周还没有专注。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No focus yet this week."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
