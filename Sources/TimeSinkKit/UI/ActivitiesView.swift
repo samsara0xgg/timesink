@@ -76,37 +76,47 @@ struct ActivitiesView: View {
         // 2.0: two columns. On a day the timeline is the list; longer ranges
         // keep the grouped list. The inspector floats on glass to the right.
         let range = activities.shownRange ?? model.range
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 8) {
-                timeFilterBanner
-                calendarBand
-                if ActivitiesModel.showsTimeline(range) {
-                    hintLine
-                    timelineCard(range)
-                } else {
-                    ActivityListView(model: model, activities: activities, groups: activities.groups,
-                                      matchCount: activities.matchCount, matchSeconds: activities.matchSeconds,
-                                      meetingSeconds: activities.meetingSeconds)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .workspacePanel()
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            if showsInspector {
-                Group {
-                    if let session = activities.sessions.first(where: { $0.start == activities.selectedSession }) {
-                        SessionInspector(model: model, activities: activities, session: session)
-                    } else {
-                        ActivityInspector(model: model, activities: activities)
+        GeometryReader { geometry in
+            let width = geometry.size.width - 2 * Design.Space.page
+            VStack(alignment: .leading, spacing: Design.Space.lg) {
+                header(range, width: width)
+                HStack(alignment: .top, spacing: Design.Space.lg) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        timeFilterBanner
+                        calendarBand
+                        if ActivitiesModel.showsTimeline(range) {
+                            hintLine
+                            timelineCard(range)
+                        } else {
+                            ActivityListView(model: model, activities: activities, groups: activities.groups,
+                                              matchCount: activities.matchCount, matchSeconds: activities.matchSeconds,
+                                              meetingSeconds: activities.meetingSeconds)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .workspacePanel()
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    if ActivitiesModel.showsTimeline(range) && width >= 1180 {
+                        SessionListCard(model: model, activities: activities) { showsInspector = true }
+                            .frame(width: 330).frame(maxHeight: .infinity, alignment: .top)
+                    }
+                    if showsInspector {
+                        Group {
+                            if let session = activities.sessions.first(where: { $0.start == activities.selectedSession }) {
+                                SessionInspector(model: model, activities: activities, session: session)
+                            } else {
+                                ActivityInspector(model: model, activities: activities)
+                            }
+                        }
+                            .frame(width: 300)
+                            .frame(maxHeight: .infinity, alignment: .top)
+                            .glassSurface(cornerRadius: 18)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
                 }
-                    .frame(width: 300)
-                    .frame(maxHeight: .infinity, alignment: .top)
-                    .glassSurface(cornerRadius: 18)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
             }
+            .padding(.horizontal, Design.Space.page).padding(.top, 8).padding(.bottom, 16)
         }
-        .padding(12)
         .background(WorkspaceBackground())
         .background {
             // ⌘E opens the inspector's form for the selected block.
@@ -200,6 +210,29 @@ struct ActivitiesView: View {
         }
     }
 
+    /// The page's lead: what was recorded, with the counts the window title
+    /// used to carry.
+    private func header(_ range: DateRangeSelection, width: CGFloat) -> some View {
+        let count = activities.rangeCount ?? 0
+        let seconds = activities.rangeSeconds
+        let time = Text(TodayFmt.long(seconds)).font(.system(size: 28, weight: .bold, design: .rounded)).monospacedDigit()
+        let sentence: Text = count == 0 && activities.rangeCount != nil ? Text("这段时间还没有记录。") : Text("记录了 \(time)，共 \(count) 条。")
+        let filtered = activities.matchCount
+        var stats = [
+            StripStat(id: 0, label: "记录", value: "\(count)", note: String(localized: "条")),
+            StripStat(id: 1, label: "时长", value: TodayFmt.clock(seconds), color: Design.accentInk),
+        ]
+        if ActivitiesModel.showsTimeline(range) {
+            stats.append(StripStat(id: stats.count, label: "会话", value: "\(activities.sessions.count)", note: String(localized: "按 \(Int(model.sessionThreshold / 60)) 分钟的空档切开")))
+        }
+        if activities.meetingSeconds > 0 {
+            stats.append(StripStat(id: stats.count, label: "会议", value: TodayFmt.clock(activities.meetingSeconds), note: String(localized: "来自日历")))
+        } else if let filtered {
+            stats.append(StripStat(id: stats.count, label: "搜索命中", value: "\(filtered)", note: activities.matchSeconds.map { Format.duration($0) } ?? ""))
+        }
+        return PageHeaderRow(lead: Text(verbatim: range.label), sentence: sentence, stats: stats, width: width)
+    }
+
     /// Calendar on one line (the events are drawn in the timeline's gaps),
     /// keyboard on the right.
     private var hintLine: some View {
@@ -283,7 +316,7 @@ struct ActivitiesView: View {
         }
         .padding(.horizontal, 12).padding(.top, 14).padding(.bottom, 4)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .workspacePanel()
+        .workspacePanel().revealOnce(index: 2)
     }
 
     private var sessionMarks: [SessionMark] {

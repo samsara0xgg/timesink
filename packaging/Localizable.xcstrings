@@ -9202,6 +9202,108 @@
           }
         }
       }
+    },
+    "记录了 %@，共 %lld 条。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ recorded, %lld records."
+          }
+        }
+      }
+    },
+    "条": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "records"
+          }
+        }
+      }
+    },
+    "按 %lld 分钟的空档切开": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cut at %lld-minute gaps"
+          }
+        }
+      }
+    },
+    "来自日历": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "From the calendar"
+          }
+        }
+      }
+    },
+    "搜索命中": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search hits"
+          }
+        }
+      }
+    },
+    "%lld 段 · 按时间": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld session · by time"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld sessions · by time"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "全部": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All"
+          }
+        }
+      }
+    },
+    "并入上一段": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Join the previous one"
+          }
+        }
+      }
+    },
+    "已并入上一段": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Joined the previous session"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
