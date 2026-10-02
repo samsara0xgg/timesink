@@ -34,6 +34,8 @@ public struct TimeSinkApp: App {
         }
 
         NSApplication.shared.setActivationPolicy(.accessory)
+        // Light only: every window, the popover and its panels.
+        NSApplication.shared.appearance = NSAppearance(named: .aqua)
         try? Tips.configure()
 
         let db: any DatabaseWriter
