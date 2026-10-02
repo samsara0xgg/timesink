@@ -239,7 +239,6 @@ private struct NavTabStyle: ButtonStyle {
 private struct DayStepper: View {
     let model: AppModel
     let density: BarDensity
-    @Environment(\.locale) private var locale
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var offset: Int { model.todayDayOffset }
@@ -248,8 +247,8 @@ private struct DayStepper: View {
     }
 
     private var title: String {
-        let full = date.formatted(.dateTime.month().day().weekday(.abbreviated).locale(locale))
-        let short = date.formatted(.dateTime.month().day().locale(locale))
+        let full = date.formatted(.dateTime.month().day().weekday(.abbreviated).locale(model.textLocale))
+        let short = date.formatted(.dateTime.month().day().locale(model.textLocale))
         switch offset {
         case 0: return density.longDate ? String(localized: "今天 \(full)") : String(localized: "今天")
         case -1: return density.longDate ? String(localized: "昨天 \(full)") : String(localized: "昨天")

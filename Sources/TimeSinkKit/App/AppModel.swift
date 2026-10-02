@@ -195,6 +195,9 @@ public final class AppModel {
         calendar.firstWeekday = firstWeekday
         return calendar
     }
+    /// The language the interface text is in: the person's choice in Settings
+    /// (or the system's), for formatting dates in words to match it.
+    public var textLocale: Locale { Locale(identifier: Locale.preferredLanguages.first ?? "en") }
     public var displayLocale: Locale {
         guard timeFormat != "system" else { return .current }
         return Locale(identifier: Locale.current.identifier + (Locale.current.identifier.contains("@") ? ";" : "@") + "hours=" + (timeFormat == "24" ? "h23" : "h12"))
