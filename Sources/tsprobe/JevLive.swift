@@ -1,18 +1,19 @@
 import Foundation
+import GRDB
 import TimeSinkKit
 
-/// `tsprobe jev-live --db <copy.sqlite> [--days 30] [--keychain-service <name>] [--cap 1.0]`
+/// `tsprobe jev-live --db <copy.sqlite> [--days 30] [--keychain-service <name>] [--cap 1.0] [--screen-text]`
 ///
 /// Runs the real Jev pipeline headlessly on a COPY of the database: migrates
 /// it, backfills verdicts for the last `--days` days through the worker, then
 /// prints hours per category and what the run cost. The key is read in this
 /// process from the named Keychain item and never printed. It refuses the
-/// live database.
+/// live database. `--screen-text` also sends redacted screenshot text.
 @MainActor
 func runJevLive(_ args: [String]) async {
     func value(_ flag: String) -> String? { args.firstIndex(of: flag).flatMap { args.indices.contains($0 + 1) ? args[$0 + 1] : nil } }
     guard let path = value("--db") else {
-        print("usage: tsprobe jev-live --db <copy.sqlite> [--days 30] [--keychain-service <name>] [--cap 1.0]")
+        print("usage: tsprobe jev-live --db <copy.sqlite> [--days 30] [--keychain-service <name>] [--cap 1.0] [--screen-text]")
         exit(64)
     }
     let days = value("--days").flatMap(Int.init) ?? 30
@@ -41,6 +42,8 @@ func runJevLive(_ args: [String]) async {
     let settings = SettingsStore(db)
     settings.setJevEnabled(true)
     settings.setJevMonthlyCap(cap)
+    let screenText = args.contains("--screen-text")
+    settings.setJevScreenText(screenText)
     let since = Calendar.current.date(byAdding: .day, value: -days, to: Date())!
 
     let worker = JevWorker(categoryStore: categories, settings: settings, apiKey: { key })
@@ -48,6 +51,7 @@ func runJevLive(_ args: [String]) async {
 
     let resolver = CategoryResolver(categoryStore: categories)
     resolver.jevEnabled = true
+    resolver.jevScreenText = screenText
     let spans = try! SpanStore(db).spans(overlapping: DateInterval(start: since, end: Date())).filter { $0.start >= since }
     var seconds: [String: Double] = [:]
     for item in resolver.categorized(spans) { seconds[item.categoryID, default: 0] += item.span.duration }
@@ -61,5 +65,11 @@ func runJevLive(_ args: [String]) async {
     print(String(format: "total hours %.2f | hours with prob<0.6: %.2f (%d combos)", total / 3600, low.reduce(0) { $0 + $1.seconds } / 3600, low.count))
     print(String(format: "calls %d saved %d failed %d | cost $%.5f | input tokens %d | median latency %.2fs | stopped by cap: %@",
                  run.calls, run.saved, run.failed, run.costUSD, run.inputTokens, run.medianLatency ?? 0, run.stoppedByCap ? "yes" : "no"))
+    let (retried, replaced, captureVerdicts) = try! await db.read { d in
+        (try Int.fetchOne(d, sql: "SELECT COUNT(*) FROM jevVerdict WHERE screenText > 0") ?? 0,
+         try Int.fetchOne(d, sql: "SELECT COUNT(*) FROM jevVerdict WHERE screenText = 1") ?? 0,
+         try Int.fetchOne(d, sql: "SELECT COUNT(*) FROM jevCaptureVerdict") ?? 0)
+    }
+    print("screen-text re-asks \(retried), kept \(replaced) | per-screen verdicts \(captureVerdicts)")
     if let error = run.error { print("last error:", error) }
 }
