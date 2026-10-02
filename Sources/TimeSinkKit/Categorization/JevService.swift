@@ -10,6 +10,8 @@ public final class JevService {
     nonisolated public static let apiKeyAccount = "jevAPIKey"
     /// First enable asks about this many days back.
     public static let lookbackDays = 30
+    /// After a category edit, answers from the old prompt are asked again for combos seen this far back; older ones keep their answer.
+    public static let staleLookbackDays = 90
     /// Verdicts under this are listed for review.
     nonisolated public static let lowConfidence = 0.6
 
@@ -90,7 +92,8 @@ public final class JevService {
         running = true
         defer { running = false }
         let since = Calendar.current.date(byAdding: .day, value: -Self.lookbackDays, to: Date()) ?? Date()
-        let result = await worker.run(since: since)
+        let staleSince = Calendar.current.date(byAdding: .day, value: -Self.staleLookbackDays, to: Date()) ?? since
+        let result = await worker.run(since: since, staleSince: staleSince)
         lastRun = result
         if let error = result.error { logger.error("jev run: \(error, privacy: .public)") }
         if result.saved > 0 {
@@ -117,7 +120,8 @@ public final class JevService {
     public func status() throws -> Status {
         let categories = try categoryStore.rawCategories()
         let since = Calendar.current.date(byAdding: .day, value: -Self.lookbackDays, to: Date()) ?? Date()
-        let queued = try categoryStore.pendingCombos(since: since, promptVersion: JevPrompt.version(categories)).count
+        let staleSince = Calendar.current.date(byAdding: .day, value: -Self.staleLookbackDays, to: Date()) ?? since
+        let queued = try categoryStore.pendingCombos(since: since, staleSince: staleSince, promptVersion: JevPrompt.version(categories)).count
         return Status(classified: try categoryStore.verdicts().filter { $0.source == "jev" }.count, queued: queued,
                       pausedAtCap: monthSpend >= monthlyCap, offline: lastRun?.error != nil)
     }

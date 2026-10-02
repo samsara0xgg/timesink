@@ -176,20 +176,24 @@ extension CategoryStore {
 
     /// Screens of bare-title AI-app spans seen since `since` that have no
     /// verdict of the current prompt, one per distinct text key, newest first.
-    func pendingCaptures(since: Date, promptVersion: String) throws -> [JevCapture] {
-        try writer.read { db in
-            let done = Set(try String.fetchAll(db, sql: "SELECT textKey FROM jevCaptureVerdict WHERE promptVersion = ?", arguments: [promptVersion]))
+    /// A screen never asked is wanted if seen since `since`; one with an answer from an
+    /// older prompt only if seen since `staleSince`.
+    func pendingCaptures(since: Date, staleSince: Date? = nil, promptVersion: String) throws -> [JevCapture] {
+        let staleSince = min(staleSince ?? since, since)
+        return try writer.read { db in
+            let versions = Dictionary(uniqueKeysWithValues: try Row.fetchAll(db, sql: "SELECT textKey, promptVersion FROM jevCaptureVerdict").map { ($0["textKey"] as String, $0["promptVersion"] as String) })
             let rows = try Row.fetchAll(db, sql: """
-                SELECT c.text AS text, c.appName AS appName, s.appBundleID AS bundleID, COALESCE(s.title, '') AS title,
+                SELECT c.text AS text, c.appName AS appName, s.appBundleID AS bundleID, COALESCE(s.title, '') AS title, s."end" AS spanEnd,
                        COALESCE(s.document, '') AS document, COALESCE(s.domain, '') AS domain
                 FROM capture c JOIN span s ON s.id = c.spanID
                 WHERE s."end" > ? AND length(c.text) > 40 ORDER BY c.at DESC
-                """, arguments: [since])
+                """, arguments: [staleSince])
             var seen = Set<String>()
             return rows.compactMap { row in
                 let text: String = row["text"], key = captureKey(text)
                 guard JevRules.match(appBundleID: row["bundleID"], domain: row["domain"], url: nil, title: row["title"], document: row["document"])?.reason == .assistantIdle,
-                      !done.contains(key), seen.insert(key).inserted else { return nil }
+                      versions[key] != promptVersion, versions[key] != nil || (row["spanEnd"] as Date) > since,
+                      seen.insert(key).inserted else { return nil }
                 return JevCapture(key: key, text: text, appName: row["appName"], bundleID: row["bundleID"], title: row["title"])
             }
         }
@@ -232,12 +236,17 @@ extension CategoryStore {
         }
     }
 
-    /// Window contents seen since `since` that Jev has no current answer for,
-    /// longest first: none for a user verdict, one made under the current
-    /// prompt, or one a local hard rule decides without it.
-    func pendingCombos(since: Date, promptVersion: String) throws -> [JevCombo] {
-        try writer.read { db in
-            let current = Set(try Row.fetchAll(db, sql: "SELECT appBundleID, domain, title, document, promptVersion, source FROM jevVerdict").compactMap { row -> VerdictKey? in
+    /// Window contents Jev has no current answer for, longest first: none for a user
+    /// verdict, a seed row, one made under the current prompt, or one a local hard rule
+    /// decides without it. A combo never asked is wanted if seen since `since`; one that
+    /// has an answer from an older prompt only if seen since `staleSince` (older ones
+    /// keep their stored answer).
+    func pendingCombos(since: Date, staleSince: Date? = nil, promptVersion: String) throws -> [JevCombo] {
+        let staleSince = min(staleSince ?? since, since)
+        return try writer.read { db in
+            let all = try Row.fetchAll(db, sql: "SELECT appBundleID, domain, title, document, promptVersion, source FROM jevVerdict")
+            let answered = Set(all.map { VerdictKey(appBundleID: $0["appBundleID"], domain: $0["domain"], title: $0["title"], document: $0["document"]) })
+            let current = Set(all.compactMap { row -> VerdictKey? in
                 let source: String = row["source"], version: String = row["promptVersion"]
                 guard source != "jev" || version == promptVersion else { return nil }
                 return VerdictKey(appBundleID: row["appBundleID"], domain: row["domain"], title: row["title"], document: row["document"])
@@ -245,14 +254,15 @@ extension CategoryStore {
             let rows = try Row.fetchAll(db, sql: """
                 SELECT appBundleID, MAX(appName) AS appName, COALESCE(domain, '') AS domain, COALESCE(title, '') AS title,
                        COALESCE(document, '') AS document, MAX(COALESCE(url, '')) AS url,
-                       SUM(julianday("end") - julianday(start)) * 86400 AS seconds
+                       SUM(julianday("end") - julianday(start)) * 86400 AS seconds, MAX("end") AS lastEnd
                 FROM span WHERE "end" > ? GROUP BY appBundleID, COALESCE(domain, ''), COALESCE(title, ''), COALESCE(document, '')
                 ORDER BY seconds DESC
-                """, arguments: [since])
-            return rows.compactMap { row in
+                """, arguments: [staleSince])
+            return rows.compactMap { row -> JevCombo? in
                 let key = VerdictKey(appBundleID: row["appBundleID"], domain: row["domain"], title: row["title"], document: row["document"])
                 let url: String = row["url"]
-                guard !current.contains(key),
+                let lastEnd: Date = row["lastEnd"]
+                guard !current.contains(key), answered.contains(key) || lastEnd > since,
                       // Without the url: a span's own url varies inside one combo, so a hit that only the
                       // url gives would leave the other spans of it with no verdict.
                       JevRules.match(appBundleID: key.appBundleID, domain: key.domain, url: nil, title: key.title, document: key.document) == nil

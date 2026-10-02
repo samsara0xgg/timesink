@@ -43,11 +43,11 @@ public actor JevWorker {
         let target: Target
     }
 
-    /// One pass over everything seen since `since`: window contents without a
+    /// One pass over everything seen since `since` (and, for answers from an older prompt, since `staleSince`): window contents without a
     /// verdict, then unsure verdicts asked again with the user's examples (plus
     /// screen text when "send screenshot text" is on), then (that switch only)
     /// bare-title AI-app screens.
-    public func run(since: Date, maxConcurrent: Int = 10) async -> RunResult {
+    public func run(since: Date, staleSince: Date? = nil, maxConcurrent: Int = 10) async -> RunResult {
         var result = RunResult()
         guard settings.jevEnabled, let key = apiKey(), !key.isEmpty, let endpoint = URL(string: settings.jevEndpoint) else { return result }
         do {
@@ -62,7 +62,7 @@ public actor JevWorker {
                 Job(state: JevState(app: c.appName, bundleID: c.key.appBundleID, domain: c.key.domain, url: c.url,
                                     title: c.key.title, document: c.key.document), target: .combo(c))
             }
-            var halted = await Self.pass(try categoryStore.pendingCombos(since: since, promptVersion: version).map(combo), client: client,
+            var halted = await Self.pass(try categoryStore.pendingCombos(since: since, staleSince: staleSince, promptVersion: version).map(combo), client: client,
                                          criteria: criteria, settings: settings, maxConcurrent: maxConcurrent, into: &result) { job, answer in
                 guard case .combo(let c) = job.target, let v = Self.verdict(for: c, answer: answer, ids: ids, version: version),
                       (try? categoryStore.saveVerdict(v)) != nil else { return false }
@@ -93,7 +93,7 @@ public actor JevWorker {
             }
             guard settings.jevScreenText, !halted else { return result }
 
-            let captures = try categoryStore.pendingCaptures(since: since, promptVersion: version).map { c in
+            let captures = try categoryStore.pendingCaptures(since: since, staleSince: staleSince, promptVersion: version).map { c in
                 Job(state: JevState(app: c.appName, bundleID: c.bundleID, domain: "", url: "", title: c.title, document: "", screenText: c.text),
                     target: .capture(c))
             }

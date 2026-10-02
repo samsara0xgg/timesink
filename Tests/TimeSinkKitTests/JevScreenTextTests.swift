@@ -124,6 +124,42 @@ final class JevScreenTextTests: XCTestCase {
         XCTAssertEqual(r.explanation(for: b), "Jev 判断 · 概率 0.40")
     }
 
+    // MARK: - Stale window
+
+    private func days(_ n: Double) -> Double { n * 86_400 }
+
+    func testAfterAPromptChangeOnlyRecentCombosAreRequeuedAndOldOnesKeepTheirAnswer() async throws {
+        let a = try insert(domain: "a.example", title: "A", ago: days(60))
+        let b = try insert(domain: "b.example", title: "B", ago: days(100))
+        _ = try insert(domain: "c.example", title: "C", ago: days(60))
+        _ = try insert(domain: "d.example", title: "D", ago: days(10))
+        for t in ["A", "B"] {
+            try store.saveVerdict(JevVerdict(appBundleID: "com.google.Chrome", domain: "\(t.lowercased()).example", title: t, document: "", categoryID: "research",
+                                             prob: 0.9, runnerUp: "", runnerUpProb: 0, promptVersion: "old", at: Date(), source: "jev"))
+        }
+        let transport = StubJevTransport { _ in ("news", ["news": 0.9], 0.0001) }
+        let run = await worker(transport, screenText: false).run(since: Date().addingTimeInterval(-days(30)), staleSince: Date().addingTimeInterval(-days(90)))
+        XCTAssertEqual(run.calls, 2, "A (stale, 60 days) and D (new, 10 days); not B (stale, 100 days) or C (never asked, 60 days)")
+        let v = Dictionary(uniqueKeysWithValues: try store.verdicts().map { ($0.title, $0) })
+        XCTAssertEqual(v["A"]?.categoryID, "news")
+        XCTAssertEqual(v["B"]?.categoryID, "research")
+        XCTAssertEqual(v["B"]?.promptVersion, "old")
+        XCTAssertNil(v["C"])
+        XCTAssertEqual(resolver(screenText: false).categoryID(for: b), "research", "the old answer still resolves")
+        _ = a
+    }
+
+    func testCaptureVerdictsFollowTheSameWindow() throws {
+        let texts = (0..<3).map { String(repeating: "screen \($0) ", count: 12) }
+        for (i, ago) in [days(60), days(100), days(60)].enumerated() {
+            let s = try insert("com.openai.codex", title: "Codex", ago: ago)
+            try capture(s, texts[i], ago: ago)
+        }
+        for t in texts.prefix(2) { try store.saveCaptureVerdict(key: captureKey(t), categoryID: "research", prob: 0.9, runnerUp: "", runnerUpProb: 0, promptVersion: "old") }
+        let wanted = try store.pendingCaptures(since: Date().addingTimeInterval(-days(30)), staleSince: Date().addingTimeInterval(-days(90)), promptVersion: "new")
+        XCTAssertEqual(wanted.map(\.key), [captureKey(texts[0])], "stale and 60 days old only")
+    }
+
     // MARK: - Per-capture verdicts
 
     func testBareAIAppScreensAreClassifiedPerCapture() async throws {
