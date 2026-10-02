@@ -19,7 +19,7 @@ public struct WorkSession: Sendable, Equatable, Identifiable {
     public var recorded: TimeInterval
     /// The category holding the most recorded time.
     public var categoryID: String
-    /// Repo, folder or site holding the most time, when one holds a fair
+    /// Repo or folder holding the most time, when one holds a fair
     /// share of it (`SessionSegmenter.projectKey`), with a display label.
     public var project: String?
     public var projectLabel: String?
@@ -62,7 +62,7 @@ public enum SessionSegmenter {
     /// A project names the session only when it holds this share of it.
     static let projectShare = 0.3
 
-    /// The repo, folder or site a span belongs to, normalised so the same
+    /// The named work a span belongs to, normalised so the same
     /// project matches across apps: `~/Projects/timesink/Sources/x.swift` in
     /// an editor, `~/Projects/timesink` in a terminal and the
     /// `owner/timesink` page on GitHub all give `timesink`.
@@ -72,19 +72,22 @@ public enum SessionSegmenter {
             let relative = path == home ? [] : path.hasPrefix(home + "/")
                 ? path.dropFirst(home.count + 1).split(separator: "/").map(String.init)
                 : path.split(separator: "/").map(String.init)
-            // ~/Projects/timesink/... -> timesink; ~/notes.md -> notes.md;
-            // /opt/x/y/... -> y.
+            // ~/Projects/timesink/... -> timesink; /opt/x/y/... -> y. A file
+            // straight under home or the root is not a project: it needs a folder.
+            guard relative.count >= 2 else { return nil }
             let depth = path.hasPrefix(home + "/") ? 2 : 3
             guard let name = relative.prefix(depth).last, !name.isEmpty else { return nil }
             return (name.lowercased(), name)
         }
-        guard let domain = span.domain else { return nil }
-        if let url = span.url, let entity = EntityParser.entity(urlString: url, domain: domain) {
-            let name = entity.label.split(separator: "/").last.map(String.init) ?? entity.label
-            return (name.lowercased(), name)
-        }
-        return (domain, domain)
+        // A bare site is never a project: only a repo or named workspace on it is.
+        guard let domain = span.domain, let url = span.url,
+              let entity = EntityParser.entity(urlString: url, domain: domain) else { return nil }
+        let name = (entity.label.split(separator: "/").last.map(String.init) ?? entity.label).trimmingCharacters(in: .whitespaces)
+        return (name.lowercased(), name)
     }
+
+    /// What cuts a session when it changes: the project, else the site.
+    static func changeKey(_ span: Span) -> String? { projectKey(span)?.key ?? span.domain }
 
     /// `items` sorted by start. `splits`: extra boundaries the user asked for.
     public static func sessions(_ items: [CategorizedSpan], threshold: TimeInterval = defaultThreshold,
@@ -105,7 +108,7 @@ public enum SessionSegmenter {
         for chunk in chunks {
             // 2. A category or project that stays changed for `threshold`.
             let changes = Set(lastingChanges(chunk.map { ($0.span.start, $0.span.end, $0.categoryID) }, threshold: threshold)
-                + lastingChanges(chunk.map { ($0.span.start, $0.span.end, projectKey($0.span)?.key) }, threshold: threshold))
+                + lastingChanges(chunk.map { ($0.span.start, $0.span.end, changeKey($0.span)) }, threshold: threshold))
             let chunkStart = chunk[0].span.start
             let chunkEnd = chunk.map(\.span.end).max()!
             let userCuts = splits.filter { $0 > chunkStart && $0 < chunkEnd }

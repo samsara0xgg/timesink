@@ -18,6 +18,24 @@ final class SessionSegmenterTests: XCTestCase {
         return items
     }
 
+    private func span(url: String? = nil, domain: String? = nil, document: String? = nil) -> Span {
+        Span(start: ts(0), end: ts(60), appBundleID: "a", appName: "a", title: nil, url: url, domain: domain, document: document)
+    }
+
+    func testABareSiteIsNotAProject() {
+        XCTAssertNil(SessionSegmenter.projectKey(span(url: "https://www.nytimes.com/", domain: "nytimes.com")))
+    }
+
+    func testARepoOnASiteIsAProject() {
+        XCTAssertEqual(SessionSegmenter.projectKey(span(url: "https://github.com/owner/repo", domain: "github.com"))?.key, "repo")
+    }
+
+    func testAFolderUnderHomeIsAProjectButAFileDirectlyUnderHomeIsNot() {
+        let home = DocumentIdentity.homePath
+        XCTAssertEqual(SessionSegmenter.projectKey(span(document: "file://\(home)/Projects/x/file.swift"))?.key, "x")
+        XCTAssertNil(SessionSegmenter.projectKey(span(document: "file://\(home)/notes.md")))
+    }
+
     private func starts(_ parts: [(String?, String, Double, String?)], splits: [Date] = []) -> [Double] {
         SessionSegmenter.sessions(day(parts), splits: splits).map { $0.start.timeIntervalSince(ts(0)) / 60 }
     }
