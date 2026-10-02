@@ -194,7 +194,7 @@ struct UncategorizedSettingsPane: View {
     /// Whether the page is on screen; read by handlers only, never by `body`.
     @State private var isShown = true
     @State private var loadFailed = false
-    @State private var toast: String?
+    @State private var toast: Toast?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// How many items still wait and for how long, for the page's numbers.
     var onSummary: (Int, TimeInterval) -> Void = { _, _ in }
@@ -204,6 +204,15 @@ struct UncategorizedSettingsPane: View {
         let label: String
         let seconds: TimeInterval
         let isDomain: Bool
+    }
+
+    /// What 撤销 needs to put an accepted row back.
+    private struct Toast: Equatable {
+        let message: String
+        let rowID: String
+        let isDomain: Bool
+        let suggestion: ClassificationSuggestion?
+        static func == (a: Toast, b: Toast) -> Bool { a.message == b.message && a.rowID == b.rowID }
     }
 
     private var chipWidth: CGFloat { RefinedStyle.chipWidth(for: model.resolver.categoriesByID) }
@@ -254,7 +263,11 @@ struct UncategorizedSettingsPane: View {
                 }
                 .overlay(alignment: .bottom) {
                     if let toast {
-                        Text(toast).font(.system(size: 12, weight: .semibold)).padding(.horizontal, 16).frame(height: 36)
+                        HStack(spacing: 12) {
+                            Text(toast.message).font(.system(size: 12, weight: .semibold))
+                            Button("撤销") { undo(toast) }.buttonStyle(.plain).font(.system(size: 12, weight: .semibold)).foregroundStyle(Design.link)
+                        }
+                        .padding(.horizontal, 16).frame(height: 36)
                             .glassSurface(in: Capsule()).padding(.bottom, 8)
                             .transition(reduceMotion ? .opacity : .scale(scale: 0.85, anchor: .bottom).combined(with: .opacity))
                     }
@@ -271,7 +284,6 @@ struct UncategorizedSettingsPane: View {
             needsRecompute = true
             recomputeIfVisibleAndStale()
         }
-        .onChange(of: model.organizationTab) { _, _ in recomputeIfVisibleAndStale() }
         .onPageVisibilityChange { isShown = $0; recomputeIfVisibleAndStale() }
     }
 
@@ -279,19 +291,17 @@ struct UncategorizedSettingsPane: View {
     /// runs only when this pane is actually on screen and something has
     /// changed since it last ran.
     private func recomputeIfVisibleAndStale() {
-        guard isShown, model.organizationTab == .uncategorized, needsRecompute else { return }
+        guard isShown, needsRecompute else { return }
         needsRecompute = false
         recompute()
     }
 
     private var emptyState: some View {
-        VStack {
-            Spacer()
-            Text("近 30 天没有未分类的活动")
-                .foregroundStyle(.secondary)
-            Spacer()
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle").foregroundStyle(Design.liveInk)
+            Text("近 30 天没有未分类的活动").foregroundStyle(Design.ink2)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .font(.system(size: 13)).frame(maxWidth: .infinity, minHeight: 56)
     }
 
     /// One app or site: what it is and how long, the suggestion, 其他… and 接受.
@@ -322,14 +332,34 @@ struct UncategorizedSettingsPane: View {
     }
 
     private func accept(_ row: Row, _ categoryID: String) {
+        let suggestion = suggestions[row.id].flatMap { $0.key == row.id ? $0 : nil }
         withAnimation(Design.motion(Design.settle, reduced: reduceMotion)) { assign(row: row, categoryID: categoryID) }
         guard accepted[row.id] != nil else { return }
         let name = model.resolver.categoriesByID[categoryID]?.name ?? ""
-        let message = String(localized: "\(row.label) 已归入 \(name)，以后也自动")
-        withAnimation(Design.motion(Design.reveal, reduced: reduceMotion)) { toast = message }
+        let shown = Toast(message: String(localized: "\(row.label) 已归入 \(name)，以后也自动"), rowID: row.id, isDomain: row.isDomain, suggestion: suggestion)
+        withAnimation(Design.motion(Design.reveal, reduced: reduceMotion)) { toast = shown }
         Task {
-            try? await Task.sleep(for: .seconds(2.6))
-            if toast == message { withAnimation(Design.motion(Design.settle, reduced: reduceMotion)) { toast = nil } }
+            try? await Task.sleep(for: .seconds(5))
+            if toast == shown { withAnimation(Design.motion(Design.settle, reduced: reduceMotion)) { toast = nil } }
+        }
+    }
+
+    /// Takes the mapping away again (and puts the shipped default back, if
+    /// there was one) and the row returns to the queue with its suggestion.
+    private func undo(_ shown: Toast) {
+        do {
+            try model.categoryStore.removeUserMapping(key: (shown.isDomain ? "domain:" : "app:") + shown.rowID)
+            if let suggestion = shown.suggestion {
+                try model.categoryStore.restoreSuggestion(suggestion)
+                suggestions[shown.rowID] = suggestion
+            }
+            withAnimation(Design.motion(Design.settle, reduced: reduceMotion)) {
+                accepted[shown.rowID] = nil
+                toast = nil
+            }
+            publishAssignments()
+        } catch {
+            self.error = String(localized: "没能撤销，请重试。")
         }
     }
 

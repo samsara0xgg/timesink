@@ -2,7 +2,11 @@ import SwiftUI
 
 struct RefinedRulesPane: View {
     let model: AppModel
+    /// Show only the rules that file under this category.
+    var categoryFilter: String?
+    var onClearFilter: (() -> Void)?
     @State private var rows: [RuleRow] = []
+    @State private var hits: [String: TimeInterval] = [:]
     private var search: String { model.organizationSearch }
     @State private var error: String?
     @State private var urlError: String?
@@ -39,7 +43,7 @@ struct RefinedRulesPane: View {
         return pattern.count >= 3 ? pattern : nil
     }
     private var chipWidth: CGFloat { RefinedStyle.chipWidth(for: model.resolver.categoriesByID) }
-    private var visible: [RuleRow] { rows.filter { search.isEmpty || ($0.pattern + $0.scope + (model.resolver.categoriesByID[$0.category]?.name ?? "")).localizedCaseInsensitiveContains(search) } }
+    private var visible: [RuleRow] { rows.filter { (categoryFilter == nil || $0.category == categoryFilter) && (search.isEmpty || ($0.pattern + $0.scope + (model.resolver.categoriesByID[$0.category]?.name ?? "")).localizedCaseInsensitiveContains(search)) } }
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -53,6 +57,14 @@ struct RefinedRulesPane: View {
             }.padding(14)
             HStack {
                 Spacer()
+                if let categoryFilter, let onClearFilter {
+                    Button { onClearFilter() } label: {
+                        HStack(spacing: 4) {
+                            Text("只看 \(model.resolver.categoriesByID[categoryFilter]?.name ?? "")")
+                            Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
+                        }
+                    }.buttonStyle(PillButtonStyle(height: 24, font: .system(size: 11)))
+                }
                 Text("\(visible.count) 条").font(.system(size: 11)).foregroundStyle(.secondary)
             }.padding(.horizontal, 14).padding(.bottom, 12)
             header
@@ -71,9 +83,9 @@ struct RefinedRulesPane: View {
                 }
             }
             if let error { Text(error).font(.system(size: 12)).foregroundStyle(.red).padding(12) }
-        }.workspacePanel().task { load() }
-        .onPageChange(of: model.dataEditVersion) { load() }
-        .onPageChange(of: model.dataVersion) { refreshHits() }
+        }.workspacePanel().task { load(); loadHits() }
+        .onPageChange(of: model.dataEditVersion) { load(); loadHits() }
+        .onPageChange(of: model.dataVersion) { loadHits() }
         .sheet(item: $pendingTitle) { TitleRuleEditor(model: model, pending: $0) }
         .sheet(isPresented: $showURL) {
             VStack(alignment: .leading, spacing: 16) {
@@ -98,7 +110,7 @@ struct RefinedRulesPane: View {
             Text("类型").frame(width: 56, alignment: .leading)
             Text("条件").frame(maxWidth: .infinity, alignment: .leading)
             Text("归为").frame(width: chipWidth, alignment: .leading)
-            Text("今天命中").frame(width: 84, alignment: .trailing)
+            Text("近 7 天").frame(width: 84, alignment: .trailing)
             Text("来源").frame(width: 48)
         }.font(.system(size: 11)).foregroundStyle(.secondary).padding(.horizontal, 14).frame(height: 28).background(.quaternary.opacity(0.45))
     }
@@ -129,22 +141,29 @@ struct RefinedRulesPane: View {
                 }
             }
     }
-    /// Today's time credited to each rule key.
-    private func todayHits() -> [String: TimeInterval] {
-        model.rangedSpans(for: .today()).reduce(into: [String: TimeInterval]()) { totals, item in
-            if let key = model.resolver.matchingRuleKey(for: item.span) { totals[key, default: 0] += item.span.duration }
+    /// Seven days of time credited to each rule key, worked out off the main
+    /// thread from a snapshot of the rules.
+    private func loadHits() {
+        let interval = DateRangeSelection(kind: .last7, anchor: Date()).interval
+        let store = model.spanStore, snapshot = model.resolver.snapshot()
+        Task {
+            let result = await Task.detached(priority: .utility) { () -> [String: TimeInterval] in
+                guard let spans = try? store.spans(overlapping: interval) else { return [:] }
+                var totals: [String: TimeInterval] = [:]
+                for span in spans {
+                    let seconds = min(span.end, interval.end).timeIntervalSince(max(span.start, interval.start))
+                    if seconds > 0, let key = snapshot.matchingRuleKey(for: span) { totals[key, default: 0] += seconds }
+                }
+                return totals
+            }.value
+            hits = result
+            rows = rows.map { var row = $0; row.seconds = result[row.id, default: 0]; return row }
         }
-    }
-    /// Tracking only moves 今天命中; the rules themselves change with edits.
-    private func refreshHits() {
-        guard !rows.isEmpty else { return }
-        let hits = todayHits()
-        rows = rows.map { var row = $0; row.seconds = hits[row.id, default: 0]; return row }
     }
     private func load() {
         do {
             let disabled = try model.categoryStore.disabledRules()
-            let hits = todayHits()
+            let hits = self.hits
             var result: [RuleRow] = []
             for rule in try model.categoryStore.titleRules() {
                 let scopeLabel = rule.scopeKey.isEmpty || NSWorkspace.shared.urlForApplication(withBundleIdentifier: rule.scopeKey) == nil
