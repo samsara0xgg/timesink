@@ -110,7 +110,7 @@ struct SessionListCard<Switch: View>: View {
                         }
                     }
                     Spacer(minLength: 6)
-                    Text(Format.duration(session.recorded)).font(.num(12)).foregroundStyle(Design.ink2)
+                    Text(Format.duration(session.recorded, compact: true)).font(.num(12)).foregroundStyle(Design.ink2)
                         .contentTransition(reduceMotion ? .opacity : .numericText())
                 }
                 .padding(.horizontal, 8).frame(height: 46)

@@ -118,8 +118,8 @@ final class DayOverviewTests: XCTestCase {
     func testMinuteDeltaAgreesWithTheDurationsShown() {
         let today: TimeInterval = 6 * 3600 + 36 * 60 + 10
         let yesterday: TimeInterval = 5 * 3600 + 49 * 60 + 50
-        XCTAssertEqual(Format.duration(today), "6h 36m")
-        XCTAssertEqual(Format.duration(yesterday), "5h 49m")
+        XCTAssertEqual(Format.duration(today, locale: Locale(identifier: "en")), "6h 36m")
+        XCTAssertEqual(Format.duration(yesterday, locale: Locale(identifier: "en")), "5h 49m")
         XCTAssertEqual(Format.minuteDelta(today, yesterday), 47 * 60)
         XCTAssertEqual(Format.minuteDelta(yesterday, today), -47 * 60)
         XCTAssertEqual(Format.minuteDelta(59, 0), 0)

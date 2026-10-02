@@ -92,7 +92,7 @@ struct ActivityListView: View {
                                         AppIcon(bundleID: group.id, size: 18)
                                         Text(group.name)
                                         Spacer()
-                                        Text(Format.duration(group.seconds)).monospacedDigit()
+                                        Text(Format.duration(group.seconds, compact: true)).monospacedDigit()
                                     }
                                     .font(.system(size: 12, weight: .semibold)).padding(.vertical, 5)
                                     .background(RefinedStyle.panel)
@@ -126,7 +126,7 @@ struct ActivityListView: View {
                 Circle().fill(categoryColor(row.selection.categoryID)).frame(width: 6, height: 6)
                     .help(model.resolver.categoriesByID[row.selection.categoryID]?.name ?? String(localized: "未分类"))
                 Spacer(minLength: 6)
-                Text(Format.duration(row.seconds)).monospacedDigit().foregroundStyle(.secondary)
+                Text(Format.duration(row.seconds, compact: true)).monospacedDigit().foregroundStyle(.secondary)
             }.font(.system(size: 12)).padding(.vertical, 4).padding(.horizontal, 4)
                 .background(selected ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 4))
                 .contentShape(Rectangle())
@@ -156,7 +156,7 @@ struct ActivityListView: View {
                 if segment.isMixed {
                     CompositionBar(segment: segment, color: categoryColor).frame(width: 36, height: 4)
                 }
-                Text(Format.duration(segment.recorded)).monospacedDigit().foregroundStyle(.secondary)
+                Text(Format.duration(segment.recorded, compact: true)).monospacedDigit().foregroundStyle(.secondary)
             }.font(.system(size: 12)).padding(.vertical, 5).padding(.horizontal, 4)
                 .background(selected ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 4))
                 .contentShape(Rectangle())
@@ -266,7 +266,7 @@ private struct CategoryGroupRow: View {
                                 .frame(width: geometry.size.width * group.seconds / max(1, totalSeconds))
                         }
                 }.frame(width: 70, height: 4)
-                Text(Format.duration(group.seconds))
+                Text(Format.duration(group.seconds, compact: true))
                     .foregroundStyle(.secondary)
             }
         }
@@ -316,7 +316,7 @@ private struct ActivityRowView: View {
                 }
                 let count = activities.segmentCounts[ActivitySelection(categoryID: categoryID, rowID: row.id)] ?? 0
                 if count > 1 { Text("\(count) 次").font(.system(size: 11)).foregroundStyle(.tertiary).help("来回 \(count) 次") }
-                Text(Format.duration(row.seconds))
+                Text(Format.duration(row.seconds, compact: true))
                     .foregroundStyle(.secondary)
             }
             .padding(.vertical, 3)
@@ -361,7 +361,7 @@ private struct TitleRowView: View {
             Text(title.title)
                 .lineLimit(1)
             Spacer(minLength: 8)
-            Text(Format.duration(title.seconds))
+            Text(Format.duration(title.seconds, compact: true))
                 .foregroundStyle(.secondary)
         }
         .font(.caption)

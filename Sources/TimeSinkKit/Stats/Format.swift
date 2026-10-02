@@ -2,27 +2,28 @@ import Foundation
 
 /// Human-readable formatting helpers for stats display.
 public enum Format {
-    public static func chineseDuration(_ seconds: TimeInterval) -> String {
-        guard seconds > 0 else { return String(localized: "0 分钟") }
-        guard seconds >= 60 else { return String(localized: "不到 1 分钟") }
-        let minutes = Int(seconds / 60)
-        if minutes < 60 { return String(localized: "\(minutes) 分钟") }
-        return minutes % 60 == 0 ? String(localized: "\(minutes / 60) 小时") : String(localized: "\(minutes / 60) 小时 \(minutes % 60) 分钟")
-    }
-    /// Formats a duration in seconds as e.g. "1h 1m", "9m", "<1m" (0 < t < 60s), "0m" (t <= 0).
-    public static func duration(_ t: TimeInterval) -> String {
-        guard t > 0 else { return "0m" }
-        guard t >= 60 else { return "<1m" }
+    /// Prose use of `duration` (kept so sentences read the same as the columns).
+    public static func chineseDuration(_ seconds: TimeInterval) -> String { duration(seconds) }
+
+    /// The one duration formatter, in the interface language: en "1h 36m",
+    /// "9m", "<1m", "0m"; zh "1 小时 36 分", "9 分", "不到 1 分", "0 分".
+    /// `compact` is for tight numeric columns: whole hours and minutes as
+    /// "1:36" from one hour up, plain minutes below it.
+    public static func duration(_ t: TimeInterval, compact: Bool = false, locale: Locale = AppLanguage.locale) -> String {
+        let zh = locale.language.languageCode?.identifier == "zh"
+        guard t > 0 else { return zh ? "0 分" : "0m" } // l10n: data
+        guard t >= 60 else { return zh ? "不到 1 分" : "<1m" } // l10n: data
         let totalMinutes = Int(t / 60)
         let hours = totalMinutes / 60
         let minutes = totalMinutes % 60
-        guard hours > 0 else { return "\(minutes)m" }
-        return "\(hours)h \(minutes)m"
+        if hours > 0, compact { return "\(hours):" + (minutes < 10 ? "0" : "") + "\(minutes)" }
+        guard hours > 0 else { return zh ? "\(minutes) 分" : "\(minutes)m" } // l10n: data
+        return zh ? "\(hours) 小时 \(minutes) 分" : "\(hours)h \(minutes)m" // l10n: data
     }
 
     /// Formats a signed duration delta, e.g. "+42m" / "-1h 3m".
-    public static func durationDelta(_ t: TimeInterval) -> String {
-        (t >= 0 ? "+" : "-") + Format.duration(abs(t))
+    public static func durationDelta(_ t: TimeInterval, locale: Locale = AppLanguage.locale) -> String {
+        (t >= 0 ? "+" : "-") + Format.duration(abs(t), locale: locale)
     }
 
     /// `a - b` as the two would read on screen: each cut to whole minutes the

@@ -88,14 +88,14 @@ final class BudgetTests: XCTestCase {
 
         m.evaluate(byCategory: ["entertainment": 3000], categories: cats, now: ts(0))   // 50m / 1h -> warn
         XCTAssertEqual(spy.posted[0].id, "budget.warn.entertainment")
-        XCTAssertEqual(spy.posted[0].title, "娱乐还剩 10 分钟")
-        XCTAssertEqual(spy.posted[0].body, "今天已用 50 分钟 / 1 小时。到达上限时会再提醒一次。")
+        XCTAssertEqual(spy.posted[0].title, "娱乐还剩 \(Format.duration(600))")
+        XCTAssertEqual(spy.posted[0].body, "今天已用 \(Format.duration(3000)) / \(Format.duration(3600))。到达上限时会再提醒一次。")
         XCTAssertEqual(spy.posted[0].route, .settingsBudget)
 
         m.evaluate(byCategory: ["entertainment": 3600], categories: cats, now: ts(60))  // 1h / 1h -> limit
         XCTAssertEqual(spy.posted[1].id, "budget.limit.entertainment")
         XCTAssertEqual(spy.posted[1].title, "娱乐已到今日上限")
-        XCTAssertEqual(spy.posted[1].body, "已用 1 小时 / 1 小时。今天不会再提醒；可在「专注与限额」中调整。")
+        XCTAssertEqual(spy.posted[1].body, "已用 \(Format.duration(3600)) / \(Format.duration(3600))。今天不会再提醒；可在「专注与限额」中调整。")
         XCTAssertEqual(spy.posted[1].route, .settingsBudget)
     }
 

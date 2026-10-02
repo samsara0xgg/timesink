@@ -140,10 +140,21 @@ final class AggregatorTests: XCTestCase {
         XCTAssertEqual(rows[1].label, "github.com")
     }
     func testFormatDuration() {
-        XCTAssertEqual(Format.duration(3661), "1h 1m")
-        XCTAssertEqual(Format.duration(540), "9m")
-        XCTAssertEqual(Format.duration(30), "<1m")
-        XCTAssertEqual(Format.duration(0), "0m")
+        let en = Locale(identifier: "en"), zh = Locale(identifier: "zh-Hans")
+        XCTAssertEqual(Format.duration(3661, locale: en), "1h 1m")
+        XCTAssertEqual(Format.duration(540, locale: en), "9m")
+        XCTAssertEqual(Format.duration(30, locale: en), "<1m")
+        XCTAssertEqual(Format.duration(0, locale: en), "0m")
+        XCTAssertEqual(Format.duration(3661, locale: zh), "1 小时 1 分")
+        XCTAssertEqual(Format.duration(660, locale: zh), "11 分")
+        XCTAssertEqual(Format.duration(3 * 3600, locale: zh), "3 小时 0 分")
+        XCTAssertEqual(Format.duration(25 * 3600 + 23 * 60, locale: zh), "25 小时 23 分")
+        XCTAssertEqual(Format.duration(30, locale: zh), "不到 1 分")
+        XCTAssertEqual(Format.duration(0, locale: zh), "0 分")
+        XCTAssertEqual(Format.duration(96 * 60, compact: true, locale: zh), "1:36")
+        XCTAssertEqual(Format.duration(3600 + 5 * 60, compact: true, locale: en), "1:05")
+        XCTAssertEqual(Format.duration(11 * 60, compact: true, locale: zh), "11 分")
+        XCTAssertEqual(Format.durationDelta(-96 * 60, locale: zh), "-1 小时 36 分")
     }
     func testPulseByWeekdayHourBuckets() {
         // 周一 10 点 1h softwareDev(+2=100分) + 周一 11 点 30m entertainment(-2=0分)

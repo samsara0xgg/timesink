@@ -153,8 +153,8 @@ struct StatsView: View {
                             Capsule().fill(RefinedStyle.category(row.id, hex: row.colorHex))
                                 .frame(width: geo.size.width * row.seconds / max(1, stats.categoryRows.first?.seconds ?? 1))
                         }.frame(height: 5)
-                        Text(Format.duration(row.seconds)).monospacedDigit().frame(width: 58, alignment: .trailing)
-                        Text(stats.categoryDeltas[row.id].map(Format.durationDelta) ?? "—").monospacedDigit().foregroundStyle(.secondary).frame(width: 66, alignment: .trailing)
+                        Text(Format.duration(row.seconds, compact: true)).monospacedDigit().frame(width: 58, alignment: .trailing)
+                        Text(stats.categoryDeltas[row.id].map { Format.durationDelta($0) } ?? "—").monospacedDigit().foregroundStyle(.secondary).frame(width: 66, alignment: .trailing)
                     }.font(.system(size: 12)).frame(height: 26).contentShape(Rectangle())
                 }.buttonStyle(RefinedRowButtonStyle())
             }
@@ -172,7 +172,7 @@ struct StatsView: View {
                             Capsule().fill(.quaternary)
                             Capsule().fill(RefinedStyle.category(row.categoryID ?? "", hex: row.colorHex)).frame(width: geo.size.width * row.seconds / max(1, stats.appRows.first?.seconds ?? 1))
                         }.frame(width: 90, height: 5)
-                        Text(Format.duration(row.seconds)).font(.system(size: 12)).monospacedDigit().frame(width: 52, alignment: .trailing)
+                        Text(Format.duration(row.seconds, compact: true)).font(.system(size: 12)).monospacedDigit().frame(width: 52, alignment: .trailing)
                     }.frame(height: 32)
                 }
             }

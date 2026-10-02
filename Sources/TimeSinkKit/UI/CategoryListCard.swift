@@ -47,7 +47,7 @@ struct CategoryListCard: View {
                 }.contentShape(Rectangle())
             }.buttonStyle(.plain)
             scale(category, color: color)
-            Text(seconds[category.id].map { Format.duration($0) } ?? "—").font(.num(12)).foregroundStyle(Design.ink2)
+            Text(seconds[category.id].map { Format.duration($0, compact: true) } ?? "—").font(.num(12)).foregroundStyle(Design.ink2)
                 .frame(width: 56, alignment: .trailing)
         }
         .padding(.horizontal, 8).frame(height: 44)

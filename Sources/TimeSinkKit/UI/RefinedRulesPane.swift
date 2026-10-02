@@ -126,7 +126,7 @@ struct RefinedRulesPane: View {
                 Text(row.displayPattern)
             }.font(.system(size: 13)).foregroundStyle(row.enabled ? .primary : .secondary).lineLimit(1).truncationMode(.middle).frame(maxWidth: .infinity, alignment: .leading).help(row.scopeLabel + " " + row.displayPattern)
             CategoryChip(category: model.resolver.categoriesByID[row.category]).lineLimit(1).frame(width: chipWidth, alignment: .leading)
-            Text(row.seconds == 0 ? "—" : Format.duration(row.seconds)).font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit().frame(width: 84, alignment: .trailing)
+            Text(row.seconds == 0 ? "—" : Format.duration(row.seconds, compact: true)).font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit().frame(width: 84, alignment: .trailing)
             Text(row.source == "user" ? "你" : "内置").font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).frame(width: 48)
         }.padding(.horizontal, 14).frame(minHeight: 42)
             .contextMenu {

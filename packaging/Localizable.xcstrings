@@ -627,58 +627,6 @@
         }
       }
     },
-    "%lld 小时 %lld 分钟": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%#@n1@ %#@n2@"
-          },
-          "substitutions": {
-            "n1": {
-              "argNum": 1,
-              "formatSpecifier": "lld",
-              "variations": {
-                "plural": {
-                  "one": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg hour"
-                    }
-                  },
-                  "other": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg hours"
-                    }
-                  }
-                }
-              }
-            },
-            "n2": {
-              "argNum": 2,
-              "formatSpecifier": "lld",
-              "variations": {
-                "plural": {
-                  "one": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg minute"
-                    }
-                  },
-                  "other": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg minutes"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "%lld 条": {
       "localizations": {
         "en": {
@@ -931,16 +879,6 @@
                 }
               }
             }
-          }
-        }
-      }
-    },
-    "0 分钟": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "0 minutes"
           }
         }
       }
@@ -1321,16 +1259,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Move Down"
-          }
-        }
-      }
-    },
-    "不到 1 分钟": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Less than 1 minute"
           }
         }
       }

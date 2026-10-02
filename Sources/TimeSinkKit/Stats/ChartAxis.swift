@@ -56,6 +56,6 @@ enum ChartAxis {
 
 /// The language the interface is in (the person's choice in Settings, or the
 /// system's), for dates written in words.
-enum AppLanguage {
-    static var locale: Locale { Locale(identifier: Locale.preferredLanguages.first ?? "en") }
+public enum AppLanguage {
+    public static var locale: Locale { Locale(identifier: Locale.preferredLanguages.first ?? "en") }
 }
