@@ -194,6 +194,10 @@ struct UncategorizedSettingsPane: View {
     /// Whether the page is on screen; read by handlers only, never by `body`.
     @State private var isShown = true
     @State private var loadFailed = false
+    @State private var toast: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// How many items still wait and for how long, for the page's numbers.
+    var onSummary: (Int, TimeInterval) -> Void = { _, _ in }
 
     private struct Row: Identifiable {
         let id: String
@@ -215,30 +219,48 @@ struct UncategorizedSettingsPane: View {
             } else if rows.isEmpty {
                 emptyState
             } else {
-                VStack(alignment: .leading, spacing: 12) {
+                let pending = rows.filter { accepted[$0.id] == nil }
+                VStack(alignment: .leading, spacing: 10) {
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("近 30 天有 \(rows.filter { accepted[$0.id] == nil }.count) 项还没有分类，合计 \(Format.duration(rows.filter { accepted[$0.id] == nil }.reduce(0) { $0 + $1.seconds }))")
-                                .font(.system(size: 13))
-                            Text("按用时从多到少。建议只在你点接受后生效。").font(.system(size: 12)).foregroundStyle(.secondary)
+                            // The count and the total tick down as rows are accepted.
+                            Text("近 30 天有 \(pending.count) 项还没有分类，合计 \(Format.duration(pending.reduce(0) { $0 + $1.seconds }))")
+                                .font(.system(size: 13)).contentTransition(reduceMotion ? .opacity : .numericText())
+                                .animation(reduceMotion ? nil : Design.settle, value: pending.count)
+                            Text("按用时从多到少。建议只在你点接受后生效。").font(.system(size: 12)).foregroundStyle(Design.ink3)
                         }
                         Spacer(minLength: 8)
                         if !suggestions.isEmpty {
                             Button("接受全部建议") {
-                                for row in rows where accepted[row.id] == nil {
-                                    if let suggestion = suggestions[row.id] { assign(row: row, categoryID: suggestion.categoryID, publish: false) }
+                                withAnimation(Design.motion(Design.settle, reduced: reduceMotion)) {
+                                    for row in rows where accepted[row.id] == nil {
+                                        if let suggestion = suggestions[row.id] { assign(row: row, categoryID: suggestion.categoryID, publish: false) }
+                                    }
                                 }
                                 publishAssignments()
-                            }.glassButton().controlSize(.small)
+                            }.buttonStyle(PillButtonStyle(height: 28))
                         }
                     }
                     if let error { Text(error).foregroundStyle(.red) }
                     ScrollView {
-                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-                            ForEach(rows) { row in card(row) }
+                        LazyVStack(spacing: 0) {
+                            ForEach(pending) { row in
+                                listRow(row)
+                                    .transition(reduceMotion ? .opacity : .asymmetric(insertion: .opacity,
+                                        removal: .opacity.combined(with: .scale(scale: 0.96, anchor: .top))))
+                            }
                         }
+                    }.scrollIndicators(.never).frame(maxHeight: min(560, CGFloat(pending.count) * 58 + 4))
+                }
+                .overlay(alignment: .bottom) {
+                    if let toast {
+                        Text(toast).font(.system(size: 12, weight: .semibold)).padding(.horizontal, 16).frame(height: 36)
+                            .glassSurface(in: Capsule()).padding(.bottom, 8)
+                            .transition(reduceMotion ? .opacity : .scale(scale: 0.85, anchor: .bottom).combined(with: .opacity))
                     }
                 }
+                .onChange(of: pending.map(\.id)) { _, _ in onSummary(pending.count, pending.reduce(0) { $0 + $1.seconds }) }
+                .onAppear { onSummary(pending.count, pending.reduce(0) { $0 + $1.seconds }) }
             }
         }
         .onAppear { recomputeIfVisibleAndStale() }
@@ -273,40 +295,42 @@ struct UncategorizedSettingsPane: View {
     }
 
     /// One app or site: what it is and how long, the suggestion, 其他… and 接受.
-    private func card(_ row: Row) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                ActivityIcon(bundleID: row.id, domain: row.isDomain ? row.id : nil, size: 32)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(row.label).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                    Text(row.isDomain ? "网站 · 近 30 天 \(Format.duration(row.seconds))" : "应用 · 近 30 天 \(Format.duration(row.seconds))")
-                        .font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit()
-                }
+    private func listRow(_ row: Row) -> some View {
+        HStack(spacing: 12) {
+            ActivityIcon(bundleID: row.id, domain: row.isDomain ? row.id : nil, size: 32)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(row.label).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                Text(row.isDomain ? "网站 · 近 30 天 \(Format.duration(row.seconds))" : "应用 · 近 30 天 \(Format.duration(row.seconds))")
+                    .font(.num(12)).foregroundStyle(Design.ink3)
             }
-            HStack(spacing: 8) {
-                if let category = accepted[row.id] {
-                    CategoryChip(category: model.resolver.categoriesByID[category])
-                    Spacer(minLength: 4)
-                    Label("已归类", systemImage: "checkmark").font(.system(size: 12)).foregroundStyle(.green)
-                } else {
-                    if let suggestion = suggestions[row.id] {
-                        Label("建议", systemImage: "sparkles").font(.system(size: 12)).foregroundStyle(.secondary)
-                        CategoryChip(category: model.resolver.categoriesByID[suggestion.categoryID])
-                    }
-                    Spacer(minLength: 4)
-                    Menu(suggestions[row.id] == nil ? "选择分类" : "其他…") {
-                        ForEach(sortedCategories.filter { $0.id != "uncategorized" }, id: \.id) { category in
-                            Button(category.name) { assign(row: row, categoryID: category.id) }
-                        }
-                    }.fixedSize().controlSize(.small)
-                    if let suggestion = suggestions[row.id] {
-                        Button("接受") { assign(row: row, categoryID: suggestion.categoryID) }.glassProminentButton().controlSize(.small)
-                    }
+            Spacer(minLength: 8)
+            if let suggestion = suggestions[row.id] {
+                Label("建议", systemImage: "sparkles").font(.system(size: 12)).foregroundStyle(Design.ink3).labelStyle(.titleAndIcon)
+                CategoryChip(category: model.resolver.categoriesByID[suggestion.categoryID])
+            }
+            Menu(suggestions[row.id] == nil ? "选择分类" : "其他…") {
+                ForEach(sortedCategories.filter { $0.id != "uncategorized" }, id: \.id) { category in
+                    Button(category.name) { accept(row, category.id) }
                 }
+            }.menuStyle(.button).buttonStyle(PillButtonStyle(height: 28)).menuIndicator(.hidden).fixedSize()
+            if let suggestion = suggestions[row.id] {
+                Button("接受") { accept(row, suggestion.categoryID) }.buttonStyle(AccentButtonStyle(height: 28))
             }
         }
-        .padding(14).frame(maxWidth: .infinity, alignment: .leading).workspacePanel()
-        .opacity(accepted[row.id] == nil ? 1 : 0.55)
+        .padding(.vertical, 10).padding(.horizontal, 4)
+        .overlay(alignment: .bottom) { Rectangle().fill(Design.line).frame(height: 1) }
+    }
+
+    private func accept(_ row: Row, _ categoryID: String) {
+        withAnimation(Design.motion(Design.settle, reduced: reduceMotion)) { assign(row: row, categoryID: categoryID) }
+        guard accepted[row.id] != nil else { return }
+        let name = model.resolver.categoriesByID[categoryID]?.name ?? ""
+        let message = String(localized: "\(row.label) 已归入 \(name)，以后也自动")
+        withAnimation(Design.motion(Design.reveal, reduced: reduceMotion)) { toast = message }
+        Task {
+            try? await Task.sleep(for: .seconds(2.6))
+            if toast == message { withAnimation(Design.motion(Design.settle, reduced: reduceMotion)) { toast = nil } }
+        }
     }
 
     /// `publish: false` lets 接受全部建议 refresh the classifier once for the

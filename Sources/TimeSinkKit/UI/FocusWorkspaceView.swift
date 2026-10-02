@@ -264,24 +264,35 @@ struct FocusCategoriesEditor: View {
 struct OrganizationView: View {
     @Bindable var model: AppModel
     @State private var tab: SettingsTab = .uncategorized
+    @State private var pending: (count: Int, seconds: TimeInterval)?
+    @State private var coverage: (auto: TimeInterval, total: TimeInterval)?
+    private struct CoverageKey: Equatable { let version: Int }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Picker("管理", selection: $tab) {
-                Text("待分类").tag(SettingsTab.uncategorized)
-                Text("规则").tag(SettingsTab.rules)
-                Text("分类列表").tag(SettingsTab.categories)
-            }.pickerStyle(.segmented).labelsHidden().fixedSize()
-            Group {
-                switch tab {
-                case .rules: RefinedRulesPane(model: model)
-                case .categories: CategoriesSettingsPane(model: model)
-                default: UncategorizedSettingsPane(model: model)
+        GeometryReader { geometry in
+            VStack(alignment: .leading, spacing: Design.Space.lg) {
+                header(width: geometry.size.width - 2 * Design.Space.page)
+                VStack(alignment: .leading, spacing: 12) {
+                    tabs
+                    Group {
+                        switch tab {
+                        case .rules: RefinedRulesPane(model: model)
+                        case .categories: CategoriesSettingsPane(model: model)
+                        default: UncategorizedSettingsPane(model: model) { count, seconds in pending = (count, seconds) }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: tab == .uncategorized ? nil : .infinity)
                 }
+                .padding(Design.Space.xl)
+                // The queue sizes to its rows; the other two fill the page.
+                .frame(maxWidth: .infinity, maxHeight: tab == .uncategorized ? nil : .infinity, alignment: .top)
+                .designCard().revealOnce(index: 2)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.horizontal, Design.Space.page).padding(.top, 8).padding(.bottom, 24)
+            .frame(maxWidth: 1600).frame(maxWidth: .infinity)
         }
-        .padding(.horizontal, 24).padding(.top, 22).padding(.bottom, 28).background(WorkspaceBackground())
+        .background(WorkspaceBackground())
+        .pageTask(id: CoverageKey(version: model.dataVersion)) { await loadCoverage() }
         .onChange(of: model.organizationTab, initial: true) { _, value in tab = value }
         .onChange(of: tab) { _, value in model.organizationTab = value }
         // Only rules can be searched, so only their tab shows the field.
@@ -289,5 +300,69 @@ struct OrganizationView: View {
         .onChange(of: model.organizationSearch) { _, value in
             if !value.isEmpty { tab = .rules; model.organizationTab = .rules }
         }
+    }
+
+    private var tabs: some View {
+        HStack(spacing: 2) {
+            ForEach([SettingsTab.uncategorized, .rules, .categories], id: \.self) { item in
+                Button { withAnimation(Design.motion(Design.settle, reduced: false)) { tab = item } } label: {
+                    HStack(spacing: 6) {
+                        switch item {
+                        case .rules: Text("规则")
+                        case .categories: Text("分类列表")
+                        default: Text("待分类")
+                        }
+                        if item == .uncategorized, let pending, pending.count > 0 {
+                            Text("\(pending.count)").font(.num(11)).foregroundStyle(Design.ink3)
+                        }
+                    }
+                    .font(.system(size: 13, weight: tab == item ? .bold : .regular))
+                    .foregroundStyle(tab == item ? Design.accentInk : Design.ink)
+                    .padding(.horizontal, 14).frame(height: 32)
+                    .background { if tab == item { Capsule().fill(Design.pillTop).shadow(color: .black.opacity(0.08), radius: 2, y: 1) } }
+                    .contentShape(Capsule())
+                }.buttonStyle(.plain)
+            }
+        }
+        .padding(3).background(Capsule().fill(Design.track)).fixedSize()
+    }
+
+    private func header(width: CGFloat) -> some View {
+        let percent = coverage.map { Int(($0.auto / max(1, $0.total) * 100).rounded()) }
+        let sentence: Text
+        if let percent, let coverage, coverage.total >= 60 {
+            sentence = Text("\(Text("\(percent)%").font(.system(size: 28, weight: .bold, design: .rounded)).monospacedDigit()) 的时间已经自动分好了。")
+        } else if coverage != nil {
+            sentence = Text("近 7 天还没有记录。")
+        } else {
+            sentence = Text(verbatim: " ")
+        }
+        let categories = model.resolver.categoriesByID.values.filter { $0.id != "uncategorized" }.count
+        return PageHeaderRow(lead: Text("近 7 天"), sentence: sentence, stats: [
+            StripStat(id: 0, label: "自动分好", value: percent.map { "\($0)%" } ?? "—", note: String(localized: "按规则和应用类型"), color: Design.accentInk),
+            StripStat(id: 1, label: "待分类", value: pending.map { String(localized: "\($0.count) 项") } ?? "—",
+                      note: pending.map { String(localized: "近 30 天共 \(Format.duration($0.seconds))") } ?? ""),
+            StripStat(id: 2, label: "分类", value: String(localized: "\(categories) 个"), note: String(localized: "投入程度决定评分"))
+        ], width: width)
+    }
+
+    /// Seven days, read and classified off the main thread.
+    private func loadCoverage() async {
+        let interval = DateRangeSelection(kind: .last7, anchor: Date()).interval
+        let spanStore = model.spanStore
+        let classification = model.resolver.snapshot()
+        let result = await Task.detached(priority: .userInitiated) { () -> (TimeInterval, TimeInterval)? in
+            guard let spans = try? spanStore.spans(overlapping: interval) else { return nil }
+            var classification = classification
+            var total: TimeInterval = 0, auto: TimeInterval = 0
+            for span in spans {
+                let seconds = min(span.end, interval.end).timeIntervalSince(max(span.start, interval.start))
+                guard seconds > 0 else { continue }
+                total += seconds
+                if classification.categoryID(for: span) != "uncategorized" { auto += seconds }
+            }
+            return (auto, total)
+        }.value
+        if let result { coverage = result }
     }
 }

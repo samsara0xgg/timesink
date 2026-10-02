@@ -3625,16 +3625,6 @@
         }
       }
     },
-    "已归类": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Categorized"
-          }
-        }
-      }
-    },
     "已把 %@ 归为「%@」，以后自动归类": {
       "localizations": {
         "en": {
@@ -6791,16 +6781,6 @@
         }
       }
     },
-    "管理": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Manage"
-          }
-        }
-      }
-    },
     "类型": {
       "localizations": {
         "en": {
@@ -9149,6 +9129,76 @@
           "stringUnit": {
             "state": "translated",
             "value": "No focus yet this week."
+          }
+        }
+      }
+    },
+    "%@ 的时间已经自动分好了。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ of your time is already sorted automatically."
+          }
+        }
+      }
+    },
+    "近 7 天还没有记录。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing recorded in the last 7 days."
+          }
+        }
+      }
+    },
+    "自动分好": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sorted"
+          }
+        }
+      }
+    },
+    "按规则和应用类型": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By rules and app type"
+          }
+        }
+      }
+    },
+    "近 30 天共 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ over 30 days"
+          }
+        }
+      }
+    },
+    "投入程度决定评分": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Engagement sets the score"
+          }
+        }
+      }
+    },
+    "%@ 已归入 %@，以后也自动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ filed under %2$@, automatically from now on"
           }
         }
       }
