@@ -1665,16 +1665,6 @@
         }
       }
     },
-    "今天命中": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Matches today"
-          }
-        }
-      }
-    },
     "今天已用 %@ / %@。到达上限时会再提醒一次。": {
       "localizations": {
         "en": {
@@ -2275,16 +2265,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Categories & Rules"
-          }
-        }
-      }
-    },
-    "分类列表": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Categories"
           }
         }
       }
@@ -4387,16 +4367,6 @@
         }
       }
     },
-    "拆分这个会话": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Split This Session"
-          }
-        }
-      }
-    },
     "拖动圆环上的把手，15 分钟到 2 小时": {
       "localizations": {
         "en": {
@@ -6391,16 +6361,6 @@
         }
       }
     },
-    "由这些应用组成": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Made Up Of"
-          }
-        }
-      }
-    },
     "画面已到期删除，以下为当时识别的文字。": {
       "localizations": {
         "en": {
@@ -7097,16 +7057,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Blocked"
-          }
-        }
-      }
-    },
-    "规则": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Rules"
           }
         }
       }
@@ -9073,42 +9023,12 @@
         }
       }
     },
-    "只提醒，不拦截": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Reminds, never blocks"
-          }
-        }
-      }
-    },
     "拦下": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Blocked"
-          }
-        }
-      }
-    },
-    "最长 %@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Longest %@"
-          }
-        }
-      }
-    },
-    "次数": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sessions"
           }
         }
       }
@@ -9301,6 +9221,396 @@
           "stringUnit": {
             "state": "translated",
             "value": "Joined the previous session"
+          }
+        }
+      }
+    },
+    "应用与建议": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apps and suggestions"
+          }
+        }
+      }
+    },
+    "只看 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only %@"
+          }
+        }
+      }
+    },
+    "没能撤销，请重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not undo. Try again."
+          }
+        }
+      }
+    },
+    "投入程度 +1 以上的算投入。今天页的投入时间、趋势页的评分都按这个算，改了会一起变。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Engagement of +1 or more counts as focus. Today's focus time and the score on Trends follow it, so a change moves both."
+          }
+        }
+      }
+    },
+    "点一个只看它的规则": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Click one to see only its rules"
+          }
+        }
+      }
+    },
+    "投入程度": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Engagement"
+          }
+        }
+      }
+    },
+    "这周还没开过专注，平均每 %lld 分钟被打断一次。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No focus this week yet. You are pulled away every %lld minutes on average."
+          }
+        }
+      }
+    },
+    "这周专注了 %@，平均每 %lld 分钟被打断一次。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ of focus this week. You are pulled away every %2$lld minutes on average."
+          }
+        }
+      }
+    },
+    "本周专注": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Focus this week"
+          }
+        }
+      }
+    },
+    "最长一次": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Longest"
+          }
+        }
+      }
+    },
+    "日均 %lld 次": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld a day"
+          }
+        }
+      }
+    },
+    "专注时拦什么": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What focus blocks"
+          }
+        }
+      }
+    },
+    "只在专注时生效": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only while focusing"
+          }
+        }
+      }
+    },
+    "切过去的隐藏应用会被挡回来，菜单栏可以临时放行 5 分钟。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A hidden app you switch to is turned back; the menu bar can let it through for 5 minutes."
+          }
+        }
+      }
+    },
+    "示例": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Example"
+          }
+        }
+      }
+    },
+    "专注时菜单栏显示倒计时；结束后这一段会标成专注，在今天和活动里单独显示。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The menu bar shows a countdown while you focus; afterwards the stretch is marked as focus and shown on its own in Today and Activities."
+          }
+        }
+      }
+    },
+    "还没设。按近 7 天的用量，建议这几个：": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "None set. Based on the last 7 days, these three are suggested:"
+          }
+        }
+      }
+    },
+    "再加几个？按近 7 天的用量：": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add more? Based on the last 7 days:"
+          }
+        }
+      }
+    },
+    "近 7 天 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "7 days: %@"
+          }
+        }
+      }
+    },
+    "每天 %lld 分钟": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld min a day"
+          }
+        }
+      }
+    },
+    "超出 %lld 天": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Over on %lld days"
+          }
+        }
+      }
+    },
+    "都在内": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Within it all week"
+          }
+        }
+      }
+    },
+    "这周还没有专注": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No focus this week"
+          }
+        }
+      }
+    },
+    "开一次，这里会按天记下时长和拦下的次数": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start one and this records its length and blocks by day"
+          }
+        }
+      }
+    },
+    "上一次：%@ %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last time: %1$@ %2$@"
+          }
+        }
+      }
+    },
+    "再来一次 %lld 分钟": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Again for %lld minutes"
+          }
+        }
+      }
+    },
+    "做完了": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "completed"
+          }
+        }
+      }
+    },
+    "提前结束": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ended early"
+          }
+        }
+      }
+    },
+    "%@，%@，没有拦下什么": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$@, nothing blocked"
+          }
+        }
+      }
+    },
+    "%@，%@，拦下 %lld 次": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$@, %3$lld blocked"
+          }
+        }
+      }
+    },
+    "这一天还没有会话。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No sessions on this day yet."
+          }
+        }
+      }
+    },
+    "拆开": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Split"
+          }
+        }
+      }
+    },
+    "和上一段是同一个项目，隔了 %@。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Same project as the previous one, %@ apart."
+          }
+        }
+      }
+    },
+    "和上一段是同一类，只隔了 %@。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Same kind as the previous one, only %@ apart."
+          }
+        }
+      }
+    },
+    "合并成一段": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Merge into one"
+          }
+        }
+      }
+    },
+    "这一段会话": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This session"
+          }
+        }
+      }
+    },
+    "%@ 的记录以后都归这一类。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ records from now on go in this category."
+          }
+        }
+      }
+    },
+    "用到的应用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apps used"
+          }
+        }
+      }
+    },
+    "颜色是应用的分类": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Colour is the app's category"
           }
         }
       }
