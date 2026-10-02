@@ -463,6 +463,17 @@ final class JevTests: XCTestCase {
         XCTAssertEqual(try store.verdicts().first?.source, "user")
     }
 
+    func testStatusCountsThisMonthsVerdictsAndUnsureOnes() throws {
+        let service = JevService(categoryStore: store, settings: settings, resolver: makeResolver(), apiKey: { nil })
+        let sure = try SpanStore(db).insert(span(title: "a")), unsure = try SpanStore(db).insert(span(title: "b"))
+        try verdict(sure, "learning", prob: 0.9)
+        try verdict(unsure, "learning", prob: 0.3)
+        let status = try service.status()
+        XCTAssertEqual(status.verdictsThisMonth, 2)
+        XCTAssertEqual(status.toConfirm, 1)
+        XCTAssertNil(status.lastRunAt)
+    }
+
     func testJevIsOffByDefaultAndSendsOnlyTheListedFields() {
         XCTAssertFalse(settings.jevEnabled)
         XCTAssertEqual(settings.jevEndpoint, "https://openrouter.ai/api/alpha/decisions")

@@ -17,49 +17,52 @@ struct JevSettingsPane: View {
     @State private var status: JevService.Status?
     @FocusState private var keyFocused: Bool
 
+    @State private var advancedOpen = false
+    @State private var keyError: String?
+
     var body: some View {
         Form {
             Section {
-                VStack(alignment: .leading, spacing: 4) {
-                    Toggle("用 Jev 给每段使用时间判断分类", isOn: $enabled)
-                        .disabled(!hasStoredKey && !enabled)
-                        .onChange(of: enabled) { _, newValue in model.jev?.setEnabled(newValue); refreshStatus() }
-                    if !hasStoredKey && !enabled {
-                        Text("先在下面保存 API 密钥，才能开启。").font(.caption).foregroundStyle(.orange)
+                Toggle("用 Jev 给每段使用时间判断分类", isOn: $enabled)
+                    .disabled(!hasStoredKey && !enabled)
+                    .onChange(of: enabled) { _, newValue in model.jev?.setEnabled(newValue); refreshStatus() }
+                if !hasStoredKey && !enabled {
+                    Text("先在下面保存 API 密钥，才能开启。").font(.caption).foregroundStyle(.orange)
+                    keyField
+                }
+                if hasStoredKey {
+                    Label("API 密钥已保存", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.green)
+                }
+                if enabled, let jev = model.jev {
+                    if let line = statusLine { Text(line).font(.caption).foregroundStyle(.secondary) }
+                    if let lastRunAt = status?.lastRunAt {
+                        Text("上次运行 \(Self.relative(lastRunAt))").font(.caption).foregroundStyle(.secondary)
                     }
-                    Text("开启后，每段使用时间会向下面的服务发送这些内容。不会发送屏幕截图本身。")
+                    if let status {
+                        Text("本月 \(status.verdictsThisMonth) 项判断").font(.caption).foregroundStyle(.secondary)
+                    }
+                    Text(Self.spendLine(spend: jev.monthSpend, cap: jev.monthlyCap)).font(.caption).foregroundStyle(.secondary)
+                    if let n = status?.toConfirm, n > 0 {
+                        HStack {
+                            Text("\(n) 项待确认").font(.caption).foregroundStyle(.secondary)
+                            Spacer()
+                            Button("去分类页查看") { model.sidebarSelection = .organization }
+                        }
+                    }
+                }
+                DisclosureGroup("会发送哪些内容") {
+                    Text("每段使用时间会向下面的服务发送这些内容，不会发送屏幕截图本身：")
                         .font(.caption).foregroundStyle(.secondary)
                     ForEach(JevService.sentFields, id: \.self) { Text("· \($0)").font(.caption).foregroundStyle(.secondary) }
                 }
-                if enabled, let line = statusLine { Text(line).font(.caption).foregroundStyle(.secondary) }
+                .font(.caption)
             }
             Section {
                 Toggle("同时发送屏幕截图里的文字", isOn: $screenText)
+                    .disabled(!enabled)
                     .onChange(of: screenText) { _, newValue in model.jev?.setScreenText(newValue); refreshStatus() }
-                Text("开启后，会把截图识别出的文字（先去掉邮箱和 6 位以上的数字，最多 1200 字）一并发送到下面的服务，用于判断拿不准的内容和没有标题的 AI 应用画面。需要先开启上面的开关才会生效；默认关闭。")
+                Text("会发送截图识别出的文字（已去掉邮箱和 6 位以上数字，最多 1200 字），用于判断拿不准的内容。需先开启上面的开关；默认关闭。")
                     .font(.caption).foregroundStyle(.secondary)
-            }
-            Section("服务") {
-                TextField("地址", text: $endpoint)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit(commitFields)
-                TextField("模型", text: $jevModel)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit(commitFields)
-                HStack {
-                    // Never shows the stored key; typing replaces it.
-                    SecureField(hasStoredKey ? String(localized: "已保存 · 输入新密钥可替换") : String(localized: "API 密钥"), text: $apiKeyInput)
-                        .textFieldStyle(.roundedBorder)
-                        .focused($keyFocused)
-                        .onSubmit { saveKey() }
-                        .onChange(of: keyFocused) { _, focused in if !focused { saveKey() } }
-                    if hasStoredKey {
-                        Button("移除密钥", role: .destructive) { removeKey() }
-                    }
-                }
-                if let apiKeyStatus {
-                    Text(apiKeyStatus).font(.caption).foregroundStyle(.secondary)
-                }
             }
             Section("费用") {
                 HStack {
@@ -68,11 +71,18 @@ struct JevSettingsPane: View {
                     TextField("", text: $cap).textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing).frame(width: 80)
                         .onSubmit(commitFields)
                 }
-                if let jev = model.jev {
-                    Text("本月已用 $\(String(format: "%.2f", jev.monthSpend)) / 上限 $\(String(format: "%.2f", jev.monthlyCap))")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
                 Text("到上限后 Jev 暂停，已有的判断继续生效；下个月自动恢复。").font(.caption).foregroundStyle(.secondary)
+            }
+            Section {
+                DisclosureGroup("高级", isExpanded: $advancedOpen) {
+                    TextField("地址", text: $endpoint)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit(commitFields)
+                    TextField("模型", text: $jevModel)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit(commitFields)
+                    if hasStoredKey { keyField }
+                }
             }
         }
         .formStyle(.grouped)
@@ -89,6 +99,39 @@ struct JevSettingsPane: View {
         }
         // Switching tabs must not drop what was typed.
         .onDisappear(perform: commitFields)
+    }
+
+    private var keyField: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                // Never shows the stored key; typing replaces it.
+                SecureField(hasStoredKey ? String(localized: "已保存 · 输入新密钥可替换") : String(localized: "API 密钥"), text: $apiKeyInput)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($keyFocused)
+                    .onSubmit { saveKey() }
+                    .onChange(of: keyFocused) { _, focused in if !focused { saveKey() } }
+                    .onChange(of: apiKeyInput) { _, _ in keyError = nil }
+                if apiKeyStatus == String(localized: "已保存") {
+                    Label("已保存", systemImage: "checkmark").font(.caption).foregroundStyle(.green)
+                }
+                if hasStoredKey {
+                    Button("移除密钥", role: .destructive) { removeKey() }
+                }
+            }
+            if let keyError { Text(keyError).font(.caption).foregroundStyle(.red) }
+            else if let apiKeyStatus, apiKeyStatus != String(localized: "已保存") {
+                Text(apiKeyStatus).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    static func relative(_ date: Date) -> String {
+        RelativeDateTimeFormatter().localizedString(for: date, relativeTo: Date())
+    }
+
+    /// "本月 $0.10 / $1".
+    static func spendLine(spend: Double, cap: Double) -> String {
+        String(localized: "本月 $\(String(format: "%.2f", spend)) / $\(format(cap))")
     }
 
     /// Checked in this order: no run has been blocked by the cap before a
@@ -122,12 +165,13 @@ struct JevSettingsPane: View {
     }
 
     /// Outcome of saving the typed key; never carries the key itself.
-    enum KeySave: Equatable { case saved, empty, failed(String) }
+    enum KeySave: Equatable { case saved, empty, invalid, failed(String) }
 
     /// An empty field is not a request to erase the key; 移除密钥 is.
     static func commitKey(_ input: String, set: (String) throws -> Void) -> KeySave {
         let key = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty else { return .empty }
+        guard key.hasPrefix("sk-or-") else { return .invalid }
         do { try set(key); return .saved } catch { return .failed(error.localizedDescription) }
     }
 
@@ -135,10 +179,12 @@ struct JevSettingsPane: View {
     private func saveKey() {
         switch Self.commitKey(apiKeyInput, set: { try Keychain.set($0, account: JevService.apiKeyAccount) }) {
         case .empty: break
+        case .invalid: keyError = String(localized: "这不像 OpenRouter 密钥：应以 sk-or- 开头。")
         case .saved:
             apiKeyInput = ""
             hasStoredKey = model.jev?.hasKey ?? true
             apiKeyStatus = String(localized: "已保存")
+            keyError = nil
         case .failed(let message):
             apiKeyStatus = String(localized: "保存失败：\(message)")
         }

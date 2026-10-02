@@ -26,6 +26,7 @@ public final class JevService {
     /// Called after new verdicts changed what spans resolve to.
     public var onChange: (() -> Void)?
     public private(set) var lastRun: JevWorker.RunResult?
+    public private(set) var lastRunAt: Date?
 
     public init(categoryStore: CategoryStore, settings: SettingsStore, resolver: CategoryResolver,
                 transport: any JevTransport = URLSessionJevTransport(),
@@ -95,6 +96,7 @@ public final class JevService {
         let staleSince = Calendar.current.date(byAdding: .day, value: -Self.staleLookbackDays, to: Date()) ?? since
         let result = await worker.run(since: since, staleSince: staleSince)
         lastRun = result
+        lastRunAt = Date()
         if let error = result.error { logger.error("jev run: \(error, privacy: .public)") }
         if result.saved > 0 {
             resolver.refresh()
@@ -114,6 +116,11 @@ public final class JevService {
         public var queued: Int
         public var pausedAtCap: Bool
         public var offline: Bool
+        /// Jev verdicts written this calendar month.
+        public var verdictsThisMonth = 0
+        /// Unsure verdicts waiting in 待确认 (the last `lookbackDays`).
+        public var toConfirm = 0
+        public var lastRunAt: Date?
     }
 
     /// What the settings screen's status line reports.
@@ -122,8 +129,11 @@ public final class JevService {
         let since = Calendar.current.date(byAdding: .day, value: -Self.lookbackDays, to: Date()) ?? Date()
         let staleSince = Calendar.current.date(byAdding: .day, value: -Self.staleLookbackDays, to: Date()) ?? since
         let queued = try categoryStore.pendingCombos(since: since, staleSince: staleSince, promptVersion: JevPrompt.version(categories)).count
-        return Status(classified: try categoryStore.verdicts().filter { $0.source == "jev" }.count, queued: queued,
-                      pausedAtCap: monthSpend >= monthlyCap, offline: lastRun?.error != nil)
+        let monthStart = Calendar.current.dateInterval(of: .month, for: Date())?.start ?? .distantPast
+        let jev = try categoryStore.verdicts().filter { $0.source == "jev" }
+        return Status(classified: jev.count, queued: queued, pausedAtCap: monthSpend >= monthlyCap, offline: lastRun?.error != nil,
+                      verdictsThisMonth: jev.filter { $0.at >= monthStart }.count,
+                      toConfirm: try lowConfidenceVerdicts(in: DateInterval(start: since, end: Date())).count, lastRunAt: lastRunAt)
     }
 
     public enum SavedRule: Sendable { case none, domain, app }

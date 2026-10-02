@@ -9461,16 +9461,6 @@
         }
       }
     },
-    "服务": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Service"
-          }
-        }
-      }
-    },
     "请求太频繁（HTTP 429），%lld 秒后重试。": {
       "localizations": {
         "en": {
@@ -9487,16 +9477,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "The service returned HTTP %lld."
-          }
-        }
-      }
-    },
-    "本月已用 $%@ / 上限 $%@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Spent $%@ this month / cap $%@"
           }
         }
       }
@@ -9831,16 +9811,6 @@
         }
       }
     },
-    "开启后，每段使用时间会向下面的服务发送这些内容。不会发送屏幕截图本身。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "When on, each stretch of use sends the fields below to the service. The screenshot itself is never sent."
-          }
-        }
-      }
-    },
     "Jev 判断（含截图文字）· 概率 %@": {
       "localizations": {
         "en": {
@@ -9867,16 +9837,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Also send text from screenshots"
-          }
-        }
-      }
-    },
-    "开启后，会把截图识别出的文字（先去掉邮箱和 6 位以上的数字，最多 1200 字）一并发送到下面的服务，用于判断拿不准的内容和没有标题的 AI 应用画面。需要先开启上面的开关才会生效；默认关闭。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "When on, text recognized from screenshots (emails and numbers of 6 or more digits removed first, at most 1,200 characters) is sent to the service below, to judge unsure items and AI app screens without a title. It only takes effect while the switch above is on; off by default."
           }
         }
       }
@@ -10209,6 +10169,116 @@
           "stringUnit": {
             "state": "translated",
             "value": "%1$@ of focus this week; interrupted every %2$lld min."
+          }
+        }
+      }
+    },
+    "API 密钥已保存": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API key saved"
+          }
+        }
+      }
+    },
+    "上次运行 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last run %@"
+          }
+        }
+      }
+    },
+    "本月 %lld 项判断": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld verdicts this month"
+          }
+        }
+      }
+    },
+    "本月 $%@ / $%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This month $%@ / $%@"
+          }
+        }
+      }
+    },
+    "%lld 项待确认": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld to confirm"
+          }
+        }
+      }
+    },
+    "去分类页查看": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Review in Categories"
+          }
+        }
+      }
+    },
+    "会发送哪些内容": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What gets sent"
+          }
+        }
+      }
+    },
+    "每段使用时间会向下面的服务发送这些内容，不会发送屏幕截图本身：": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Each stretch of use sends these fields to the service below. The screenshot itself is never sent:"
+          }
+        }
+      }
+    },
+    "会发送截图识别出的文字（已去掉邮箱和 6 位以上数字，最多 1200 字），用于判断拿不准的内容。需先开启上面的开关；默认关闭。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sends text recognized from screenshots (emails and numbers of 6+ digits removed, at most 1,200 characters) to judge unsure items. Needs the switch above; off by default."
+          }
+        }
+      }
+    },
+    "高级": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Advanced"
+          }
+        }
+      }
+    },
+    "这不像 OpenRouter 密钥：应以 sk-or- 开头。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This does not look like an OpenRouter key: it should start with sk-or-."
           }
         }
       }
