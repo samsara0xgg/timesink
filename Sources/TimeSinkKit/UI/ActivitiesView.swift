@@ -34,7 +34,6 @@ struct ActivitiesView: View {
     @State private var calendarEvents: [CalendarEvent] = []
     /// The enable card is an offer, not a state to fix: once declined it
     /// stays away (Settings keeps the switch).
-    @AppStorage("calendarBandDismissed") private var calendarBandDismissed = false
     @AppStorage("ticksTipDone") private var ticksTipDone = false
 
     private var searchBinding: Binding<String> {
@@ -104,7 +103,6 @@ struct ActivitiesView: View {
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                                 .workspacePanel()
                         }
-                        calendarBand
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     if showsInspector {
@@ -423,72 +421,6 @@ struct ActivitiesView: View {
         activities.select(selection, start: block.start)
     }
 
-    /// Three states (C3 interaction spec): overlay off or permission not yet
-    /// decided -> enable card; overlay on but access denied/restricted ->
-    /// guide-to-settings card; overlay on and granted -> nothing here (the
-    /// events themselves surface via the timeline's event lane and the
-    /// list's meeting badges/summary, not a persistent band).
-    @ViewBuilder
-    private var calendarBand: some View {
-        if calendarBandDismissed {
-            EmptyView()
-        } else if !model.calendarOverlayEnabled || model.calendarPermission == .notDetermined {
-            CalendarBandCard(
-                title: String(localized: "日历叠加"),
-                message: String(localized: "在时间轴上叠加你的日历日程，自动标注会议时间；会议期间空闲不会触发挂起。"),
-                actionTitle: String(localized: "启用"),
-                action: enableCalendarOverlay,
-                dismiss: { calendarBandDismissed = true }
-            )
-        } else if let permission = model.calendarPermission, permission != .granted {
-            CalendarBandCard(
-                title: String(localized: "日历访问被拒绝"),
-                message: String(localized: "无法叠加日程或自动标注会议。前往系统设置重新授权日历访问后即可生效。"),
-                actionTitle: String(localized: "打开系统设置"),
-                action: openCalendarSystemSettings,
-                dismiss: { calendarBandDismissed = true }
-            )
-        }
-    }
-
-    /// Turns the overlay setting on and requests calendar access (a no-op
-    /// prompt-wise if already decided). `model.calendarOverlayEnabled = true`
-    /// alone already retriggers the `.task(id:)` above via `CalendarTaskKey`,
-    /// but that task computes its own fresh permission read at its own
-    /// start, which can race ahead of the system prompt this triggers --
-    /// hence the explicit follow-up work once the request resolves: on a
-    /// fresh grant, `invalidateCache()` (belt-and-braces alongside the
-    /// `.EKEventStoreChanged` notification that usually fires on its own --
-    /// see `CalendarStore.invalidateCache`'s doc comment), then
-    /// `refreshCalendarWindows()` so the idle-exemption seam
-    /// (`isNowInMeeting`) picks up today's meetings immediately rather than
-    /// staying inert for up to 5 minutes until the next background refresh,
-    /// then this view's own `refreshCalendarOverlay()` for the visible UI.
-    private func enableCalendarOverlay() {
-        model.calendarOverlayEnabled = true
-        model.settings.setCalendarOverlayEnabled(true)
-        // Explicit user action -> `dataChanged()` directly (not the debounced
-        // engine-change path, which is only for `engine.onChange`). Harmless
-        // even though no span/category data actually changed: it just bumps
-        // `dataVersion`, causing this and every other range-scoped view to
-        // re-query once.
-        model.dataChanged()
-        Task { @MainActor in
-            let granted = await Permissions.requestCalendarAccess()
-            if granted {
-                await model.calendarStore?.invalidateCache()
-            }
-            await model.refreshCalendarWindows()
-            await refreshCalendarOverlay()
-        }
-    }
-
-    private func openCalendarSystemSettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") {
-            NSWorkspace.shared.open(url)
-        }
-    }
-
     /// Re-reads the live calendar permission state and, only while the
     /// overlay setting is on AND access is granted, fetches the current
     /// range's events and feeds them into `recompute` -- otherwise clears
@@ -528,38 +460,6 @@ struct ActivitiesView: View {
             guard !Task.isCancelled else { return }
             activities.recompute(model: model, events: calendarEvents)
         }
-    }
-}
-
-/// Enable-card / guide-card chrome for `ActivitiesView.calendarBand`.
-/// Deliberately not `PermissionRow`: that component disables its action button once
-/// `state == .granted`, which is wrong here -- this card's button flips
-/// `calendarOverlayEnabled` (an app setting), a different axis from the
-/// underlying `PermissionState` a user can already have granted access, then
-/// turned the overlay off, and must still be able to click "启用" to turn it
-/// back on.
-private struct CalendarBandCard: View {
-    let title: String
-    let message: String
-    let actionTitle: String
-    let action: () -> Void
-    let dismiss: () -> Void
-
-    /// A quiet strip under the day's card, not a banner above it.
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "calendar").foregroundStyle(.secondary)
-            (Text(title).fontWeight(.semibold) + Text(verbatim: " · ") + Text(message).foregroundStyle(.secondary))
-                .lineLimit(1).truncationMode(.tail).help(message)
-            Spacer(minLength: 8)
-            Button(actionTitle, action: action).buttonStyle(PillButtonStyle(height: 24, font: .system(size: 11)))
-            Button { dismiss() } label: { Image(systemName: "xmark") }.buttonStyle(.borderless).controlSize(.small)
-                .help("可在「设置 · 记录与隐私」中随时开启日历叠加")
-                .accessibilityLabel("不用了")
-        }
-        .font(.system(size: 12))
-        .padding(.horizontal, 14).padding(.vertical, 8)
-        .designCard(radius: Design.Radius.well + 2)
     }
 }
 

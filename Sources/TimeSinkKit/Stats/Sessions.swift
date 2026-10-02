@@ -214,3 +214,33 @@ public enum SessionSegmenter {
             documents: Array(documents.values.sorted { $0.seconds == $1.seconds ? $0.title < $1.title : $0.seconds > $1.seconds }.prefix(8)))
     }
 }
+
+/// What a session's inspector counts: window switches, interruptions and
+/// the app that held the most of it.
+public struct SessionKPIs: Equatable, Sendable {
+    public var switches: Int
+    public var interruptions: Int
+    /// Switches per minute of recorded time.
+    public var switchRate: Double
+    /// Recorded time per interruption; nil when there were none.
+    public var interruptionInterval: TimeInterval?
+    public var topApp: String?
+    /// 0...1 of the recorded time.
+    public var topShare: Double
+
+    public static func interruptions(in session: WorkSession, episodes: [SwitchEpisode]) -> Int {
+        episodes.filter { $0.kind == .interruption && $0.start >= session.start && $0.start < session.end }.count
+    }
+
+    static func make(_ session: WorkSession, items: [CategorizedSpan], episodes: [SwitchEpisode]) -> SessionKPIs {
+        let switches = TodayPlan.switches(in: DateInterval(start: session.start, end: max(session.end, session.start)), items: items)
+        let count = interruptions(in: session, episodes: episodes)
+        let minutes = session.recorded / 60
+        return SessionKPIs(
+            switches: switches, interruptions: count,
+            switchRate: minutes > 0 ? Double(switches) / minutes : 0,
+            interruptionInterval: count > 0 ? session.recorded / Double(count) : nil,
+            topApp: session.apps.first?.name,
+            topShare: session.recorded > 0 ? (session.apps.first?.seconds ?? 0) / session.recorded : 0)
+    }
+}

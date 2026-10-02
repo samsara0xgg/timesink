@@ -110,6 +110,11 @@ struct SessionListCard<Switch: View>: View {
                         }
                     }
                     Spacer(minLength: 6)
+                    if let breaks = activities.dayInterruptions.map({ SessionKPIs.interruptions(in: session, episodes: $0.episodes) }), breaks > 0 {
+                        Text("打断 \(breaks)").font(.system(size: 10.5, weight: .medium)).foregroundStyle(Design.ink2)
+                            .padding(.horizontal, 7).padding(.vertical, 2)
+                            .background(Capsule().fill(Design.track))
+                    }
                     Text(Format.duration(session.recorded, compact: true)).font(.num(12)).foregroundStyle(Design.ink2)
                         .contentTransition(reduceMotion ? .opacity : .numericText())
                 }

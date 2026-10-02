@@ -194,7 +194,10 @@ struct RefinedRecordingPane: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle("在时间轴上显示日程", isOn: Binding(get: { model.calendarOverlayEnabled }, set: { value in
                         model.calendarOverlayEnabled = value; model.settings.setCalendarOverlayEnabled(value)
-                        Task { await model.refreshCalendarWindows() }
+                        Task {
+                            if value, await Permissions.requestCalendarAccess() { await model.calendarStore?.invalidateCache() }
+                            await model.refreshCalendarWindows()
+                        }
                     }))
                     caption(String(localized: "标出会议时间；开会时不会因没碰键盘而算作空闲。"))
                 }
