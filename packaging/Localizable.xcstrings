@@ -9020,6 +9020,46 @@
           }
         }
       }
+    },
+    "共记录 %@，比上期多了 %@。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ recorded, %2$@ more than the last period."
+          }
+        }
+      }
+    },
+    "共记录 %@，比上期少了 %@。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ recorded, %2$@ less than the last period."
+          }
+        }
+      }
+    },
+    "共记录 %@，日均 %@。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ recorded, %2$@ a day."
+          }
+        }
+      }
+    },
+    "70 以上算好的一天": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "70 or more counts as a good day"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
