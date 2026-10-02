@@ -163,6 +163,14 @@ struct RefinedRecordingPane: View {
                     caption(String(localized: "只数有按键的秒数，不记录按了什么"))
                 }
             }
+            Section("会话") {
+                VStack(alignment: .leading, spacing: 4) {
+                    Picker("离开或换事满", selection: Binding(get: { model.sessionThreshold }, set: { model.sessionThreshold = $0 })) {
+                        ForEach(SessionSegmenter.thresholdChoices, id: \.self) { Text("\(Int($0 / 60)) 分钟").tag($0) }
+                    }
+                    caption(String(localized: "离开或换事持续这么久，就开新会话。"))
+                }
+            }
             Section("屏幕采集") {
                 VStack(alignment: .leading, spacing: 4) {
                     ScreenCaptureRow(model: model, compact: true)

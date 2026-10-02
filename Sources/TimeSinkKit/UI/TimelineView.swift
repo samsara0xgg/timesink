@@ -152,6 +152,19 @@ enum TimelineZoom {
 
 /// Vertically laid-out hour anchors make scrollTo reliable; blocks overlay the
 /// same day origin and scale. Selection and zoom are owned by the page model.
+/// F1: one session in the bar beside the timeline.
+struct SessionMark: Identifiable, Equatable {
+    let id: Date
+    let start: Date
+    let end: Date
+    /// The session's name, or its apps when it has none.
+    let title: String
+    let named: Bool
+    let detail: String
+    let color: Color
+    var duration: TimeInterval { end.timeIntervalSince(start) }
+}
+
 struct DayTimelineView: View {
     @Environment(\.locale) private var locale
     let day: Date
@@ -160,6 +173,9 @@ struct DayTimelineView: View {
     var allDay: [String] = []
     var focusBlocks: [TimelineBlock] = []
     var awayNotes: [AwayNote] = []
+    var sessions: [SessionMark] = []
+    var selectedSession: Date?
+    var onSelectSession: ((Date) -> Void)?
     var selectedActivity: ActivitySelection?
     var selectedStart: Date?
     var isFiltered = false
@@ -311,10 +327,13 @@ struct DayTimelineView: View {
         }
         .overlay(alignment: .topLeading) {
             GeometryReader { geometry in
-                let width = max(0, geometry.size.width - labelWidth - 8)
+                // Wider when there is room, so names read in full, as the design draws it.
+                let sessionWidth: CGFloat = sessions.isEmpty ? 0 : min(240, max(132, geometry.size.width * 0.22))
+                let width = max(0, geometry.size.width - labelWidth - 8 - (sessions.isEmpty ? 0 : sessionWidth + 10))
                 let activityWidth = min(440, events.isEmpty ? width : width * 0.62)
-                let eventX = labelWidth + 8 + activityWidth + 12
-                let eventWidth = max(0, labelWidth + 8 + width - eventX)
+                let sessionX = labelWidth + 8 + activityWidth + 10
+                let eventX = sessions.isEmpty ? labelWidth + 8 + activityWidth + 12 : sessionX + sessionWidth + 10
+                let eventWidth = max(0, geometry.size.width - eventX)
                 ZStack(alignment: .topLeading) {
                     SwiftUI.TimelineView(.animation(paused: emerging.isEmpty)) { frame in
                         TimelineBlocksCanvas(blocks: blocks, dayStart: dayStart, hourHeight: hourHeight,
@@ -353,6 +372,11 @@ struct DayTimelineView: View {
                             .help(String(localized: "补记：\(note.label) · 不计入评分"))
                             .accessibilityLabel(String(localized: "补记：\(note.label)，\(Format.minutes(duration)) 分钟"))
                     }
+                    ForEach(sessions) { mark in
+                        sessionView(mark)
+                            .frame(width: sessionWidth, height: max(2, height(mark.duration) - 2))
+                            .offset(x: sessionX, y: offset(mark.start) + 1)
+                    }
                     ForEach(events) { event in
                         RoundedRectangle(cornerRadius: 7).fill(event.color.opacity(0.12))
                             .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(event.color.opacity(0.7), lineWidth: 1))
@@ -370,6 +394,39 @@ struct DayTimelineView: View {
                 }
             }
         }
+    }
+
+    private func sessionView(_ mark: SessionMark) -> some View {
+        let selected = mark.id == selectedSession
+        let tall = height(mark.duration)
+        let range = "\(mark.start.formatted(.dateTime.hour().minute().locale(locale)))–\(mark.end.formatted(.dateTime.hour().minute().locale(locale)))"
+        return Button { onSelectSession?(mark.id) } label: {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(mark.color.opacity(selected ? 0.24 : 0.11))
+                .overlay(alignment: .leading) {
+                    Capsule().fill(mark.color).frame(width: 3).padding(.vertical, min(4, tall / 4)).padding(.leading, 3)
+                }
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(selected ? mark.color : .clear, lineWidth: 1.5))
+                .overlay(alignment: .topLeading) {
+                    if tall >= 18 {
+                        VStack(alignment: .leading, spacing: 1) {
+                            (mark.named ? Text(Image(systemName: "sparkles")).foregroundStyle(mark.color) + Text(" ") + Text(mark.title) : Text(mark.title))
+                                .font(.system(size: 12, weight: mark.named ? .medium : .regular))
+                                .foregroundStyle(mark.named ? .primary : .secondary)
+                                .lineLimit(tall >= 48 ? 2 : 1)
+                            if tall >= 34 {
+                                Text(mark.detail).font(.system(size: 10)).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
+                            }
+                        }
+                        .padding(.leading, 11).padding(.trailing, 6).padding(.top, 4)
+                    }
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("\(mark.title)\n\(range) · \(mark.detail)")
+        .accessibilityLabel(String(localized: "会话：\(mark.title)，\(range)，\(mark.detail)"))
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     /// Where a block takes clicks, tooltips and VoiceOver; the canvas draws it.

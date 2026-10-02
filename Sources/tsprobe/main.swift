@@ -16,6 +16,50 @@ func processUsage() -> (cpu: Double, peakMiB: Double) {
     return (cpu, Double(usage.ru_maxrss) / 1_048_576)
 }
 
+/// `tsprobe sessions <copy.sqlite> [days] [--names]`: F1 sessions per day
+/// and how each would be named. Numbers only unless `--names` (for a look
+/// on this Mac, never to be copied anywhere).
+if CommandLine.arguments.dropFirst().first == "sessions" {
+    let db = try! AppDatabase.open(at: URL(fileURLWithPath: CommandLine.arguments[2]))
+    let resolver = CategoryResolver(categoryStore: CategoryStore(db))
+    let days = CommandLine.arguments.count > 3 ? Int(CommandLine.arguments[3]) ?? 3 : 3
+    let showNames = CommandLine.arguments.contains("--names")
+    let namer = SessionNamer()
+    let calendar = Calendar.current
+    let today = calendar.startOfDay(for: Date())
+    print("model available:", SessionNamer.modelAvailable)
+    let done = DispatchSemaphore(value: 0)
+    let dayItems = (0..<days).reversed().map { back in
+        let start = calendar.date(byAdding: .day, value: -back, to: today)!
+        let interval = DateInterval(start: start, end: calendar.date(byAdding: .day, value: 1, to: start)!)
+        return (back, start, resolver.categorized(try! SpanStore(db).spans(overlapping: interval)).sorted { $0.span.start < $1.span.start })
+    }
+    Task.detached {
+    for (back, start, items) in dayItems {
+        let t0 = Date()
+        let sessions = SessionSegmenter.sessions(items)
+        let cut = Date().timeIntervalSince(t0) * 1000
+        print(String(format: "day -%d spans=%d sessions=%d segment=%.1fms", back, items.count, sessions.count, cut))
+        for session in sessions {
+            let t1 = Date()
+            let label = await namer.name(session)
+            let fallback = SessionNamer.titleFallback(session)
+            let from: Int = Int(session.start.timeIntervalSince(start) / 60)
+            let to: Int = Int(session.end.timeIntervalSince(start) / 60)
+            let ms: Double = Date().timeIntervalSince(t1) * 1000
+            var line = "  \(from)-\(to) rec=\(Int(session.recorded / 60))min apps=\(session.apps.count) titles=\(session.titles.count)"
+            line += " src=\(label.source.rawValue) conf=\(String(format: "%.2f", label.confidence)) named=\(label.name != nil) fallbackNamed=\(fallback.name != nil) name=\(Int(ms))ms"
+            if showNames { line += " | " + (label.name ?? "-") + " | " + (label.project ?? "-") + " | fb: " + (fallback.name ?? "-") }
+            print(line)
+            if CommandLine.arguments.contains("--prompt") { print(SessionNamer.prompt(session)) }
+        }
+    }
+    done.signal()
+    }
+    done.wait()
+    exit(0)
+}
+
 /// `tsprobe waterfall <copy.sqlite>`: reconciles the timeline thread's
 /// interruption count (all non-productive dwell, grouped by the longest
 /// destination, no merge) with the classifier's, one rule at a time, for

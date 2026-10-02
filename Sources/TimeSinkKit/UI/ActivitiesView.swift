@@ -48,6 +48,13 @@ struct ActivitiesView: View {
         let overlayEnabled: Bool
     }
 
+    private struct SessionKey: Equatable {
+        let version: Int
+        let range: DateRangeSelection.Window
+        let threshold: TimeInterval
+        let splits: Int
+    }
+
     private struct InterruptionKey: Equatable {
         let version: Int
         let range: DateRangeSelection.Window
@@ -86,7 +93,13 @@ struct ActivitiesView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             if showsInspector {
-                ActivityInspector(model: model, activities: activities)
+                Group {
+                    if let session = activities.sessions.first(where: { $0.start == activities.selectedSession }) {
+                        SessionInspector(model: model, activities: activities, session: session)
+                    } else {
+                        ActivityInspector(model: model, activities: activities)
+                    }
+                }
                     .frame(width: 300)
                     .frame(maxHeight: .infinity, alignment: .top)
                     .glassSurface(cornerRadius: 18)
@@ -106,6 +119,10 @@ struct ActivitiesView: View {
         }
         .pageTask(id: InterruptionKey(version: model.dataVersion, range: model.range.window, rule: model.interruptionRule)) {
             await activities.loadInterruptions(model: model)
+        }
+        .pageTask(id: SessionKey(version: model.dataVersion, range: model.range.window,
+                                 threshold: model.sessionThreshold, splits: model.sessionSplitsVersion)) {
+            await activities.loadSessions(model: model)
         }
         .pageSearchable(text: searchBinding, prompt: "搜索应用、网址、标题")
         .pageToolbar {
@@ -227,6 +244,14 @@ struct ActivitiesView: View {
                             events: activities.calendarBlocks, allDay: activities.allDayTitles,
                             focusBlocks: activities.focusBlocks,
                             awayNotes: activities.awayNotes,
+                            sessions: sessionMarks,
+                            selectedSession: activities.selectedSession,
+                            onSelectSession: { start in
+                                activities.selectedActivity = nil
+                                activities.selectedStart = nil
+                                activities.selectedSession = activities.selectedSession == start ? nil : start
+                                if activities.selectedSession != nil { showsInspector = true }
+                            },
                             selectedActivity: activities.selectedActivity,
                             selectedStart: activities.selectedStart,
                             isFiltered: model.activityTimeInterval != nil || model.activityFilter != nil || ActivitiesModel.normalizedQuery(model.activitySearch) != nil,
@@ -249,6 +274,19 @@ struct ActivitiesView: View {
         .padding(.horizontal, 12).padding(.top, 14).padding(.bottom, 4)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .workspacePanel()
+    }
+
+    private var sessionMarks: [SessionMark] {
+        activities.sessions.map { session in
+            let title = model.sessionTitle(session)
+            let apps = session.apps.prefix(2).map(\.name).joined(separator: String(localized: "、"))
+                + (session.apps.count > 2 ? " +\(session.apps.count - 2)" : "")
+            let project = model.sessionProject(session)
+            return SessionMark(id: session.start, start: session.start, end: session.end,
+                               title: title ?? apps, named: title != nil,
+                               detail: [Format.duration(session.recorded), project].compactMap { $0 }.joined(separator: " · "),
+                               color: Color(hex: model.resolver.categoriesByID[session.categoryID]?.colorHex ?? "#8E8E93"))
+        }
     }
 
     private func legend(_ title: LocalizedStringKey, @ViewBuilder mark: () -> some View) -> some View {
@@ -559,6 +597,10 @@ final class ActivitiesModel {
     var focusBlocks: [TimelineBlock] = []
     /// F4 补记 on this day, drawn as dashed frames in the gaps.
     var awayNotes: [AwayNote] = []
+    /// F1: the shown day's sessions, cut off the main actor.
+    var sessions: [WorkSession] = []
+    /// The session the inspector shows, by start; exclusive with a block.
+    var selectedSession: Date?
 
     /// C3 calendar overlay -- populated only for single-day-ish ranges (see
     /// `showsTimeline`), from the `events` the caller fetched via
@@ -604,6 +646,7 @@ final class ActivitiesModel {
     }
 
     func select(_ activity: ActivitySelection, start: Date? = nil) {
+        selectedSession = nil
         selectedActivity = activity
         expandedRows.insert(activity.row)
         collapsedCategories.remove(activity.categoryID)
@@ -636,6 +679,18 @@ final class ActivitiesModel {
                                              interruptions: dayInterruptions, rule: interruptionRule)
     }
 
+    /// Cuts the shown day into sessions (cached per day in `AppModel`) and
+    /// asks for the names still missing.
+    func loadSessions(model: AppModel) async {
+        let range = model.range
+        guard Self.showsTimeline(range) else { if !sessions.isEmpty { sessions = [] }; return }
+        let value = await model.sessions(for: range.interval)
+        guard !Task.isCancelled, model.range.interval == range.interval else { return }
+        if value != sessions { sessions = value }
+        if let selectedSession, !value.contains(where: { $0.start == selectedSession }) { self.selectedSession = nil }
+        model.requestNames(for: value)
+    }
+
     /// Classifies the shown day (cached per day in `AppModel`) and redraws
     /// the ticks once it lands.
     func loadInterruptions(model: AppModel) async {
@@ -659,6 +714,7 @@ final class ActivitiesModel {
         if selectionRange != model.range.interval || selectionTimeInterval != model.activityTimeInterval {
             selectedActivity = nil
             selectedStart = nil
+            selectedSession = nil
             selectionRange = model.range.interval
             selectionTimeInterval = model.activityTimeInterval
             expandedRows.removeAll()

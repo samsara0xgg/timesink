@@ -326,6 +326,28 @@ public enum AppDatabase {
                 t.column("symbol", .text).notNull()
             }
         }
+        migrator.registerMigration("v13") { db in
+            // F1 会话. New tables only, so a rollback never sees them.
+            // Your names and projects, reused for every session of the same kind.
+            try db.create(table: "sessionName") { t in
+                t.column("signature", .text).primaryKey()
+                t.column("name", .text)
+                t.column("project", .text)
+                t.column("updatedAt", .datetime).notNull()
+            }
+            // Where you split a session by hand.
+            try db.create(table: "sessionSplit") { t in t.column("at", .datetime).primaryKey() }
+            // Names the model or the fallback gave, per session and make-up,
+            // so a session is named once.
+            try db.create(table: "sessionLabel") { t in
+                t.column("key", .text).primaryKey()
+                t.column("name", .text)
+                t.column("project", .text)
+                t.column("confidence", .double).notNull()
+                t.column("source", .text).notNull()
+                t.column("createdAt", .datetime).notNull()
+            }
+        }
         return migrator
     }
 }

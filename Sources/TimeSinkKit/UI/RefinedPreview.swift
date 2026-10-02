@@ -57,6 +57,11 @@ public enum RefinedPreview {
         }
         let model = try fixture()
         model.timeFormat = "12"
+        // F1: name yesterday's sessions before anything draws them.
+        let yesterdayInterval = Calendar.current.dateInterval(of: .day, for: Calendar.current.date(byAdding: .day, value: -1, to: Date())!)!
+        let yesterdaySessions = await model.sessions(for: yesterdayInterval)
+        model.requestNames(for: yesterdaySessions)
+        while model.namingTask != nil { try await Task.sleep(for: .milliseconds(100)) }
         for dark in [false, true] {
             let suffix = dark ? "dark" : "light"
             for (name, page) in [("today", SidebarItem.today), ("activities", .activities), ("trends", .stats), ("focus", .focus), ("organization", .organization)] {
@@ -75,6 +80,15 @@ public enum RefinedPreview {
                 try await render(MainWindowView(model: model, activities: selectedActivities), size: mainSize, dark: dark,
                                  to: output.appendingPathComponent("\(name)-\(suffix).png"), settle: page == .stats ? 3000 : 650)
             }
+            // F1: the longest session of yesterday, open in the inspector.
+            model.sidebarSelection = .activities
+            model.range = DateRangeSelection(kind: .day, anchor: yesterdayInterval.start)
+            let sessionActivities = ActivitiesModel()
+            sessionActivities.recompute(model: model, events: [])
+            sessionActivities.sessions = yesterdaySessions
+            sessionActivities.selectedSession = yesterdaySessions.max { $0.recorded < $1.recorded }?.start
+            try await render(MainWindowView(model: model, activities: sessionActivities), size: mainSize, dark: dark,
+                             to: output.appendingPathComponent("sessions-\(suffix).png"))
             let activityModel = ActivitiesModel()
             model.range = .today()
             activityModel.recompute(model: model, events: [])
@@ -317,6 +331,7 @@ public enum RefinedPreview {
         let sessions = FocusSessionStore(db)
         model.focusStore = sessions
         model.focus = FocusSessionController(store: sessions, settings: settings)
+        model.observationStore = ObservationStore(db)
         settings.setFocusBlockedApps(["com.apple.MobileSMS", "com.apple.Music"])
         settings.setFocusBlockedCategories(["socialMedia", "entertainment", "shopping"])
         for offset in 0..<4 {
