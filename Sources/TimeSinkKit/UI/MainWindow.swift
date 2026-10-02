@@ -84,9 +84,9 @@ struct MainWindowView: View {
 /// takes no input or focus, and it keeps the size it last had on screen, so
 /// resizing the window lays it out once on return rather than while hidden.
 ///
-/// Switching is a short cross-fade with a slight slide: the page you leave
-/// drifts away from the one coming in, left or right by where the two sit
-/// among the tabs. Reduce Motion keeps the fade and drops the slide.
+/// Switching hands over, never overlaps: the page you leave fades out at once
+/// and the one coming in slides in just behind it, left or right by where the
+/// two sit among the tabs. Reduce Motion keeps the fade and drops the slide.
 private struct KeptPage<Content: View>: View {
     let active: Bool
     /// -1 for a page before the selected one, 1 for one after: which way it
@@ -116,7 +116,7 @@ private struct KeptPage<Content: View>: View {
             // and reattach them on every return, ~40% of a switch.
             .opacity(active ? 1 : 0)
             .offset(x: active || reduceMotion ? 0 : side * 14)
-            .animation(reduceMotion ? .easeOut(duration: 0.12) : Design.page, value: active)
+            .animation(reduceMotion ? .easeOut(duration: 0.12) : active ? Design.pageIn : Design.pageOut, value: active)
             .accessibilityHidden(!active)
     }
 }

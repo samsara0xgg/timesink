@@ -117,9 +117,10 @@ enum Design {
     // MARK: Motion
 
     /// The nav bead: a droplet that overshoots a little and settles.
-    static let bead = Animation.spring(response: 0.46, dampingFraction: 0.72)
+    static let bead = Animation.spring(response: 0.38, dampingFraction: 0.78)
     /// Page to page: short, so a switch never feels slow.
-    static let page = Animation.easeOut(duration: 0.2)
+    static let pageOut = Animation.easeOut(duration: 0.08)
+    static let pageIn = Animation.easeOut(duration: 0.15).delay(0.07)
     /// Cards, blocks and rows arriving, once.
     static let reveal = Animation.spring(response: 0.55, dampingFraction: 0.88)
     static let hover = Animation.easeOut(duration: 0.12)

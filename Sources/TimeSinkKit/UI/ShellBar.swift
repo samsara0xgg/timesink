@@ -146,8 +146,8 @@ private struct NavCapsule: View {
                             content.scaleEffect(x: reduce ? 1 : stretch, y: reduce ? 1 : 1 - (stretch - 1) * 0.5)
                         } keyframes: { _ in
                             KeyframeTrack {
-                                CubicKeyframe(1.14, duration: 0.14)
-                                SpringKeyframe(1.0, duration: 0.42, spring: Spring(response: 0.3, dampingRatio: 0.55))
+                                CubicKeyframe(1.1, duration: 0.12)
+                                SpringKeyframe(1.0, duration: 0.42, spring: Spring(response: 0.28, dampingRatio: 0.7))
                             }
                         }
                         .offset(x: rect.minX, y: rect.minY)
@@ -364,7 +364,7 @@ private struct RangeControls: View {
     /// The range's name; Today and Yesterday also show their date. An
     /// older day is named by its date already.
     private var rangeLabel: String {
-        let date = model.range.interval.start.formatted(.dateTime.month().day())
+        let date = model.range.interval.start.formatted(.dateTime.month().day().locale(model.textLocale))
         return model.range.kind == .day && model.range.label != date ? "\(model.range.label) · \(date)" : model.range.label
     }
 
