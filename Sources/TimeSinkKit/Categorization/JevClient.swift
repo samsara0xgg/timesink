@@ -3,20 +3,23 @@ import Foundation
 
 /// One HTTP round trip; a seam so tests never touch the network.
 public protocol JevTransport: Sendable {
-    func post(_ request: URLRequest) async throws -> (data: Data, status: Int)
+    func post(_ request: URLRequest) async throws -> (data: Data, status: Int, retryAfter: String?)
 }
 
 public struct URLSessionJevTransport: JevTransport {
     public init() {}
 
-    public func post(_ request: URLRequest) async throws -> (data: Data, status: Int) {
+    public func post(_ request: URLRequest) async throws -> (data: Data, status: Int, retryAfter: String?) {
         let (data, response) = try await URLSession.shared.data(for: request)
-        return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
+        let http = response as? HTTPURLResponse
+        return (data, http?.statusCode ?? 0, http?.value(forHTTPHeaderField: "Retry-After"))
     }
 }
 
 public enum JevError: LocalizedError, Equatable {
     case http(Int)
+    /// HTTP 429; seconds to wait before asking again.
+    case rateLimited(retryAfter: Int)
     case badAnswer
     case unknownCategory(String)
 
@@ -31,6 +34,7 @@ public enum JevError: LocalizedError, Equatable {
         case .http(let code) where code == 401 || code == 403: String(localized: "API Key 无效或没有权限（HTTP \(code)）。")
         case .http(let code) where code == 402: String(localized: "账户余额不足（HTTP 402）。")
         case .http(let code): String(localized: "服务返回 HTTP \(code)。")
+        case .rateLimited(let secs): String(localized: "请求太频繁（HTTP 429），\(secs) 秒后重试。")
         case .badAnswer: String(localized: "服务没有返回分类。")
         case .unknownCategory(let value): String(localized: "服务返回了不认识的分类：\(value)")
         }
@@ -179,7 +183,8 @@ public struct JevClient: Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("TimeSink", forHTTPHeaderField: "X-OpenRouter-Title")
         request.httpBody = Self.body(state: state, criteria: criteria, model: model)
-        let (data, status) = try await transport.post(request)
+        let (data, status, retryAfter) = try await transport.post(request)
+        if status == 429 { throw JevError.rateLimited(retryAfter: min(max(retryAfter.flatMap { Int($0.trimmingCharacters(in: .whitespaces)) } ?? 30, 1), 300)) }
         guard (200..<300).contains(status) else { throw JevError.http(status) }
         return try Self.parse(data)
     }

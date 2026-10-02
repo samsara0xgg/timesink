@@ -9471,6 +9471,16 @@
         }
       }
     },
+    "请求太频繁（HTTP 429），%lld 秒后重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Too many requests (HTTP 429); retrying in %lld seconds."
+          }
+        }
+      }
+    },
     "服务返回 HTTP %lld。": {
       "localizations": {
         "en": {

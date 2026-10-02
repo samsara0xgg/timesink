@@ -14,6 +14,10 @@ public actor JevWorker {
         public var latencies: [Double] = []
         public var stoppedByCap = false
         public var error: String?
+        /// Seconds to wait after an HTTP 429; the pass stopped launching requests.
+        public var retryAfter: Int?
+        /// Requests in flight at most, this run.
+        public var concurrency = 0
         public var medianLatency: Double? {
             latencies.isEmpty ? nil : latencies.sorted()[latencies.count / 2]
         }
@@ -23,6 +27,8 @@ public actor JevWorker {
     private let settings: SettingsStore
     private let transport: any JevTransport
     private let apiKey: @Sendable () -> String?
+    /// The last run hit a 429: the next one asks fewer at a time.
+    private var wasRateLimited = false
 
     public init(categoryStore: CategoryStore, settings: SettingsStore, transport: any JevTransport = URLSessionJevTransport(),
                 apiKey: @escaping @Sendable () -> String?) {
@@ -49,6 +55,9 @@ public actor JevWorker {
     /// bare-title AI-app screens.
     public func run(since: Date, staleSince: Date? = nil, maxConcurrent: Int = 10) async -> RunResult {
         var result = RunResult()
+        // Half the requests at a time after a 429 (at least 2); back to full after a clean run.
+        let maxConcurrent = wasRateLimited ? min(maxConcurrent, max(2, maxConcurrent / 2)) : maxConcurrent
+        result.concurrency = maxConcurrent
         guard settings.jevEnabled, let key = apiKey(), !key.isEmpty, let endpoint = URL(string: settings.jevEndpoint) else { return result }
         do {
             let categories = try categoryStore.rawCategories()
@@ -69,7 +78,7 @@ public actor JevWorker {
                       (try? categoryStore.saveVerdict(v)) != nil else { return false }
                 return true
             }
-            guard !halted else { return result }
+            guard !halted else { wasRateLimited = result.retryAfter != nil; return result }
 
             // Unsure verdicts are asked again with the user's own examples (and screen text, when that switch is on).
             let screenOn = settings.jevScreenText
@@ -92,7 +101,7 @@ public actor JevWorker {
                 try? categoryStore.markScreenAsked(old.key)
                 return true
             }
-            guard settings.jevScreenText, !halted else { return result }
+            guard settings.jevScreenText, !halted else { wasRateLimited = result.retryAfter != nil; return result }
 
             let captures = try categoryStore.pendingCaptures(since: since, staleSince: staleSince, promptVersion: version).map { c in
                 Job(state: JevState(app: c.appName, bundleID: c.bundleID, domain: "", url: "", title: c.title, document: "", screenText: c.text),
@@ -109,6 +118,7 @@ public actor JevWorker {
         } catch {
             result.error = error.localizedDescription
         }
+        wasRateLimited = result.retryAfter != nil
         return result
     }
 
@@ -149,6 +159,12 @@ public actor JevWorker {
                     settings.addJevSpend(answer.cost)
                     if apply(done.job, answer) { snapshot.saved += 1 } else { snapshot.failed += 1 }
                 case .failure(let error):
+                    // A 429 leaves the combo queued: not failed, no spend; stop launching, let in-flight ones finish.
+                    if case JevError.rateLimited(let secs) = error {
+                        snapshot.retryAfter = max(snapshot.retryAfter ?? 0, secs)
+                        stop = true
+                        break
+                    }
                     snapshot.failed += 1
                     snapshot.error = error.localizedDescription
                     if (error as? JevError)?.stopsTheRun == true { stop = true }

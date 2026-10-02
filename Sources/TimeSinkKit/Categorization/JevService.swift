@@ -70,8 +70,8 @@ public final class JevService {
         loop = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.runOnce()
-                // A failed request waits for the next pass, not a tight retry.
-                try? await Task.sleep(for: .seconds(180))
+                // A failed request waits for the next pass, not a tight retry; a 429 waits as long as the server asked.
+                try? await Task.sleep(for: .seconds(await self?.lastRun?.retryAfter ?? 180))
             }
         }
     }

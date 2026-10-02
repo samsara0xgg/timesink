@@ -7,6 +7,9 @@ final class StubJevTransport: JevTransport, @unchecked Sendable {
     private let lock = NSLock()
     private var recorded: [URLRequest] = []
     private let reply: @Sendable (_ state: [String: String]) -> (choice: String, probabilities: [String: Double], cost: Double)
+    /// When set, a request whose state title it accepts gets HTTP 429 with this Retry-After.
+    var limit: (@Sendable (_ state: [String: String]) -> Bool)?
+    var retryAfter: String?
 
     init(reply: @escaping @Sendable (_ state: [String: String]) -> (choice: String, probabilities: [String: Double], cost: Double)) {
         self.reply = reply
@@ -14,18 +17,19 @@ final class StubJevTransport: JevTransport, @unchecked Sendable {
 
     var requests: [URLRequest] { lock.withLock { recorded } }
 
-    func post(_ request: URLRequest) async throws -> (data: Data, status: Int) {
+    func post(_ request: URLRequest) async throws -> (data: Data, status: Int, retryAfter: String?) {
         lock.withLock { recorded.append(request) }
         let body = try JSONSerialization.jsonObject(with: request.httpBody ?? Data()) as? [String: Any]
         let raw = (body?["state"] as? [String: Any]) ?? [:]
         var state = raw.compactMapValues { $0 as? String }
         if let list = raw["用户以前确认过的例子"] as? [Any] { state["examples"] = String(list.count) }
+        if limit?(state) == true { return (Data(), 429, retryAfter) }
         let r = reply(state)
         let json: [String: Any] = [
             "answers": ["category": ["choice": r.choice, "probabilities": r.probabilities, "confidence": 0.5]],
             "usage": ["input_tokens": 700, "cost": r.cost],
         ]
-        return (try JSONSerialization.data(withJSONObject: json), 200)
+        return (try JSONSerialization.data(withJSONObject: json), 200, nil)
     }
 }
 
@@ -347,6 +351,49 @@ final class JevTests: XCTestCase {
         let again = await w.run(since: longAgo, maxConcurrent: 1)
         XCTAssertEqual(again.calls, 0)
         XCTAssertTrue(again.stoppedByCap)
+    }
+
+    func testRateLimitHaltsLaunchesKeepsComboQueuedAndHalvesConcurrency() async throws {
+        try seedSpans(["a", "b", "c", "d", "e", "f"])
+        let transport = StubJevTransport { _ in ("misc", ["misc": 0.9], 0.0004) }
+        transport.limit = { $0["window_title"] == "c" }
+        transport.retryAfter = "45"
+        let w = worker(transport)
+        let first = await w.run(since: longAgo, maxConcurrent: 1)
+        XCTAssertEqual(first.retryAfter, 45)
+        XCTAssertEqual(first.calls, 3, "no new launches after the 429")
+        XCTAssertEqual(first.saved, 2)
+        XCTAssertEqual(first.failed, 0)
+        XCTAssertEqual(try store.verdicts().count, 2)
+        XCTAssertEqual(settings.jevSpend(), 0.0008, accuracy: 1e-9, "no spend for the limited request")
+        XCTAssertEqual(try store.pendingCombos(since: longAgo, staleSince: nil, promptVersion: JevPrompt.version(try store.rawCategories())).count, 4)
+
+        // concurrency: 10 -> 5 after a 429, and back to 10 after a clean pass
+        let second = await w.run(since: longAgo, maxConcurrent: 10)
+        XCTAssertEqual(second.concurrency, 5)
+        XCTAssertEqual(second.retryAfter, 45, "still limited")
+        transport.limit = nil
+        let third = await w.run(since: longAgo, maxConcurrent: 10)
+        XCTAssertEqual(third.concurrency, 5)
+        XCTAssertNil(third.retryAfter)
+        XCTAssertEqual(third.saved, 1, "only the limited combo was left; the others finished in flight last time")
+        let fourth = await w.run(since: longAgo, maxConcurrent: 10)
+        XCTAssertEqual(fourth.concurrency, 10)
+        let small = await w.run(since: longAgo, maxConcurrent: 3)
+        XCTAssertEqual(small.concurrency, 3)
+    }
+
+    func testRetryAfterDefaultsAndCaps() async throws {
+        for (header, want) in [(nil, 30), ("abc", 30), ("Wed, 21 Oct 2026 07:28:00 GMT", 30), ("9999", 300), ("0", 1), (" 12 ", 12)] as [(String?, Int)] {
+            let transport = StubJevTransport { _ in ("misc", ["misc": 0.9], 0) }
+            transport.limit = { _ in true }
+            transport.retryAfter = header
+            let client = JevClient(endpoint: URL(string: "https://x.test")!, apiKey: "k", transport: transport)
+            let state = JevState(app: "a", bundleID: "b", domain: "", url: "", title: "t", document: "")
+            do { _ = try await client.decide(state, criteria: [("misc", "m")]); XCTFail() } catch {
+                XCTAssertEqual(error as? JevError, .rateLimited(retryAfter: want), "header \(header ?? "nil")")
+            }
+        }
     }
 
     func testWorkerSkipsWhatHardRulesDecideAndUserVerdicts() async throws {
