@@ -250,7 +250,8 @@ public struct TimeSinkApp: App {
         }
 
         .windowStyle(.hiddenTitleBar)
-        .defaultSize(width: 1200, height: 820)
+        .defaultSize(MainWindowView.defaultSize)
+        .windowResizability(.contentMinSize)
         .commands {
             CommandMenu("导航") {
                 Button("今天") { model.openToday() }.keyboardShortcut("1")

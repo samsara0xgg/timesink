@@ -68,7 +68,10 @@ private struct AppWindowProbe: NSViewRepresentable {
             guard let window else { return }
             window.collectionBehavior.insert(.moveToActiveSpace)
             switch role {
-            case .main: AppWindow.mainWindow = window
+            case .main:
+                // The green button: full screen, not just zoom.
+                window.collectionBehavior.insert(.fullScreenPrimary)
+                AppWindow.mainWindow = window
             case .settings: AppWindow.settingsWindow = window
             }
         }
