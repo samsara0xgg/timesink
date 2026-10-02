@@ -2,20 +2,11 @@ import SwiftUI
 
 /// Wording for lengths of time on the Today page: short, in whole minutes.
 enum TodayFmt {
-    private static func minutes(_ seconds: TimeInterval) -> Int { max(0, Int((seconds / 60).rounded())) }
-
     /// "55 分" or "4:42": a figure and its unit in a narrow place.
-    static func clock(_ seconds: TimeInterval) -> String {
-        let m = minutes(seconds)
-        return m < 60 ? String(localized: "\(m) 分") : String(format: "%d:%02d", m / 60, m % 60)
-    }
+    static func clock(_ seconds: TimeInterval) -> String { Format.duration(seconds, compact: true) }
 
-    /// "55 分", "4 小时", "2 小时 49 分".
-    static func long(_ seconds: TimeInterval) -> String {
-        let m = minutes(seconds)
-        if m < 60 { return String(localized: "\(m) 分") }
-        return m % 60 == 0 ? String(localized: "\(m / 60) 小时") : String(localized: "\(m / 60) 小时 \(m % 60) 分")
-    }
+    /// "55 分", "2 小时 49 分" (en "55m", "2h 49m").
+    static func long(_ seconds: TimeInterval) -> String { Format.duration(seconds) }
 }
 
 /// Which project the page is narrowed to, if any; `.some(nil)` is "no project".

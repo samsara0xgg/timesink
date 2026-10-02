@@ -30,7 +30,7 @@ struct FocusWorkspaceView: View {
                             VStack(spacing: Design.Space.lg) { sessionColumn.revealOnce(index: 2); weekChart }
                                 .frame(maxWidth: .infinity)
                             VStack(spacing: Design.Space.lg) { budgetColumn; if model.focus?.running == nil { blockCard.revealOnce(index: 5) } }
-                                .frame(maxWidth: .infinity)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
                     } else {
                         VStack(spacing: Design.Space.lg) {
@@ -122,6 +122,7 @@ struct FocusWorkspaceView: View {
                             .font(.system(size: 12)).lineLimit(1).foregroundStyle(.secondary)
                     }.onChange(of: siteBlock) { _, value in model.settings.setFocusSiteBlockEnabled(value) }
                 }
+            Spacer(minLength: 0)
             VStack(alignment: .leading, spacing: 6) {
                 Text("切过去的隐藏应用会被挡回来，菜单栏可以临时放行 5 分钟。").font(.system(size: 11)).foregroundStyle(Design.ink3)
                 HStack(spacing: 10) {
@@ -133,11 +134,12 @@ struct FocusWorkspaceView: View {
                     Text("示例").font(.system(size: 11)).foregroundStyle(Design.ink3)
                 }
             }
+            Spacer(minLength: 0)
             Text("专注时菜单栏显示倒计时；结束后这一段会标成专注，在今天和活动里单独显示。").font(.system(size: 11)).foregroundStyle(Design.ink3)
         }
         .font(.system(size: 13))
         .padding(.horizontal, Design.Space.xl).padding(.vertical, 18)
-        .frame(maxWidth: .infinity, alignment: .topLeading).designCard()
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).designCard()
     }
 
     /// A filled row: a title, what it covers (click to edit), a switch.
@@ -166,10 +168,11 @@ struct FocusWorkspaceView: View {
                     budgetRow(budget)
                 }
                 if !suggestions.isEmpty { suggestionRows }
+                Spacer(minLength: 0)
                 Divider().padding(.top, 4)
                 Text("限额只发提醒，不拦截任何东西；拦截只在专注会话里发生。").font(.system(size: 11)).foregroundStyle(.secondary)
                     .padding(.top, 8)
-            }.font(.system(size: 13)).frame(maxWidth: .infinity, alignment: .leading).padding(18).workspacePanel().revealOnce(index: 3)
+            }.font(.system(size: 13)).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(18).workspacePanel().revealOnce(index: 3)
         }
     }
 
