@@ -35,6 +35,8 @@ enum Design {
     }
 
     static let barHeight: CGFloat = 68
+    /// The narrowest main window the pages are laid out for.
+    static let windowMinSize = CGSize(width: 760, height: 560)
     static let controlHeight: CGFloat = 40
     static let navHeight: CGFloat = 46
 

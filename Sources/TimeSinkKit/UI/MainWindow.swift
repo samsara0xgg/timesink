@@ -15,6 +15,14 @@ struct MainWindowView: View {
     /// back to a page shows it as it was instead of building it again.
     @State private var openedPages: Set<SidebarItem> = []
 
+    /// First open: 1280x820, or 85% of the screen it opens on when that is
+    /// smaller. A size the person sets later is restored by the system.
+    static var defaultSize: CGSize {
+        let visible = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame.size ?? CGSize(width: 1280, height: 820)
+        return CGSize(width: max(Design.windowMinSize.width, min(1280, visible.width * 0.85)),
+                      height: max(Design.windowMinSize.height, min(820, visible.height * 0.85)))
+    }
+
     init(model: AppModel, activities: ActivitiesModel? = nil) {
         self.model = model
         _activities = State(initialValue: activities ?? ActivitiesModel())
@@ -38,7 +46,7 @@ struct MainWindowView: View {
         .environment(\.shellProvidesBackground, true)
         .environment(\.locale, model.displayLocale)
         .environment(\.calendar, model.displayCalendar)
-        .frame(minWidth: 800, minHeight: 580)
+        .frame(minWidth: Design.windowMinSize.width, minHeight: Design.windowMinSize.height)
         .alert("无法开始专注", isPresented: Binding(get: { focusError != nil }, set: { if !$0 { focusError = nil } })) {
             Button("好") { focusError = nil }
         } message: { Text(focusError ?? "") }
@@ -50,7 +58,7 @@ struct MainWindowView: View {
     }
 
     private var detailContent: some View {
-        ZStack {
+        PageStack {
             ForEach(SidebarItem.allCases, id: \.self) { page in
                 if openedPages.contains(page) || page == model.sidebarSelection {
                     KeptPage(model: model, page: page) { pageView(page) }
@@ -76,6 +84,26 @@ struct MainWindowView: View {
             StatsView(model: model, stats: stats)
         case .activities:
             ActivitiesView(model: model, activities: activities)
+        }
+    }
+}
+
+/// Stacks the pages at the size it is given and takes no size from them. A
+/// hidden page keeps the size it last had (`KeptPage`), and a plain ZStack
+/// would grow to the largest of them: shrink the window after visiting a page
+/// in a big one and the whole root stayed that wide, centred and clipped.
+private struct PageStack: Layout {
+    static let maxContentWidth: CGFloat = 1440
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        CGSize(width: proposal.width ?? Design.windowMinSize.width, height: proposal.height ?? Design.windowMinSize.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        // In full screen the content stops growing and sits centred on the floor.
+        let width = min(bounds.width, Self.maxContentWidth)
+        for subview in subviews {
+            subview.place(at: CGPoint(x: bounds.midX, y: bounds.minY), anchor: .top, proposal: ProposedViewSize(width: width, height: bounds.height))
         }
     }
 }
