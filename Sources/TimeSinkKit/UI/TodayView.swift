@@ -77,10 +77,7 @@ struct TodayView: View {
                 projectsCard(plan).frame(width: 392)
                 categoriesCard(plan).frame(width: 400)
                 todosCard(plan).frame(maxWidth: .infinity)
-            }
-            // What is left under the first two rows, never less than 372: a
-            // card's long list scrolls inside it instead of stretching the page.
-            .frame(height: max(372, height - 8 - 92 - 232 - 3 * Design.Space.lg - 24))
+            }.fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -92,8 +89,8 @@ struct TodayView: View {
             }.frame(maxWidth: .infinity, alignment: .leading)
             timeline(plan).frame(height: 232)
             Grid(horizontalSpacing: Design.Space.lg, verticalSpacing: Design.Space.lg) {
-                GridRow { nowCard(plan).frame(height: 232); projectsCard(plan).frame(height: 300) }
-                GridRow { categoriesCard(plan).frame(height: 372); todosCard(plan).frame(height: 372) }
+                GridRow { nowCard(plan).frame(height: 232); projectsCard(plan) }
+                GridRow { categoriesCard(plan); todosCard(plan) }
             }
         }
     }
@@ -375,45 +372,35 @@ private struct TodayProjectsCard: View {
     @State private var expanded = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private static let rowHeight: CGFloat = 80
-    private static let chrome: CGFloat = 18 * 2 + 28 + 8 + 30
-    private static let linkHeight: CGFloat = 30
+    private static let collapsedRows = 3
 
     var body: some View {
-        GeometryReader { proxy in
-            // As many rows as fit under the heading and above the note; the
-            // rest sit behind "还有 N 个项目" rather than being cut off.
-            let all = plan.projects
-            let room = proxy.size.height - Self.chrome
-            let overflow = all.count > max(1, Int(room / Self.rowHeight))
-            let fit = max(1, Int((room - (overflow ? Self.linkHeight : 0)) / Self.rowHeight))
-            let shown = expanded || !overflow ? all : Array(all.prefix(fit))
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text("项目").cardTitle()
-                    Text("点一下只看它").font(.system(size: 12)).foregroundStyle(Design.ink3)
-                }.padding(.bottom, 6)
-                if expanded {
-                    ScrollView { rows(shown) }.scrollIndicators(.never)
-                } else {
-                    rows(shown)
-                }
-                if overflow {
-                    Button {
-                        withAnimation(Design.motion(Design.settle, reduced: reduceMotion)) { expanded.toggle() }
-                    } label: {
-                        Group {
-                            if expanded { Text("收起") } else { Text("还有 \(all.count - shown.count) 个项目 ›") }
-                        }.font(.system(size: 12)).foregroundStyle(Design.link).padding(.vertical, 6)
-                    }.buttonStyle(.plain)
-                }
-                Spacer(minLength: 0)
-                Text("项目从窗口标题里的仓库名认出来；认不出的按前后时间推测，会标出来让你确认。")
-                    .font(.system(size: 11)).foregroundStyle(Design.ink3).fixedSize(horizontal: false, vertical: true).padding(.top, 8)
+        // Three rows and a link to the rest; the card sizes to its content
+        // and row 3 takes the height of its tallest card.
+        // Time with no named project stays under its category, not here.
+        let all = plan.projects.filter { $0.name != nil }
+        let overflow = all.count > Self.collapsedRows
+        let shown = expanded || !overflow ? all : Array(all.prefix(Self.collapsedRows))
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text("项目").cardTitle()
+                Text("点一下只看它").font(.system(size: 12)).foregroundStyle(Design.ink3)
+            }.padding(.bottom, 6)
+            rows(shown)
+            if overflow {
+                Button {
+                    withAnimation(Design.motion(Design.settle, reduced: reduceMotion)) { expanded.toggle() }
+                } label: {
+                    Group {
+                        if expanded { Text("收起") } else { Text("还有 \(all.count - shown.count) 个项目 ›") }
+                    }.font(.system(size: 12)).foregroundStyle(Design.link).padding(.vertical, 6)
+                }.buttonStyle(.plain)
             }
-            .padding(.horizontal, Design.Space.xl).padding(.vertical, 18)
-            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+            Text("项目从窗口标题里的仓库名认出来；认不出的按前后时间推测，会标出来让你确认。")
+                .font(.system(size: 11)).foregroundStyle(Design.ink3).fixedSize(horizontal: false, vertical: true).padding(.top, 8)
         }
+        .padding(.horizontal, Design.Space.xl).padding(.vertical, 18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .designCard()
     }
 
@@ -567,9 +554,8 @@ private struct TodayTodosCard: View {
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ForEach(plan.todos) { todo in row(todo).transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .leading))) }
-                Spacer(minLength: 0)
                 Text("补记画成虚线框，和电脑上的时间分开统计，不计入评分。")
-                    .font(.system(size: 11)).foregroundStyle(Design.ink3).fixedSize(horizontal: false, vertical: true)
+                    .font(.system(size: 11)).foregroundStyle(Design.ink3).fixedSize(horizontal: false, vertical: true).padding(.top, 8)
             }
         }
         .animation(reduceMotion ? nil : Design.settle, value: plan.todos.map(\.id))
