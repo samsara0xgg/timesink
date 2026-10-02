@@ -7,6 +7,7 @@ struct JevSettingsPane: View {
     let model: AppModel
 
     @State private var enabled = false
+    @State private var screenText = false
     @State private var endpoint = ""
     @State private var cap = ""
     @State private var apiKeyInput = ""
@@ -24,11 +25,17 @@ struct JevSettingsPane: View {
                     if !hasStoredKey && !enabled {
                         Text("先在下面保存 API 密钥，才能开启。").font(.caption).foregroundStyle(.orange)
                     }
-                    Text("开启后，每段使用时间会向下面的服务发送这些内容。绝不发送屏幕截图或截图识别出的文字。")
+                    Text("开启后，每段使用时间会向下面的服务发送这些内容。不会发送屏幕截图本身。")
                         .font(.caption).foregroundStyle(.secondary)
                     ForEach(JevService.sentFields, id: \.self) { Text("· \($0)").font(.caption).foregroundStyle(.secondary) }
                 }
                 if enabled, let line = statusLine { Text(line).font(.caption).foregroundStyle(.secondary) }
+            }
+            Section {
+                Toggle("同时发送屏幕截图里的文字", isOn: $screenText)
+                    .onChange(of: screenText) { _, newValue in model.jev?.setScreenText(newValue); refreshStatus() }
+                Text("开启后，会把截图识别出的文字（先去掉邮箱和 6 位以上的数字，最多 1200 字）一并发送到下面的服务，用于判断拿不准的内容和没有标题的 AI 应用画面。需要先开启上面的开关才会生效；默认关闭。")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("服务") {
                 TextField("地址", text: $endpoint)
@@ -64,6 +71,7 @@ struct JevSettingsPane: View {
         .formStyle(.grouped)
         .onAppear {
             enabled = model.settings.jevEnabled
+            screenText = model.settings.jevScreenText
             endpoint = model.settings.jevEndpoint
             cap = Self.format(model.settings.jevMonthlyCap)
             hasStoredKey = model.jev?.hasKey ?? false

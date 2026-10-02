@@ -9943,12 +9943,52 @@
         }
       }
     },
-    "开启后，每段使用时间会向下面的服务发送这些内容。绝不发送屏幕截图或截图识别出的文字。": {
+    "开启后，每段使用时间会向下面的服务发送这些内容。不会发送屏幕截图本身。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "When on, each stretch of use sends the fields below to the service. Screenshots and text recognized from them are never sent."
+            "value": "When on, each stretch of use sends the fields below to the service. The screenshot itself is never sent."
+          }
+        }
+      }
+    },
+    "Jev 判断（含截图文字）· 概率 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jev verdict (with screenshot text) · probability %@"
+          }
+        }
+      }
+    },
+    "内置规则 · 自己部署的项目": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Built-in rule · your own deployed projects"
+          }
+        }
+      }
+    },
+    "同时发送屏幕截图里的文字": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Also send text from screenshots"
+          }
+        }
+      }
+    },
+    "开启后，会把截图识别出的文字（先去掉邮箱和 6 位以上的数字，最多 1200 字）一并发送到下面的服务，用于判断拿不准的内容和没有标题的 AI 应用画面。需要先开启上面的开关才会生效；默认关闭。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When on, text recognized from screenshots (emails and numbers of 6 or more digits removed first, at most 1,200 characters) is sent to the service below, to judge unsure items and AI app screens without a title. It only takes effect while the switch above is on; off by default."
           }
         }
       }
