@@ -173,7 +173,7 @@ public struct DateRangeSelection: Equatable, Sendable {
             return String(localized: "\(Self.monthDay(anchor, calendar: cal)) 那周")
         case .month:
             if cal.isDate(anchor, equalTo: now, toGranularity: .month) { return String(localized: "本月") }
-            return anchor.formatted(.dateTime.month())
+            return anchor.formatted(.dateTime.month().locale(Locale(identifier: Locale.preferredLanguages.first ?? "en")))
         case .custom:
             guard let start = customStart, let end = customEnd else { return String(localized: "自定义") }
             return "\(Self.monthDay(start, calendar: cal)) – \(Self.monthDay(end, calendar: cal))"
@@ -227,6 +227,7 @@ public struct DateRangeSelection: Equatable, Sendable {
     private static func monthDay(_ date: Date, calendar: Calendar) -> String {
         var style = Date.FormatStyle.dateTime.month().day()
         style.calendar = calendar
+        style.locale = Locale(identifier: Locale.preferredLanguages.first ?? "en")
         return date.formatted(style)
     }
 }
