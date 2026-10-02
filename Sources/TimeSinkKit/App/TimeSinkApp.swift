@@ -249,6 +249,7 @@ public struct TimeSinkApp: App {
                 }
         }
 
+        .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1200, height: 820)
         .commands {
             CommandMenu("导航") {

@@ -9,7 +9,7 @@ import WebKit
 /// so windows draw in their inactive state; nothing goes in the menu bar.
 @MainActor enum ScreenCapture {
     enum Host {
-        /// A titled window with a unified toolbar, like the app's own.
+        /// A window with a hidden title bar, like the app's own.
         case window
         /// A borderless panel on glass: the menu bar popover's window.
         case glass(CGFloat)
@@ -49,6 +49,7 @@ import WebKit
                               backing: .buffered, defer: false)
             window.contentViewController = controller
             window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
             window.toolbarStyle = .unified
         case .glass(let radius):
             window = NSPanel(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless, .nonactivatingPanel],

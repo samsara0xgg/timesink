@@ -31,17 +31,9 @@ enum AppWindow {
 extension AppWindow {
     /// Main-window pages stay alive while hidden, so a list or field on the
     /// page just left could keep the keyboard. Hands it back to the window,
-    /// as removing the page used to; focus in the sidebar stays put.
+    /// as removing the page used to.
     static func releaseHiddenPageFocus() {
-        guard let window = mainWindow, let responder = window.firstResponder as? NSView else { return }
-        // The outermost split view is the sidebar/detail split.
-        var split: NSSplitView?
-        var view: NSView? = responder
-        while let current = view {
-            if let found = current as? NSSplitView { split = found }
-            view = current.superview
-        }
-        guard let sidebar = split?.arrangedSubviews.first, !responder.isDescendant(of: sidebar) else { return }
+        guard let window = mainWindow, window.firstResponder is NSView, window.firstResponder !== window.contentView else { return }
         window.makeFirstResponder(nil)
     }
 }

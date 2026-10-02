@@ -125,25 +125,34 @@ struct ActivitiesView: View {
             await activities.loadSessions(model: model)
         }
         .pageSearchable(text: searchBinding, prompt: "搜索应用、网址、标题")
-        .pageToolbar {
-            ToolbarItem {
-                Button { showsInspector.toggle() } label: { Image(systemName: "sidebar.right") }
-                    .help("显示活动检查器")
+        .pageBar {
+            Button { showsInspector.toggle() } label: {
+                Image(systemName: "sidebar.right").font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(showsInspector ? Design.accentInk : Design.iconInk)
+                    .frame(width: Design.controlHeight, height: Design.controlHeight)
+                    .glassControl(interactive: true).contentShape(Circle())
             }
-            ToolbarItem {
-                Menu {
-                    Button("所有分类", systemImage: "square.grid.2x2") { model.activityFilter = nil }
-                    Divider()
-                    ForEach(model.resolver.categoriesByID.values.sorted { $0.sortOrder < $1.sortOrder }, id: \.id) { category in
-                        // Plain items: a coloured icon per category cost ~27 ms on
-                        // every switch to this page (the toolbar rebuilds them).
-                        Button(category.name) { model.activityFilter = category.id }
-                    }
-                } label: {
-                    Label(model.activityFilter.flatMap { model.resolver.categoriesByID[$0]?.name } ?? String(localized: "所有分类"), systemImage: "line.3.horizontal.decrease")
+            .buttonStyle(.plain).help("显示活动检查器").accessibilityLabel("显示活动检查器")
+            Menu {
+                Button("所有分类", systemImage: "square.grid.2x2") { model.activityFilter = nil }
+                Divider()
+                ForEach(model.resolver.categoriesByID.values.sorted { $0.sortOrder < $1.sortOrder }, id: \.id) { category in
+                    // Plain items: a coloured icon per category cost ~27 ms on
+                    // every switch to this page (the menu rebuilds them).
+                    Button(category.name) { model.activityFilter = category.id }
                 }
-                .help("按分类筛选活动")
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "line.3.horizontal.decrease").font(.system(size: 12, weight: .semibold))
+                    Text(model.activityFilter.flatMap { model.resolver.categoriesByID[$0]?.name } ?? String(localized: "所有分类"))
+                        .font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                }
+                .foregroundStyle(model.activityFilter == nil ? Design.ink : Design.accentInk)
+                .padding(.horizontal, 14).frame(height: Design.controlHeight)
+                .glassControl(interactive: true).contentShape(Capsule())
             }
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+            .help("按分类筛选活动")
         }
         .task {
             await Task.yield()
@@ -154,6 +163,7 @@ struct ActivitiesView: View {
             activities.recompute(model: model, events: calendarEvents)
         }
         .onChange(of: activities.selectedActivity) { _, value in if value != nil { showsInspector = true } }
+        .onChange(of: activities.selectedSession) { _, value in if value != nil { showsInspector = true } }
         .onChange(of: model.activitySearch) { _, _ in scheduleSearchRecompute() }
         .onDisappear {
             pendingSearch?.cancel()
@@ -601,6 +611,9 @@ final class ActivitiesModel {
     var sessions: [WorkSession] = []
     /// The session the inspector shows, by start; exclusive with a block.
     var selectedSession: Date?
+    /// A session another page asked to open (Today's 在活动里打开): selected
+    /// as soon as the day's sessions have been cut.
+    var pendingSession: Date?
 
     /// C3 calendar overlay -- populated only for single-day-ish ranges (see
     /// `showsTimeline`), from the `events` the caller fetched via
@@ -688,6 +701,10 @@ final class ActivitiesModel {
         guard !Task.isCancelled, model.range.interval == range.interval else { return }
         if value != sessions { sessions = value }
         if let selectedSession, !value.contains(where: { $0.start == selectedSession }) { self.selectedSession = nil }
+        if let pending = pendingSession, value.contains(where: { $0.start == pending }) {
+            selectedSession = pending
+            pendingSession = nil
+        }
         model.requestNames(for: value)
     }
 

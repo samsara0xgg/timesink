@@ -57,14 +57,14 @@ extension View {
         modifier(PageVisibilityChange(action: action))
     }
 
-    /// `searchable` whose field leaves the window toolbar with its page.
+    /// The search field in the window's bar, for as long as this page is shown.
     func pageSearchable(text: Binding<String>, prompt: LocalizedStringKey, isEnabled: Bool = true) -> some View {
         modifier(PageSearch(text: text, prompt: prompt, isEnabled: isEnabled))
     }
 
-    /// Toolbar items that leave the window toolbar with their page.
-    func pageToolbar<Items: ToolbarContent>(@ToolbarContentBuilder _ items: () -> Items) -> some View {
-        modifier(PageToolbar(items: items()))
+    /// Buttons in the window's bar, for as long as this page is shown.
+    func pageBar<Actions: View>(@ViewBuilder _ actions: () -> Actions) -> some View {
+        modifier(PageBar(actions: AnyView(actions())))
     }
 }
 
@@ -116,16 +116,16 @@ private struct PageSearch: ViewModifier {
     @PageShown private var isActive
 
     func body(content: Content) -> some View {
-        // On a sibling, so hiding the field does not rebuild the page.
-        content.background { if isActive && isEnabled { Color.clear.searchable(text: text, prompt: prompt) } }
+        content.preference(key: PageBarKey.self,
+                           value: PageBarItems(search: isActive && isEnabled ? ShellSearch(text: text, prompt: prompt) : nil))
     }
 }
 
-private struct PageToolbar<Items: ToolbarContent>: ViewModifier {
-    let items: Items
+private struct PageBar: ViewModifier {
+    let actions: AnyView
     @PageShown private var isActive
 
     func body(content: Content) -> some View {
-        content.toolbar { if isActive { items } }
+        content.preference(key: PageBarKey.self, value: PageBarItems(actions: isActive ? actions : nil))
     }
 }
