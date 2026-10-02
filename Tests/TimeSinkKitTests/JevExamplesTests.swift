@@ -130,4 +130,37 @@ final class JevExamplesTests: XCTestCase {
         let q = try XCTUnwrap((json["questions"] as? [String: Any])?["category"] as? [String: Any])
         XCTAssertEqual(q["instructions"] as? String, JevPrompt.instructionsWithScreenText + JevPrompt.examplesNote)
     }
+
+    // MARK: - Pinned model
+
+    func testModelDefaultsToThePinnedIdAndIsOnlyChangedByHand() {
+        XCTAssertEqual(settings.jevModel, "typesafe/jev-1.13")
+        settings.setJevModel("  other/model-2 ")
+        XCTAssertEqual(settings.jevModel, "other/model-2")
+        settings.setJevModel("  ")
+        XCTAssertEqual(settings.jevModel, "typesafe/jev-1.13", "empty falls back to the pinned default")
+    }
+
+    func testRequestsUseTheSettingAndVerdictsRecordIt() async throws {
+        _ = try insert("app.a", title: "A")
+        let bare = try insert("com.openai.codex", title: "Codex")
+        let c = try await db.write { d -> Capture in
+            var c = Capture(at: Date().addingTimeInterval(-60), lastSeenAt: Date(), appBundleID: bare.appBundleID, appName: "App", windowID: 1,
+                            title: bare.title, spanID: bare.id, text: String(repeating: "chat screen ", count: 10), imagePath: nil)
+            try c.insert(d)
+            return c
+        }
+        _ = c
+        settings.setJevModel("other/model-2")
+        let transport = StubJevTransport { _ in ("news", ["news": 0.9], 0.0001) }
+        _ = await worker(transport, screenText: true).run(since: longAgo)
+        let models = try bodies(transport).compactMap { $0["model"] as? String }
+        XCTAssertFalse(models.isEmpty)
+        XCTAssertTrue(models.allSatisfy { $0 == "other/model-2" })
+        XCTAssertEqual(try store.verdicts().filter { $0.source == "jev" }.map(\.model), ["other/model-2"])
+        let captureModels = try await db.read { try String.fetchAll($0, sql: "SELECT model FROM jevCaptureVerdict") }
+        XCTAssertEqual(captureModels, ["other/model-2"])
+        try store.setUserVerdict(VerdictKey(appBundleID: "u", domain: nil, title: "t", document: nil), categoryID: "news")
+        XCTAssertEqual(try store.verdicts().first { $0.isUser }?.model, "")
+    }
 }

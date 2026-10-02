@@ -130,14 +130,17 @@ public enum JevPrompt {
 
 public struct JevClient: Sendable {
     public static let defaultEndpoint = "https://openrouter.ai/api/alpha/decisions"
-    public static let model = "typesafe/jev-1.13"
+    /// The model that is asked unless the owner typed another; never upgraded by an app update.
+    public static let defaultModel = "typesafe/jev-1.13"
     static let fieldLimit = 300
 
     let endpoint: URL
     let apiKey: String
     let transport: any JevTransport
+    let model: String
 
-    public init(endpoint: URL, apiKey: String, transport: any JevTransport = URLSessionJevTransport()) {
+    public init(endpoint: URL, apiKey: String, model: String = JevClient.defaultModel, transport: any JevTransport = URLSessionJevTransport()) {
+        self.model = model
         self.endpoint = endpoint
         self.apiKey = apiKey
         self.transport = transport
@@ -145,7 +148,7 @@ public struct JevClient: Sendable {
 
     /// Hand-assembled so the criteria keep their order, which a Foundation
     /// dictionary would not.
-    static func body(state: JevState, criteria: [(id: String, text: String)]) -> Data {
+    static func body(state: JevState, criteria: [(id: String, text: String)], model: String = JevClient.defaultModel) -> Data {
         func q(_ s: String) -> String { (try? String(data: JSONEncoder().encode(s), encoding: .utf8)) ?? "\"\"" }
         func cut(_ s: String) -> String { String(s.prefix(fieldLimit)) }
         let list = criteria.map { "\(q($0.id)):\(q($0.text))" }.joined(separator: ",")
@@ -175,7 +178,7 @@ public struct JevClient: Sendable {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("TimeSink", forHTTPHeaderField: "X-OpenRouter-Title")
-        request.httpBody = Self.body(state: state, criteria: criteria)
+        request.httpBody = Self.body(state: state, criteria: criteria, model: model)
         let (data, status) = try await transport.post(request)
         guard (200..<300).contains(status) else { throw JevError.http(status) }
         return try Self.parse(data)

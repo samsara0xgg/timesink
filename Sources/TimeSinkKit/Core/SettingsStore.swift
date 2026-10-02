@@ -8,6 +8,7 @@ public final class SettingsStore: Sendable {
     private static let idleThresholdKey = "idleThreshold"
     private static let jevEnabledKey = "jevEnabled"
     private static let jevEndpointKey = "jevEndpoint"
+    private static let jevModelKey = "jevModel"
     private static let jevScreenTextKey = "jevScreenText"
     private static let jevMonthlyCapKey = "jevMonthlyCapUSD"
     private static let budgetWarnPercentKey = "budgetWarnPercent"
@@ -106,6 +107,16 @@ public final class SettingsStore: Sendable {
 
     public func setJevEndpoint(_ v: String) {
         set(Self.jevEndpointKey, v)
+    }
+
+    /// The pinned Jev model id; changed only by hand.
+    public var jevModel: String {
+        let v = self.get(Self.jevModelKey)?.trimmingCharacters(in: .whitespaces) ?? ""
+        return v.isEmpty ? JevClient.defaultModel : v
+    }
+
+    public func setJevModel(_ v: String) {
+        set(Self.jevModelKey, v.trimmingCharacters(in: .whitespaces))
     }
 
     /// What Jev may cost in a calendar month, in USD; its worker stops there.

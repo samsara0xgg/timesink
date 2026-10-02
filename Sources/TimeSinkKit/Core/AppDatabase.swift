@@ -417,6 +417,14 @@ public enum AppDatabase {
                 t.column("at", .datetime).notNull()
             }
         }
+        migrator.registerMigration("v17") { db in
+            // The model that gave each automatic verdict; '' for the user's own.
+            for table in ["jevVerdict", "jevCaptureVerdict"] {
+                try db.alter(table: table) { t in t.add(column: "model", .text).notNull().defaults(to: "") }
+            }
+            try db.execute(sql: "UPDATE jevVerdict SET model = 'typesafe/jev-1.13' WHERE source = 'jev'")
+            try db.execute(sql: "UPDATE jevCaptureVerdict SET model = 'typesafe/jev-1.13'")
+        }
         return migrator
     }
 }

@@ -39,6 +39,8 @@ public struct JevVerdict: Codable, Equatable, Sendable, FetchableRecord, Persist
     public var source: String
     /// 0: not asked with screen text, 1: this verdict used it, 2: asked again (examples, with or without screen text), the screen text was not used.
     public var screenText: Int = 0
+    /// The model id that gave an automatic verdict.
+    public var model: String = ""
 
     public var key: VerdictKey { VerdictKey(appBundleID: appBundleID, domain: domain, title: title, document: document) }
     public var isUser: Bool { source == "user" }
@@ -97,15 +99,15 @@ extension CategoryStore {
     func saveVerdict(_ v: JevVerdict) throws {
         try writer.write { db in
             try db.execute(sql: """
-                INSERT INTO jevVerdict (appBundleID, domain, title, document, categoryID, prob, runnerUp, runnerUpProb, promptVersion, at, source, screenText)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'jev', ?)
+                INSERT INTO jevVerdict (appBundleID, domain, title, document, categoryID, prob, runnerUp, runnerUpProb, promptVersion, at, source, screenText, model)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'jev', ?, ?)
                 ON CONFLICT(appBundleID, domain, title, document) DO UPDATE SET
                     categoryID = excluded.categoryID, prob = excluded.prob, runnerUp = excluded.runnerUp,
                     runnerUpProb = excluded.runnerUpProb, promptVersion = excluded.promptVersion, at = excluded.at,
-                    screenText = excluded.screenText
+                    screenText = excluded.screenText, model = excluded.model
                 WHERE jevVerdict.source = 'jev'
                 """, arguments: [v.appBundleID, v.domain, v.title, v.document, v.categoryID, v.prob, v.runnerUp,
-                                 v.runnerUpProb, v.promptVersion, v.at, v.screenText])
+                                 v.runnerUpProb, v.promptVersion, v.at, v.screenText, v.model])
         }
     }
 
@@ -165,12 +167,12 @@ extension CategoryStore {
 
     // MARK: - Per-screen verdicts (bare-title AI apps)
 
-    func saveCaptureVerdict(key: String, categoryID: String, prob: Double, runnerUp: String, runnerUpProb: Double, promptVersion: String) throws {
+    func saveCaptureVerdict(key: String, categoryID: String, prob: Double, runnerUp: String, runnerUpProb: Double, promptVersion: String, model: String = "") throws {
         try writer.write { db in
             try db.execute(sql: """
-                INSERT OR REPLACE INTO jevCaptureVerdict (textKey, categoryID, prob, runnerUp, runnerUpProb, promptVersion, at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, arguments: [key, categoryID, prob, runnerUp, runnerUpProb, promptVersion, Date()])
+                INSERT OR REPLACE INTO jevCaptureVerdict (textKey, categoryID, prob, runnerUp, runnerUpProb, promptVersion, at, model)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, arguments: [key, categoryID, prob, runnerUp, runnerUpProb, promptVersion, Date(), model])
         }
     }
 

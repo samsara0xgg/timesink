@@ -1,14 +1,15 @@
 import SwiftUI
 
 /// Jev classification, default off. The API key never touches the database;
-/// it lives in the Keychain under `JevService.apiKeyAccount`. Endpoint and
-/// monthly cap are ordinary settings.
+/// it lives in the Keychain under `JevService.apiKeyAccount`. Endpoint, pinned
+/// model id and monthly cap are ordinary settings.
 struct JevSettingsPane: View {
     let model: AppModel
 
     @State private var enabled = false
     @State private var screenText = false
     @State private var endpoint = ""
+    @State private var jevModel = ""
     @State private var cap = ""
     @State private var apiKeyInput = ""
     @State private var hasStoredKey = false
@@ -39,6 +40,9 @@ struct JevSettingsPane: View {
             }
             Section("服务") {
                 TextField("地址", text: $endpoint)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit(commitFields)
+                TextField("模型", text: $jevModel)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(commitFields)
                 HStack {
@@ -73,6 +77,7 @@ struct JevSettingsPane: View {
             enabled = model.settings.jevEnabled
             screenText = model.settings.jevScreenText
             endpoint = model.settings.jevEndpoint
+            jevModel = model.settings.jevModel
             cap = Self.format(model.settings.jevMonthlyCap)
             hasStoredKey = model.jev?.hasKey ?? false
             refreshStatus()
@@ -101,6 +106,8 @@ struct JevSettingsPane: View {
 
     private func commitFields() {
         if endpoint != model.settings.jevEndpoint { model.settings.setJevEndpoint(endpoint) }
+        if jevModel != model.settings.jevModel { model.settings.setJevModel(jevModel) }
+        jevModel = model.settings.jevModel
         if let value = Self.parseCap(cap), value != model.settings.jevMonthlyCap {
             model.settings.setJevMonthlyCap(value)
             model.jev?.nudge()

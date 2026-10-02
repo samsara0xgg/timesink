@@ -55,7 +55,8 @@ public actor JevWorker {
             let criteria = JevPrompt.criteria(categories)
             let version = JevPrompt.version(categories)
             let ids = Set(criteria.map(\.id))
-            let client = JevClient(endpoint: endpoint, apiKey: key, transport: transport)
+            let model = settings.jevModel
+            let client = JevClient(endpoint: endpoint, apiKey: key, model: settings.jevModel, transport: transport)
             let settings = settings, categoryStore = categoryStore
 
             func combo(_ c: JevCombo) -> Job {
@@ -64,7 +65,7 @@ public actor JevWorker {
             }
             var halted = await Self.pass(try categoryStore.pendingCombos(since: since, staleSince: staleSince, promptVersion: version).map(combo), client: client,
                                          criteria: criteria, settings: settings, maxConcurrent: maxConcurrent, into: &result) { job, answer in
-                guard case .combo(let c) = job.target, let v = Self.verdict(for: c, answer: answer, ids: ids, version: version),
+                guard case .combo(let c) = job.target, let v = Self.verdict(for: c, answer: answer, ids: ids, version: version, model: model),
                       (try? categoryStore.saveVerdict(v)) != nil else { return false }
                 return true
             }
@@ -84,7 +85,7 @@ public actor JevWorker {
             halted = await Self.pass(retries, client: client, criteria: criteria, settings: settings, maxConcurrent: maxConcurrent, into: &result) { job, answer in
                 guard case .retry(let old) = job.target else { return false }
                 let combo = JevCombo(key: old.key, appName: "", url: "", seconds: 0)
-                if var v = Self.verdict(for: combo, answer: answer, ids: ids, version: version), v.prob > old.prob {
+                if var v = Self.verdict(for: combo, answer: answer, ids: ids, version: version, model: model), v.prob > old.prob {
                     v.screenText = job.state.screenText == nil ? 2 : 1
                     return (try? categoryStore.saveVerdict(v)) != nil
                 }
@@ -103,7 +104,7 @@ public actor JevWorker {
                 let runnerUp = ranked.first { $0.key != answer.choice }
                 return (try? categoryStore.saveCaptureVerdict(
                     key: c.key, categoryID: answer.choice, prob: answer.probabilities[answer.choice] ?? answer.confidence,
-                    runnerUp: runnerUp?.key ?? "", runnerUpProb: runnerUp?.value ?? 0, promptVersion: version)) != nil
+                    runnerUp: runnerUp?.key ?? "", runnerUpProb: runnerUp?.value ?? 0, promptVersion: version, model: model)) != nil
             }
         } catch {
             result.error = error.localizedDescription
@@ -165,7 +166,7 @@ public actor JevWorker {
     }
 
     /// nil when the answer names a category that was not offered.
-    static func verdict(for combo: JevCombo, answer: JevAnswer, ids: Set<String>, version: String) -> JevVerdict? {
+    static func verdict(for combo: JevCombo, answer: JevAnswer, ids: Set<String>, version: String, model: String = "") -> JevVerdict? {
         guard ids.contains(answer.choice) else { return nil }
         let ranked = answer.probabilities.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }
         let runnerUp = ranked.first { $0.key != answer.choice }
@@ -173,6 +174,6 @@ public actor JevWorker {
                           document: combo.key.document, categoryID: answer.choice,
                           prob: answer.probabilities[answer.choice] ?? answer.confidence,
                           runnerUp: runnerUp?.key ?? "", runnerUpProb: runnerUp?.value ?? 0,
-                          promptVersion: version, at: Date(), source: "jev")
+                          promptVersion: version, at: Date(), source: "jev", model: model)
     }
 }
