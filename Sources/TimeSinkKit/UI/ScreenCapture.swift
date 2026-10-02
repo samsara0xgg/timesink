@@ -30,20 +30,27 @@ import WebKit
         }
     }
 
+    /// `TIMESINK_PREVIEW_SHRINK=1`: each main-window shot is taken again
+    /// after the same window shrinks to its minimum, the way a person drags
+    /// it smaller (a fresh small window hides layout that sticks).
+    static let shrink = ProcessInfo.processInfo.environment["TIMESINK_PREVIEW_SHRINK"] != nil
+
     static func shoot<V: View>(_ name: String, _ view: V, size: NSSize, dark: Bool, host: Host = .window, settle: Int = 900) async throws {
         let file = output.appendingPathComponent("\(name)-\(dark ? "dark" : "light").png")
         if let only, !file.lastPathComponent.contains(only) { return }
         guard let screen = builtIn else { print("No built-in display: skipped \(file.lastPathComponent)"); return }
         NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        let resizable = shrink && name.hasPrefix("main-")
         let root = view
             .environment(\.locale, RefinedPreview.locale)
             .environment(\.colorScheme, dark ? .dark : .light)
-            .frame(width: size.width, height: size.height)
+            .frame(width: resizable ? nil : size.width, height: resizable ? nil : size.height)
         let window: NSWindow
         switch host {
         case .window:
             let controller = NSHostingController(rootView: root)
             controller.sceneBridgingOptions = [.toolbars, .title]
+            if resizable { controller.sizingOptions = [.minSize] }
             window = NSWindow(contentRect: NSRect(origin: .zero, size: size),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                               backing: .buffered, defer: false)
@@ -93,10 +100,20 @@ import WebKit
         defer { window.orderOut(nil) }
         try await Task.sleep(for: .milliseconds(settle))
         guard window.screen == screen else { print("Not on the built-in display: skipped \(file.lastPathComponent)"); return }
+        capture(window, to: file)
+        if resizable {
+            window.setContentSize(Design.windowMinSize)
+            window.setFrameTopLeftPoint(NSPoint(x: visible.minX + 20, y: visible.maxY - 20))
+            try await Task.sleep(for: .milliseconds(settle))
+            capture(window, to: output.appendingPathComponent("\(name)-shrunk-\(dark ? "dark" : "light").png"))
+        }
+    }
+
+    private static func capture(_ window: NSWindow, to file: URL) {
         let shot = Process()
         shot.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
         shot.arguments = ["-x", "-o", "-l", String(window.windowNumber), file.path]
-        try shot.run()
+        try? shot.run()
         shot.waitUntilExit()
         print("Captured \(file.lastPathComponent)")
     }
@@ -165,12 +182,15 @@ import WebKit
     static func runAll() async throws {
         if CommandLine.arguments.contains("--motion") { try await runMotion(); return }
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
-        let model = try RefinedPreview.fixture()
+        // `TIMESINK_PREVIEW_DB`: a copy of a real database instead of the
+        // sample day, for auditing real lengths. Never the live file.
+        let model = try ProcessInfo.processInfo.environment["TIMESINK_PREVIEW_DB"].map(PerfReview.realModel) ?? RefinedPreview.fixture()
         model.timeFormat = "24"
         let size = RefinedPreview.mainSize
         let calendar = Calendar.current
         let yesterday = calendar.date(byAdding: .day, value: -1, to: Date())!
-        for dark in [false, true] {
+        // The app is light only.
+        for dark in [false] {
             for (name, page) in [("today", SidebarItem.today), ("activities", .activities), ("trends", .stats),
                                  ("focus", .focus), ("organization", .organization)] {
                 model.sidebarSelection = page

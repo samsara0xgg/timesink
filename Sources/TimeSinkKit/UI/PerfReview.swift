@@ -332,7 +332,7 @@ import GRDB
         }
     }
 
-    private static func realModel(path: String) throws -> AppModel {
+    static func realModel(path: String) throws -> AppModel {
         var configuration = Configuration()
         configuration.readonly = true
         let db = try DatabasePool(path: path, configuration: configuration)
