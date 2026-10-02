@@ -101,8 +101,8 @@ struct SessionInspector: View {
                 HStack(spacing: 8) {
                     Text("✦").foregroundStyle(Design.accent)
                     Group {
-                        if sameProject { Text("和上一段是同一个项目，隔了 \(Format.duration(max(0, gap)))。") }
-                        else { Text("和上一段是同一类，只隔了 \(Format.duration(max(0, gap)))。") }
+                        if sameProject { gap < 60 ? Text("和上一段是同一个项目，紧接着。") : Text("和上一段是同一个项目，隔了 \(Format.duration(gap))。") }
+                        else { gap < 60 ? Text("和上一段是同一类，紧接着。") : Text("和上一段是同一类，只隔了 \(Format.duration(gap))。") }
                     }.font(.system(size: 12)).foregroundStyle(Design.ink2)
                     Spacer(minLength: 4)
                     Button("合并成一段") { withAnimation(Design.motion(Design.settle, reduced: reduceMotion)) { activities.join(session, model: model) } }

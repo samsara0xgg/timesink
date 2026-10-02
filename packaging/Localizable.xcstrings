@@ -9361,6 +9361,26 @@
         }
       }
     },
+    "和上一段是同一个项目，紧接着。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Same project as the previous one, right after it."
+          }
+        }
+      }
+    },
+    "和上一段是同一类，紧接着。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Same kind as the previous one, right after it."
+          }
+        }
+      }
+    },
     "合并成一段": {
       "localizations": {
         "en": {
