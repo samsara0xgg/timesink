@@ -27,7 +27,7 @@ struct SettingsView: View {
                 case .notifications: RefinedNotificationsPane(model: model)
                 case .focus: FocusSettingsPane(model: model)
                 case .account: AccountSettingsPane(model: model)
-                case .llm: LLMSettingsPane(model: model)
+                case .llm: JevSettingsPane(model: model)
                 default: RefinedGeneralPane(model: model)
                 }
             }
