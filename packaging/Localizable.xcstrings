@@ -9553,16 +9553,6 @@
         }
       }
     },
-    "开启后，每段使用时间会向服务发送下面这些内容，不发送屏幕文字和截图。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "When on, each stretch of usage sends the items below to the service. Screen text and screenshots are never sent."
-          }
-        }
-      }
-    },
     "找 coop/实习/工作：浏览职位、投递、写简历和求职信、测评、面试准备": {
       "localizations": {
         "en": {
@@ -9789,6 +9779,386 @@
           "stringUnit": {
             "state": "translated",
             "value": "Design mockups, visual and interaction proposals (including UI, motion and visuals for your own projects), writing documents and articles, organizing notes."
+          }
+        }
+      }
+    },
+    " · 其次 %@ %lld%%": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " · then %@ %lld%%"
+          }
+        }
+      }
+    },
+    "%lld 项 Jev 不太确定": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld items Jev is unsure about"
+          }
+        }
+      }
+    },
+    "Jev 倾向 %@ %lld%%": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jev leans %@ %lld%%"
+          }
+        }
+      }
+    },
+    "Jev 没有开启。在设置 · 智能 里开启后，不确定的判断会列在这里。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jev is off. Turn it on in Settings · Smart, and verdicts it is unsure about will be listed here."
+          }
+        }
+      }
+    },
+    "不删了": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep it"
+          }
+        }
+      }
+    },
+    "会打断工作": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can interrupt work"
+          }
+        }
+      }
+    },
+    "会打断工作（计入分心）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can interrupt work (counts as a distraction)"
+          }
+        }
+      }
+    },
+    "先在下面保存 API 密钥，才能开启。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save an API key below first to turn it on."
+          }
+        }
+      }
+    },
+    "删除…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete…"
+          }
+        }
+      }
+    },
+    "删除「%@」": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete “%@”"
+          }
+        }
+      }
+    },
+    "到上限后 Jev 暂停，已有的判断继续生效；下个月自动恢复。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "At the cap Jev pauses; existing verdicts keep working, and it resumes next month."
+          }
+        }
+      }
+    },
+    "合并到…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Merge into…"
+          }
+        }
+      }
+    },
+    "名称": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Name"
+          }
+        }
+      }
+    },
+    "它的内容改归到": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move its contents to"
+          }
+        }
+      }
+    },
+    "已判断 %lld 项，%lld 项排队": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld judged, %lld queued"
+          }
+        }
+      }
+    },
+    "已到本月上限，暂停判断 · 已判断 %lld 项，%lld 项排队": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Monthly cap reached, paused · %lld judged, %lld queued"
+          }
+        }
+      }
+    },
+    "开启后，每段使用时间会向下面的服务发送这些内容。绝不发送屏幕截图或截图识别出的文字。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When on, each stretch of use sends the fields below to the service. Screenshots and text recognized from them are never sent."
+          }
+        }
+      }
+    },
+    "待确认": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "To confirm"
+          }
+        }
+      }
+    },
+    "找不到这个分类。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That category was not found."
+          }
+        }
+      }
+    },
+    "改为并存为应用规则": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Change and save as app rule"
+          }
+        }
+      }
+    },
+    "改为并存为网站规则": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Change and save as site rule"
+          }
+        }
+      }
+    },
+    "改分类": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Change"
+          }
+        }
+      }
+    },
+    "新建": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New"
+          }
+        }
+      }
+    },
+    "新建分类": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New category"
+          }
+        }
+      }
+    },
+    "暂时无法读取。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not be read right now."
+          }
+        }
+      }
+    },
+    "最多 %lld 个分类，先合并或删除一个。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "At most %lld categories; merge or delete one first."
+          }
+        }
+      }
+    },
+    "未分类不能删除。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uncategorized cannot be deleted."
+          }
+        }
+      }
+    },
+    "每月上限（美元）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Monthly cap (USD)"
+          }
+        }
+      }
+    },
+    "没能保存：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not save: %@"
+          }
+        }
+      }
+    },
+    "现在没有需要确认的内容。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing needs confirming right now."
+          }
+        }
+      }
+    },
+    "编辑分类": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit category"
+          }
+        }
+      }
+    },
+    "规则、已确认的判断、限额和专注拦截都会一起移过去。这一步不能撤销。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rules, confirmed verdicts, limits and focus blocks move along with it. This cannot be undone."
+          }
+        }
+      }
+    },
+    "说明会和名称一起发给 Jev，写得越具体，判断越准。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The description is sent to Jev with the name; the more specific, the better the verdicts."
+          }
+        }
+      }
+    },
+    "说明：什么内容属于这里": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Description: what belongs here"
+          }
+        }
+      }
+    },
+    "请选择另一个分类。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pick a different category."
+          }
+        }
+      }
+    },
+    "费用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cost"
+          }
+        }
+      }
+    },
+    "连不上服务，稍后重试 · 已判断 %lld 项，%lld 项排队": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cannot reach the service, will retry · %lld judged, %lld queued"
+          }
+        }
+      }
+    },
+    "颜色": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Colour"
           }
         }
       }
