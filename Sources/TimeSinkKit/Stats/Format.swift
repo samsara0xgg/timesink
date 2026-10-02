@@ -18,6 +18,7 @@ public enum Format {
         let minutes = totalMinutes % 60
         if hours > 0, compact { return "\(hours):" + (minutes < 10 ? "0" : "") + "\(minutes)" }
         guard hours > 0 else { return zh ? "\(minutes) 分" : "\(minutes)m" } // l10n: data
+        if minutes == 0 { return zh ? "\(hours) 小时" : "\(hours)h" } // l10n: data
         return zh ? "\(hours) 小时 \(minutes) 分" : "\(hours)h \(minutes)m" // l10n: data
     }
 

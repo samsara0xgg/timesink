@@ -8859,16 +8859,6 @@
         }
       }
     },
-    "这周专注了 %@。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ of focus this week."
-          }
-        }
-      }
-    },
     "这周还没有专注。": {
       "localizations": {
         "en": {
@@ -9107,26 +9097,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Engagement"
-          }
-        }
-      }
-    },
-    "这周还没开过专注，平均每 %lld 分钟被打断一次。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No focus this week yet. You are pulled away every %lld minutes on average."
-          }
-        }
-      }
-    },
-    "这周专注了 %@，平均每 %lld 分钟被打断一次。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@ of focus this week. You are pulled away every %2$lld minutes on average."
           }
         }
       }
@@ -9509,6 +9479,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "span %@"
+          }
+        }
+      }
+    },
+    "这周专注 %@。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ of focus this week."
+          }
+        }
+      }
+    },
+    "这周没开过专注，每 %lld 分钟被打断一次。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No focus yet this week; interrupted every %lld min."
+          }
+        }
+      }
+    },
+    "这周专注 %@，每 %lld 分钟被打断一次。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ of focus this week; interrupted every %2$lld min."
           }
         }
       }

@@ -68,9 +68,9 @@ struct FocusWorkspaceView: View {
         let gap = interruptions.flatMap { $0.count > 0 ? max(1, Int(($0.recorded / Double($0.count) / 60).rounded())) : nil }
         let sentence: Text
         if let gap {
-            sentence = sessions.isEmpty ? Text("这周还没开过专注，平均每 \(gap) 分钟被打断一次。") : Text("这周专注了 \(time)，平均每 \(gap) 分钟被打断一次。")
+            sentence = sessions.isEmpty ? Text("这周没开过专注，每 \(gap) 分钟被打断一次。") : Text("这周专注 \(time)，每 \(gap) 分钟被打断一次。")
         } else {
-            sentence = sessions.isEmpty ? Text("这周还没有专注。") : Text("这周专注了 \(time)。")
+            sentence = sessions.isEmpty ? Text("这周还没有专注。") : Text("这周专注 \(time)。")
         }
         return PageHeaderRow(lead: Text("近 7 天"), sentence: sentence, stats: [
             StripStat(id: 0, label: "本周专注", value: TodayFmt.clock(total), note: String(localized: "\(sessions.count) 次"), color: Design.accentInk),
@@ -122,7 +122,6 @@ struct FocusWorkspaceView: View {
                             .font(.system(size: 12)).lineLimit(1).foregroundStyle(.secondary)
                     }.onChange(of: siteBlock) { _, value in model.settings.setFocusSiteBlockEnabled(value) }
                 }
-            Spacer(minLength: 0)
             VStack(alignment: .leading, spacing: 6) {
                 Text("切过去的隐藏应用会被挡回来，菜单栏可以临时放行 5 分钟。").font(.system(size: 11)).foregroundStyle(Design.ink3)
                 HStack(spacing: 10) {
@@ -134,7 +133,6 @@ struct FocusWorkspaceView: View {
                     Text("示例").font(.system(size: 11)).foregroundStyle(Design.ink3)
                 }
             }
-            Spacer(minLength: 0)
             Text("专注时菜单栏显示倒计时；结束后这一段会标成专注，在今天和活动里单独显示。").font(.system(size: 11)).foregroundStyle(Design.ink3)
         }
         .font(.system(size: 13))
@@ -168,7 +166,6 @@ struct FocusWorkspaceView: View {
                     budgetRow(budget)
                 }
                 if !suggestions.isEmpty { suggestionRows }
-                Spacer(minLength: 0)
                 Divider().padding(.top, 4)
                 Text("限额只发提醒，不拦截任何东西；拦截只在专注会话里发生。").font(.system(size: 11)).foregroundStyle(.secondary)
                     .padding(.top, 8)

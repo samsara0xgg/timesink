@@ -184,6 +184,18 @@ import WebKit
                 }
                 try await shoot("main-\(name)", MainWindowView(model: model, activities: activities), size: size, dark: dark,
                                 settle: page == .stats ? 3500 : 1200)
+                if page == .activities, activities.sessions.count > 1 {
+                    // A session that continues the one before it: the merge suggestion shows.
+                    let list = activities.sessions
+                    let same = list.indices.dropFirst().first { index in
+                        list[index].categoryID == list[index - 1].categoryID
+                            && list[index].start.timeIntervalSince(list[index - 1].end) < 15 * 60
+                    }
+                    if let same {
+                        activities.selectedSession = list[same].start
+                        try await shoot("main-activities-merge", MainWindowView(model: model, activities: activities), size: size, dark: dark, settle: 1200)
+                    }
+                }
             }
             model.sidebarSelection = .organization
             for (name, tab) in [("categories", SettingsTab.categories), ("rules", .rules)] {
