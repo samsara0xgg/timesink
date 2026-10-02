@@ -11,6 +11,13 @@ struct SessionInspector: View {
     @State private var newProject = false
     @State private var project = ""
     @FocusState private var focused: Bool
+    @State private var recatOpen = false
+    @State private var recatCategory = ""
+    @State private var recatScope: ReclassificationEdit.Scope = .segment
+    @State private var captures: [Capture] = []
+    @State private var selectedCapture: Capture?
+    @State private var error: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var label: SessionLabel? { model.sessionLabels[session.nameKey] }
     private var override: SessionNameRow? { model.sessionOverrides[session.signature] }
@@ -21,15 +28,161 @@ struct SessionInspector: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
+                actions
+                mergeSuggestion
                 projectRow
                 composition
+                categoryRow
+                screenReview
                 sources
-                splitMenu
             }
             .padding(16)
         }
         .scrollContentBackground(.hidden)
-        .onChange(of: session.start) { _, _ in editingName = false; newProject = false }
+        .onChange(of: session.start) { _, _ in editingName = false; newProject = false; recatOpen = false }
+        .task(id: session.start) { loadCaptures() }
+        .sheet(item: $selectedCapture) { CaptureReviewSheet(capture: $0) }
+    }
+
+    private var previous: WorkSession? { activities.sessions.last { $0.start < session.start } }
+
+    /// 拆开 and 并入上一段, as pills under the name.
+    private var actions: some View {
+        HStack(spacing: 8) {
+            splitMenu
+            Button { withAnimation(Design.motion(Design.settle, reduced: reduceMotion)) { activities.join(session, model: model) } } label: {
+                Label("并入上一段", systemImage: "arrow.up.to.line")
+            }
+            .buttonStyle(PillButtonStyle(height: 28)).disabled(previous == nil)
+        }
+    }
+
+    /// A previous session of the same project, or the same kind a few minutes
+    /// before, is probably the same piece of work.
+    @ViewBuilder private var mergeSuggestion: some View {
+        if let previous {
+            let gap = session.start.timeIntervalSince(previous.end)
+            let sameProject = model.sessionProject(session) != nil && model.sessionProject(session) == model.sessionProject(previous)
+            let sameKind = previous.categoryID == session.categoryID && gap < 15 * 60
+            if sameProject || sameKind {
+                HStack(spacing: 8) {
+                    Text("✦").foregroundStyle(Design.accent)
+                    Group {
+                        if sameProject { Text("和上一段是同一个项目，隔了 \(Format.chineseDuration(max(0, gap)))。") }
+                        else { Text("和上一段是同一类，只隔了 \(Format.chineseDuration(max(0, gap)))。") }
+                    }.font(.system(size: 12)).foregroundStyle(Design.ink2)
+                    Spacer(minLength: 4)
+                    Button("合并成一段") { withAnimation(Design.motion(Design.settle, reduced: reduceMotion)) { activities.join(session, model: model) } }
+                        .buttonStyle(PillButtonStyle(height: 26, tint: Design.accentInk))
+                }
+                .padding(10).background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Design.track))
+            }
+        }
+    }
+
+    /// The category the session mostly sat in, and a way to change it for
+    /// the session or for its main app.
+    private var categoryRow: some View {
+        let current = model.resolver.categoriesByID[session.categoryID]
+        let ordered = model.resolver.categoriesByID.values.sorted { $0.sortOrder < $1.sortOrder }
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("分类").font(.system(size: 12, weight: .medium))
+                Spacer()
+                CategoryChip(category: current)
+                if !recatOpen {
+                    Button("修改分类…") { recatCategory = session.categoryID; recatScope = .segment; recatOpen = true }
+                        .buttonStyle(PillButtonStyle(height: 24, font: .system(size: 11)))
+                }
+            }
+            if recatOpen {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: 6)], alignment: .leading, spacing: 6) {
+                    ForEach(ordered.filter { $0.id != "uncategorized" }, id: \.id) { category in
+                        Button { recatCategory = category.id } label: {
+                            HStack(spacing: 5) {
+                                Circle().fill(RefinedStyle.category(category.id, hex: category.colorHex)).frame(width: 7, height: 7)
+                                Text(category.name).lineLimit(1)
+                            }
+                            .font(.system(size: 12, weight: recatCategory == category.id ? .bold : .regular))
+                            .padding(.horizontal, 8).frame(height: 26)
+                            .background(Capsule().fill(recatCategory == category.id ? Design.pillTop : Design.track))
+                        }.buttonStyle(.plain)
+                    }
+                }
+                HStack(spacing: 6) {
+                    Text("应用到").font(.system(size: 12)).foregroundStyle(Design.ink3)
+                    Picker("应用范围", selection: $recatScope) {
+                        Text("这一段会话").tag(ReclassificationEdit.Scope.segment)
+                        Text("整个应用").tag(ReclassificationEdit.Scope.activity)
+                    }.pickerStyle(.segmented).labelsHidden()
+                }
+                if recatScope == .activity, let app = session.apps.first {
+                    Text("\(app.name) 的记录以后都归这一类。").font(.system(size: 11)).foregroundStyle(Design.ink3)
+                }
+                HStack {
+                    Spacer()
+                    Button("取消") { recatOpen = false }.buttonStyle(PillButtonStyle(height: 26))
+                    Button("重新归类") { applyRecat() }.buttonStyle(AccentButtonStyle(height: 26)).disabled(recatCategory == session.categoryID)
+                }
+                if let error { Text(error).font(.system(size: 11)).foregroundStyle(.red) }
+            }
+        }
+    }
+
+    private func applyRecat() {
+        let items = activities.displayedItems.filter { $0.span.start < session.end && $0.span.end > session.start }
+        do {
+            if recatScope == .segment {
+                for item in items where item.categoryID != recatCategory {
+                    _ = try model.categoryStore.reclassify(span: item.span, scope: .segment, categoryID: recatCategory)
+                }
+            } else if let top = session.apps.first, let item = items.first(where: { $0.span.appBundleID == top.bundleID }) {
+                _ = try model.categoryStore.reclassify(span: item.span, scope: .activity, categoryID: recatCategory)
+            }
+            model.resolver.refresh(); model.dataChanged()
+            error = nil
+            withAnimation(Design.motion(Design.settle, reduced: reduceMotion)) { recatOpen = false }
+        } catch { self.error = String(localized: "分类未保存，请重试。") }
+    }
+
+    private func loadCaptures() {
+        let all = (try? model.observationStore?.captures(overlapping: DateInterval(start: session.start, end: session.end))) ?? []
+        // Six, spread across the session.
+        let step = max(1, all.count / 6)
+        captures = all.enumerated().filter { $0.offset % step == 0 }.prefix(6).map(\.element)
+    }
+
+    @ViewBuilder private var screenReview: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("屏幕回看").font(.system(size: 12, weight: .medium))
+                Spacer()
+                Text("只在本机").font(.system(size: 11)).foregroundStyle(Design.ink3)
+            }
+            if captures.isEmpty {
+                Text("这段时间没有保存的画面。可在「记录与隐私」中查看采集状态。").font(.system(size: 11)).foregroundStyle(Design.ink3)
+            } else {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
+                    ForEach(captures, id: \.id) { capture in
+                        Button { selectedCapture = capture } label: {
+                            VStack(spacing: 3) {
+                                CaptureThumbnail(capture: capture, maxPixels: 240).frame(height: 50).clipped().clipShape(RoundedRectangle(cornerRadius: 6))
+                                Text(capture.at, format: .dateTime.hour().minute()).font(.system(size: 11)).monospacedDigit()
+                            }
+                        }.buttonStyle(.plain).help("打开本机截图")
+                    }
+                }
+            }
+        }
+    }
+
+    /// The category an app mostly sat in during this session.
+    private func category(of bundleID: String) -> Category? {
+        var seconds: [String: TimeInterval] = [:]
+        for item in activities.displayedItems where item.span.appBundleID == bundleID && item.span.start < session.end && item.span.end > session.start {
+            seconds[item.categoryID, default: 0] += item.span.duration
+        }
+        return seconds.max { $0.value < $1.value }.flatMap { model.resolver.categoriesByID[$0.key] }
     }
 
     private var header: some View {
@@ -106,9 +259,14 @@ struct SessionInspector: View {
 
     private var composition: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("由这些应用组成").font(.system(size: 12, weight: .medium))
-            let color = Color(hex: model.resolver.categoriesByID[session.categoryID]?.colorHex ?? "#8E8E93")
+            HStack {
+                Text("用到的应用").font(.system(size: 12, weight: .medium))
+                Spacer()
+                Text("颜色是应用的分类").font(.system(size: 11)).foregroundStyle(Design.ink3)
+            }
             ForEach(session.apps.prefix(6), id: \.bundleID) { app in
+                let appCategory = category(of: app.bundleID)
+                let color = RefinedStyle.category(appCategory?.id ?? session.categoryID, hex: appCategory?.colorHex ?? "#8E8E93")
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 8) {
                         Text(app.name).font(.system(size: 12)).lineLimit(1)
@@ -158,9 +316,9 @@ struct SessionInspector: View {
                     Button("从 \(model.time(block.start)) 起拆开 · \(block.label)") { model.splitSession(at: block.start) }
                 }
             } label: {
-                Label("拆分这个会话", systemImage: "scissors")
+                Label("拆开", systemImage: "scissors")
             }
-            .fixedSize()
+            .menuStyle(.button).buttonStyle(PillButtonStyle(height: 28)).menuIndicator(.hidden).fixedSize()
         }
     }
 }

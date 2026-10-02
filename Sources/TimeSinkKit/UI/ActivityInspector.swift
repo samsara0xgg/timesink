@@ -409,7 +409,7 @@ struct CaptureThumbnail: View {
     }
 }
 
-private struct CaptureReviewSheet: View {
+struct CaptureReviewSheet: View {
     let capture: Capture
     @Environment(\.dismiss) private var dismiss
     var body: some View {

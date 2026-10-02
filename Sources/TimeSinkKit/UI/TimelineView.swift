@@ -225,6 +225,12 @@ struct DayTimelineView: View {
                 ScrollView {
                     hourGrid
                 }
+                // Rows cut by the edge fade out instead of showing half a label.
+                .mask(VStack(spacing: 0) {
+                    LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: 16)
+                    Color.black
+                    LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: 16)
+                })
                 .focusable()
                 .focusEffectDisabled()
                 .onKeyPress(.upArrow) { move(-1); return .handled }

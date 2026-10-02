@@ -18,6 +18,8 @@ struct ActivitiesView: View {
     /// immediately, unrelated to this.
     @State private var pendingSearch: Task<Void, Never>?
     @State private var showsInspector = true
+    private enum Mode { case sessions, timeline }
+    @State private var mode: Mode = .sessions
     /// Whether the page is on screen; read by handlers only, never by `body`.
     @State private var isShown = true
 
@@ -80,13 +82,21 @@ struct ActivitiesView: View {
             let width = geometry.size.width - 2 * Design.Space.page
             VStack(alignment: .leading, spacing: Design.Space.lg) {
                 header(range, width: width)
+                let daily = ActivitiesModel.showsTimeline(range)
+                if daily && !activities.sessions.isEmpty {
+                    SessionRibbon(model: model, activities: activities) { showsInspector = true }.revealOnce(index: 2)
+                }
                 HStack(alignment: .top, spacing: Design.Space.lg) {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: Design.Space.md) {
                         timeFilterBanner
-                        calendarBand
-                        if ActivitiesModel.showsTimeline(range) {
-                            hintLine
-                            timelineCard(range)
+                        if daily {
+                            if mode == .sessions {
+                                SessionListCard(model: model, activities: activities, onSelect: { showsInspector = true }) { modeSwitch }
+                                    .revealOnce(index: 3)
+                            } else {
+                                hintLine
+                                timelineCard(range)
+                            }
                         } else {
                             ActivityListView(model: model, activities: activities, groups: activities.groups,
                                               matchCount: activities.matchCount, matchSeconds: activities.matchSeconds,
@@ -94,12 +104,9 @@ struct ActivitiesView: View {
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                                 .workspacePanel()
                         }
+                        calendarBand
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    if ActivitiesModel.showsTimeline(range) && width >= 1180 {
-                        SessionListCard(model: model, activities: activities) { showsInspector = true }
-                            .frame(width: 330).frame(maxHeight: .infinity, alignment: .top)
-                    }
                     if showsInspector {
                         Group {
                             if let session = activities.sessions.first(where: { $0.start == activities.selectedSession }) {
@@ -116,6 +123,18 @@ struct ActivitiesView: View {
                 }
             }
             .padding(.horizontal, Design.Space.page).padding(.top, 8).padding(.bottom, 16)
+            .overlay(alignment: .bottom) {
+                if activities.joinToast != nil {
+                    HStack(spacing: 12) {
+                        Text("已并入上一段").font(.system(size: 12, weight: .semibold))
+                        Button("撤销") { withAnimation(Design.motion(Design.settle, reduced: reduceMotion)) { activities.undoJoin(model: model) } }
+                            .buttonStyle(.plain).font(.system(size: 12, weight: .semibold)).foregroundStyle(Design.link)
+                    }
+                    .padding(.horizontal, 16).frame(height: 36).glassSurface(in: Capsule()).padding(.bottom, 24)
+                    .transition(reduceMotion ? .opacity : .scale(scale: 0.85, anchor: .bottom).combined(with: .opacity))
+                }
+            }
+            .animation(reduceMotion ? nil : Design.reveal, value: activities.joinToast)
         }
         .background(WorkspaceBackground())
         .background {
@@ -210,6 +229,22 @@ struct ActivitiesView: View {
         }
     }
 
+    /// 会话 | 时间线: the same day as a list of sessions or as the detailed timeline.
+    private var modeSwitch: some View {
+        HStack(spacing: 2) {
+            ForEach([Mode.sessions, .timeline], id: \.self) { item in
+                Button { withAnimation(Design.motion(Design.settle, reduced: reduceMotion)) { mode = item } } label: {
+                    Group { if item == .sessions { Text("会话") } else { Text("时间线") } }
+                        .font(.system(size: 12, weight: mode == item ? .bold : .regular))
+                        .foregroundStyle(mode == item ? Design.accentInk : Design.ink)
+                        .padding(.horizontal, 12).frame(height: 26)
+                        .background { if mode == item { Capsule().fill(Design.pillTop).shadow(color: .black.opacity(0.08), radius: 2, y: 1) } }
+                        .contentShape(Capsule())
+                }.buttonStyle(.plain)
+            }
+        }.padding(2).background(Capsule().fill(Design.track)).fixedSize()
+    }
+
     /// The page's lead: what was recorded, with the counts the window title
     /// used to carry.
     private func header(_ range: DateRangeSelection, width: CGFloat) -> some View {
@@ -265,6 +300,7 @@ struct ActivitiesView: View {
                 }
                 .help(merge)
                 Spacer(minLength: 0)
+                modeSwitch
                 // In the card rather than the window toolbar: toolbar items
                 // rebuild on every switch to the page, a slider ~15 ms.
                 TimelineZoomControl(hourHeight: $activities.timelineHourHeight)
@@ -509,21 +545,21 @@ private struct CalendarBandCard: View {
     let action: () -> Void
     let dismiss: () -> Void
 
-    /// One line above the timeline, not a banner: the design keeps the
-    /// calendar a quiet hint.
+    /// A quiet strip under the day's card, not a banner above it.
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "calendar").foregroundStyle(.secondary)
             (Text(title).fontWeight(.semibold) + Text(verbatim: " · ") + Text(message).foregroundStyle(.secondary))
                 .lineLimit(1).truncationMode(.tail).help(message)
             Spacer(minLength: 8)
-            Button(actionTitle, action: action).controlSize(.small)
+            Button(actionTitle, action: action).buttonStyle(PillButtonStyle(height: 24, font: .system(size: 11)))
             Button { dismiss() } label: { Image(systemName: "xmark") }.buttonStyle(.borderless).controlSize(.small)
                 .help("可在「设置 · 记录与隐私」中随时开启日历叠加")
                 .accessibilityLabel("不用了")
         }
         .font(.system(size: 12))
-        .padding(.horizontal, 4).padding(.vertical, 2)
+        .padding(.horizontal, 14).padding(.vertical, 8)
+        .designCard(radius: Design.Radius.well + 2)
     }
 }
 
@@ -644,6 +680,32 @@ final class ActivitiesModel {
     var sessions: [WorkSession] = []
     /// The session the inspector shows, by start; exclusive with a block.
     var selectedSession: Date?
+    /// The session whose join just happened, while the undo toast is up.
+    var joinToast: Date?
+    @ObservationIgnored private var toastTask: Task<Void, Never>?
+
+    /// Joins `session` onto the one before it; the toast offers 撤销 for a while.
+    func join(_ session: WorkSession, model: AppModel) {
+        let previous = sessions.last { $0.start < session.start }
+        model.joinSession(session)
+        selectedSession = previous?.start
+        joinToast = session.start
+        toastTask?.cancel()
+        toastTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+            self?.joinToast = nil
+        }
+    }
+
+    func undoJoin(model: AppModel) {
+        guard let date = joinToast else { return }
+        toastTask?.cancel()
+        model.unjoinSession(startingAt: date)
+        joinToast = nil
+        selectedSession = date
+    }
+
     /// A session another page asked to open (Today's 在活动里打开): selected
     /// as soon as the day's sessions have been cut.
     var pendingSession: Date?
