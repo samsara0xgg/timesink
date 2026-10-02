@@ -101,7 +101,74 @@ import WebKit
         print("Captured \(file.lastPathComponent)")
     }
 
+    /// `--motion`: frame strips of the first appearance and of a tab switch,
+    /// and a screen recording of the window, all from sample data.
+    static func runMotion() async throws {
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        guard let screen = builtIn else { print("No built-in display"); return }
+        let model = try RefinedPreview.fixture()
+        model.timeFormat = "24"
+        let size = RefinedPreview.mainSize
+        let dark = CommandLine.arguments.contains("--dark")
+        NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        let root = MainWindowView(model: model)
+            .environment(\.locale, RefinedPreview.locale)
+            .environment(\.colorScheme, dark ? .dark : .light)
+            .frame(width: size.width, height: size.height)
+        let controller = NSHostingController(rootView: root)
+        controller.sceneBridgingOptions = [.title]
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: size),
+                              styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+                              backing: .buffered, defer: false)
+        window.contentViewController = controller
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.appearance = NSApp.appearance
+        window.colorSpace = .sRGB
+        window.ignoresMouseEvents = true
+        window.isReleasedWhenClosed = false
+        window.setContentSize(size)
+        let visible = screen.visibleFrame
+        window.setFrameTopLeftPoint(NSPoint(x: visible.minX + 20, y: visible.maxY - 20))
+        window.orderFrontRegardless()
+        defer { window.orderOut(nil) }
+        func frame(_ name: String) {
+            guard let host = window.contentView?.superview ?? window.contentView,
+                  let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return }
+            host.cacheDisplay(in: host.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: output.appendingPathComponent(name))
+        }
+        // First appearance: the page builds while the window is already up.
+        try await Task.sleep(for: .milliseconds(150))
+        for index in 1...8 {
+            frame(String(format: "strip-appear-%02d.png", index))
+            try await Task.sleep(for: .milliseconds(70))
+        }
+        try await Task.sleep(for: .milliseconds(1200))
+        // Tab switch, Today to Activities.
+        model.sidebarSelection = .activities
+        for index in 1...8 {
+            frame(String(format: "strip-tab-%02d.png", index))
+            try await Task.sleep(for: .milliseconds(30))
+        }
+        try await Task.sleep(for: .milliseconds(900))
+        // A recording of a few switches.
+        let movie = output.appendingPathComponent("tabs.mov")
+        let shot = Process()
+        shot.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        shot.arguments = ["-x", "-v", "-V", "6", "-l", String(window.windowNumber), movie.path]
+        try? shot.run()
+        try await Task.sleep(for: .milliseconds(900))
+        for page in [SidebarItem.today, .stats, .focus, .organization, .today] {
+            model.sidebarSelection = page
+            try await Task.sleep(for: .milliseconds(900))
+        }
+        shot.waitUntilExit()
+        print("Motion strips written")
+    }
+
     static func runAll() async throws {
+        if CommandLine.arguments.contains("--motion") { try await runMotion(); return }
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         let model = try RefinedPreview.fixture()
         model.timeFormat = "24"
