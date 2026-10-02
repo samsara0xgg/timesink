@@ -11,28 +11,6 @@
         }
       }
     },
-    " · 切换 %lld 次": {
-      "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": " · %lld switch"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": " · %lld switches"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     " · 在时间轴中定位": {
       "localizations": {
         "en": {
@@ -63,44 +41,12 @@
         }
       }
     },
-    " 等 %lld 项": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": " (%lld total)"
-          }
-        }
-      }
-    },
     "%@\n%@\n点击固定并查看具体日期": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "%@\n%@\nClick to pin and view dates"
-          }
-        }
-      }
-    },
-    "%@ · %@ · %lld 条记录": {
-      "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%@ · %@ · %lld record"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%@ · %@ · %lld records"
-                }
-              }
-            }
           }
         }
       }
@@ -205,16 +151,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ · Change from previous period"
-          }
-        }
-      }
-    },
-    "%@ · 与前一时段比较": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ · Compared with previous period"
           }
         }
       }
@@ -583,16 +519,6 @@
         }
       }
     },
-    "%lld 个分类 · 限额在条上": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld categories · limits on the bars"
-          }
-        }
-      }
-    },
     "%lld 分": {
       "localizations": {
         "en": {
@@ -915,38 +841,6 @@
         }
       }
     },
-    "%lld 次，%lld 次已完成": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%#@n1@, %2$lld completed"
-          },
-          "substitutions": {
-            "n1": {
-              "argNum": 1,
-              "formatSpecifier": "lld",
-              "variations": {
-                "plural": {
-                  "one": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg session"
-                    }
-                  },
-                  "other": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg sessions"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "%lld 秒": {
       "localizations": {
         "en": {
@@ -1251,16 +1145,6 @@
         }
       }
     },
-    "· %@ 起": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "· Since %@"
-          }
-        }
-      }
-    },
     "· 另有 %lld 次看一眼": {
       "localizations": {
         "en": {
@@ -1317,16 +1201,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Week starts on"
-          }
-        }
-      }
-    },
-    "一天的片段": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Moments of the day"
           }
         }
       }
@@ -1571,28 +1445,6 @@
         }
       }
     },
-    "专注 %lld 分钟": {
-      "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "Focus for %lld minute"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "Focus for %lld minutes"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "专注与限额": {
       "localizations": {
         "en": {
@@ -1809,28 +1661,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Today"
-          }
-        }
-      }
-    },
-    "今天 %lld 次专注 · %@": {
-      "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld focus session today · %@"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld focus sessions today · %@"
-                }
-              }
-            }
           }
         }
       }
@@ -2267,16 +2097,6 @@
         }
       }
     },
-    "全部活动": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "All activity"
-          }
-        }
-      }
-    },
     "关于": {
       "localizations": {
         "en": {
@@ -2709,16 +2529,6 @@
         }
       }
     },
-    "占已记录 %lld%% · 按分类估算": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld%% of recorded time · Estimated by category"
-          }
-        }
-      }
-    },
     "取消": {
       "localizations": {
         "en": {
@@ -2765,16 +2575,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Overlay calendar events; reads only titles, times and attendee counts."
-          }
-        }
-      }
-    },
-    "另有 %@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Also %@"
           }
         }
       }
@@ -3339,16 +3139,6 @@
         }
       }
     },
-    "在活动中查看此片段": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "View this segment in Activity"
-          }
-        }
-      }
-    },
     "在那里打了字": {
       "localizations": {
         "en": {
@@ -3455,16 +3245,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "It quietly keeps track of your time from the menu bar and joins your day into stretches. Everything stays on this Mac."
-          }
-        }
-      }
-    },
-    "安排时间": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Plan your time"
           }
         }
       }
@@ -4907,16 +4687,6 @@
         }
       }
     },
-    "搜索活动": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Search activity"
-          }
-        }
-      }
-    },
     "搜索规则": {
       "localizations": {
         "en": {
@@ -5557,44 +5327,12 @@
         }
       }
     },
-    "更早的 %lld 段": {
-      "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld earlier segment"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld earlier segments"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "最前面的窗口画面与识别文字只保存在本机。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Only the frontmost window is captured. Images and recognized text stay on this Mac."
-          }
-        }
-      }
-    },
-    "最近的在前 · 点按在活动中查看": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Most recent first · Click to view in Activity"
           }
         }
       }
@@ -6973,16 +6711,6 @@
         }
       }
     },
-    "离限额还剩 %lld 分钟": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld min left before the limit"
-          }
-        }
-      }
-    },
     "移除 %@": {
       "localizations": {
         "en": {
@@ -7505,16 +7233,6 @@
         }
       }
     },
-    "设置": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Settings"
-          }
-        }
-      }
-    },
     "设置…": {
       "localizations": {
         "en": {
@@ -7681,16 +7399,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Shopping"
-          }
-        }
-      }
-    },
-    "超出限额 %lld 分钟": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld min over limit"
           }
         }
       }
@@ -8301,16 +8009,6 @@
         }
       }
     },
-    "限额 %lld 分钟": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Limit: %lld min"
-          }
-        }
-      }
-    },
     "限额只发提醒，不拦截任何东西；拦截只在专注会话里发生。": {
       "localizations": {
         "en": {
@@ -8557,6 +8255,746 @@
           "stringUnit": {
             "state": "translated",
             "value": "; "
+          }
+        }
+      }
+    },
+    "%@ 开始，还在继续": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Started at %@, still going"
+          }
+        }
+      }
+    },
+    "%@ 那段占 %lld 次": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$lld of them in the %1$@ stretch"
+          }
+        }
+      }
+    },
+    "%@–%@ 接着昨晚 · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@–%2$@ continuing last night · %3$@"
+          }
+        }
+      }
+    },
+    "%@还没分类": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ not categorized yet"
+          }
+        }
+      }
+    },
+    "%@（推测）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (guess)"
+          }
+        }
+      }
+    },
+    "%lld 件": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld item"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld items"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld 小时 %lld 分": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld h %2$lld min"
+          }
+        }
+      }
+    },
+    "%lld 段": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld session"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld sessions"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld 段会话，按项目上色": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld session, colored by project"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld sessions, colored by project"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld 段是推测的，右边可以确认": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld session is a guess; confirm it on the right"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld sessions are guesses; confirm them on the right"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "<1 分": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "<1 min"
+          }
+        }
+      }
+    },
+    "专注中": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Focusing"
+          }
+        }
+      }
+    },
+    "主导航": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Main navigation"
+          }
+        }
+      }
+    },
+    "今天 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Today %@"
+          }
+        }
+      }
+    },
+    "今天的时间轴": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Today's timeline"
+          }
+        }
+      }
+    },
+    "今天还没专注过": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No focus session today"
+          }
+        }
+      }
+    },
+    "关闭": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close"
+          }
+        }
+      }
+    },
+    "其中 %@ 是凌晨接着昨晚": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ of it continues from last night"
+          }
+        }
+      }
+    },
+    "其他 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Other %@"
+          }
+        }
+      }
+    },
+    "分类与规则 ›": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Categories & rules ›"
+          }
+        }
+      }
+    },
+    "切换 %lld 次 · 打断 %lld 次": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld switches · %2$lld interruptions"
+          }
+        }
+      }
+    },
+    "切换 %lld 次 · 没有打断": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld switches · no interruptions"
+          }
+        }
+      }
+    },
+    "到 %@ 为止": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Up to %@"
+          }
+        }
+      }
+    },
+    "前一天": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Previous day"
+          }
+        }
+      }
+    },
+    "占 %lld%%": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld%% of recorded"
+          }
+        }
+      }
+    },
+    "去分类": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Categorize"
+          }
+        }
+      }
+    },
+    "后一天": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next day"
+          }
+        }
+      }
+    },
+    "回到今天": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Back to today"
+          }
+        }
+      }
+    },
+    "在活动里打开 ›": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open in Activities ›"
+          }
+        }
+      }
+    },
+    "已经投入 %@。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ of focus so far."
+          }
+        }
+      }
+    },
+    "已经投入 %@，多在%@上。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ of focus so far, mostly on %2$@."
+          }
+        }
+      }
+    },
+    "已经投入 %@，多在%@和 %@ 上。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ of focus so far, mostly on %2$@ and %3$@."
+          }
+        }
+      }
+    },
+    "投入 %@ · %lld%%": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Focus %1$@ · %2$lld%%"
+          }
+        }
+      }
+    },
+    "投入了 %@。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ of focus."
+          }
+        }
+      }
+    },
+    "投入了 %@，多在%@上。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ of focus, mostly on %2$@."
+          }
+        }
+      }
+    },
+    "投入了 %@，多在%@和 %@ 上。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ of focus, mostly on %2$@ and %3$@."
+          }
+        }
+      }
+    },
+    "接下来专注 %lld 分钟": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Focus for %lld min next"
+          }
+        }
+      }
+    },
+    "搜索": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search"
+          }
+        }
+      }
+    },
+    "整天的记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The whole day"
+          }
+        }
+      }
+    },
+    "昨天 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yesterday %@"
+          }
+        }
+      }
+    },
+    "最后一段": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last session"
+          }
+        }
+      }
+    },
+    "最近一次是 %@ · %lld 分钟": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last one was %1$@ · %2$lld min"
+          }
+        }
+      }
+    },
+    "最近一段": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Latest session"
+          }
+        }
+      }
+    },
+    "未归入项目": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No project"
+          }
+        }
+      }
+    },
+    "标题里没有项目名，我猜是 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No project name in the titles; my guess is %@"
+          }
+        }
+      }
+    },
+    "没有打断": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No interruptions"
+          }
+        }
+      }
+    },
+    "没有被打断": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No interruptions"
+          }
+        }
+      }
+    },
+    "没认出项目名": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No project name recognized"
+          }
+        }
+      }
+    },
+    "清除搜索": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear search"
+          }
+        }
+      }
+    },
+    "点一下只看它": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Click to show only this"
+          }
+        }
+      }
+    },
+    "看这一段": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View this session"
+          }
+        }
+      }
+    },
+    "确认": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirm"
+          }
+        }
+      }
+    },
+    "确认 %lld 段的项目": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Confirm the project of %lld session"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Confirm the project of %lld sessions"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "离开": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Away"
+          }
+        }
+      }
+    },
+    "离开 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Away %@"
+          }
+        }
+      }
+    },
+    "离开了 %@，是吃饭还是开会？": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Away for %@. Lunch or a meeting?"
+          }
+        }
+      }
+    },
+    "补记 %@–%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fill in %1$@–%2$@"
+          }
+        }
+      }
+    },
+    "要你处理": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Needs you"
+          }
+        }
+      }
+    },
+    "还没到": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not yet"
+          }
+        }
+      }
+    },
+    "还没有投入的时间。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No focused time yet."
+          }
+        }
+      }
+    },
+    "这一天没有投入的时间。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No focused time this day."
+          }
+        }
+      }
+    },
+    "这一天没有记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing recorded this day"
+          }
+        }
+      }
+    },
+    "这一段没有被打断，切换 %lld 次。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not interrupted, %lld switches."
+          }
+        }
+      }
+    },
+    "这一段被打断 %@ 次，切换 %lld 次。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Interrupted %1$@ times, %2$lld switches."
+          }
+        }
+      }
+    },
+    "这一段被打断 %@ 次，切换 %lld 次，是今天最乱的一段。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Interrupted %1$@ times, %2$lld switches: the messiest stretch of the day."
+          }
+        }
+      }
+    },
+    "选一个时长，开始计时": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pick a length and start the timer"
+          }
+        }
+      }
+    },
+    "都处理好了": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All done"
+          }
+        }
+      }
+    },
+    "项目从窗口标题里的仓库名认出来；认不出的按前后时间推测，会标出来让你确认。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects are read from repository names in window titles; those that cannot be are guessed from the time around them, marked so you can confirm."
           }
         }
       }

@@ -6,11 +6,21 @@ import SwiftUI
 struct AwayPrompt: View {
     let model: AppModel
     let interval: DateInterval
+    /// A stretch picked on the Today page rather than offered by the menu
+    /// bar: it is named directly, and `onDone` closes the popover.
+    var manual = false
+    var onDone: (() -> Void)?
     @State private var naming = false
     @State private var name = ""
     @FocusState private var nameFocused: Bool
 
     private var minutes: Int { Format.minutes(interval.duration) }
+
+    private func answer(_ label: String?, _ symbol: String) {
+        guard manual else { model.answerAway(label: label, symbol: symbol); return }
+        if let label { model.fillAway(interval, label: label, symbol: symbol) }
+        onDone?()
+    }
     /// 11:30-13:30 is usually lunch.
     private var looksLikeLunch: Bool {
         let calendar = Calendar.current
@@ -28,7 +38,7 @@ struct AwayPrompt: View {
                 if let context { Text(verbatim: context).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1) }
             }
             if let event = model.awaySuggestion(for: interval) {
-                Button { model.answerAway(label: event.title, symbol: "person.2") } label: {
+                Button { answer(event.title, "person.2") } label: {
                     HStack(spacing: 10) {
                         VStack(alignment: .leading, spacing: 1) {
                             Label("日历里正好有", systemImage: "sparkles").font(.system(size: 11)).foregroundStyle(.secondary)
@@ -46,15 +56,15 @@ struct AwayPrompt: View {
             if naming {
                 HStack(spacing: 8) {
                     TextField("这 \(minutes) 分钟是", text: $name).textFieldStyle(.roundedBorder).focused($nameFocused)
-                        .onSubmit { model.answerAway(label: name.trimmingCharacters(in: .whitespaces), symbol: "pencil") }
-                    Button("补记") { model.answerAway(label: name.trimmingCharacters(in: .whitespaces), symbol: "pencil") }
+                        .onSubmit { answer(name.trimmingCharacters(in: .whitespaces), "pencil") }
+                    Button("补记") { answer(name.trimmingCharacters(in: .whitespaces), "pencil") }
                         .glassProminentButton().disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
                 .onAppear { nameFocused = true }
             } else {
                 // The likely answer gets a row of its own, saying why.
                 if looksLikeLunch {
-                    Button { model.answerAway(label: String(localized: "午饭"), symbol: "fork.knife") } label: {
+                    Button { answer(String(localized: "午饭"), "fork.knife") } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "fork.knife").frame(width: 16)
                             Text("午饭")
@@ -71,7 +81,7 @@ struct AwayPrompt: View {
                     option(String(localized: "休息"), "cup.and.saucer")
                     option(String(localized: "开会"), "person.2")
                     Button { naming = true } label: { tile(String(localized: "其他…"), "pencil") }.buttonStyle(.plain)
-                    Button { model.answerAway(label: nil, symbol: "") } label: { tile(String(localized: "不记"), "circle.slash") }.buttonStyle(.plain)
+                    Button { answer(nil, "") } label: { tile(String(localized: "不记"), "circle.slash") }.buttonStyle(.plain)
                 }
             }
             Text("补记画成虚线框，和电脑上的时间分开统计，不计入评分。")
@@ -91,7 +101,7 @@ struct AwayPrompt: View {
     }
 
     private func option(_ label: String, _ symbol: String) -> some View {
-        Button { model.answerAway(label: label, symbol: symbol) } label: { tile(label, symbol) }.buttonStyle(.plain)
+        Button { answer(label, symbol) } label: { tile(label, symbol) }.buttonStyle(.plain)
     }
 
     private func tile(_ label: String, _ symbol: String) -> some View {

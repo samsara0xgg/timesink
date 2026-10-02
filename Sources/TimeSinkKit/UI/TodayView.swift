@@ -1,657 +1,623 @@
 import SwiftUI
 import AppKit
 
+/// 今天: one glance at the day. A headline, four numbers, what is going on
+/// now, the day as a timeline of sessions, where the time went by project
+/// and by category, and what is waiting for an answer.
+///
+/// All of it comes from one `TodayPlan`, built off the main actor; `body`
+/// only lays it out.
 struct TodayView: View {
     let model: AppModel
-    @Bindable var dayModel: DayOverviewModel
     let activities: ActivitiesModel
-    @State private var dashboard = TodayDashboardModel()
-    @State private var visiblePieces = 9
-    @State private var events: [CalendarEvent] = []
-    /// Moves at midnight, so the day's calendar events are fetched again.
-    @State private var day = Calendar.current.startOfDay(for: Date())
-    private struct EventsKey: Equatable { let enabled: Bool; let day: Date; let calendars: Int }
+    @State private var today = TodayModel()
+    @State private var selected: Date?
+    @State private var filter: ProjectFilter = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private struct RefreshKey: Equatable { let version: Int; let offset: Int }
+    private var offset: Int { model.todayDayOffset }
 
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    if let overview = dayModel.overview {
-                        if overview.total == 0 {
-                            ContentUnavailableView {
-                                Label("今天，还没有记录", systemImage: "sun.max")
-                            } description: {
-                                Text(model.trackingPaused ? "记录已暂停。继续后，新的活动会出现在这里。" : "使用 Mac 后，应用和网站活动会出现在这里。空档不会计入总时长。")
-                            } actions: {
-                                if model.trackingPaused { Button("继续记录") { model.resumeTracking() } }
-                                else { SettingsLink { Text("检查记录与权限设置") } }
-                            }.frame(minHeight: 350)
-                        } else {
-                            DayColumnsView(overview: overview, productivity: productivity, onSelect: onSelect)
-                                .padding(.bottom, 4)
-                            cards(overview, wide: geometry.size.width >= 760)
-                            if geometry.size.width >= 860 {
-                                HStack(alignment: .top, spacing: 12) {
-                                    pieces(overview).frame(maxWidth: .infinity)
-                                    context(overview).frame(width: 316)
-                                }
-                            } else {
-                                pieces(overview)
-                                context(overview)
-                            }
-                        }
-                    } else if dayModel.loadError == nil {
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text("正在读取今天的记录").foregroundStyle(.secondary)
-                            ForEach(0..<5) { _ in RoundedRectangle(cornerRadius: 6).fill(.quaternary).frame(height: 40) }
-                        }.accessibilityLabel("正在读取今天的记录")
-                    }
-                    if let error = dayModel.loadError {
-                        HStack {
-                            Label(error, systemImage: "exclamationmark.triangle")
-                            Button("重试") { Task { await refresh() } }
-                        }.font(.callout)
-                    }
-                }
-                .padding(.horizontal, 24).padding(.top, 22).padding(.bottom, 28)
-                .frame(maxWidth: 1500).frame(maxWidth: .infinity)
+                content(width: geometry.size.width - 2 * Design.Space.page, height: geometry.size.height)
+                    .padding(.horizontal, Design.Space.page).padding(.top, 8).padding(.bottom, 24)
+                    .frame(minHeight: geometry.size.height, alignment: .top)
+                    .frame(maxWidth: 1600).frame(maxWidth: .infinity)
             }
+            .scrollIndicators(.never)
         }
         .background(WorkspaceBackground())
-        .pageTask(id: model.dataVersion) { await refresh() }
-        .task(id: EventsKey(enabled: model.calendarOverlayEnabled, day: day, calendars: model.calendarVersion)) {
-            events = model.calendarOverlayEnabled ? await model.calendarStore?.events(on: day) ?? [] : []
-        }
+        .pageTask(id: RefreshKey(version: model.dataVersion, offset: offset)) { await refresh() }
         .whilePageShown {
-            // Keeps the ribbon's now line moving while nothing is written; the
-            // headline numbers only move with data or at midnight.
+            // The now line and the headline move with the clock; nothing else
+            // does while nothing is written. A past day never moves.
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(30)) } catch { return }
-                let today = Calendar.current.startOfDay(for: Date())
-                if today != day { day = today; await refresh() } else { await dayModel.refresh(model: model) }
+                if offset == 0 { await refresh() }
             }
         }
+        .onChange(of: offset) { _, _ in selected = nil; filter = nil }
     }
 
-    private func onSelect(_ piece: DayOverview.Piece) {
-        guard let item = piece.item else { return }
-        model.activitySearch = ""
-        model.openActivities(category: nil, range: .today())
-        activities.recompute(model: model, events: [])
-        activities.select(ActivitiesModel.selection(for: item), start: item.span.start)
-    }
+    private func refresh() async { await today.refresh(model: model, dayOffset: offset) }
 
-    private func refresh() async {
-        await dayModel.refresh(model: model)
-        await dashboard.recompute(model: model, forceStreak: false, headlineOnly: true)
-    }
+    // MARK: Layout
 
-    /// Four equal cards, two by two when narrow.
-    private func cards(_ overview: DayOverview, wide: Bool) -> some View {
-        let recorded = card(String(localized: "已记录"), detail: recordedDetail(overview)) { DurationHero(seconds: overview.total, size: 30) }
-        let engaged = card(String(localized: "投入"),
-                           detail: String(localized: "占已记录 \(Int((overview.engaged / max(1, overview.total) * 100).rounded()))% · 按分类估算")) {
-            DurationHero(seconds: overview.engaged, size: 30)
-        }
-        let focus = card(String(localized: "专注会话"),
-                         detail: String(localized: "\(overview.sessions.count) 次，\(overview.sessions.filter(\.completed).count) 次已完成")) {
-            DurationHero(seconds: overview.sessionSeconds, size: 30)
-        }
-        let score = card(String(localized: "评分"), detail: String(localized: "连续 \(dashboard.streakDays) 天 ≥ 70")) {
-            let value = dashboard.pulse.map { "\($0)" } ?? "—"
-            Text(verbatim: value).font(.system(size: 30, weight: .semibold)).tracking(-0.5).monospacedDigit().refinedNumberMotion(value)
-        }
-        return Grid(alignment: .topLeading, horizontalSpacing: 12, verticalSpacing: 12) {
-            if wide {
-                GridRow { recorded; engaged; focus; if model.showScore { score } }
+    @ViewBuilder private func content(width: CGFloat, height: CGFloat) -> some View {
+        if let plan = today.plan {
+            if plan.hasRecords {
+                if width >= 1104 { wide(plan, height: height) } else { narrow(plan) }
             } else {
-                GridRow { recorded; engaged }
-                GridRow { focus; if model.showScore { score } }
+                empty(plan)
             }
+        } else if today.loadError == nil {
+            loading
         }
-    }
-
-    private func card<Value: View>(_ title: String, detail: String, @ViewBuilder value: () -> Value) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.system(size: 12)).foregroundStyle(.secondary)
-            value()
-            Text(detail).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2...)
-        }
-        // Every card in a row takes the tallest one's height, tops aligned.
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(.horizontal, 16).padding(.vertical, 14).workspacePanel()
-    }
-
-    private func recordedDetail(_ overview: DayOverview) -> String {
-        [overview.firstRecord.map { String(localized: "\(model.time($0)) 开始") },
-         dashboard.yesterdayTotal.map { yesterday in
-             let delta = Format.minuteDelta(overview.total, yesterday)
-             return delta >= 0 ? String(localized: "比昨天此时多 \(Format.chineseDuration(delta))")
-                 : String(localized: "比昨天此时少 \(Format.chineseDuration(-delta))")
-         }]
-            .compactMap { $0 }.joined(separator: " · ")
-    }
-
-    private func pieces(_ overview: DayOverview) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("一天的片段").font(.system(size: 13, weight: .semibold))
-                Text("最近的在前 · 点按在活动中查看").font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
-                Spacer(minLength: 4)
-                Button("全部活动") { openActivities() }.buttonStyle(.link).font(.system(size: 12))
-            }.padding(14)
-            let recent = Array(overview.pieces.reversed())
-            ForEach(recent.prefix(visiblePieces)) { piece in
-                Divider().opacity(0.6)
-                if piece.item != nil {
-                    Button { onSelect(piece) } label: { pieceRow(piece, overview: overview) }
-                        .buttonStyle(RefinedRowButtonStyle()).help("在活动中查看此片段")
-                } else { pieceRow(piece, overview: overview).background { HatchFill().opacity(0.35) } }
-            }
-            if recent.count > visiblePieces {
-                Divider()
-                Button {
-                    withAnimation(RefinedStyle.motion(reduced: reduceMotion)) { visiblePieces += 20 }
-                } label: {
-                    HStack {
-                        Image(systemName: "chevron.down").font(.system(size: 11))
-                        Text("更早的 \(recent.count - visiblePieces) 段")
-                        if let first = overview.firstRecord { Text("· \(model.time(first)) 起") }
-                        Spacer()
-                    }.font(.system(size: 12)).foregroundStyle(.secondary).padding(14)
-                }.buttonStyle(RefinedRowButtonStyle())
-            }
-        }.workspacePanel().clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
-    private func pieceRow(_ piece: DayOverview.Piece, overview: DayOverview) -> some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(piece.start, format: .dateTime.hour().minute())
-                Text(piece.end, format: .dateTime.hour().minute()).foregroundStyle(.tertiary)
-            }.font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary).frame(width: 60, alignment: .leading)
-            if let segment = piece.segment, let item = piece.item {
-                ActivityIcon(bundleID: segment.dominant.appBundleID, domain: item.span.domain)
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 5) {
-                        Text(segment.dominant.label).font(.system(size: 13)).lineLimit(1)
-                        if let session = overview.sessions.first(where: { $0.start < piece.end && $0.end > piece.start }) {
-                            Label("专注 \(session.plannedSeconds / 60) 分钟", systemImage: "scope")
-                                .font(.system(size: 11)).foregroundStyle(.tint).lineLimit(1)
-                        }
-                    }
-                    Text(pieceDetail(segment, item: item))
-                        .font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
-                    if segment.isMixed { CompositionBar(segment: segment) { categoryColor($0) }.frame(height: 3) }
-                }.frame(maxWidth: .infinity, alignment: .leading)
-                CategoryChip(category: model.resolver.categoriesByID[segment.leadingCategoryID])
-                Text(Format.duration(piece.seconds)).font(.system(size: 13)).monospacedDigit().frame(minWidth: 45, alignment: .trailing)
-                Image(systemName: "chevron.right").font(.system(size: 11)).foregroundStyle(.tertiary)
-            } else {
-                let event = events.first { !$0.isAllDay && $0.start < piece.end && $0.end > piece.start }
-                Image(systemName: event == nil ? "moon" : "person.2").foregroundStyle(.secondary).frame(width: 22)
-                ((event.map { Text(verbatim: "\($0.title) · ") } ?? Text(verbatim: "")) + Text("未记录"))
-                    .font(.system(size: 13)).foregroundStyle(.secondary)
-                Spacer()
-                Text(Format.duration(piece.seconds)).font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary)
-            }
-        }.padding(.horizontal, 12).padding(.vertical, 8).frame(minHeight: 48).contentShape(Rectangle())
-    }
-
-    private func context(_ overview: DayOverview) -> some View {
-        TimeRankingCard(categories: overview.categories,
-                        limits: Dictionary(dayModel.budgets.map { ($0.categoryID, TimeInterval($0.dailySeconds)) }) { a, _ in a },
-                        warningPercent: model.settings.budgetWarnPercent) {
-            model.openActivities(category: $0, range: .today())
-        }
-    }
-
-    /// What else happened in the stretch; a single-row stretch shows its
-    /// longest title instead.
-    private func pieceDetail(_ segment: TimelineSegment, item: CategorizedSpan) -> String {
-        guard segment.parts.count > 1 else {
-            return item.span.title ?? categoryName(item.categoryID)
-        }
-        let others = segment.parts.dropFirst().prefix(2).map { "\($0.label) \(Format.duration($0.seconds))" }
-        let rest = segment.parts.count - 1 - others.count
-        return String(localized: "另有 \(others.joined(separator: String(localized: "、")))") + (rest > 0 ? String(localized: " 等 \(rest + others.count) 项") : "")
-            + String(localized: " · 切换 \(segment.switches) 次")
-    }
-
-    private func openActivities() { model.activitySearch = ""; model.openActivities(category: nil, range: .today()) }
-    private func categoryName(_ id: String) -> String { model.resolver.categoriesByID[id]?.name ?? String(localized: "未分类") }
-    private func productivity(_ id: String) -> Int { model.resolver.categoriesByID[id]?.productivity ?? 0 }
-    private func categoryColor(_ id: String) -> Color { RefinedStyle.category(id, hex: model.resolver.categoriesByID[id]?.colorHex ?? "#C7C7CC") }
-}
-
-struct DayRibbonView: View {
-    let overview: DayOverview
-    var compact = false
-    var events: [CalendarEvent] = []
-    var onSelect: ((DayOverview.Piece) -> Void)?
-    private var interval: DateInterval { overview.displayInterval }
-    @Environment(\.locale) private var locale
-    private struct Tick: Identifiable {
-        let id: Date
-        let text: String
-        let width: CGFloat
-        let x: CGFloat
-        var isNow = false
-    }
-    private func ticks(width: CGFloat) -> [Tick] {
-        let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        func label(_ date: Date) -> (text: String, width: CGFloat) {
-            let text = date.formatted(.dateTime.hour().minute().locale(locale))
-            return (text, min(width, ceil((text as NSString).size(withAttributes: [.font: font]).width) + 2))
-        }
-        func hours(every step: Int) -> [Date] {
-            var result: [Date] = []
-            var time = interval.start
-            while time < interval.end {
-                result.append(time)
-                guard let next = Calendar.current.date(byAdding: .hour, value: step, to: time) else { break }
-                time = next
-            }
-            return result
-        }
-        // One even step that fits every label, edge-pinned ones included,
-        // rather than hourly labels with gaps where collisions dropped some.
-        let widest = hours(every: 1).map { label($0).width }.max() ?? 0
-        let perHour = width / max(1, interval.duration / 3600)
-        // The popover's band reads at a glance: 8:00, 11:00, 14:00, 17:00.
-        let step: Int = [1, 2, 3, 4, 6].first(where: { (!compact || $0 >= 3) && CGFloat($0) * perHour >= widest * 1.5 + 8 }) ?? 6
-        var result: [Tick] = []
-        // The right edge gets a label only on the step's grid; an off-grid
-        // edge label would crowd out the last even tick.
-        let alignedEnd = interval.duration.truncatingRemainder(dividingBy: Double(step) * 3600) == 0
-        func tick(_ date: Date) -> Tick {
-            let (text, labelWidth) = label(date)
-            let x = max(0, min(width - labelWidth, bounds(start: date, end: date, width: width).minX - labelWidth / 2))
-            return Tick(id: date, text: text, width: labelWidth, x: x)
-        }
-        for date in hours(every: step) + (alignedEnd ? [interval.end] : []) {
-            let next = tick(date)
-            if date == interval.end {
-                while let last = result.last, next.x < last.x + last.width + 8 { result.removeLast() }
-            }
-            if result.last.map({ next.x >= $0.x + $0.width + 8 }) ?? true { result.append(next) }
-        }
-        // Now's own label wins over any hour label it would touch.
-        var now = tick(overview.now)
-        now.isNow = true
-        return result.filter { $0.x + $0.width + 6 <= now.x || $0.x >= now.x + now.width + 6 } + [now]
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            GeometryReader { geometry in
-                ZStack(alignment: .topLeading) {
-                    if !compact {
-                        ForEach(events.filter { !$0.isAllDay }) { event in
-                            let rect = bounds(start: event.start, end: event.end, width: geometry.size.width)
-                            Text(event.title).font(.system(size: 11)).lineLimit(1).padding(.horizontal, 4)
-                                .frame(width: rect.width, height: 16, alignment: .leading)
-                                .background(.quaternary, in: RoundedRectangle(cornerRadius: 3))
-                                .offset(x: rect.minX).help(event.title)
-                        }
-                    }
-                    let nowX = bounds(start: overview.now, end: overview.now, width: geometry.size.width).minX
-                    ZStack(alignment: .topLeading) {
-                        let past = bounds(start: interval.start, end: overview.now, width: geometry.size.width)
-                        Rectangle().fill(.quaternary.opacity(0.5)).frame(width: past.width)
-                        // The rest of the day is still to come: a faint dashed outline.
-                        RoundedRectangle(cornerRadius: 3)
-                            .strokeBorder(.quaternary, style: StrokeStyle(lineWidth: 1, dash: [2, 3]))
-                            .frame(width: max(0, geometry.size.width - past.width)).offset(x: past.width)
-                        ForEach(ribbonPieces(width: geometry.size.width)) { piece in
-                            let rect = bounds(start: piece.start, end: piece.end, width: geometry.size.width)
-                            Group {
-                                if let segment = piece.segment {
-                                    let categoryID = segment.leadingCategoryID
-                                    Rectangle().fill(RefinedStyle.category(categoryID, hex: categoryHex(categoryID)))
-                                        .overlay { if categoryID == "uncategorized" { HatchFill() } }
-                                } else { HatchFill() }
-                            }
-                            .frame(width: rect.width)
-                            .offset(x: rect.minX)
-                            .help(Self.tooltip(piece, overview: overview, locale: locale))
-                            .onTapGesture { if piece.item != nil { onSelect?(piece) } }
-                            .accessibilityHidden(true)
-                        }
-                    }.frame(height: compact ? 12 : 26).clipShape(RoundedRectangle(cornerRadius: 5)).offset(y: compact ? 0 : 20)
-                    Rectangle().fill(.primary).frame(width: 1.5, height: compact ? 18 : 32)
-                        .offset(x: nowX, y: compact ? -3 : 17)
-                    if !compact {
-                        ForEach(Array(overview.sessions.enumerated()), id: \.offset) { _, session in
-                            let rect = bounds(start: session.start, end: session.end, width: geometry.size.width)
-                            Capsule().fill(.tint).frame(width: rect.width, height: 3).offset(x: rect.minX, y: 50)
-                        }
-                    }
-                }
-            }.frame(height: compact ? 12 : 54)
-            GeometryReader { geometry in
-                ForEach(ticks(width: geometry.size.width)) { tick in
-                    Text(tick.text).font(.system(size: 11, weight: tick.isNow ? .semibold : .regular)).monospacedDigit()
-                        .foregroundStyle(tick.isNow ? .primary : .secondary)
-                        .fixedSize().frame(width: tick.width)
-                        .offset(x: tick.x)
-                }
-
-            }.frame(height: 14)
-            if !compact {
-                HStack(spacing: 14) {
-                    Label("专注会话", systemImage: "minus").foregroundStyle(.tint)
-                    Label("日程", systemImage: "rectangle")
-                    Label("未记录", systemImage: "rectangle.dashed")
-                }.font(.system(size: 11)).foregroundStyle(.secondary)
-            }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("时间带，\(interval.start.formatted(.dateTime.hour().minute().locale(locale))) 至 \(interval.end.formatted(.dateTime.hour().minute().locale(locale)))，已记录 \(Format.duration(overview.total))。片段详情见活动列表。")
-    }
-
-    private func bounds(start: Date, end: Date, width: CGFloat) -> CGRect {
-        let left = max(0, min(1, start.timeIntervalSince(interval.start) / interval.duration))
-        let right = max(left, min(1, end.timeIntervalSince(interval.start) / interval.duration))
-        return CGRect(x: width * left, y: 0, width: width * (right - left), height: 26)
-    }
-
-    /// Folded at the band's own scale: nothing narrower than a few points,
-    /// so a day of window switching reads as stretches, not stripes.
-    private func ribbonPieces(width: CGFloat) -> [DayOverview.Piece] {
-        let hours = max(interval.duration / 3600, 1)
-        let resolution = TimelineSegmenter.resolution(points: compact ? 3 : 4, pointsPerHour: width / hours)
-        return DayOverview.pieces(overview.items, resolution: resolution, grouping: .category, forDrawing: true)
-    }
-
-    private func categoryHex(_ id: String) -> String {
-        overview.categories.first { $0.id == id }?.colorHex ?? "#C7C7CC"
-    }
-
-    static func tooltip(_ piece: DayOverview.Piece, overview: DayOverview, locale: Locale) -> String {
-        let time = "\(piece.start.formatted(.dateTime.hour().minute().locale(locale)))–\(piece.end.formatted(.dateTime.hour().minute().locale(locale)))"
-        guard let segment = piece.segment else {
-            return String(localized: "未记录 · \(time) · \(Format.duration(piece.seconds))")
-        }
-        let name = overview.categories.first { $0.id == segment.leadingCategoryID }?.name ?? String(localized: "未分类")
-        return ([String(localized: "\(name) · \(time) · \(Format.duration(segment.recorded))")]
-            + TimelineSegmentText.composition(segment)).joined(separator: "\n")
-    }
-}
-
-/// Today's hero: a column per stretch, as tall as its category is
-/// productive, gaps hatched low, and a marked now.
-struct DayColumnsView: View {
-    let overview: DayOverview
-    let productivity: (String) -> Int
-    let onSelect: (DayOverview.Piece) -> Void
-    @Environment(\.locale) private var locale
-    private var interval: DateInterval { overview.displayInterval }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            GeometryReader { geometry in
-                let width = geometry.size.width, height = geometry.size.height
-                let nowX = x(overview.now, width: width)
-                ZStack(alignment: .bottomLeading) {
-                    Rectangle().fill(.quaternary).frame(width: max(0, width - nowX), height: 2).offset(x: nowX)
-                    ForEach(pieces(width: width)) { piece in
-                        let left = x(piece.start, width: width)
-                        let columnWidth = max(1, x(piece.end, width: width) - left - 2)
-                        column(piece, width: columnWidth)
-                            .frame(width: columnWidth, height: columnHeight(piece, chart: height - 26))
-                            .offset(x: left)
-                            .help(DayRibbonView.tooltip(piece, overview: overview, locale: locale))
-                            .onTapGesture { if piece.item != nil { onSelect(piece) } }
-                    }
-                    RoundedRectangle(cornerRadius: 1.5).fill(.primary)
-                        .frame(width: 3, height: height - 20).offset(x: nowX - 1.5, y: 6)
-                }
-                .frame(width: width, height: height, alignment: .bottomLeading)
-                .overlay(alignment: .topLeading) {
-                    Text(overview.now, format: .dateTime.hour().minute().locale(locale))
-                        .font(.system(size: 11, weight: .bold)).monospacedDigit()
-                        .foregroundStyle(Color(nsColor: .windowBackgroundColor))
-                        .padding(.horizontal, 6).padding(.vertical, 1)
-                        .background(.primary, in: RoundedRectangle(cornerRadius: 6))
-                        .fixedSize().frame(width: 64).offset(x: min(max(0, nowX - 32), width - 64), y: -6)
-                }
-            }
-            .frame(height: 150)
-            GeometryReader { geometry in
-                ForEach(hours, id: \.self) { hour in
-                    let text = hour.formatted(.dateTime.hour().minute().locale(locale))
-                    Text(verbatim: text).font(.system(size: 11)).monospacedDigit().foregroundStyle(.tertiary)
-                        .fixedSize().frame(width: 60).offset(x: min(max(0, x(hour, width: geometry.size.width) - 30), geometry.size.width - 60))
-                }
-            }.frame(height: 14)
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("时间带，\(interval.start.formatted(.dateTime.hour().minute().locale(locale))) 至 \(interval.end.formatted(.dateTime.hour().minute().locale(locale)))，已记录 \(Format.duration(overview.total))。片段详情见活动列表。")
-    }
-
-    @ViewBuilder private func column(_ piece: DayOverview.Piece, width: CGFloat) -> some View {
-        let radius = min(9, width / 2)
-        let shape = UnevenRoundedRectangle(topLeadingRadius: radius, bottomLeadingRadius: min(4, radius),
-                                           bottomTrailingRadius: min(4, radius), topTrailingRadius: radius)
-        if let segment = piece.segment {
-            let id = segment.leadingCategoryID
-            let color = RefinedStyle.category(id, hex: overview.categories.first { $0.id == id }?.colorHex ?? "#C7C7CC")
-            shape.fill(color).overlay(LinearGradient(colors: [.white.opacity(0.2), .clear], startPoint: .top, endPoint: .bottom).clipShape(shape))
-                .overlay { if id == "uncategorized" { HatchFill().clipShape(shape) } }
-        } else {
-            HatchFill().background(.quaternary.opacity(0.4)).clipShape(shape)
-        }
-    }
-
-    /// Productivity -2...+2 sets the height; a gap stays low.
-    private func columnHeight(_ piece: DayOverview.Piece, chart: CGFloat) -> CGFloat {
-        guard let segment = piece.segment else { return chart * 0.3 }
-        let score = max(-2, min(2, productivity(segment.leadingCategoryID)))
-        return chart * (0.45 + CGFloat(score + 2) * 0.1375)
-    }
-
-    private var hours: [Date] {
-        let calendar = Calendar.current
-        let first = calendar.dateInterval(of: .hour, for: interval.start)?.start ?? interval.start
-        let span = interval.duration / 3600
-        let step = span > 12 ? 3 : 2
-        return stride(from: 0, through: Int(span.rounded(.up)), by: step)
-            .compactMap { calendar.date(byAdding: .hour, value: $0, to: first) }
-            .filter { $0 >= interval.start && $0 <= interval.end }
-    }
-
-    private func x(_ date: Date, width: CGFloat) -> CGFloat {
-        width * max(0, min(1, date.timeIntervalSince(interval.start) / interval.duration))
-    }
-
-    private func pieces(width: CGFloat) -> [DayOverview.Piece] {
-        let resolution = TimelineSegmenter.resolution(points: 6, pointsPerHour: width / max(interval.duration / 3600, 1))
-        return DayOverview.pieces(overview.items, resolution: resolution, grouping: .category, forDrawing: true)
-            .filter { $0.end > interval.start }
-    }
-}
-
-/// A folded segment's mix as one proportional bar, a colour per category.
-struct CompositionBar: View {
-    let segment: TimelineSegment
-    var axis: Axis = .horizontal
-    let color: (String) -> Color
-
-    private var shares: [(id: String, seconds: TimeInterval)] {
-        var seconds: [String: TimeInterval] = [:]
-        for part in segment.parts { seconds[part.categoryID, default: 0] += part.seconds }
-        return seconds.map { ($0.key, $0.value) }.sorted { $0.seconds == $1.seconds ? $0.id < $1.id : $0.seconds > $1.seconds }
-    }
-
-    var body: some View {
-        GeometryReader { geometry in
-            let length = axis == .horizontal ? geometry.size.width : geometry.size.height
-            let total = max(1, segment.recorded)
-            let layout = axis == .horizontal ? AnyLayout(HStackLayout(spacing: 1)) : AnyLayout(VStackLayout(spacing: 1))
-            layout {
-                ForEach(shares, id: \.id) { share in
-                    let size = max(1, (length - CGFloat(shares.count - 1)) * share.seconds / total)
-                    Rectangle().fill(color(share.id))
-                        .frame(width: axis == .horizontal ? size : nil, height: axis == .vertical ? size : nil)
-                }
-            }
-        }
-        .clipShape(Capsule())
-        .accessibilityHidden(true)
-    }
-}
-
-/// Shared wording for a folded segment's contents.
-enum TimelineSegmentText {
-    /// Up to `limit` rows by time, then what was left out and how choppy it was.
-    static func composition(_ segment: TimelineSegment, limit: Int = 4) -> [String] {
-        var lines = segment.parts.prefix(limit).map { "\($0.label) \(Format.duration($0.seconds))" }
-        if segment.parts.count > limit {
-            let rest = segment.parts.dropFirst(limit)
-            lines.append(String(localized: "另有 \(rest.count) 项 · \(Format.duration(rest.reduce(0) { $0 + $1.seconds }))"))
-        }
-        if segment.switches > 0 {
-            lines.append(String(localized: "\(segment.spanCount) 条记录 · 切换 \(segment.switches) 次"))
-        }
-        return lines
-    }
-}
-
-/// Today's categories ranked by time, bars scaled to the top one; a daily
-/// limit is drawn on its category's bar and captioned under it.
-struct TimeRankingCard: View {
-    let categories: [DayOverview.CategoryTotal]
-    let limits: [String: TimeInterval]
-    let warningPercent: Int
-    let onSelect: (String) -> Void
-
-    var body: some View {
-        let scale = max(categories.first?.seconds ?? 0, 1)
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("时间去了哪").font(.system(size: 13, weight: .semibold))
-                Spacer(minLength: 4)
-                Text("\(categories.count) 个分类 · 限额在条上").font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
-            }.padding(.bottom, 6)
-            ForEach(categories) { category in
-                let limit = limits[category.id]
-                let status = limit.map { LimitStatus(spent: category.seconds, limit: $0, warningPercent: warningPercent) }
-                Button { onSelect(category.id) } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 8) {
-                            Circle().fill(RefinedStyle.category(category.id, hex: category.colorHex)).frame(width: 7, height: 7)
-                            Text(category.name).lineLimit(1).frame(width: 80, alignment: .leading)
-                            bar(category, limit: limit, over: status?.isOver ?? false, scale: scale)
-                            Text(Format.duration(category.seconds)).monospacedDigit().frame(width: 52, alignment: .trailing)
-                        }.frame(minHeight: 24)
-                        if let status { caption(status).padding(.leading, 95) }
-                    }.font(.system(size: 12)).contentShape(Rectangle())
-                }.buttonStyle(.plain).help("\(category.name) · \(Format.duration(category.seconds))")
-            }
-        }.padding(.horizontal, 18).padding(.vertical, 16).workspacePanel()
-    }
-
-    private func bar(_ category: DayOverview.CategoryTotal, limit: TimeInterval?, over: Bool, scale: TimeInterval) -> some View {
-        GeometryReader { geometry in
-            let width = geometry.size.width
-            ZStack(alignment: .leading) {
-                Capsule().fill(.quaternary)
-                Capsule().fill(RefinedStyle.category(category.id, hex: category.colorHex))
-                    .overlay { if category.id == "uncategorized" { HatchFill() } }
-                    .frame(width: width * category.seconds / scale)
-                if let limit {
-                    RoundedRectangle(cornerRadius: 1).fill(over ? Color.red : Color.secondary)
-                        .frame(width: 2, height: 14)
-                        .offset(x: min(width, width * limit / scale) - 1)
-                }
-            }.frame(height: 8).frame(maxHeight: .infinity)
-        }.frame(height: 14)
-    }
-
-    @ViewBuilder private func caption(_ status: LimitStatus) -> some View {
-        switch status {
-        case .over(let minutes):
-            Label("超出限额 \(minutes) 分钟", systemImage: "exclamationmark.triangle.fill")
-                .foregroundStyle(.red).fontWeight(.semibold)
-        case .near(let minutes):
-            Label("离限额还剩 \(minutes) 分钟", systemImage: "gauge.with.dots.needle.67percent")
-                .foregroundStyle(RefinedStyle.warning).fontWeight(.semibold)
-        case .within(let minutes):
-            Text("限额 \(minutes) 分钟").foregroundStyle(.secondary)
-        }
-    }
-}
-
-/// A daily limit as captioned under its category, in whole minutes as shown.
-enum LimitStatus: Equatable {
-    case over(minutes: Int)
-    /// Within `warningPercent` of the limit.
-    case near(minutes: Int)
-    /// Comfortably under; carries the limit itself.
-    case within(minutes: Int)
-
-    init(spent: TimeInterval, limit: TimeInterval, warningPercent: Int) {
-        let left = Int(Format.minuteDelta(limit, spent) / 60)
-        if left < 0 { self = .over(minutes: -left) }
-        else if limit - spent <= limit * Double(warningPercent) / 100 { self = .near(minutes: left) }
-        else { self = .within(minutes: Int(limit / 60)) }
-    }
-
-    var isOver: Bool { if case .over = self { true } else { false } }
-}
-
-struct RefinedRowButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        RefinedRowButtonBody(configuration: configuration)
-    }
-    private struct RefinedRowButtonBody: View {
-        let configuration: Configuration
-        @State private var hovered = false
-        var body: some View {
-            configuration.label.background(Color.primary.opacity(configuration.isPressed ? 0.10 : hovered ? 0.05 : 0))
-                .onHover { hovered = $0 }
-        }
-    }
-}
-
-struct RefinedBudgetRow: View {
-    let name: String
-    let color: Color
-    let spent: TimeInterval
-    let limit: TimeInterval
-    var warningPercent = 20
-    private var warning: Bool { limit - spent <= limit * Double(warningPercent) / 100 }
-    var body: some View {
-        VStack(spacing: 5) {
+        if let error = today.loadError {
             HStack {
-                Text(name)
-                Spacer()
-                Text(RefinedStyle.remaining(spent: spent, limit: limit)).monospacedDigit()
-                    .foregroundStyle(warning ? RefinedStyle.warning : .secondary)
-            }.font(.system(size: 12))
-            GeometryReader { geometry in
-                Capsule().fill(.quaternary)
-                Capsule().fill(warning ? RefinedStyle.warning : color)
-                    .frame(width: geometry.size.width * min(1, max(0, spent / max(1, limit))))
-            }.frame(height: 5)
-        }.accessibilityElement(children: .combine)
+                Label(error, systemImage: "exclamationmark.triangle")
+                Button("重试") { Task { await refresh() } }
+            }.font(.callout).padding(.top, 12)
+        }
+    }
+
+    private func wide(_ plan: TodayPlan, height: CGFloat) -> some View {
+        VStack(spacing: Design.Space.lg) {
+            HStack(alignment: .center, spacing: Design.Space.xxl) {
+                TodayHeadline(plan: plan, model: model).frame(maxWidth: .infinity, alignment: .leading)
+                TodayStats(plan: plan, model: model, today: today).frame(width: 600)
+            }.frame(height: 92)
+            HStack(alignment: .top, spacing: Design.Space.lg) {
+                nowCard(plan).frame(width: 392, height: 256)
+                timeline(plan).frame(height: 256)
+            }
+            HStack(alignment: .top, spacing: Design.Space.lg) {
+                projectsCard(plan).frame(width: 392)
+                categoriesCard(plan).frame(width: 400)
+                todosCard(plan).frame(maxWidth: .infinity)
+            }
+            // What is left under the first two rows, never less than 400: a
+            // card's long list scrolls inside it instead of stretching the page.
+            .frame(height: max(400, height - 8 - 92 - 256 - 3 * Design.Space.lg - 24))
+        }
+    }
+
+    private func narrow(_ plan: TodayPlan) -> some View {
+        VStack(spacing: Design.Space.lg) {
+            VStack(alignment: .leading, spacing: Design.Space.md) {
+                TodayHeadline(plan: plan, model: model)
+                TodayStats(plan: plan, model: model, today: today).frame(height: 84)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            timeline(plan).frame(height: 256)
+            Grid(horizontalSpacing: Design.Space.lg, verticalSpacing: Design.Space.lg) {
+                GridRow { nowCard(plan).frame(height: 256); projectsCard(plan).frame(height: 256) }
+                GridRow { categoriesCard(plan).frame(height: 400); todosCard(plan).frame(height: 400) }
+            }
+        }
+    }
+
+    private func empty(_ plan: TodayPlan) -> some View {
+        ContentUnavailableView {
+            if offset == 0 { Label("今天，还没有记录", systemImage: "sun.max") } else { Label("这一天没有记录", systemImage: "sun.max") }
+        } description: {
+            Text(model.trackingPaused ? "记录已暂停。继续后，新的活动会出现在这里。" : "使用 Mac 后，应用和网站活动会出现在这里。空档不会计入总时长。")
+        } actions: {
+            if model.trackingPaused { Button("继续记录") { model.resumeTracking() } }
+            else if offset == 0 { SettingsLink { Text("检查记录与权限设置") } }
+        }
+        .frame(maxWidth: .infinity, minHeight: 360).designCard().padding(.top, 8)
+    }
+
+    private var loading: some View {
+        VStack(alignment: .leading, spacing: Design.Space.lg) {
+            Text("正在读取今天的记录").foregroundStyle(Design.ink3)
+            ForEach(0..<3) { _ in RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Design.track).frame(height: 96) }
+        }
+        .padding(.top, 8).accessibilityLabel("正在读取今天的记录")
+    }
+
+    // MARK: Cards
+
+    private func timeline(_ plan: TodayPlan) -> some View {
+        TodayTimelineCard(plan: plan, model: model, filter: filter, selected: $selected, open: open)
+            .revealOnce(index: 3)
+    }
+
+    private func nowCard(_ plan: TodayPlan) -> some View {
+        TodayNowCard(plan: plan, model: model, open: open, start: startFocus).revealOnce(index: 2)
+    }
+
+    private func projectsCard(_ plan: TodayPlan) -> some View {
+        TodayProjectsCard(plan: plan, filter: $filter, selected: $selected).revealOnce(index: 4)
+    }
+
+    private func categoriesCard(_ plan: TodayPlan) -> some View {
+        TodayCategoriesCard(plan: plan, model: model).revealOnce(index: 5)
+    }
+
+    private func todosCard(_ plan: TodayPlan) -> some View {
+        TodayTodosCard(plan: plan, model: model, changed: { Task { await refresh() } }, start: startFocus).revealOnce(index: 6)
+    }
+
+    // MARK: Actions
+
+    /// 在活动里打开: that day's Activities page with the session selected.
+    private func open(_ row: TodayPlan.Row) {
+        model.activitySearch = ""
+        model.openActivities(category: nil, range: DateRangeSelection(kind: .day, anchor: row.session.start))
+        activities.pendingSession = row.session.start
+    }
+
+    private func startFocus(_ minutes: Int) {
+        try? model.focus?.start(minutes: minutes)
     }
 }
 
-struct RecordingStatusView: View {
+// MARK: - Headline and numbers
+
+/// "已经投入 4 小时，多在求职和 TimeSink 上。" with the projects in their colours.
+private struct TodayHeadline: View {
+    let plan: TodayPlan
     let model: AppModel
+    @Environment(\.colorScheme) private var scheme
+
+    private var subtitle: String {
+        plan.isToday ? String(localized: "到 \(model.time(plan.now)) 为止") : String(localized: "整天的记录")
+    }
+
+    /// Up to two places the time went: projects, else categories.
+    private var places: [(name: String, color: Color)] {
+        let projects = plan.projects.compactMap { project in project.name.map { ($0, Design.projectColor(project.slot)) } }
+        if !projects.isEmpty { return Array(projects.prefix(2)) }
+        return plan.categories.prefix(2).map { ($0.name, RefinedStyle.category($0.id, hex: $0.colorHex)) }
+    }
+
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 5)) { _ in
-            let running = model.engine.isRunning
-            let suspended = model.engine.isSuspended
-            let recording = running && !suspended && !model.trackingPaused && model.engine.currentActivity != nil
-            Label {
-                Text(!model.accessibilityGranted ? "未记录 · 需要权限" : model.trackingPaused ? "已暂停" : !running ? "记录未启动" : suspended ? "离开电脑" : recording ? "正在记录" : "等待活动")
-            } icon: {
-                Circle().fill(model.trackingPaused ? RefinedStyle.warning : recording ? Color.green : Color.secondary).frame(width: 7, height: 7)
-            }.font(.system(size: 11)).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 6) {
+            Text(subtitle).font(.num(13)).foregroundStyle(Design.ink2)
+            headline
+                .font(.system(size: 28, weight: scheme == .dark ? .semibold : .bold)).tracking(-0.4)
+                .foregroundStyle(Design.ink).lineLimit(2).minimumScaleFactor(0.72)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
+        .revealOnce(index: 0)
+    }
+
+    @ViewBuilder private var headline: some View {
+        let places = places
+        if plan.engaged < 60 {
+            if plan.isToday { Text("还没有投入的时间。") } else { Text("这一天没有投入的时间。") }
+        } else {
+            let time = Text(TodayFmt.long(plan.engaged)).font(.system(size: 28, weight: .bold, design: .rounded)).monospacedDigit()
+            if places.count >= 2 {
+                let a = place(places[0]), b = place(places[1])
+                if plan.isToday { Text("已经投入 \(time)，多在\(a)和 \(b) 上。") } else { Text("投入了 \(time)，多在\(a)和 \(b) 上。") }
+            } else if let first = places.first {
+                let a = place(first)
+                if plan.isToday { Text("已经投入 \(time)，多在\(a)上。") } else { Text("投入了 \(time)，多在\(a)上。") }
+            } else {
+                if plan.isToday { Text("已经投入 \(time)。") } else { Text("投入了 \(time)。") }
+            }
+        }
+    }
+
+    private func place(_ place: (name: String, color: Color)) -> Text {
+        Text(verbatim: place.name).foregroundColor(place.color)
+    }
+}
+
+/// 已记录, 投入, 打断, 评分: four numbers on one card.
+private struct TodayStats: View {
+    let plan: TodayPlan
+    let model: AppModel
+    let today: TodayModel
+
+    private struct Stat: Identifiable {
+        let id: Int
+        let label: LocalizedStringKey
+        let value: String
+        let note: String
+        let color: Color
+    }
+
+    private var stats: [Stat] {
+        var recordedNote = ""
+        if let yesterday = today.yesterdayTotal {
+            let delta = Format.minuteDelta(plan.total, yesterday)
+            recordedNote = delta >= 0 ? String(localized: "比昨天此时多 \(Format.chineseDuration(delta))")
+                : String(localized: "比昨天此时少 \(Format.chineseDuration(-delta))")
+        } else if let first = plan.firstRecord {
+            recordedNote = String(localized: "\(model.time(first)) 开始")
+        }
+        let share = Int((plan.engaged / max(1, plan.total) * 100).rounded())
+        let count = plan.interruptions.count
+        let interruptionNote: String
+        if let worst = plan.messiest {
+            interruptionNote = String(localized: "\(model.time(worst.session.start)) 那段占 \(worst.interruptions) 次")
+        } else {
+            interruptionNote = count == 0 ? String(localized: "没有被打断") : ""
+        }
+        var result = [
+            Stat(id: 0, label: "已记录", value: TodayFmt.clock(plan.total), note: recordedNote, color: Design.ink),
+            Stat(id: 1, label: "投入", value: TodayFmt.clock(plan.engaged), note: String(localized: "占 \(share)%"), color: Design.accentInk),
+            Stat(id: 2, label: "打断", value: String(localized: "\(count) 次"), note: interruptionNote, color: Design.interruption)
+        ]
+        if model.showScore {
+            result.append(Stat(id: 3, label: "评分", value: plan.pulse.map { "\($0)" } ?? "—",
+                               note: plan.isToday && today.streakDays > 0 ? String(localized: "连续 \(today.streakDays) 天 ≥ 70") : "",
+                               color: Design.ink))
+        }
+        return result
+    }
+
+    var body: some View {
+        let stats = stats
+        HStack(spacing: 0) {
+            ForEach(stats) { stat in
+                HStack(spacing: 0) {
+                    if stat.id > 0 { Rectangle().fill(Design.line).frame(width: 1, height: 52) }
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(stat.label).font(.system(size: 12)).foregroundStyle(Design.ink3)
+                        Text(verbatim: stat.value).font(.num(22, .bold)).foregroundStyle(stat.color)
+                            .glowInDark(stat.color, radius: 9, strength: 0.35)
+                            .refinedNumberMotion(stat.value)
+                        Text(verbatim: stat.note).font(.num(11)).foregroundStyle(Design.ink3).lineLimit(1)
+                    }
+                    .padding(.horizontal, 16).frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .padding(.horizontal, 6).frame(maxHeight: .infinity)
+        .designCard(radius: Design.Radius.strip)
+        .revealOnce(index: 1)
+    }
+}
+
+// MARK: - Now
+
+private struct TodayNowCard: View {
+    let plan: TodayPlan
+    let model: AppModel
+    let open: (TodayPlan.Row) -> Void
+    let start: (Int) -> Void
+
+    /// The suggestion on the button: the first preset of 45 minutes or more.
+    private static let suggested = 45
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let row = plan.current { content(row) }
+        }
+        .padding(.horizontal, Design.Space.xl).padding(.vertical, 18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .designCard()
+    }
+
+    @ViewBuilder private func content(_ row: TodayPlan.Row) -> some View {
+        let live = plan.currentIsLive
+        HStack(spacing: 8) {
+            Circle().fill(live ? Design.live : Design.ink3).frame(width: 8, height: 8)
+                .background(Circle().fill(live ? Design.liveHalo : .clear).frame(width: 16, height: 16))
+            Text(heading(live: live)).cardTitle()
+            Text(live ? String(localized: "\(model.time(row.session.start)) 开始，还在继续")
+                 : String(localized: "\(model.time(row.session.start))–\(model.time(row.session.end))"))
+                .font(.num(12)).foregroundStyle(Design.ink3).lineLimit(1)
+        }
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(verbatim: title(row)).font(.system(size: 24, weight: .bold)).foregroundStyle(Design.ink)
+                .lineLimit(1).minimumScaleFactor(0.7)
+            Text(verbatim: TodayFmt.long(row.session.recorded)).font(.num(22, .bold)).foregroundStyle(Design.ink2).lineLimit(1)
+                .refinedNumberMotion(TodayFmt.long(row.session.recorded))
+        }
+        HStack(spacing: 6) {
+            ForEach(row.session.apps.prefix(3), id: \.bundleID) { app in
+                Text(verbatim: "\(app.name) \(TodayFmt.long(app.seconds))").font(.system(size: 11)).lineLimit(1)
+                    .foregroundStyle(Design.ink).padding(.horizontal, 9).frame(height: 24)
+                    .background(Design.chip, in: Capsule())
+                    .overlay(Capsule().strokeBorder(Design.pillRing, lineWidth: 0.5))
+            }
+        }
+        interruptionBanner(row)
+        Spacer(minLength: 0)
+        HStack(spacing: 8) {
+            if plan.isToday, model.focus?.running == nil {
+                Button("接下来专注 \(Self.suggested) 分钟") { start(Self.suggested) }
+                    .buttonStyle(AccentButtonStyle()).disabled(model.focus == nil)
+            }
+            Button("看这一段") { open(row) }.buttonStyle(PillButtonStyle(height: 32, font: .system(size: 13)))
+        }
+    }
+
+    private func heading(live: Bool) -> LocalizedStringKey {
+        live ? "现在" : plan.isToday ? "最近一段" : "最后一段"
+    }
+
+    private func title(_ row: TodayPlan.Row) -> String {
+        model.sessionTitle(row.session) ?? row.project
+            ?? row.session.apps.prefix(2).map(\.name).joined(separator: String(localized: "、"))
+    }
+
+    private func interruptionBanner(_ row: TodayPlan.Row) -> some View {
+        let count = row.interruptions
+        let busiest = plan.messiest?.id == row.id
+        let count1 = Text(verbatim: "\(count)").font(.num(13, .bold)).foregroundColor(Design.interruption)
+        return VStack(alignment: .leading, spacing: 6) {
+            Group {
+                if count == 0 { Text("这一段没有被打断，切换 \(row.switches) 次。") }
+                else if busiest { Text("这一段被打断 \(count1) 次，切换 \(row.switches) 次，是今天最乱的一段。") }
+                else { Text("这一段被打断 \(count1) 次，切换 \(row.switches) 次。") }
+            }
+            .font(.system(size: 13)).foregroundStyle(Design.ink).fixedSize(horizontal: false, vertical: true)
+            if count > 0 {
+                GeometryReader { proxy in
+                    ForEach(plan.interruptions.filter { $0.start >= row.session.start && $0.start < row.session.end }, id: \.id) { episode in
+                        let fraction = episode.start.timeIntervalSince(row.session.start) / max(1, row.session.duration)
+                        RoundedRectangle(cornerRadius: 1).fill(Design.interruption).frame(width: 3, height: 8)
+                            .offset(x: proxy.size.width * fraction - 1.5)
+                    }
+                }.frame(height: 8).accessibilityHidden(true)
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10).frame(maxWidth: .infinity, alignment: .leading)
+        .background(count == 0 ? Design.liveHalo : Design.interruptionSoft, in: RoundedRectangle(cornerRadius: Design.Radius.well, style: .continuous))
+    }
+}
+
+// MARK: - Projects
+
+private struct TodayProjectsCard: View {
+    let plan: TodayPlan
+    @Binding var filter: ProjectFilter
+    @Binding var selected: Date?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text("项目").cardTitle()
+                Text("点一下只看它").font(.system(size: 12)).foregroundStyle(Design.ink3)
+            }.padding(.bottom, 6)
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(plan.projects) { project in row(project) }
+                }
+            }
+            .scrollIndicators(.never).scrollBounceBehavior(.basedOnSize)
+            .mask(LinearGradient(stops: [.init(color: .black, location: 0.9), .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
+            Text("项目从窗口标题里的仓库名认出来；认不出的按前后时间推测，会标出来让你确认。")
+                .font(.system(size: 11)).foregroundStyle(Design.ink3).fixedSize(horizontal: false, vertical: true).padding(.top, 8)
+        }
+        .padding(.horizontal, Design.Space.xl).padding(.vertical, 18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .designCard()
+    }
+
+    private func isOn(_ project: TodayPlan.Project) -> Bool { filter == .some(project.name) }
+
+    private func row(_ project: TodayPlan.Project) -> some View {
+        let color = Design.projectColor(project.slot)
+        let dimmed = filter != nil && !isOn(project)
+        return Button {
+            withAnimation(Design.motion(Design.settle, reduced: reduceMotion)) {
+                filter = isOn(project) ? nil : .some(project.name)
+                selected = nil
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Circle().fill(color).frame(width: 10, height: 10)
+                    Text(project.name ?? String(localized: "未归入项目")).font(.system(size: 15, weight: .bold)).lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("\(project.sessions.count) 段").font(.num(12)).foregroundStyle(Design.ink3)
+                    Text(verbatim: TodayFmt.clock(project.seconds)).font(.num(15, .bold)).padding(.leading, 8)
+                }
+                track(project, color: color)
+                Text(verbatim: note(project)).font(.num(11)).foregroundStyle(Design.ink3).lineLimit(1)
+            }
+            .padding(.horizontal, 6).padding(.top, 14).padding(.bottom, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .bottom) { Rectangle().fill(Design.line2).frame(height: 1) }
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(isOn(project) ? Design.rowHover : .clear))
+            .opacity(dimmed ? 0.4 : 1)
+        }
+        .buttonStyle(HoverRowStyle())
+        .accessibilityAddTraits(isOn(project) ? .isSelected : [])
+    }
+
+    /// The day in a hairline: where this project's sessions sit between midnight and midnight.
+    private func track(_ project: TodayPlan.Project, color: Color) -> some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Design.track)
+                ForEach(plan.rows.filter { project.sessions.contains($0.id) }) { row in
+                    let start = row.session.start.timeIntervalSince(plan.day.start) / plan.day.duration
+                    let length = max(row.session.duration / plan.day.duration, 0.006)
+                    RoundedRectangle(cornerRadius: 3, style: .continuous).fill(color)
+                        .overlay { if row.guessed { StripeOverlay().clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous)) } }
+                        .frame(width: max(2, proxy.size.width * length)).offset(x: proxy.size.width * start)
+                }
+            }
+        }.frame(height: 8).accessibilityHidden(true)
+    }
+
+    private func note(_ project: TodayPlan.Project) -> String {
+        if project.name == nil { return String(localized: "没认出项目名") }
+        if project.guessedCount > 0 { return String(localized: "\(project.guessedCount) 段是推测的，右边可以确认") }
+        if project.carriedSeconds > 0 { return String(localized: "其中 \(TodayFmt.long(project.carriedSeconds)) 是凌晨接着昨晚") }
+        return project.interruptions > 0 ? String(localized: "打断 \(project.interruptions) 次") : String(localized: "没有打断")
+    }
+}
+
+// MARK: - Categories
+
+private struct TodayCategoriesCard: View {
+    let plan: TodayPlan
+    let model: AppModel
+
+    private func color(_ category: TodayPlan.CategoryRow) -> Color { RefinedStyle.category(category.id, hex: category.colorHex) }
+
+    var body: some View {
+        let top = plan.categories.first?.seconds ?? 1
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text("时间去了哪").cardTitle()
+                Text("按分类").font(.system(size: 12)).foregroundStyle(Design.ink3)
+                Spacer(minLength: 8)
+                Button { model.sidebarSelection = .organization } label: {
+                    Text("分类与规则 ›").font(.system(size: 12)).foregroundStyle(Design.link)
+                }.buttonStyle(.plain)
+            }
+            GeometryReader { proxy in
+                let usable = proxy.size.width - CGFloat(max(0, plan.categories.count - 1)) * 2
+                HStack(spacing: 2) {
+                    ForEach(plan.categories) { category in
+                        color(category).frame(width: max(2, usable * category.seconds / max(1, plan.total)))
+                    }
+                }
+            }
+            .frame(height: 12).clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous)).accessibilityHidden(true)
+            HStack {
+                Text("投入 \(Text(verbatim: TodayFmt.clock(plan.engaged)).fontWeight(.bold).foregroundColor(Design.ink)) · \(Int((plan.engaged / max(1, plan.total) * 100).rounded()))%")
+                Spacer()
+                Text("其他 \(TodayFmt.long(max(0, plan.total - plan.engaged)))")
+            }.font(.num(12)).foregroundStyle(Design.ink2)
+            VStack(spacing: 0) {
+                ForEach(plan.categories.prefix(7)) { category in
+                    Button {
+                        model.openActivities(category: category.id, range: DateRangeSelection(kind: .day, anchor: plan.day.start))
+                    } label: {
+                        HStack(spacing: 10) {
+                            Circle().fill(color(category)).frame(width: 9, height: 9).frame(width: 10)
+                            HStack(spacing: 6) {
+                                Text(category.name).font(.system(size: 13)).lineLimit(1)
+                                if category.engaged { Text("投入").font(.system(size: 11)).foregroundStyle(Design.ink3) }
+                            }.frame(maxWidth: .infinity, alignment: .leading)
+                            Capsule().fill(Design.track).frame(width: 120, height: 5)
+                                .overlay(alignment: .leading) {
+                                    Capsule().fill(color(category)).frame(width: max(3, 120 * category.seconds / max(1, top)), height: 5)
+                                }
+                            Text(verbatim: category.seconds < 60 ? String(localized: "<1 分") : TodayFmt.clock(category.seconds))
+                                .font(.num(13)).foregroundStyle(Design.ink2).frame(width: 52, alignment: .trailing)
+                        }
+                        .frame(height: 31).contentShape(Rectangle())
+                        .overlay(alignment: .bottom) { Rectangle().fill(Design.line2).frame(height: 1) }
+                    }
+                    .buttonStyle(HoverRowStyle(radius: 6))
+                    .help("\(category.name) · \(Format.duration(category.seconds))")
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, Design.Space.xl).padding(.vertical, 18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .designCard()
+    }
+}
+
+// MARK: - To do
+
+/// 要你处理: what the page cannot settle by itself.
+private struct TodayTodosCard: View {
+    let plan: TodayPlan
+    let model: AppModel
+    let changed: () -> Void
+    let start: (Int) -> Void
+    @State private var filling: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text("要你处理").cardTitle()
+                Text("\(plan.todos.count) 件").font(.num(12)).foregroundStyle(Design.ink3)
+            }.padding(.bottom, 6)
+            if plan.todos.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle").font(.system(size: 26)).foregroundStyle(Design.liveInk)
+                    Text("都处理好了").font(.system(size: 13)).foregroundStyle(Design.ink2)
+                }.frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ForEach(plan.todos) { todo in row(todo).transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .leading))) }
+                Spacer(minLength: 0)
+            }
+        }
+        .animation(reduceMotion ? nil : Design.settle, value: plan.todos.map(\.id))
+        .padding(.horizontal, Design.Space.xl).padding(.vertical, 18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .designCard()
+    }
+
+    private struct Presentation {
+        let symbol: String
+        let color: Color
+        let title: String
+        let note: String
+        let action: LocalizedStringKey
+    }
+
+    private func presentation(_ todo: TodayPlan.Todo) -> Presentation {
+        switch todo {
+        case .fill(let gap):
+            return Presentation(symbol: "hourglass", color: Design.accent,
+                                title: String(localized: "补记 \(model.time(gap.start))–\(model.time(gap.end))"),
+                                note: String(localized: "离开了 \(Format.chineseDuration(gap.duration))，是吃饭还是开会？"), action: "补记")
+        case .confirm(let count, let projects):
+            let slot = plan.guessedRows.first?.slot
+            return Presentation(symbol: "questionmark", color: Design.projectColor(slot),
+                                title: String(localized: "确认 \(count) 段的项目"),
+                                note: String(localized: "标题里没有项目名，我猜是 \(projects.joined(separator: String(localized: "、")))"), action: "确认")
+        case .classify(let seconds, let names):
+            return Presentation(symbol: "number", color: Design.color(light: 0xA1A1AA, dark: 0x6F727B),
+                                title: String(localized: "\(Format.chineseDuration(seconds))还没分类"),
+                                note: names.joined(separator: String(localized: "、")), action: "去分类")
+        case .focus(let day, let minutes):
+            let note = day.flatMap { day in minutes.map { String(localized: "最近一次是 \(day.formatted(.dateTime.month().day())) · \($0) 分钟") } }
+                ?? String(localized: "选一个时长，开始计时")
+            return Presentation(symbol: "scope", color: Design.accent, title: String(localized: "今天还没专注过"), note: note, action: "开始")
+        }
+    }
+
+    private func row(_ todo: TodayPlan.Todo) -> some View {
+        let p = presentation(todo)
+        return HStack(spacing: 12) {
+            Image(systemName: p.symbol).font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                .frame(width: 30, height: 30).background(p.color, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: p.title).font(.system(size: 13, weight: .semibold)).lineLimit(2)
+                Text(verbatim: p.note).font(.num(11)).foregroundStyle(Design.ink3).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            action(todo, p)
+        }
+        .padding(.vertical, 12).padding(.horizontal, 4)
+        .overlay(alignment: .bottom) { Rectangle().fill(Design.line2).frame(height: 1) }
+    }
+
+    @ViewBuilder private func action(_ todo: TodayPlan.Todo, _ p: Presentation) -> some View {
+        let style = PillButtonStyle(height: 26, tint: Design.link, font: .system(size: 12, weight: .semibold))
+        switch todo {
+        case .fill(let gap):
+            Button(p.action) { filling = todo.id }
+                .buttonStyle(style)
+                .popover(isPresented: Binding(get: { filling == todo.id }, set: { if !$0 { filling = nil } }), arrowEdge: .leading) {
+                    AwayPrompt(model: model, interval: gap, manual: true) { filling = nil }.frame(width: 316).padding(4)
+                }
+        case .confirm:
+            Button(p.action) {
+                for row in plan.guessedRows { if let project = row.project { model.assignSession(row.session, toProject: project) } }
+                changed()
+            }.buttonStyle(style)
+        case .classify:
+            Button(p.action) { model.organizationTab = .uncategorized; model.sidebarSelection = .organization }.buttonStyle(style)
+        case .focus:
+            Menu {
+                ForEach(FocusPresets.minutes, id: \.self) { minutes in
+                    Button("\(minutes) 分钟") { start(minutes) }.disabled(model.focus == nil || model.focus?.running != nil)
+                }
+            } label: { Text(p.action) }
+            .menuStyle(.button).buttonStyle(style).menuIndicator(.hidden).fixedSize()
         }
     }
 }

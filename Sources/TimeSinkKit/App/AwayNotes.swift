@@ -57,4 +57,13 @@ extension AppModel {
         try? observationStore?.insert(AwayNote(start: offer.start, end: offer.end, label: label, symbol: symbol))
         dataChanged()
     }
+
+    /// Names a stretch chosen on the Today page, not the one the menu bar
+    /// offered. Kept apart from spans like any other note.
+    func fillAway(_ interval: DateInterval, label: String, symbol: String) {
+        guard !label.isEmpty else { return }
+        try? observationStore?.insert(AwayNote(start: interval.start, end: interval.end, label: label, symbol: symbol))
+        if awayOffer == interval { awayOffer = nil }
+        dataChanged()
+    }
 }

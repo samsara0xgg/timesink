@@ -38,6 +38,8 @@ public final class AppModel {
     public var activityTimeInterval: DateInterval?
     public private(set) var heatmapReturnRange: DateRangeSelection?
     public var sidebarSelection: SidebarItem = .today
+    /// Days back the Today page shows: 0 is today, -1 yesterday.
+    public var todayDayOffset = 0
     public var activityFilter: String?
 
     /// Selected Settings window tab -- default `.general`; notification
@@ -409,6 +411,7 @@ public final class AppModel {
 
     public func openToday() {
         clearActivityTimeFilter()
+        todayDayOffset = 0
         show(.today())
         sidebarSelection = .today
     }
