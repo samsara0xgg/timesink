@@ -122,7 +122,7 @@ enum Design {
     static let pageOut = Animation.easeOut(duration: 0.08)
     static let pageIn = Animation.easeOut(duration: 0.15).delay(0.07)
     /// Cards, blocks and rows arriving, once.
-    static let reveal = Animation.spring(response: 0.55, dampingFraction: 0.88)
+    static let reveal = Animation.spring(response: 0.44, dampingFraction: 0.88)
     static let hover = Animation.easeOut(duration: 0.12)
     static let press = Animation.spring(response: 0.22, dampingFraction: 0.78)
     /// Layout-level changes: a card filtering, a row going away.
@@ -513,7 +513,7 @@ private struct RevealOnce: ViewModifier {
             .offset(y: shown || reduceMotion ? 0 : 10)
             .onAppear {
                 guard !shown else { return }
-                withAnimation(Design.motion(Design.reveal, reduced: reduceMotion).delay(reduceMotion ? 0 : Double(min(index, 8)) * 0.045)) { shown = true }
+                withAnimation(Design.motion(Design.reveal, reduced: reduceMotion).delay(reduceMotion ? 0 : Double(min(index, 8)) * 0.035)) { shown = true }
             }
     }
 }

@@ -101,8 +101,21 @@ import WebKit
         print("Captured \(file.lastPathComponent)")
     }
 
-    /// `--motion`: frame strips of the first appearance and of a tab switch,
-    /// and a screen recording of the window, all from sample data.
+    /// Lets the host show nothing until the recording runs, so the first
+    /// appearance is in it.
+    @MainActor @Observable final class MotionStage { var shown = false }
+
+    private struct MotionRoot: View {
+        let model: AppModel
+        let stage: MotionStage
+        var body: some View {
+            if stage.shown { MainWindowView(model: model) } else { Color.clear }
+        }
+    }
+
+    /// `--motion`: a recording of the window alone (never the desktop) as it
+    /// appears and then switches through every page, from sample data.
+    /// `ffmpeg -i motion.mov -vf fps=60 f%03d.png` pulls the frames out.
     static func runMotion() async throws {
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         guard let screen = builtIn else { print("No built-in display"); return }
@@ -111,12 +124,12 @@ import WebKit
         let size = RefinedPreview.mainSize
         let dark = CommandLine.arguments.contains("--dark")
         NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
-        let root = MainWindowView(model: model)
+        let stage = MotionStage()
+        let root = MotionRoot(model: model, stage: stage)
             .environment(\.locale, RefinedPreview.locale)
             .environment(\.colorScheme, dark ? .dark : .light)
             .frame(width: size.width, height: size.height)
         let controller = NSHostingController(rootView: root)
-        controller.sceneBridgingOptions = [.title]
         let window = NSWindow(contentRect: NSRect(origin: .zero, size: size),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                               backing: .buffered, defer: false)
@@ -124,47 +137,29 @@ import WebKit
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.appearance = NSApp.appearance
-        window.colorSpace = .sRGB
         window.ignoresMouseEvents = true
         window.isReleasedWhenClosed = false
         window.setContentSize(size)
         let visible = screen.visibleFrame
         window.setFrameTopLeftPoint(NSPoint(x: visible.minX + 20, y: visible.maxY - 20))
+        window.alphaValue = 0
         window.orderFrontRegardless()
         defer { window.orderOut(nil) }
-        func frame(_ name: String) {
-            guard let host = window.contentView?.superview ?? window.contentView,
-                  let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return }
-            host.cacheDisplay(in: host.bounds, to: rep)
-            try? rep.representation(using: .png, properties: [:])?.write(to: output.appendingPathComponent(name))
-        }
-        // First appearance: the page builds while the window is already up.
-        try await Task.sleep(for: .milliseconds(150))
-        for index in 1...8 {
-            frame(String(format: "strip-appear-%02d.png", index))
-            try await Task.sleep(for: .milliseconds(70))
-        }
-        try await Task.sleep(for: .milliseconds(1200))
-        // Tab switch, Today to Activities.
-        model.sidebarSelection = .activities
-        for index in 1...8 {
-            frame(String(format: "strip-tab-%02d.png", index))
-            try await Task.sleep(for: .milliseconds(30))
-        }
-        try await Task.sleep(for: .milliseconds(900))
-        // A recording of a few switches.
-        let movie = output.appendingPathComponent("tabs.mov")
+        let movie = output.appendingPathComponent("motion.mov")
         let shot = Process()
         shot.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-        shot.arguments = ["-x", "-v", "-V", "6", "-l", String(window.windowNumber), movie.path]
-        try? shot.run()
-        try await Task.sleep(for: .milliseconds(900))
-        for page in [SidebarItem.today, .stats, .focus, .organization, .today] {
+        shot.arguments = ["-x", "-v", "-V", "13", "-l", String(window.windowNumber), movie.path]
+        try shot.run()
+        try await Task.sleep(for: .milliseconds(1200))
+        window.alphaValue = 1
+        stage.shown = true                                   // first appearance
+        try await Task.sleep(for: .milliseconds(2200))
+        for page in [SidebarItem.activities, .stats, .focus, .organization, .today] {
             model.sidebarSelection = page
-            try await Task.sleep(for: .milliseconds(900))
+            try await Task.sleep(for: .milliseconds(1300))
         }
         shot.waitUntilExit()
-        print("Motion strips written")
+        print("Motion recording written")
     }
 
     static func runAll() async throws {

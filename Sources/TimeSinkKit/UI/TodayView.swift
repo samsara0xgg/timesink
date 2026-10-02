@@ -13,6 +13,7 @@ struct TodayView: View {
     @State private var today = TodayModel()
     @State private var selected: Date?
     @State private var filter: ProjectFilter = nil
+    @State private var showLoading = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private struct RefreshKey: Equatable { let version: Int; let offset: Int }
@@ -113,6 +114,9 @@ struct TodayView: View {
             ForEach(0..<3) { _ in RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Design.track).frame(height: 96) }
         }
         .padding(.top, 8).accessibilityLabel("正在读取今天的记录")
+        // Only if the read takes a moment; a quick one shows no flash of grey.
+        .opacity(showLoading ? 1 : 0)
+        .task { try? await Task.sleep(for: .milliseconds(250)); showLoading = true }
     }
 
     // MARK: Cards
