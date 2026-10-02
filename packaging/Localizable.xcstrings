@@ -605,28 +605,6 @@
         }
       }
     },
-    "%lld 小时": {
-      "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld hour"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld hours"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "%lld 条": {
       "localizations": {
         "en": {
@@ -8115,16 +8093,6 @@
                 }
               }
             }
-          }
-        }
-      }
-    },
-    "%lld 小时 %lld 分": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld h %2$lld min"
           }
         }
       }

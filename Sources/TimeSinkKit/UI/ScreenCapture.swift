@@ -177,20 +177,13 @@ import WebKit
                 model.range = DateRangeSelection(kind: page == .stats ? .last7 : .day, anchor: page == .activities ? yesterday : Date())
                 let activities = ActivitiesModel()
                 activities.recompute(model: model, events: [])
-                let midMorning = calendar.startOfDay(for: yesterday).addingTimeInterval(10.6 * 3600)
-                if page == .activities, let item = model.rangedSpans().first(where: { $0.span.start >= midMorning }) {
-                    activities.select(ActivitiesModel.selection(for: item), start: item.span.start)
+                if page == .activities {
+                    // The day's longest session open in the inspector.
+                    await activities.loadSessions(model: model)
+                    activities.selectedSession = activities.sessions.max { $0.recorded < $1.recorded }?.start
                 }
                 try await shoot("main-\(name)", MainWindowView(model: model, activities: activities), size: size, dark: dark,
                                 settle: page == .stats ? 3500 : 1200)
-                if page == .activities {
-                    // The same day with its longest session open in the inspector.
-                    let sessioned = ActivitiesModel()
-                    sessioned.recompute(model: model, events: [])
-                    await sessioned.loadSessions(model: model)
-                    sessioned.selectedSession = sessioned.sessions.max { $0.recorded < $1.recorded }?.start
-                    try await shoot("main-sessions", MainWindowView(model: model, activities: sessioned), size: size, dark: dark, settle: 1500)
-                }
             }
             model.sidebarSelection = .organization
             for (name, tab) in [("categories", SettingsTab.categories), ("rules", .rules)] {
