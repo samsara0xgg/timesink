@@ -7,12 +7,23 @@ import SwiftUI
 ///
 /// Reduce Transparency swaps every surface for a solid fill; Increase
 /// Contrast draws a 1 pt rim.
+/// False for a page kept alive behind the one on screen. System glass does not
+/// fade with its parents' opacity, so a hidden page's glass would show through.
+private struct PageActiveKey: EnvironmentKey { static let defaultValue = true }
+extension EnvironmentValues {
+    var pageActive: Bool {
+        get { self[PageActiveKey.self] }
+        set { self[PageActiveKey.self] = newValue }
+    }
+}
+
 struct GlassSurface<S: InsettableShape>: ViewModifier {
     let shape: S
     var tint: Color?
     var interactive = false
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.pageActive) private var pageActive
 
     func body(content: Content) -> some View {
         if reduceTransparency {
@@ -26,7 +37,7 @@ struct GlassSurface<S: InsettableShape>: ViewModifier {
 
     @ViewBuilder private func glass(_ content: Content) -> some View {
         #if compiler(>=6.2)
-        if #available(macOS 26, *) {
+        if #available(macOS 26, *), pageActive {
             content.glassEffect(glassStyle, in: shape)
         } else {
             material(content)

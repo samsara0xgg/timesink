@@ -94,6 +94,7 @@ private struct KeptPage<Content: View>: View {
     let side: CGFloat
     let content: Content
     @State private var size: CGSize?
+    @State private var arrived = false
     @State private var visibility: PageVisibility
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -107,16 +108,21 @@ private struct KeptPage<Content: View>: View {
     }
 
     var body: some View {
+        // A page opened for the first time starts hidden and arrives like any
+        // other, instead of appearing whole while the old one is still fading.
+        let shown = active && arrived
         content
             .environment(visibility)
+            .environment(\.pageActive, shown)
             .frame(width: active ? nil : size?.width, height: active ? nil : size?.height)
             .onGeometryChange(for: CGSize.self, of: \.size) { if active { size = $0 } }
+            .task { arrived = true }
             // Opacity 0 already keeps clicks out. `allowsHitTesting(false)`
             // would also detach the page's AppKit views (the Activities list)
             // and reattach them on every return, ~40% of a switch.
-            .opacity(active ? 1 : 0)
-            .offset(x: active || reduceMotion ? 0 : side * 14)
-            .animation(reduceMotion ? .easeOut(duration: 0.12) : active ? Design.pageIn : Design.pageOut, value: active)
+            .opacity(shown ? 1 : 0)
+            .offset(x: shown || reduceMotion ? 0 : side * 14)
+            .animation(reduceMotion ? .easeOut(duration: 0.12) : shown ? Design.pageIn : Design.pageOut, value: shown)
             .accessibilityHidden(!active)
     }
 }
