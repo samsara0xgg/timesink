@@ -1,11 +1,10 @@
 import Foundation
 import Security
 
-/// Thin wrapper over the macOS Keychain for storing the LLM API key as a
+/// Thin wrapper over the macOS Keychain for storing the Jev API key as a
 /// generic password under service `com.alllllenshi.TimeSink`, keyed by
 /// `account`. Never touched by unit tests -- only reached from
-/// `LLMCoordinator`'s lazy service construction (enabled + no injected
-/// service + a key present) and the Settings LLM pane.
+/// `JevService`'s default key provider and the Settings Jev pane.
 public enum Keychain {
     private static let service = "com.alllllenshi.TimeSink"
 

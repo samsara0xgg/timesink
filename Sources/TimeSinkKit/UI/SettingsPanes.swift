@@ -430,42 +430,31 @@ struct UncategorizedSettingsPane: View {
 
 // MARK: - 智能分类
 
-/// Optional OpenAI-compatible LLM classification fallback, default off. The
-/// API key never touches the database -- it is read/written directly via
-/// `Keychain`, keyed by `LLMCoordinator.apiKeyAccount`. Endpoint/model are
-/// ordinary settings (`SettingsStore`), persisted on submit like the other
-/// text fields in this file.
+/// Jev classification, default off. The API key never touches the database;
+/// it lives in the Keychain under `JevService.apiKeyAccount`. Endpoint and
+/// monthly cap are ordinary settings. A later screen replaces this stand-in.
 struct LLMSettingsPane: View {
     let model: AppModel
 
     @State private var enabled = false
     @State private var endpoint = ""
-    @State private var modelName = ""
     @State private var apiKeyInput = ""
     @State private var hasStoredKey = false
     @State private var apiKeyStatus: String?
-    @State private var testStatus: String?
-    @State private var isTesting = false
 
     var body: some View {
         Form {
             Section {
                 VStack(alignment: .leading, spacing: 4) {
-                Toggle("用模型给没分类的网站提建议", isOn: $enabled)
-                    .onChange(of: enabled) { _, newValue in
-                        model.settings.setLLMEnabled(newValue)
-                    }
-                Text("只发送网站域名，不发送标题和网址路径。建议只在你接受后生效。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    Toggle("用 Jev 给每段使用时间判断分类", isOn: $enabled)
+                        .onChange(of: enabled) { _, newValue in model.jev?.setEnabled(newValue) }
+                    Text("开启后，每段使用时间会向服务发送下面这些内容，不发送屏幕文字和截图。")
+                        .font(.caption).foregroundStyle(.secondary)
+                    ForEach(JevService.sentFields, id: \.self) { Text("· \($0)").font(.caption).foregroundStyle(.secondary) }
                 }
             }
-
-            Section("OpenAI 兼容服务") {
+            Section("服务") {
                 TextField("地址", text: $endpoint)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit(commitFields)
-                TextField("模型", text: $modelName)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(commitFields)
                 HStack {
@@ -478,44 +467,27 @@ struct LLMSettingsPane: View {
                     }
                 }
                 if let apiKeyStatus {
-                    Text(apiKeyStatus)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Text(apiKeyStatus).font(.caption).foregroundStyle(.secondary)
                 }
-            }
-
-            Section {
-                HStack {
-                    Button("测试") { runTest() }
-                        .disabled(isTesting)
-                    if isTesting {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-                }
-                if let testStatus {
-                    Text(testStatus)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                if let jev = model.jev {
+                    Text("本月已用 $\(String(format: "%.2f", jev.monthSpend)) / 上限 $\(String(format: "%.2f", jev.monthlyCap))")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
             }
         }
         .formStyle(.grouped)
         .onAppear {
-            enabled = model.settings.llmEnabled
-            endpoint = model.settings.llmEndpoint
-            modelName = model.settings.llmModel
-            hasStoredKey = !(Keychain.get(account: LLMCoordinator.apiKeyAccount) ?? "").isEmpty
+            enabled = model.settings.jevEnabled
+            endpoint = model.settings.jevEndpoint
+            hasStoredKey = !(Keychain.get(account: JevService.apiKeyAccount) ?? "").isEmpty
         }
         // Switching tabs must not drop what was typed.
         .onDisappear(perform: commitFields)
     }
 
     private func commitFields() {
-        guard endpoint != model.settings.llmEndpoint || modelName != model.settings.llmModel else { return }
-        model.settings.setLLMEndpoint(endpoint)
-        model.settings.setLLMModel(modelName)
-        model.engine.llmCoordinator?.invalidateService()
+        guard endpoint != model.settings.jevEndpoint else { return }
+        model.settings.setJevEndpoint(endpoint)
     }
 
     /// An empty field is not a request to erase the key; 移除密钥 is.
@@ -523,8 +495,7 @@ struct LLMSettingsPane: View {
         let key = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty else { return }
         do {
-            try Keychain.set(key, account: LLMCoordinator.apiKeyAccount)
-            model.engine.llmCoordinator?.invalidateService()
+            try Keychain.set(key, account: JevService.apiKeyAccount)
             apiKeyInput = ""
             hasStoredKey = true
             apiKeyStatus = String(localized: "已保存")
@@ -534,41 +505,8 @@ struct LLMSettingsPane: View {
     }
 
     private func removeKey() {
-        Keychain.delete(account: LLMCoordinator.apiKeyAccount)
-        model.engine.llmCoordinator?.invalidateService()
+        Keychain.delete(account: JevService.apiKeyAccount)
         hasStoredKey = false
-        apiKeyStatus = String(localized: "已移除，建议会停止")
-    }
-
-    /// Runs one classification against `example-blog.net` with the
-    /// currently-entered fields (falling back to the stored Keychain key if
-    /// the field is empty, so a previously-saved key can be re-tested
-    /// without retyping it), and shows the resulting category id or error.
-    private func runTest() {
-        commitFields()
-        guard let url = URL(string: endpoint) else {
-            testStatus = String(localized: "Endpoint 无效")
-            return
-        }
-        let typed = !apiKeyInput.isEmpty
-        let key = typed ? apiKeyInput : (Keychain.get(account: LLMCoordinator.apiKeyAccount) ?? "")
-        guard !key.isEmpty else {
-            testStatus = String(localized: "请先填写 API Key")
-            return
-        }
-        isTesting = true
-        testStatus = nil
-        let classifier = OpenAIDomainClassifier(endpoint: url, apiKey: key, model: modelName)
-        Task { @MainActor in
-            do {
-                let categoryID = try await classifier.classify(domain: "example-blog.net", title: nil)
-                let result = "example-blog.net → \(model.resolver.categoriesByID[categoryID]?.name ?? categoryID)"
-                // A typed key proves itself, not the stored one.
-                testStatus = typed ? String(localized: "\(result) · 用的是输入框里还没保存的密钥，按回车保存") : result
-            } catch {
-                testStatus = String(localized: "测试失败：\(error.localizedDescription)")
-            }
-            isTesting = false
-        }
+        apiKeyStatus = String(localized: "已移除，判断会停止")
     }
 }

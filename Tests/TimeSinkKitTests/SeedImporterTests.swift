@@ -39,7 +39,7 @@ final class SeedImporterTests: XCTestCase {
     func testUndoingAnAcceptRestoresTheSuggestion() throws {
         let db = try AppDatabase.openInMemory()
         let store = CategoryStore(db)
-        try store.suggestDomain("example.invalid", categoryID: "learning")
+        try db.write { try $0.execute(sql: "INSERT INTO classificationSuggestion(key, kind, categoryID, source, createdAt) VALUES ('example.invalid', 'domain', 'learning', 'model', ?)", arguments: [Date()]) }
         let suggestion = try XCTUnwrap(store.suggestions().first)
         try store.setUserDomain("example.invalid", categoryID: "learning")
         try store.dismissSuggestion(key: "example.invalid", kind: "domain")

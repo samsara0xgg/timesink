@@ -14,12 +14,6 @@ extension CategoryStore {
     func suggestions() throws -> [ClassificationSuggestion] {
         try writer.read { try ClassificationSuggestion.fetchAll($0) }
     }
-    func suggestDomain(_ domain: String, categoryID: String) throws {
-        guard OpenAIDomainClassifier.validCategoryIDs.contains(categoryID) else { return }
-        try writer.write { db in
-            try db.execute(sql: "INSERT INTO classificationSuggestion(key, kind, categoryID, source, createdAt) VALUES (?, 'domain', ?, 'model', ?) ON CONFLICT(key, kind) DO NOTHING", arguments: [domain, categoryID, Date()])
-        }
-    }
     func dismissSuggestion(key: String, kind: String) throws {
         try writer.write { try $0.execute(sql: "DELETE FROM classificationSuggestion WHERE key = ? AND kind = ?", arguments: [key, kind]) }
     }

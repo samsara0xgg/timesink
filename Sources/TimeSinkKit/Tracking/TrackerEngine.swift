@@ -302,7 +302,6 @@ public final class TrackerEngine {
     public var onTick: ((Span?, Date) -> Void)?
     /// Start of the span the last `onChange` wrote: nothing before it changed.
     public private(set) var lastWriteStart: Date?
-    public var llmCoordinator: LLMCoordinator?
     private var suspensionState = SuspensionState()
 
     /// Bumped by every suspension-context change: `suspend(at:)`,
@@ -760,9 +759,7 @@ public final class TrackerEngine {
     /// otherwise, if it was already inserted, always reconciles its `end`
     /// via `updateEnd` regardless of duration (no delete path exists, so an
     /// already-persisted row must be corrected, not abandoned). Write
-    /// failures are logged, never thrown further. On a successful `final`
-    /// write (span close, not a 30s heartbeat), also notifies
-    /// `llmCoordinator` so it can consider LLM fallback classification.
+    /// failures are logged, never thrown further.
     private func write(_ span: Span, at now: Date, final: Bool) {
         defer {
             if final {
@@ -776,7 +773,6 @@ public final class TrackerEngine {
                 lastHeartbeat = now
                 lastWriteStart = span.start
                 onChange?()
-                if final { llmCoordinator?.noteSpanClosed(span) }
             } catch {
                 logger.error("updateEnd failed: \(String(describing: error))")
             }
@@ -787,7 +783,6 @@ public final class TrackerEngine {
                 lastHeartbeat = now
                 lastWriteStart = span.start
                 onChange?()
-                if final { llmCoordinator?.noteSpanClosed(span) }
             } catch {
                 logger.error("insert failed: \(String(describing: error))")
             }

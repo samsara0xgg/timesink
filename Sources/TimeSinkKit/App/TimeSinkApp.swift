@@ -63,9 +63,6 @@ public struct TimeSinkApp: App {
             engine.screenCollector = ScreenCollector(store: observationStore, imagesRoot: imagesRoot,
                                                      paused: settingsStore.screenCapturePaused)
         }
-        engine.llmCoordinator = LLMCoordinator(
-            categoryStore: categoryStore, settings: settingsStore, resolver: resolver, service: nil
-        )
 
         let model = AppModel(
             categoryStore: categoryStore,
@@ -169,7 +166,10 @@ public struct TimeSinkApp: App {
         }
         model.focusStore = focusStore
         model.focus = focusController
-        engine.llmCoordinator?.onSuggestion = { [weak model] in model?.dataChanged() }
+        let jev = JevService(categoryStore: categoryStore, settings: settingsStore, resolver: resolver)
+        jev.onChange = { [weak model] in model?.dataChanged() }
+        model.jev = jev
+        jev.start()
         if let collector = model.screenCollector { Task { await collector.setRetentionDays(settingsStore.captureRetentionDays) } }
         engine.focusInterceptor = { [weak focusController] sample, now in
             focusController?.intercept(sample: sample, at: now) ?? false

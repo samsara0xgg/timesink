@@ -6,9 +6,9 @@ public final class SettingsStore: Sendable {
     let writer: any DatabaseWriter
 
     private static let idleThresholdKey = "idleThreshold"
-    private static let llmEnabledKey = "llmEnabled"
-    private static let llmEndpointKey = "llmEndpoint"
-    private static let llmModelKey = "llmModel"
+    private static let jevEnabledKey = "jevEnabled"
+    private static let jevEndpointKey = "jevEndpoint"
+    private static let jevMonthlyCapKey = "jevMonthlyCapUSD"
     private static let budgetWarnPercentKey = "budgetWarnPercent"
     private static let dailySummaryEnabledKey = "dailySummaryEnabled"
     private static let dailySummaryHourKey = "dailySummaryHour"
@@ -23,9 +23,7 @@ public final class SettingsStore: Sendable {
     private static let screenCapturePausedKey = "screenCapturePaused"
 
     private static let defaultIdleThreshold: TimeInterval = 180
-    private static let defaultLLMEnabled = false
-    private static let defaultLLMEndpoint = "https://api.openai.com/v1"
-    private static let defaultLLMModel = "gpt-4o-mini"
+    private static let defaultJevMonthlyCap = 1.0
     private static let defaultBudgetWarnPercent = 20
     private static let defaultDailySummaryEnabled = false
     private static let defaultDailySummaryHour = 19
@@ -82,28 +80,44 @@ public final class SettingsStore: Sendable {
         set(Self.idleThresholdKey, String(v))
     }
 
-    public var llmEnabled: Bool {
-        self.get(Self.llmEnabledKey).flatMap { $0 == "true" } ?? Self.defaultLLMEnabled
+    /// Off by default: until the user says so, no window title leaves the machine.
+    public var jevEnabled: Bool {
+        self.get(Self.jevEnabledKey) == "true"
     }
 
-    public func setLLMEnabled(_ v: Bool) {
-        set(Self.llmEnabledKey, v ? "true" : "false")
+    public func setJevEnabled(_ v: Bool) {
+        set(Self.jevEnabledKey, v ? "true" : "false")
     }
 
-    public var llmEndpoint: String {
-        self.get(Self.llmEndpointKey) ?? Self.defaultLLMEndpoint
+    public var jevEndpoint: String {
+        self.get(Self.jevEndpointKey) ?? JevClient.defaultEndpoint
     }
 
-    public var llmModel: String {
-        self.get(Self.llmModelKey) ?? Self.defaultLLMModel
+    public func setJevEndpoint(_ v: String) {
+        set(Self.jevEndpointKey, v)
     }
 
-    public func setLLMEndpoint(_ v: String) {
-        set(Self.llmEndpointKey, v)
+    /// What Jev may cost in a calendar month, in USD; its worker stops there.
+    public var jevMonthlyCap: Double {
+        self.get(Self.jevMonthlyCapKey).flatMap(Double.init) ?? Self.defaultJevMonthlyCap
     }
 
-    public func setLLMModel(_ v: String) {
-        set(Self.llmModelKey, v)
+    public func setJevMonthlyCap(_ v: Double) {
+        set(Self.jevMonthlyCapKey, String(v))
+    }
+
+    /// USD spent on Jev in the calendar month of `date`.
+    public func jevSpend(in date: Date = Date()) -> Double {
+        self.get(Self.jevSpendKey(date)).flatMap(Double.init) ?? 0
+    }
+
+    public func addJevSpend(_ usd: Double, on date: Date = Date()) {
+        set(Self.jevSpendKey(date), String(jevSpend(in: date) + usd))
+    }
+
+    private static func jevSpendKey(_ date: Date) -> String {
+        let c = Calendar.current.dateComponents([.year, .month], from: date)
+        return String(format: "jevSpend.%04d-%02d", c.year ?? 0, c.month ?? 0)
     }
 
     public var budgetWarnPercent: Int {

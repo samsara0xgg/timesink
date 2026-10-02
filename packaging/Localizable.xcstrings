@@ -165,16 +165,6 @@
         }
       }
     },
-    "%@ · 用的是输入框里还没保存的密钥，按回车保存": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ · This used the unsaved key in the field. Press Return to save it."
-          }
-        }
-      }
-    },
     "%@ 分钟": {
       "localizations": {
         "en": {
@@ -1029,26 +1019,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Chrome capture degraded"
-          }
-        }
-      }
-    },
-    "Endpoint 无效": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Invalid endpoint"
-          }
-        }
-      }
-    },
-    "OpenAI 兼容服务": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "OpenAI-Compatible Service"
           }
         }
       }
@@ -2127,16 +2097,6 @@
         }
       }
     },
-    "写作创作": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Writing"
-          }
-        }
-      }
-    },
     "减弱动态效果 · 150ms 淡变": {
       "localizations": {
         "en": {
@@ -2523,16 +2483,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld more · %@"
-          }
-        }
-      }
-    },
-    "只发送网站域名，不发送标题和网址路径。建议只在你接受后生效。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Only website domains are sent, without titles or URL paths. Suggestions apply only after you accept them."
           }
         }
       }
@@ -3127,26 +3077,6 @@
         }
       }
     },
-    "娱乐": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Entertainment"
-          }
-        }
-      }
-    },
-    "学习参考": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Learning & Reference"
-          }
-        }
-      }
-    },
     "它在菜单栏里安静地记下你的时间，把一天连成片。所有记录都留在这台 Mac 上。": {
       "localizations": {
         "en": {
@@ -3343,16 +3273,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Show details"
-          }
-        }
-      }
-    },
-    "工具": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Utilities"
           }
         }
       }
@@ -3599,16 +3519,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Signed in"
-          }
-        }
-      }
-    },
-    "已移除，建议会停止": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Removed. Suggestions will stop."
           }
         }
       }
@@ -4685,16 +4595,6 @@
         }
       }
     },
-    "新闻": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "News"
-          }
-        }
-      }
-    },
     "新项目…": {
       "localizations": {
         "en": {
@@ -5285,16 +5185,6 @@
         }
       }
     },
-    "服务返回 HTTP %lld，请检查 Endpoint 和模型名。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The service returned HTTP %lld. Check the endpoint and model name."
-          }
-        }
-      }
-    },
     "服务返回了不认识的分类：%@": {
       "localizations": {
         "en": {
@@ -5737,16 +5627,6 @@
         }
       }
     },
-    "模型": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Model"
-          }
-        }
-      }
-    },
     "欢迎使用 TimeSink": {
       "localizations": {
         "en": {
@@ -6149,26 +6029,6 @@
         }
       }
     },
-    "测试": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Test"
-          }
-        }
-      }
-    },
-    "测试失败：%@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Test failed: %@"
-          }
-        }
-      }
-    },
     "添加": {
       "localizations": {
         "en": {
@@ -6265,16 +6125,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Productivity trend · Last 30 days"
-          }
-        }
-      }
-    },
-    "用模型给没分类的网站提建议": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Suggest categories for uncategorized websites"
           }
         }
       }
@@ -6485,16 +6335,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Switches under %@ merge into their block and leave a tick on its left edge. Under %lld s without typing, nothing is drawn; red is an interruption, hollow is blocked during focus."
-          }
-        }
-      }
-    },
-    "社交媒体": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Social Media"
           }
         }
       }
@@ -7191,16 +7031,6 @@
         }
       }
     },
-    "请先填写 API Key": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enter an API key first"
-          }
-        }
-      }
-    },
     "请输入至少两个字的有效标题关键词。": {
       "localizations": {
         "en": {
@@ -7251,16 +7081,6 @@
         }
       }
     },
-    "购物": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Shopping"
-          }
-        }
-      }
-    },
     "趋势": {
       "localizations": {
         "en": {
@@ -7277,16 +7097,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "System default"
-          }
-        }
-      }
-    },
-    "软件开发": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Software Development"
           }
         }
       }
@@ -9539,6 +9349,446 @@
           "stringUnit": {
             "state": "translated",
             "value": "Colour is the app's category"
+          }
+        }
+      }
+    },
+    "Jev 判断 · 概率 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jev verdict · probability %@"
+          }
+        }
+      }
+    },
+    "上课、做作业、看课程和教程、系统地学一门东西": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Attending classes, doing assignments, watching courses and tutorials, learning a subject systematically"
+          }
+        }
+      }
+    },
+    "为了解决眼前问题去搜索、读文档、问 AI，不成体系": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Searching, reading docs and asking AI to solve the problem in front of you, without a system"
+          }
+        }
+      }
+    },
+    "以上都不像的；拿不准时也放这里": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anything that fits none of the above; also where uncertain cases go"
+          }
+        }
+      }
+    },
+    "你的分类名称和描述": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your category names and descriptions"
+          }
+        }
+      }
+    },
+    "你的应用分类 · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your app rule · %@"
+          }
+        }
+      }
+    },
+    "你确认或改过这条内容的分类。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You confirmed or changed the category of this content."
+          }
+        }
+      }
+    },
+    "内置求职规则 · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Built-in job rule · %@"
+          }
+        }
+      }
+    },
+    "内置规则 · 云控制台": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Built-in rule · cloud console"
+          }
+        }
+      }
+    },
+    "内置规则 · 没有打开的对话": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Built-in rule · no conversation open"
+          }
+        }
+      }
+    },
+    "内置规则 · 空白标签页": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Built-in rule · blank tab"
+          }
+        }
+      }
+    },
+    "内置规则 · 系统小工具": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Built-in rule · system utility"
+          }
+        }
+      }
+    },
+    "内置规则 · 自己的项目": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Built-in rule · your own projects"
+          }
+        }
+      }
+    },
+    "刷短视频、刷社交媒体和信息流、看帖子": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scrolling short videos, social media and feeds, reading posts"
+          }
+        }
+      }
+    },
+    "和人聊天、开会、通话、收发邮件和消息（包括 Outlook、Gmail 收件箱）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chatting with people, meetings, calls, email and messages (including Outlook and Gmail inboxes)"
+          }
+        }
+      }
+    },
+    "学习": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Study"
+          }
+        }
+      }
+    },
+    "学校账户和行政手续、银行理财、日程、外卖网购等生活杂事（不含收发邮件本身）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "School accounts and paperwork, banking, calendar, food delivery, online shopping and other chores (not email itself)"
+          }
+        }
+      }
+    },
+    "已移除，判断会停止": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Removed; verdicts will stop"
+          }
+        }
+      }
+    },
+    "应用名称": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App name"
+          }
+        }
+      }
+    },
+    "应用标识": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App identifier"
+          }
+        }
+      }
+    },
+    "开启后，每段使用时间会向服务发送下面这些内容，不发送屏幕文字和截图。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When on, each stretch of usage sends the items below to the service. Screen text and screenshots are never sent."
+          }
+        }
+      }
+    },
+    "找 coop/实习/工作：浏览职位、投递、写简历和求职信、测评、面试准备": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finding a co-op, internship or job: browsing postings, applying, writing resumes and cover letters, assessments, interview prep"
+          }
+        }
+      }
+    },
+    "文件管理、系统设置、截图、清理等操作电脑本身": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "File management, system settings, screenshots, cleanup and other operating the computer itself"
+          }
+        }
+      }
+    },
+    "文档或对话名（最多 300 字）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Document or conversation name (up to 300 characters)"
+          }
+        }
+      }
+    },
+    "服务": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Service"
+          }
+        }
+      }
+    },
+    "服务返回 HTTP %lld。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service returned HTTP %lld."
+          }
+        }
+      }
+    },
+    "本月已用 $%@ / 上限 $%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spent $%@ this month / cap $%@"
+          }
+        }
+      }
+    },
+    "查资料": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Research"
+          }
+        }
+      }
+    },
+    "求职 Coop": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Job Search"
+          }
+        }
+      }
+    },
+    "用 Jev 给每段使用时间判断分类": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Let Jev decide the category of each stretch of usage"
+          }
+        }
+      }
+    },
+    "看剧、看电影、直播、长视频、游戏、听歌": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Watching shows, movies, live streams, long videos, playing games, listening to music"
+          }
+        }
+      }
+    },
+    "看新闻、财经、体育电竞资讯": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reading news, finance, sports and esports updates"
+          }
+        }
+      }
+    },
+    "短视频社交": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Social & Short Video"
+          }
+        }
+      }
+    },
+    "窗口标题（最多 300 字）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Window title (up to 300 characters)"
+          }
+        }
+      }
+    },
+    "系统工具": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System"
+          }
+        }
+      }
+    },
+    "编程开发": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Development"
+          }
+        }
+      }
+    },
+    "网址（最多 300 字）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "URL (up to 300 characters)"
+          }
+        }
+      }
+    },
+    "网站域名": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Website domain"
+          }
+        }
+      }
+    },
+    "视频娱乐": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video & Games"
+          }
+        }
+      }
+    },
+    "设计写作": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Design & Writing"
+          }
+        }
+      }
+    },
+    "账户余额不足（HTTP 402）。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Account balance is too low (HTTP 402)."
+          }
+        }
+      }
+    },
+    "资讯": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "News"
+          }
+        }
+      }
+    },
+    "写代码、调试、跑终端、看仓库和本地预览，包括和 AI 一起写代码": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Writing code, debugging, terminals, repos and local previews, including coding with AI."
+          }
+        }
+      }
+    },
+    "做设计稿和视觉、交互方案（包括自己项目的 UI、动效和视觉）、写文档文章、整理笔记": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Design mockups, visual and interaction proposals (including UI, motion and visuals for your own projects), writing documents and articles, organizing notes."
           }
         }
       }
