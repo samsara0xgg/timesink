@@ -26,17 +26,19 @@ struct TodayTimelineCard: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var filling: Date?
 
-    /// The card's whole height, so the page can hold its place while loading.
-    static let height: CGFloat = 236
+    private static let headerHeight: CGFloat = 24
     private static let chartHeight: CGFloat = 140
+    private static let legendHeight: CGFloat = 16
+    /// The card's whole height, so the page can hold its place while loading.
+    static let height = headerHeight + Design.Space.md + chartHeight + Design.Space.sm + legendHeight + 2 * Design.Space.card
     private static let top: CGFloat = 24
     private static let blockHeight: CGFloat = 44
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            header.padding(.bottom, Design.Space.md)
+            header.frame(height: Self.headerHeight).padding(.bottom, Design.Space.md)
             chart.frame(height: Self.chartHeight)
-            legend.padding(.top, Design.Space.sm)
+            legend.frame(height: Self.legendHeight).padding(.top, Design.Space.sm)
         }
         .cardBox()
     }
