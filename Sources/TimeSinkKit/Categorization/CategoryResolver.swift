@@ -194,6 +194,11 @@ public final class CategoryResolver {
             if let id = span.id, let override = overrides[id] { return override }
             return CategoryResolver.categoryID(for: span, context: context, memo: &memo)
         }
+
+        /// The rule that won for `span`, as the rules pane keys it.
+        func matchingRuleKey(for span: Span) -> String? {
+            CategoryResolver.matchingRuleKey(for: span, context: context, overrides: overrides)
+        }
     }
 
     func snapshot() -> Snapshot { Snapshot(context: context, memo: memo, overrides: overrides) }
@@ -261,6 +266,10 @@ public final class CategoryResolver {
     /// The winning rule only, matching the classifier's tier order. Segment
     /// corrections are intentionally not credited to an unrelated rule.
     func matchingRuleKey(for span: Span) -> String? {
+        Self.matchingRuleKey(for: span, context: context, overrides: overrides)
+    }
+
+    nonisolated fileprivate static func matchingRuleKey(for span: Span, context: ClassificationContext, overrides: [Int64: String]) -> String? {
         if let id = span.id, overrides[id] != nil { return nil }
         let scope = span.domain ?? span.appBundleID
         // The compiled rules sit index for index beside the raw ones: the

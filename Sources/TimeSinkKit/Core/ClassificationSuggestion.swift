@@ -23,6 +23,10 @@ extension CategoryStore {
     func dismissSuggestion(key: String, kind: String) throws {
         try writer.write { try $0.execute(sql: "DELETE FROM classificationSuggestion WHERE key = ? AND kind = ?", arguments: [key, kind]) }
     }
+    /// Puts a dismissed suggestion back, for undoing an accept.
+    func restoreSuggestion(_ suggestion: ClassificationSuggestion) throws {
+        try writer.write { try suggestion.save($0) }
+    }
     func disabledRules() throws -> Set<String> {
         try writer.read { Set(try String.fetchAll($0, sql: "SELECT ruleKey FROM disabledClassificationRule")) }
     }

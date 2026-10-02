@@ -35,6 +35,21 @@ final class SeedImporterTests: XCTestCase {
         XCTAssertEqual(map["d.com"], DomainEntry(categoryID: "softwareDev", source: "curated"))
     }
 
+    /// 撤销 on an accepted suggestion: the mapping goes and the suggestion returns.
+    func testUndoingAnAcceptRestoresTheSuggestion() throws {
+        let db = try AppDatabase.openInMemory()
+        let store = CategoryStore(db)
+        try store.suggestDomain("example.invalid", categoryID: "learning")
+        let suggestion = try XCTUnwrap(store.suggestions().first)
+        try store.setUserDomain("example.invalid", categoryID: "learning")
+        try store.dismissSuggestion(key: "example.invalid", kind: "domain")
+        XCTAssertTrue(try store.suggestions().isEmpty)
+        try store.removeUserMapping(key: "domain:example.invalid")
+        try store.restoreSuggestion(suggestion)
+        XCTAssertNil(try store.domainMap()["example.invalid"])
+        XCTAssertEqual(try store.suggestions().map(\.key), ["example.invalid"])
+    }
+
     func testRemovingUserMappingRestoresShippedDefault() throws {
         let db = try AppDatabase.openInMemory()
         let store = CategoryStore(db)
