@@ -16,6 +16,14 @@ func processUsage() -> (cpu: Double, peakMiB: Double) {
     return (cpu, Double(usage.ru_maxrss) / 1_048_576)
 }
 
+if CommandLine.arguments.dropFirst().first == "jev-live" {
+    Task { @MainActor in
+        await runJevLive(Array(CommandLine.arguments.dropFirst(2)))
+        exit(0)
+    }
+    RunLoop.main.run()
+}
+
 /// `tsprobe sessions <copy.sqlite> [days] [--names]`: F1 sessions per day
 /// and how each would be named. Numbers only unless `--names` (for a look
 /// on this Mac, never to be copied anywhere).
@@ -104,7 +112,7 @@ if CommandLine.arguments.dropFirst().first == "waterfall" {
                 open!.all += span.duration
                 open!.byDest[key, default: 0] += span.duration
                 open!.destCat[key] = item.categoryID
-                if InterruptionRule.distractingCategories.contains(item.categoryID) {
+                if resolver.distractingIDs.contains(item.categoryID) {
                     open!.distracting += span.duration
                     open!.byDistracting[key, default: 0] += span.duration
                 }
@@ -117,12 +125,12 @@ if CommandLine.arguments.dropFirst().first == "waterfall" {
         // 1. Timeline method: all non-productive dwell >= 15, group a by longest destination.
         let s1 = base.filter { (e: Ep) -> Bool in
             guard e.all >= 15, let k = lead(e.byDest), let c = e.destCat[k] else { return false }
-            return InterruptionRule.distractingCategories.contains(c)
+            return resolver.distractingIDs.contains(c)
         }.count
         let allGroups = base.filter { $0.all >= 15 }.count
         let leadCats = base.filter { $0.all >= 15 }.compactMap { (e: Ep) -> String? in lead(e.byDest).flatMap { e.destCat[$0] } }
         let groupB = leadCats.filter { $0 == "uncategorized" }.count, groupC = leadCats.filter { $0 == "misc" }.count
-        let groupOther = leadCats.count - groupB - groupC - leadCats.filter { InterruptionRule.distractingCategories.contains($0) }.count
+        let groupOther = leadCats.count - groupB - groupC - leadCats.filter { resolver.distractingIDs.contains($0) }.count
         // 2. Only distracting time counts toward the threshold.
         let two = base.filter { $0.distracting >= 15 }
         // 2b. Same, but peeks count as visits for the merge too (as the app does).
@@ -148,7 +156,7 @@ if CommandLine.arguments.dropFirst().first == "waterfall" {
         let s3title = mergedInterruptions(titled) { (e: Ep) -> String in lead(e.byDistracting)! }
         let noEvents = episodes(useEvents: false, titleKey: true)
         let s4 = mergedInterruptions(noEvents) { (e: Ep) -> String in lead(e.byDistracting)! }
-        let app = DayInterruptions(episodes: InterruptionClassifier.episodes(items, productivity: productivity,
+        let app = DayInterruptions(episodes: InterruptionClassifier.episodes(items, productivity: productivity, distracting: resolver.distractingIDs,
                                                                             rule: InterruptionRule(dwell: 15, countsTyping: false))).interruptions.count
         print(start.formatted(.iso8601.year().month().day()), "1.timeline", s1, "(all groups", allGroups, "b", groupB, "c", groupC, "other", groupOther, ")",
               "2.distractingDwell", two.count, "3.merge(app/site)", s3row, "3'.merge(window)", s3title,
@@ -174,11 +182,11 @@ if CommandLine.arguments.dropFirst().first == "interruptions" {
         let items = resolver.categorized(try! SpanStore(db).spans(overlapping: DateInterval(start: start, end: end)))
         var line = start.formatted(.iso8601.year().month().day())
         for dwell in InterruptionRule.dwellChoices {
-            let day = DayInterruptions(episodes: InterruptionClassifier.episodes(items, productivity: productivity,
+            let day = DayInterruptions(episodes: InterruptionClassifier.episodes(items, productivity: productivity, distracting: resolver.distractingIDs,
                                                                                  rule: InterruptionRule(dwell: dwell, countsTyping: false)))
             line += "  \(Int(dwell))s: int \(day.interruptions.count) peek \(day.peeks.count) pass \(day.passes)"
         }
-        let typed = DayInterruptions(episodes: InterruptionClassifier.episodes(items, productivity: productivity))
+        let typed = DayInterruptions(episodes: InterruptionClassifier.episodes(items, productivity: productivity, distracting: resolver.distractingIDs))
         line += "  | 15s+typing: \(typed.interruptions.count)  keySecondsSum \(items.reduce(0) { $0 + $1.span.keySeconds })"
         print(line)
     }
