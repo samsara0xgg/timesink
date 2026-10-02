@@ -443,7 +443,7 @@ struct OrganizationView: View {
                     VStack(alignment: .leading, spacing: Design.Space.lg) {
                         header(width: width)
                         HStack(alignment: .top, spacing: Design.Space.lg) {
-                            VStack(spacing: Design.Space.lg) { queue; rules }
+                            VStack(spacing: Design.Space.lg) { ToConfirmCard(model: model); queue; rules }
                             CategoryListCard(model: model, seconds: byCategory, selected: $category).frame(width: 440).revealOnce(index: 4)
                         }
                     }
@@ -452,6 +452,7 @@ struct OrganizationView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: Design.Space.lg) {
                             header(width: width)
+                            ToConfirmCard(model: model)
                             queue
                             CategoryListCard(model: model, seconds: byCategory, selected: $category).frame(height: 460).revealOnce(index: 3)
                             rules.frame(height: 420)
