@@ -25,7 +25,7 @@ struct SessionListCard<Switch: View>: View {
                 if projects.count > 1 { chips }
                 modeSwitch
             }
-            if sessions.isEmpty {
+            if sessions.isEmpty && activities.sessionsLoaded {
                 Text("这一天还没有会话。").foregroundStyle(Design.ink2).frame(maxWidth: .infinity, minHeight: 80)
             }
             ScrollView {
@@ -139,7 +139,7 @@ struct SessionRibbon: View {
 
     var body: some View {
         let sessions = activities.sessions
-        VStack(alignment: .leading, spacing: 0) {
+        ZStack(alignment: .topLeading) {
             if let first = sessions.first, let last = sessions.last {
                 let start = Calendar.current.dateInterval(of: .hour, for: first.start)?.start ?? first.start
                 let end = (Calendar.current.dateInterval(of: .hour, for: last.end)?.end ?? last.end)
@@ -164,9 +164,12 @@ struct SessionRibbon: View {
                             Text(tick.1).font(.note).monospacedDigit().foregroundStyle(Design.ink2).fixedSize().offset(x: tick.2, y: 38)
                         }
                     }
-                }.frame(height: 52)
+                }
+            } else {
+                RoundedRectangle(cornerRadius: Design.Radius.mark, style: .continuous).fill(Design.track).frame(height: 32)
             }
         }
+        .frame(height: 52, alignment: .top)
         .padding(Design.Space.lg)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .designCard()

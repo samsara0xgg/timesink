@@ -78,7 +78,8 @@ struct ActivitiesView: View {
             VStack(alignment: .leading, spacing: Design.Space.lg) {
                 header(range, width: width)
                 let daily = ActivitiesModel.showsTimeline(range)
-                if daily && !activities.sessions.isEmpty {
+                // Always there on a day, so the list never moves when the sessions arrive.
+                if daily {
                     SessionRibbon(model: model, activities: activities) { showsInspector = true }
                 }
                 HStack(alignment: .top, spacing: Design.Space.lg) {
@@ -546,6 +547,8 @@ final class ActivitiesModel {
     var awayNotes: [AwayNote] = []
     /// F1: the shown day's sessions, cut off the main actor.
     var sessions: [WorkSession] = []
+    /// The first cut has landed: an empty `sessions` now means none.
+    var sessionsLoaded = false
     /// The session the inspector shows, by start; exclusive with a block.
     var selectedSession: Date?
     /// The session whose join just happened, while the undo toast is up.
@@ -663,6 +666,7 @@ final class ActivitiesModel {
         let value = await model.sessions(for: range.interval)
         guard !Task.isCancelled, model.range.interval == range.interval else { return }
         if value != sessions { sessions = value }
+        sessionsLoaded = true
         if let selectedSession, !value.contains(where: { $0.start == selectedSession }) { self.selectedSession = nil }
         if let pending = pendingSession, value.contains(where: { $0.start == pending }) {
             selectedSession = pending
