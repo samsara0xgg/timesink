@@ -27,24 +27,24 @@ struct JevSettingsPane: View {
                     .disabled(!hasStoredKey && !enabled)
                     .onChange(of: enabled) { _, newValue in model.jev?.setEnabled(newValue); refreshStatus() }
                 if !hasStoredKey && !enabled {
-                    Text("先在下面保存 API 密钥，才能开启。").font(.caption).foregroundStyle(.orange)
+                    Text("先在下面保存 API 密钥，才能开启。").font(.note).foregroundStyle(.orange)
                     keyField
                 }
                 if hasStoredKey {
-                    Label("API 密钥已保存", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.green)
+                    Label("API 密钥已保存", systemImage: "checkmark.circle.fill").font(.note).foregroundStyle(.green)
                 }
                 if enabled, let jev = model.jev {
-                    if let line = statusLine { Text(line).font(.caption).foregroundStyle(.secondary) }
+                    if let line = statusLine { Text(line).font(.note).foregroundStyle(Design.ink2) }
                     if let lastRunAt = status?.lastRunAt {
-                        Text("上次运行 \(Self.relative(lastRunAt))").font(.caption).foregroundStyle(.secondary)
+                        Text("上次运行 \(Self.relative(lastRunAt))").font(.note).foregroundStyle(Design.ink2)
                     }
                     if let status {
-                        Text("本月 \(status.verdictsThisMonth) 项判断").font(.caption).foregroundStyle(.secondary)
+                        Text("本月 \(status.verdictsThisMonth) 项判断").font(.note).foregroundStyle(Design.ink2)
                     }
-                    Text(Self.spendLine(spend: jev.monthSpend, cap: jev.monthlyCap)).font(.caption).foregroundStyle(.secondary)
+                    Text(Self.spendLine(spend: jev.monthSpend, cap: jev.monthlyCap)).font(.note).foregroundStyle(Design.ink2)
                     if let n = status?.toConfirm, n > 0 {
                         HStack {
-                            Text("\(n) 项待确认").font(.caption).foregroundStyle(.secondary)
+                            Text("\(n) 项待确认").font(.note).foregroundStyle(Design.ink2)
                             Spacer()
                             Button("去分类页查看") { model.sidebarSelection = .organization }
                         }
@@ -52,17 +52,17 @@ struct JevSettingsPane: View {
                 }
                 DisclosureGroup("会发送哪些内容") {
                     Text("每段使用时间会向下面的服务发送这些内容，不会发送屏幕截图本身：")
-                        .font(.caption).foregroundStyle(.secondary)
-                    ForEach(JevService.sentFields, id: \.self) { Text("· \($0)").font(.caption).foregroundStyle(.secondary) }
+                        .font(.note).foregroundStyle(Design.ink2)
+                    ForEach(JevService.sentFields, id: \.self) { Text("· \($0)").font(.note).foregroundStyle(Design.ink2) }
                 }
-                .font(.caption)
+                .font(.note)
             }
             Section {
                 Toggle("同时发送屏幕截图里的文字", isOn: $screenText)
                     .disabled(!enabled)
                     .onChange(of: screenText) { _, newValue in model.jev?.setScreenText(newValue); refreshStatus() }
                 Text("会发送截图识别出的文字（已去掉邮箱和 6 位以上数字，最多 1200 字），用于判断拿不准的内容。需先开启上面的开关；默认关闭。")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.note).foregroundStyle(Design.ink2)
             }
             Section("费用") {
                 HStack {
@@ -71,7 +71,7 @@ struct JevSettingsPane: View {
                     TextField("", text: $cap).textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing).frame(width: 80)
                         .onSubmit(commitFields)
                 }
-                Text("到上限后 Jev 暂停，已有的判断继续生效；下个月自动恢复。").font(.caption).foregroundStyle(.secondary)
+                Text("到上限后 Jev 暂停，已有的判断继续生效；下个月自动恢复。").font(.note).foregroundStyle(Design.ink2)
             }
             Section {
                 DisclosureGroup("高级", isExpanded: $advancedOpen) {
@@ -111,15 +111,15 @@ struct JevSettingsPane: View {
                     .onChange(of: keyFocused) { _, focused in if !focused { saveKey() } }
                     .onChange(of: apiKeyInput) { _, _ in keyError = nil }
                 if apiKeyStatus == String(localized: "已保存") {
-                    Label("已保存", systemImage: "checkmark").font(.caption).foregroundStyle(.green)
+                    Label("已保存", systemImage: "checkmark").font(.note).foregroundStyle(.green)
                 }
                 if hasStoredKey {
                     Button("移除密钥", role: .destructive) { removeKey() }
                 }
             }
-            if let keyError { Text(keyError).font(.caption).foregroundStyle(.red) }
+            if let keyError { Text(keyError).font(.note).foregroundStyle(Design.alert) }
             else if let apiKeyStatus, apiKeyStatus != String(localized: "已保存") {
-                Text(apiKeyStatus).font(.caption).foregroundStyle(.secondary)
+                Text(apiKeyStatus).font(.note).foregroundStyle(Design.ink2)
             }
         }
     }

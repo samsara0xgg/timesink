@@ -62,7 +62,7 @@ struct ActivityInspector: View {
         .overlay(alignment: .bottom) {
             if let toast {
                 HStack(spacing: 10) {
-                    Text(toast).font(.system(size: 12)).lineLimit(2)
+                    Text(toast).font(.body).lineLimit(2)
                     Button("撤销", action: undo).controlSize(.small).glassButton()
                 }
                 .padding(.horizontal, 14).padding(.vertical, 10)
@@ -96,11 +96,11 @@ struct ActivityInspector: View {
             HStack(spacing: 10) {
                 ActivityIcon(bundleID: item.span.appBundleID, domain: item.span.domain, size: 32)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(block?.label ?? item.span.domain ?? item.span.appName).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                    Text(block?.label ?? item.span.domain ?? item.span.appName).font(.body.weight(.semibold)).lineLimit(1)
                     // A record inside one minute reads as a moment, not "10:36–10:36".
                     let from = model.time(start), to = model.time(end)
                     Text(from == to ? "\(from) · \(Format.duration(seconds))" : "\(from)–\(to) · \(Format.duration(seconds))")
-                        .font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit()
+                        .font(.body).foregroundStyle(Design.ink2).monospacedDigit()
                 }
             }
             if let segment = block?.segment {
@@ -108,13 +108,13 @@ struct ActivityInspector: View {
             }
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text("分类").foregroundStyle(.secondary)
+                    Text("分类").foregroundStyle(Design.ink2)
                     Spacer()
                     CategoryChip(category: model.resolver.categoriesByID[item.categoryID])
                 }
-                Text(reason).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text(reason).foregroundStyle(Design.ink2).fixedSize(horizontal: false, vertical: true)
             }
-            .font(.system(size: 12)).padding(10).frame(maxWidth: .infinity, alignment: .leading)
+            .font(.body).padding(10).frame(maxWidth: .infinity, alignment: .leading)
             .background(item.categoryID == "uncategorized" ? RefinedStyle.warning.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .glassPlatter(cornerRadius: 12)
             .padding(.top, 10)
@@ -132,23 +132,23 @@ struct ActivityInspector: View {
                 }
             }
             .padding(.top, 12)
-            if let error { Text(error).font(.system(size: 12)).foregroundStyle(.red).padding(.top, 8) }
+            if let error { Text(error).font(.body).foregroundStyle(Design.alert).padding(.top, 8) }
 
             HStack {
-                Text("屏幕回看").font(.system(size: 12, weight: .semibold))
+                Text("屏幕回看").font(.body.weight(.semibold))
                 Spacer()
-                Text("只在本机").font(.system(size: 11)).foregroundStyle(.tertiary)
+                Text("只在本机").font(.note).foregroundStyle(Design.ink2)
             }.padding(.top, 16).padding(.bottom, 8)
             if captures.isEmpty {
                 Text("这段时间没有保存的画面。可在「记录与隐私」中查看采集状态。")
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .font(.note).foregroundStyle(Design.ink2)
             } else {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
                     ForEach(captures, id: \.id) { capture in
                         Button { selectedCapture = capture } label: {
                             VStack(spacing: 3) {
                                 CaptureThumbnail(capture: capture, maxPixels: 240).frame(height: 50).clipped().clipShape(RoundedRectangle(cornerRadius: 6))
-                                Text(capture.at, format: .dateTime.hour().minute()).font(.system(size: 11)).monospacedDigit()
+                                Text(capture.at, format: .dateTime.hour().minute()).font(.note).monospacedDigit()
                             }
                         }.buttonStyle(.plain).help("打开本机截图")
                     }
@@ -163,7 +163,7 @@ struct ActivityInspector: View {
 
     private func form(_ item: CategorizedSpan) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("归为").font(.system(size: 12, weight: .semibold))
+            Text("归为").font(.body.weight(.semibold))
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 78), spacing: 6)], alignment: .leading, spacing: 6) {
                 ForEach(model.resolver.categoriesByID.values.sorted { $0.sortOrder < $1.sortOrder }, id: \.id) { category in
                     let chosen = category.id == categoryID
@@ -172,7 +172,7 @@ struct ActivityInspector: View {
                             Circle().fill(RefinedStyle.category(category.id, hex: category.colorHex)).frame(width: 6, height: 6)
                             Text(category.name).lineLimit(1)
                         }
-                        .font(.system(size: 12)).padding(.horizontal, 8).frame(height: 26).frame(maxWidth: .infinity, alignment: .leading)
+                        .font(.body).padding(.horizontal, 8).frame(height: 26).frame(maxWidth: .infinity, alignment: .leading)
                         .foregroundStyle(chosen ? Color.white : .primary)
                         .background(chosen ? Color.accentColor : Color.primary.opacity(0.06), in: Capsule())
                         .contentShape(Capsule())
@@ -181,7 +181,7 @@ struct ActivityInspector: View {
                     .accessibilityAddTraits(chosen ? .isSelected : [])
                 }
             }
-            Text("应用到").font(.system(size: 12, weight: .semibold))
+            Text("应用到").font(.body.weight(.semibold))
             Picker("应用范围", selection: $scope) {
                 Text("这一段").tag(ReclassificationEdit.Scope.segment)
                 Text(item.span.domain == nil ? "整个应用" : "整个网站").tag(ReclassificationEdit.Scope.activity)
@@ -190,7 +190,7 @@ struct ActivityInspector: View {
             if scope == .title {
                 TextField("标题包含，至少两个字", text: $pattern).textFieldStyle(.roundedBorder)
             }
-            Text(previewLine(item)).font(.system(size: 11)).foregroundStyle(.secondary)
+            Text(previewLine(item)).font(.note).foregroundStyle(Design.ink2)
             HStack(spacing: 8) {
                 Button { cancelEdit(item) } label: { Text("取消").frame(maxWidth: .infinity) }
                     .glassButton().keyboardShortcut(.cancelAction)
@@ -232,8 +232,8 @@ struct ActivityInspector: View {
                 Text(outs.isEmpty ? String(localized: "没有切出")
                      : interruptions > 0 ? String(localized: "切出 \(outs.count) 次 · 打断 \(interruptions) 次")
                      : String(localized: "切出 \(outs.count) 次"))
-                    .foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.85)
-            }.font(.system(size: 12))
+                    .foregroundStyle(Design.ink2).lineLimit(1).minimumScaleFactor(0.85)
+            }.font(.body)
             VStack(spacing: 7) {
                 ForEach(parts.isEmpty ? Array(segment.parts.prefix(1)) : Array(parts)) { part in
                     Button { activities.select(part.selection, start: part.longest.span.start) } label: {
@@ -249,9 +249,9 @@ struct ActivityInspector: View {
                                         }
                                 }.frame(height: 4)
                             }
-                            Text(Format.duration(part.seconds)).monospacedDigit().foregroundStyle(.secondary).frame(width: 58, alignment: .trailing)
+                            Text(Format.duration(part.seconds)).monospacedDigit().foregroundStyle(Design.ink2).frame(width: 58, alignment: .trailing)
                         }
-                        .font(.system(size: 12)).contentShape(Rectangle())
+                        .font(.body).contentShape(Rectangle())
                         .padding(.vertical, 1)
                         .background(part.selection == current ? Color.accentColor.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: 5))
                     }
@@ -265,18 +265,18 @@ struct ActivityInspector: View {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(outs.prefix(6), id: \.start) { out in
                         HStack(spacing: 7) {
-                            Text(model.time(out.start)).monospacedDigit().foregroundStyle(.tertiary).fixedSize()
+                            Text(model.time(out.start)).monospacedDigit().foregroundStyle(Design.ink2).fixedSize()
                             ActivityIcon(bundleID: out.bundleID, domain: nil, size: 14)
-                            (Text(out.label) + Text(" ") + Text(Format.duration(out.seconds)).foregroundStyle(.tertiary))
+                            (Text(out.label) + Text(" ") + Text(Format.duration(out.seconds)).foregroundStyle(Design.ink2))
                                 .lineLimit(1).truncationMode(.middle)
                             Spacer(minLength: 4)
-                            Text(out.tag).font(.system(size: 10.5, weight: .semibold)).fixedSize()
+                            Text(out.tag).font(.note.weight(.semibold)).fixedSize()
                                 .foregroundStyle(out.isInterruption ? Color.red : Color.secondary)
                         }
-                        .font(.system(size: 12)).frame(height: 22)
+                        .font(.body).frame(height: 22)
                     }
                     if outs.count > 6 {
-                        Text("还有 \(outs.count - 6) 次").font(.system(size: 11)).foregroundStyle(.tertiary).padding(.leading, 47)
+                        Text("还有 \(outs.count - 6) 次").font(.note).foregroundStyle(Design.ink2).padding(.leading, 47)
                     }
                 }
                 .padding(.top, 2)
@@ -285,7 +285,7 @@ struct ActivityInspector: View {
                 Text([peeks > 0 ? String(localized: "看一眼的 \(peeks) 次不画刻度，也不算打断") : nil,
                       passes > 0 ? String(localized: "另有 \(passes) 次不到 3 秒的路过") : nil]
                     .compactMap { $0 }.joined(separator: String(localized: "；")) + String(localized: "。"))
-                    .font(.system(size: 11)).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)
+                    .font(.note).foregroundStyle(Design.ink2).fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -388,7 +388,7 @@ struct CaptureThumbnail: View {
     var body: some View {
         Group {
             if let image { Image(decorative: image, scale: 1).resizable().scaledToFit() }
-            else { Image(systemName: "photo").frame(maxWidth: .infinity, maxHeight: .infinity).foregroundStyle(.secondary).background(.quaternary) }
+            else { Image(systemName: "photo").frame(maxWidth: .infinity, maxHeight: .infinity).foregroundStyle(Design.ink2).background(.quaternary) }
         }.task(id: capture.imagePath) {
             if let path = capture.imagePath, let root = try? ScreenCollector.defaultImagesRoot() {
                 let url = root.appendingPathComponent(path).standardizedFileURL
@@ -415,14 +415,14 @@ struct CaptureReviewSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text(capture.appName).font(.headline)
-                Text(capture.at, format: .dateTime.month().day().hour().minute()).foregroundStyle(.secondary)
+                Text(capture.appName).font(.body.weight(.semibold))
+                Text(capture.at, format: .dateTime.month().day().hour().minute()).foregroundStyle(Design.ink2)
                 Spacer()
                 Button("完成") { dismiss() }.keyboardShortcut(.cancelAction)
             }
             CaptureThumbnail(capture: capture).frame(maxWidth: .infinity, maxHeight: .infinity)
-            if capture.imagePath == nil { Text("画面已到期删除，以下为当时识别的文字。").foregroundStyle(.secondary) }
-            ScrollView { Text(capture.text).font(.system(size: 12)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }.frame(maxHeight: 120)
+            if capture.imagePath == nil { Text("画面已到期删除，以下为当时识别的文字。").foregroundStyle(Design.ink2) }
+            ScrollView { Text(capture.text).font(.body).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }.frame(maxHeight: 120)
         }.padding(20).frame(width: 800, height: 620)
     }
 }

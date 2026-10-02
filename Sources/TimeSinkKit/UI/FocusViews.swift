@@ -128,20 +128,21 @@ struct FocusDial: View {
                     var path = Path()
                     path.move(to: CGPoint(x: center.x + 112 * cos(a), y: center.y + 112 * sin(a)))
                     path.addLine(to: CGPoint(x: center.x + (major ? 104 : 108) * cos(a), y: center.y + (major ? 104 : 108) * sin(a)))
-                    context.stroke(path, with: .style(.tertiary), style: StrokeStyle(lineWidth: major ? 2 : 1, lineCap: .round))
+                    context.stroke(path, with: .color(Design.ink2.opacity(0.5)), style: StrokeStyle(lineWidth: major ? 2 : 1, lineCap: .round))
                 }
             }
-            Circle().stroke(.quaternary, lineWidth: line).frame(width: radius * 2, height: radius * 2)
+            Circle().stroke(Design.track, lineWidth: line).frame(width: radius * 2, height: radius * 2)
             Circle().trim(from: 0, to: fraction)
                 .stroke(Design.accent, style: StrokeStyle(lineWidth: line, lineCap: .round))
                 .rotationEffect(.degrees(-90)).frame(width: radius * 2, height: radius * 2)
-            Color.clear.frame(width: 34, height: 34).glassSurface(in: Circle())
-                .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
-                .scaleEffect(dragging && !reduceMotion ? 1.14 : 1)
+            // The handle: white, a hairline, a soft shadow because it is held.
+            Circle().fill(Design.surface).frame(width: 26, height: 26)
+                .overlay(Circle().strokeBorder(Design.line, lineWidth: 0.5))
+                .shadow(color: .black.opacity(dragging ? 0.22 : 0.14), radius: dragging ? 5 : 3, y: 1)
                 .animation(reduceMotion ? nil : Design.quick, value: dragging)
                 .offset(x: radius * cos(angle.radians), y: radius * sin(angle.radians))
             VStack(spacing: 2) {
-                Text("\(minutes)").font(.system(size: 50, weight: .semibold)).monospacedDigit().contentTransition(.numericText())
+                Text("\(minutes)").font(.timer).contentTransition(.numericText())
                 Text("分钟 · \(Date().addingTimeInterval(Double(minutes) * 60), format: .dateTime.hour().minute()) 结束")
                     .font(.body).foregroundStyle(Design.ink2)
             }
@@ -183,14 +184,14 @@ struct FocusRunningView: View {
     @State private var error: String?
     var body: some View {
         if let focus = model.focus, let running = focus.running {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: Design.Space.md) {
+                HStack(spacing: Design.Space.lg) {
                     ZStack {
-                        Circle().stroke(Color.accentColor.opacity(0.15), lineWidth: 7)
+                        Circle().stroke(Design.track, lineWidth: 6)
                         Circle().trim(from: 0, to: min(1, focus.remaining / Double(running.plannedSeconds)))
-                            .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 7, lineCap: .round)).rotationEffect(.degrees(-90))
+                            .stroke(Design.accent, style: StrokeStyle(lineWidth: 6, lineCap: .round)).rotationEffect(.degrees(-90))
                         VStack(spacing: 2) {
-                            Text(Format.mmss(focus.remaining)).font(.system(size: 22, weight: .semibold)).monospacedDigit()
+                            Text(Format.mmss(focus.remaining)).font(.figure)
                             Text("还剩").font(.note).foregroundStyle(Design.ink2)
                         }
                     }.frame(width: 104, height: 104)
@@ -221,7 +222,7 @@ struct FocusRunningView: View {
                     Button("结束会话") { confirmingEnd = true }
                     Spacer()
                     Button(String(localized: "延长 10 分钟")) { do { try focus.extend() } catch { self.error = String(localized: "未能延长专注，请重试。") } }
-                }.controlSize(.small)
+                }.buttonStyle(PillButtonStyle())
                 if let error { Text(error).font(.note).foregroundStyle(Design.alert) }
             }
             .confirmationDialog("提前结束这段专注？", isPresented: $confirmingEnd, titleVisibility: .visible) {

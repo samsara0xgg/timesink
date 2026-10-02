@@ -39,12 +39,12 @@ struct ScoreFlyoutView: View {
         let days = Array(dailyPulses.suffix(14))
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Text("评分").font(.headline)
+                Text("评分").font(.body.weight(.semibold))
                 Spacer()
-                Text(pulse.map { "\($0) 分" } ?? "—").font(.callout).monospacedDigit().foregroundStyle(.secondary)
+                Text(pulse.map { "\($0) 分" } ?? "—").font(.body).monospacedDigit().foregroundStyle(Design.ink2)
             }
             Text("按分类加权：投入类 75–100 分，中性 50 分，分心类 0–25 分。\(threshold) 分算达标。")
-                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .font(.body).foregroundStyle(Design.ink2).fixedSize(horizontal: false, vertical: true)
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 4) {
                     ForEach(Array(days.enumerated()), id: \.offset) { index, pulse in
@@ -53,7 +53,7 @@ struct ScoreFlyoutView: View {
                             square(pulse)
                                 .overlay { if index == days.count - 1 { RoundedRectangle(cornerRadius: 5).strokeBorder(.primary, lineWidth: 1.5) } }
                                 .frame(height: 20)
-                            Text(verbatim: "\(Calendar.current.component(.day, from: day))").font(.system(size: 10)).monospacedDigit().foregroundStyle(.tertiary)
+                            Text(verbatim: "\(Calendar.current.component(.day, from: day))").font(.note).monospacedDigit().foregroundStyle(Design.ink2)
                         }
                         .help(pulse.map { String(localized: "\(day.formatted(.dateTime.month().day())) · \($0) 分") }
                               ?? String(localized: "\(day.formatted(.dateTime.month().day())) · 无记录"))
@@ -63,14 +63,14 @@ struct ScoreFlyoutView: View {
                     legend(square(threshold), "达标")
                     legend(square(0), "未达标")
                     legend(square(nil), "没有记录")
-                }.font(.caption).foregroundStyle(.secondary)
+                }.font(.note).foregroundStyle(Design.ink2)
             }
             .padding(10).glassPlatter(cornerRadius: 14)
             HStack {
-                Text("连续达标").foregroundStyle(.secondary)
+                Text("连续达标").foregroundStyle(Design.ink2)
                 Spacer()
                 Text("\(streakDays) 天").fontWeight(.semibold).monospacedDigit()
-            }.font(.callout)
+            }.font(.body)
         }
         .frame(width: width, alignment: .leading)
         .flyoutCard()
@@ -105,9 +105,9 @@ struct CompareBaseView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
-                Text(label).font(.headline)
+                Text(label).font(.body.weight(.semibold))
                 Spacer()
-                Text("截至 \(Date.now, format: .dateTime.hour().minute())").font(.caption).foregroundStyle(.secondary)
+                Text("截至 \(Date.now, format: .dateTime.hour().minute())").font(.note).foregroundStyle(Design.ink2)
             }
             // Rounded to whole minutes before subtracting, so the three numbers add up.
             let today = Format.minutes(todayValue)
@@ -119,17 +119,17 @@ struct CompareBaseView: View {
                 row("昨天同一时刻", minutes: yesterday, fraction: Double(yesterday) / top, color: .secondary.opacity(0.5), secondary: true)
                 Divider()
                 HStack {
-                    Text("差").foregroundStyle(.secondary)
+                    Text("差").foregroundStyle(Design.ink2)
                     Spacer()
                     Text(difference >= 0 ? "多 \(Self.text(abs(difference)))" : "少 \(Self.text(abs(difference)))")
                         .fontWeight(.semibold).monospacedDigit()
-                }.font(.callout)
+                }.font(.body)
             } else {
                 row("今天", minutes: today, fraction: 1, color: .primary, secondary: false)
-                Text("昨日暂无同时段数据可比较").font(.caption).foregroundStyle(.secondary)
+                Text("昨日暂无同时段数据可比较").font(.note).foregroundStyle(Design.ink2)
             }
             Text("三个数都先取整到分钟再相减，所以永远对得上。时长多少不评判好坏。")
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .font(.note).foregroundStyle(Design.ink2).fixedSize(horizontal: false, vertical: true)
         }
         .frame(width: width, alignment: .leading)
         .flyoutCard()
@@ -143,7 +143,7 @@ struct CompareBaseView: View {
                 Text(title).foregroundStyle(secondary ? .secondary : .primary)
                 Spacer()
                 Text(Self.text(minutes)).monospacedDigit().foregroundStyle(secondary ? .secondary : .primary)
-            }.font(.callout)
+            }.font(.body)
             GeometryReader { geo in
                 Capsule().fill(.quaternary)
                 Capsule().fill(color).frame(width: geo.size.width * min(1, max(0, fraction)))
@@ -181,9 +181,9 @@ struct CategoryDetailView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Circle().fill(RefinedStyle.category(categoryID, hex: colorHex)).frame(width: 8, height: 8)
-                Text(name).font(.headline)
+                Text(name).font(.body.weight(.semibold))
                 Spacer()
-                Text("今日 \(Format.duration(seconds))").font(.caption).foregroundStyle(.secondary)
+                Text("今日 \(Format.duration(seconds))").font(.note).foregroundStyle(Design.ink2)
             }
             HourlyActivityChart(bars: hourBars.enumerated().map { hour, hours in
                 HourlyBigView.Bar(hour: hour, categoryID: name, colorHex: colorHex, seconds: hours * 3600)
@@ -193,10 +193,10 @@ struct CategoryDetailView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     ForEach(subs) { sub in
                         HStack {
-                            Text(sub.label).font(.caption2).lineLimit(1)
+                            Text(sub.label).font(.note).lineLimit(1)
                             Spacer()
                             Text(Format.duration(sub.seconds))
-                                .font(.caption2).monospacedDigit().foregroundStyle(.secondary)
+                                .font(.note).monospacedDigit().foregroundStyle(Design.ink2)
                         }
                     }
                 }
@@ -265,14 +265,10 @@ struct HourlyBigView: View {
 
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("24 小时分布").font(.headline)
+                Text("24 小时分布").font(.body.weight(.semibold))
                 Spacer()
-                Picker("", selection: $mode) {
-                    ForEach(Mode.allCases, id: \.self) { Text($0.label).tag($0) }
-                }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .fixedSize()
+                Segmented(options: Mode.allCases, selection: $mode, height: 24) { Text($0.label) }
+                .accessibilityLabel("时间范围")
                 .onChange(of: mode) { _, newMode in
                     if newMode == .last7, last7Bars == nil {
                         last7Bars = loadLast7Bars()
@@ -280,12 +276,12 @@ struct HourlyBigView: View {
                 }
             }
             if mode == .last7 {
-                Text("近 7 天 · 按小时累计").font(.caption).foregroundStyle(.secondary)
+                Text("近 7 天 · 按小时累计").font(.note).foregroundStyle(Design.ink2)
             }
             HourlyActivityChart(bars: bars.sorted { $0.categoryID < $1.categoryID })
                 .padding(8).glassPlatter(cornerRadius: 14)
             Text("纵轴按数据取整到 15 分钟；横轴只画有记录的时段。")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.note).foregroundStyle(Design.ink2)
             legend(categoryOrder)
         }
         .frame(width: width, alignment: .leading)
@@ -297,7 +293,7 @@ struct HourlyBigView: View {
             ForEach(ids, id: \.self) { id in
                 HStack(spacing: 3) {
                     Circle().fill(RefinedStyle.category(id, hex: categories[id]?.colorHex ?? "#8E8E93")).frame(width: 6, height: 6)
-                    Text(categories[id]?.name ?? id).font(.caption).foregroundStyle(.secondary)
+                    Text(categories[id]?.name ?? id).font(.note).foregroundStyle(Design.ink2)
                 }
             }
         }
@@ -324,13 +320,13 @@ struct BudgetProgressView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Text("限额").font(.headline)
+                Text("限额").font(.body.weight(.semibold))
                 Spacer()
-                Text("\(rows.count) 项").font(.caption).foregroundStyle(.secondary)
+                Text("\(rows.count) 项").font(.note).foregroundStyle(Design.ink2)
             }
             ForEach(rows) { LimitRowView(row: $0, warnPercent: warnPercent) }
             Text("快到时黄色提醒一次，超出时红色加图标。只提醒，不拦截。")
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .font(.note).foregroundStyle(Design.ink2).fixedSize(horizontal: false, vertical: true)
         }
         .frame(width: width, alignment: .leading)
         .flyoutCard()
@@ -370,7 +366,7 @@ struct LimitRowView: View {
     var body: some View {
         let state = LimitState.of(spent: row.spent, limit: row.limit, warnPercent: warnPercent)
         let color: Color = switch state {
-        case .over: .red
+        case .over: Design.alert
         case .near: RefinedStyle.warning
         case .fine: RefinedStyle.category(row.id, hex: row.colorHex)
         }
@@ -378,7 +374,7 @@ struct LimitRowView: View {
             HStack(spacing: 8) {
                 switch state {
                 case .over(let minutes):
-                    Label("\(row.name)超出 \(minutes) 分钟", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                    Label("\(row.name)超出 \(minutes) 分钟", systemImage: "exclamationmark.triangle.fill").foregroundStyle(Design.alert)
                 case .near(let minutes):
                     Label("\(row.name)还剩 \(minutes) 分钟", systemImage: "gauge.with.dots.needle.67percent")
                         .foregroundStyle(RefinedStyle.warning)
@@ -390,7 +386,7 @@ struct LimitRowView: View {
                 }
                 Spacer(minLength: 4)
                 Text("\(Format.minutes(row.spent)) / \(Format.minutes(row.limit)) 分钟")
-                    .monospacedDigit().foregroundStyle(.secondary).lineLimit(1).fixedSize()
+                    .monospacedDigit().foregroundStyle(Design.ink2).lineLimit(1).fixedSize()
             }
             .fixedSize(horizontal: false, vertical: true)
             GeometryReader { geo in
@@ -398,7 +394,7 @@ struct LimitRowView: View {
                 Capsule().fill(color).frame(width: geo.size.width * (row.limit > 0 ? min(1, row.spent / row.limit) : 0))
             }.frame(height: 6)
         }
-        .font(.callout)
+        .font(.body)
         .accessibilityElement(children: .combine)
     }
 }

@@ -510,9 +510,8 @@ private struct ExpandedDrillView<Content: View>: View {
         VStack(alignment: .trailing, spacing: 4) {
             content
             Button("收起", action: onCollapse)
-                .buttonStyle(.plain)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+                .buttonStyle(LinkButtonStyle())
+                .font(.note)
         }
     }
 }
@@ -537,8 +536,6 @@ struct MenuBarDashboardView: View {
     /// Grows with the text size, so larger text widens the popover instead of truncating.
     @ScaledMetric(relativeTo: .body) private var width: CGFloat = RefinedStyle.popoverWidth
     @Namespace private var focusMorph
-    @ScaledMetric(relativeTo: .largeTitle) private var heroSize: CGFloat = 34
-    @ScaledMetric(relativeTo: .title) private var scoreSize: CGFloat = 24
 
     /// C1+ hover drill-down: one reused `PanelHost` (see its own doc
     /// comment for why it isn't `FocusHUDController`), the popover's own
@@ -564,11 +561,11 @@ struct MenuBarDashboardView: View {
         return .recording
     }
 
-    private var transition: AnyTransition { reduceMotion ? .opacity : AnyTransition(.blurReplace) }
+    private var transition: AnyTransition { .opacity }
 
     var body: some View {
         let kind = kind
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Design.Space.sm) {
             statusRow(kind)
             if let away = model.awayOffer, kind != .focus {
                 AwayPrompt(model: model, interval: away).transition(transition)
@@ -578,56 +575,54 @@ struct MenuBarDashboardView: View {
                     HStack {
                         Label("回到 \(offer.appName)", systemImage: "arrow.uturn.backward")
                         Spacer()
-                        Text(verbatim: "⌃⌥←").foregroundStyle(.secondary)
+                        Text(verbatim: "⌃⌥←").foregroundStyle(Design.ink2)
                     }.frame(maxWidth: .infinity)
                 }
-                .glassProminentButton()
+                .buttonStyle(PillButtonStyle())
                 .transition(transition)
             }
             Group {
                 switch kind {
                 case .focus:
                     // m1: the start button grows into the timer, and back.
-                    FocusRunningView(model: model).padding(14).frame(maxWidth: .infinity, alignment: .leading).glassPlatter()
+                    FocusRunningView(model: model).padding(Design.Space.md).frame(maxWidth: .infinity, alignment: .leading).glassPlatter(cornerRadius: Design.Radius.card)
                         .matchedGeometryEffect(id: "focus", in: focusMorph, properties: reduceMotion ? [] : .frame)
                     focusTodayRow
                 case .permission:
                     permissionPlatter
                     chromeRow
-                    todayPlatter(dim: true)
+                    todayPlatter(dim: true, categories: false)
                 case .paused:
                     pausedPlatter
-                    todayPlatter(dim: true)
+                    todayPlatter(dim: true, categories: false)
                 case .morning:
                     morningPlatter
                     chromeRow
                     focusPlatter(withLimits: false)
                 case .idle:
-                    platterRow { Label("你离开了电脑，这段时间不计入。回来后会自动继续。", systemImage: "moon").foregroundStyle(.secondary) }
+                    platterRow { Label("你离开了电脑，这段时间不计入。回来后会自动继续。", systemImage: "moon").foregroundStyle(Design.ink2) }
                     chromeRow
-                    todayPlatter(dim: false)
-                    categoriesPlatter
+                    todayPlatter(dim: false, categories: true)
                     focusPlatter(withLimits: true)
                 case .recording:
                     chromeRow
-                    todayPlatter(dim: false)
-                    categoriesPlatter
+                    todayPlatter(dim: false, categories: true)
                     focusPlatter(withLimits: true)
                 }
             }
             .transition(transition)
-            if let focusError { Text(focusError).font(.subheadline).foregroundStyle(.red).padding(.horizontal, 4) }
+            if let focusError { Text(focusError).font(.note).foregroundStyle(Design.alert).padding(.horizontal, Design.Space.md) }
             expandedContent
             footer
         }
-        .padding(10)
+        .padding(Design.Space.sm)
         .frame(width: width)
         .environment(\.locale, model.displayLocale)
         .environment(\.calendar, model.displayCalendar)
         .coordinateSpace(.named(DrillSpace.name))
         .background(WindowAccessor(window: $hostWindow, anchorView: $anchorView))
-        .animation(RefinedStyle.motion(reduced: reduceMotion), value: kind)
-        .animation(RefinedStyle.motion(reduced: reduceMotion), value: categoriesExpanded)
+        .animation(Design.motion(Design.layout, reduced: reduceMotion), value: kind)
+        .animation(Design.motion(Design.layout, reduced: reduceMotion), value: categoriesExpanded)
         .task(id: model.dataVersion) {
             await refresh(forceStreak: false)
             guard !Task.isCancelled else { return }
@@ -641,26 +636,30 @@ struct MenuBarDashboardView: View {
         }
     }
 
-    private func platterRow<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        HStack(spacing: 10, content: content)
-            .font(.callout)
-            .padding(.horizontal, 12).padding(.vertical, 9)
+    /// A section of the popover: a plate on its glass.
+    private func platter(_ content: some View) -> some View {
+        content
+            .padding(Design.Space.md)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .glassPlatter()
+            .glassPlatter(cornerRadius: Design.Radius.card)
+    }
+
+    private func platterRow<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        platter(HStack(spacing: Design.Space.sm, content: content))
     }
 
     // MARK: - 1 Status
 
+    /// The popover's first line, on the glass itself: what is being recorded.
     private func statusRow(_ kind: Kind) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: Design.Space.sm) {
             TimelineView(.periodic(from: .now, by: 10)) { context in
                 statusText(kind, now: context.date)
             }
             statusButtons(kind)
         }
-        .padding(.leading, 12).padding(.trailing, 8).padding(.vertical, 8)
-        .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
-        .glassPlatter()
+        .padding(.leading, Design.Space.md).padding(.trailing, Design.Space.xs)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
     }
 
     @ViewBuilder private func statusText(_ kind: Kind, now: Date) -> some View {
@@ -673,35 +672,35 @@ struct MenuBarDashboardView: View {
                 } detail: { Text("\(model.time(running.start)) 开始 · \(model.time(end)) 结束") }
             }
         case .permission:
-            statusLines(dot: .red) { Text("没有在记录") } detail: { Text("辅助功能已关闭") }
+            statusLines(dot: Design.alert) { Text("没有在记录") } detail: { Text("辅助功能已关闭") }
         case .paused:
-            statusLines(dot: RefinedStyle.warning) { Text("已暂停") } detail: {
+            statusLines(dot: Design.warning) { Text("已暂停") } detail: {
                 if let until = model.trackingResumeAt { Text("\(model.time(until)) 自动恢复") } else { Text("直到我恢复") }
             }
         case .idle:
-            statusLines(dot: .secondary) { Text("离开中") } detail: { Text("没有活动，不计入") }
+            statusLines(dot: Design.ink2) { Text("离开中") } detail: { Text("没有活动，不计入") }
         case .morning:
-            statusLines(dot: .green) { Text("正在记录") } detail: {
+            statusLines(dot: Design.live) { Text("正在记录") } detail: {
                 let date = now.formatted(.dateTime.weekday().month().day().locale(model.displayLocale))
                 if let first = dashboard.overview?.firstRecord { Text("\(date) · \(model.time(first)) 开始") } else { Text(date) }
             }
         case .recording:
             if let current = model.engine.currentActivity, model.engine.isRunning {
                 let elapsed = max(0, now.timeIntervalSince(current.start))
-                HStack(spacing: 10) {
-                    statusLines(dot: .green) {
+                HStack(spacing: Design.Space.sm) {
+                    statusLines(dot: Design.live) {
                         Text(current.document ?? current.title ?? current.appName)
                     } detail: {
                         Text("正在记录 · \(current.domain ?? current.appName) · 自 \(model.time(current.start))")
                     }
                     // A span under a minute old has nothing worth showing yet.
                     if elapsed >= 60 {
-                        Text(Format.duration(elapsed)).font(.body.weight(.semibold)).monospacedDigit().fixedSize()
+                        Text(Format.duration(elapsed)).monospacedDigit().foregroundStyle(Design.ink2).fixedSize()
                             .contentTransition(.numericText())
                     }
                 }
             } else {
-                statusLines(dot: .secondary) { Text(model.engine.isRunning ? "等待活动" : "记录未启动") } detail: {
+                statusLines(dot: Design.ink2) { Text(model.engine.isRunning ? "等待活动" : "记录未启动") } detail: {
                     Text("下一段活动会显示在这里。")
                 }
             }
@@ -711,11 +710,11 @@ struct MenuBarDashboardView: View {
     private func statusLines<Title: View, Detail: View>(
         dot: Color?, @ViewBuilder title: () -> Title, @ViewBuilder detail: () -> Detail
     ) -> some View {
-        HStack(spacing: 10) {
-            if let dot { Circle().fill(dot).frame(width: 8, height: 8).accessibilityHidden(true) }
-            VStack(alignment: .leading, spacing: 2) {
-                title().font(.body.weight(.semibold))
-                detail().font(.callout).foregroundStyle(.secondary)
+        HStack(spacing: Design.Space.sm) {
+            if let dot { Circle().fill(dot).frame(width: 7, height: 7).accessibilityHidden(true) }
+            VStack(alignment: .leading, spacing: 1) {
+                title().font(.body.weight(.semibold)).foregroundStyle(Design.ink)
+                detail().font(.note).foregroundStyle(Design.ink2)
             }
             .lineLimit(1)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -727,25 +726,14 @@ struct MenuBarDashboardView: View {
         switch kind {
         case .paused:
             Button { model.resumeTracking() } label: { Label("恢复记录", systemImage: "play.fill") }
-                .glassProminentButton()
+                .buttonStyle(AccentButtonStyle())
         case .focus, .permission:
             moreMenu
         default:
-            circleButton("pause.fill", label: "暂停记录") { model.pauseTracking(minutes: 15) }
+            StepperButton(symbol: "pause.fill", label: "暂停记录") { model.pauseTracking(minutes: 15) }
                 .help("暂停 15 分钟")
             moreMenu
         }
-    }
-
-    private func circleButton(_ symbol: String, label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol).font(.callout.weight(.semibold))
-                .frame(width: 28, height: 28)
-                .background(Circle().fill(.primary.opacity(0.07)))
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
     }
 
     /// The ⋯ menu: every item carries an icon; capture and sync report here.
@@ -778,13 +766,12 @@ struct MenuBarDashboardView: View {
             Button(action: quit) { Label("退出 TimeSink", systemImage: "power") }
                 .keyboardShortcut("q")
         } label: {
-            Image(systemName: "ellipsis").font(.callout.weight(.semibold))
+            Image(systemName: "ellipsis").font(.body.weight(.medium)).foregroundStyle(Design.iconInk)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .frame(width: 28, height: 28)
-        .background(Circle().fill(.primary.opacity(0.07)))
+        .frame(width: Design.controlHeight, height: Design.controlHeight)
         .accessibilityLabel("更多")
     }
 
@@ -811,13 +798,15 @@ struct MenuBarDashboardView: View {
 
     // MARK: - 2 Today
 
-    private func todayPlatter(dim: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
+    /// Today's total and how it compares, 投入 and the score as two figures,
+    /// the day as a ribbon, and (recording) where the time went.
+    private func todayPlatter(dim: Bool, categories: Bool) -> some View {
+        platter(VStack(alignment: .leading, spacing: Design.Space.md) {
+            HStack(alignment: .top, spacing: Design.Space.md) {
                 Button(action: openToday) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("今天已记录").font(.callout).foregroundStyle(.secondary)
-                        hero(dashboard.total, size: heroSize)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("今天已记录").font(.note).foregroundStyle(Design.ink2)
+                        DurationHero(seconds: dashboard.total)
                         compareLine
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -826,31 +815,34 @@ struct MenuBarDashboardView: View {
                 .buttonStyle(.plain)
                 .drillDown(host: panelHost, kind: .compareTotal, hostWindow: hostWindow, anchorView: anchorView,
                     expandedDrill: $expandedDrill, shownKind: $shownKind) { compareBaseContent() }
-                HStack(alignment: .top, spacing: 12) {
-                    engagedRing
-                    if model.showScore {
-                        VStack(spacing: 0) {
-                            Text(dashboard.pulse.map(String.init) ?? "—")
-                                .font(.system(size: scoreSize, weight: .semibold)).monospacedDigit()
-                            Text("评分").font(.subheadline).foregroundStyle(.secondary)
-                        }
-                        .frame(minWidth: 44).padding(.top, 6)
-                        .accessibilityElement(children: .combine)
-                    }
+                HStack(alignment: .top, spacing: Design.Space.md) {
+                    figure("投入", value: dashboard.total > 0 ? "\(Int((min(1, dashboard.focus / dashboard.total) * 100).rounded()))%" : "—")
+                    if model.showScore { figure("评分", value: dashboard.pulse.map(String.init) ?? "—") }
                 }
+                .contentShape(Rectangle())
                 .drillDown(host: panelHost, kind: .score, hostWindow: hostWindow, anchorView: anchorView,
                     expandedDrill: $expandedDrill, shownKind: $shownKind) { scoreContent() }
             }
             ribbon
                 .drillDown(host: panelHost, kind: .spark, hostWindow: hostWindow, anchorView: anchorView,
                     expandedDrill: $expandedDrill, shownKind: $shownKind) { hourlyBigContent() }
-        }
-        .padding(12)
-        .glassPlatter()
+            if categories, !dashboard.topCategories.isEmpty {
+                Divider()
+                categoryRows
+            }
+        })
         .opacity(dim ? 0.5 : 1)
     }
 
-    private func hero(_ seconds: TimeInterval, size: CGFloat) -> some View { DurationHero(seconds: seconds, font: size >= 26 ? .display : .figure) }
+    /// A small labelled figure, as the main window's header draws them.
+    private func figure(_ label: LocalizedStringKey, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label).font(.note).foregroundStyle(Design.ink2)
+            Text(verbatim: value).font(.figure).foregroundStyle(Design.ink).refinedNumberMotion(value)
+        }
+        .padding(.top, 2)
+        .accessibilityElement(children: .combine)
+    }
 
     /// Wraps rather than truncating: English runs longer than the design's line.
     @ViewBuilder private var compareLine: some View {
@@ -858,28 +850,12 @@ struct MenuBarDashboardView: View {
             if let delta = dashboard.totalDelta {
                 let minutes = Int(delta / 60)
                 let text = CompareBaseView.text(abs(minutes))
-                Text(minutes >= 0 ? "比昨天此时多 \(text)" : "比昨天此时少 \(text)").foregroundStyle(.green)
+                Text(minutes >= 0 ? "比昨天此时多 \(text)" : "比昨天此时少 \(text)")
             } else {
-                Text("昨天此时没有记录").foregroundStyle(.secondary)
+                Text("昨天此时没有记录")
             }
         }
-        .font(.callout).fixedSize(horizontal: false, vertical: true)
-    }
-
-    private var engagedRing: some View {
-        let fraction = dashboard.total > 0 ? min(1, dashboard.focus / dashboard.total) : 0
-        let color = RefinedStyle.category("softwareDev", hex: RefinedStyle.shippedHex("softwareDev") ?? "#2F6BE4")
-        return VStack(spacing: 2) {
-            ZStack {
-                Circle().stroke(.quaternary, lineWidth: 7)
-                Circle().trim(from: 0, to: fraction)
-                    .stroke(color, style: StrokeStyle(lineWidth: 7, lineCap: .round)).rotationEffect(.degrees(-90))
-                Text(verbatim: "\(Int((fraction * 100).rounded()))%").font(.callout.weight(.bold)).monospacedDigit()
-            }
-            .frame(width: 56, height: 56)
-            Text("投入").font(.subheadline).foregroundStyle(.secondary)
-        }
-        .accessibilityElement(children: .combine)
+        .font(.note).foregroundStyle(Design.ink2).fixedSize(horizontal: false, vertical: true)
     }
 
     /// Reserved at its full height even before the first overview exists.
@@ -894,83 +870,77 @@ struct MenuBarDashboardView: View {
     }
 
     private var morningPlatter: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("今天已记录").font(.callout).foregroundStyle(.secondary)
-            hero(dashboard.total, size: heroSize)
-            Text("新的一天刚开始。离开和锁屏的时间不会计入。").font(.callout).foregroundStyle(.secondary)
-            ribbon.padding(.top, 6)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .glassPlatter()
+        platter(VStack(alignment: .leading, spacing: 2) {
+            Text("今天已记录").font(.note).foregroundStyle(Design.ink2)
+            DurationHero(seconds: dashboard.total)
+            Text("新的一天刚开始。离开和锁屏的时间不会计入。").font(.note).foregroundStyle(Design.ink2)
+            ribbon.padding(.top, Design.Space.sm)
+        })
     }
 
     private var focusTodayRow: some View {
-        HStack(spacing: 10) {
-            hero(dashboard.total, size: 16)
-            Text("今天").font(.subheadline).foregroundStyle(.secondary)
+        platterRow {
+            DurationHero(seconds: dashboard.total, font: .body)
+            Text("今天").font(.note).foregroundStyle(Design.ink2)
             ribbon
         }
-        .padding(.horizontal, 12).padding(.vertical, 9)
-        .glassPlatter()
     }
 
     // MARK: - 3 Categories
 
-    @ViewBuilder private var categoriesPlatter: some View {
+    @ViewBuilder private var categoryRows: some View {
         let all = dashboard.topCategories
-        if !all.isEmpty {
-            let shown = Array(all.prefix(categoriesExpanded ? all.count : 5))
-            let nameWidth = RefinedStyle.nameColumn(shown.map(\.name), font: .systemFont(ofSize: NSFont.systemFontSize), cap: width * 0.46)
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(shown, id: \.id) { entry in
-                    Button { openActivities(category: entry.id) } label: { categoryRow(entry, nameWidth: nameWidth) }
-                        .buttonStyle(HoverRowStyle())
-                        .background(shownKind == .category(entry.id) ? Color.primary.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: 8))
-                        .drillDown(host: panelHost, kind: .category(entry.id), hostWindow: hostWindow, anchorView: anchorView,
-                            expandedDrill: $expandedDrill, shownKind: $shownKind) { categoryDetailContent(entry) }
-                        .focused($keyboardCategory, equals: entry.id)
-                        .onKeyPress(.upArrow) { moveCategory(-1, from: entry.id); return .handled }
-                        .onKeyPress(.downArrow) { moveCategory(1, from: entry.id); return .handled }
-                        .onKeyPress(.rightArrow) { expandedDrill = .category(entry.id); return .handled }
-                        .onKeyPress(.leftArrow) { expandedDrill = nil; panelHost.closeNow(); return .handled }
-                        .accessibilityLabel("\(entry.name)，\(Format.duration(entry.seconds))，占 \(Int((entry.seconds / max(1, dashboard.total) * 100).rounded()))%，有详情")
-                }
-                if all.count > 5 {
-                    let rest = all.dropFirst(5)
-                    Button { categoriesExpanded.toggle() } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: categoriesExpanded ? "chevron.up" : "chevron.down")
-                                .font(.caption).foregroundStyle(.tertiary).frame(width: 10)
-                            Text(categoriesExpanded ? "收起" : "还有 \(rest.count) 个分类").foregroundStyle(.secondary)
-                            Spacer()
-                            if !categoriesExpanded {
-                                Text(Format.duration(rest.reduce(0) { $0 + $1.seconds })).monospacedDigit().foregroundStyle(.tertiary)
-                            }
-                        }
-                        .font(.callout).frame(minHeight: 28).padding(.horizontal, 6).contentShape(Rectangle())
-                    }.buttonStyle(.plain)
-                }
+        let shown = Array(all.prefix(categoriesExpanded ? all.count : 5))
+        let nameWidth = RefinedStyle.nameColumn(shown.map(\.name), font: .systemFont(ofSize: NSFont.systemFontSize), cap: width * 0.4)
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(shown, id: \.id) { entry in
+                Button { openActivities(category: entry.id) } label: { categoryRow(entry, nameWidth: nameWidth) }
+                    .buttonStyle(HoverRowStyle())
+                    .background(shownKind == .category(entry.id) ? Design.hoverFill : .clear,
+                                in: RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous))
+                    .drillDown(host: panelHost, kind: .category(entry.id), hostWindow: hostWindow, anchorView: anchorView,
+                        expandedDrill: $expandedDrill, shownKind: $shownKind) { categoryDetailContent(entry) }
+                    .focused($keyboardCategory, equals: entry.id)
+                    .onKeyPress(.upArrow) { moveCategory(-1, from: entry.id); return .handled }
+                    .onKeyPress(.downArrow) { moveCategory(1, from: entry.id); return .handled }
+                    .onKeyPress(.rightArrow) { expandedDrill = .category(entry.id); return .handled }
+                    .onKeyPress(.leftArrow) { expandedDrill = nil; panelHost.closeNow(); return .handled }
+                    .accessibilityLabel("\(entry.name)，\(Format.duration(entry.seconds))，占 \(Int((entry.seconds / max(1, dashboard.total) * 100).rounded()))%，有详情")
             }
-            .padding(6)
-            .glassPlatter()
+            if all.count > 5 {
+                let rest = all.dropFirst(5)
+                Button { categoriesExpanded.toggle() } label: {
+                    HStack(spacing: Design.Space.sm) {
+                        Text(categoriesExpanded ? "收起" : "还有 \(rest.count) 个分类")
+                        Image(systemName: categoriesExpanded ? "chevron.up" : "chevron.down").font(.note)
+                        Spacer()
+                        if !categoriesExpanded {
+                            Text(Format.duration(rest.reduce(0) { $0 + $1.seconds })).monospacedDigit()
+                        }
+                    }
+                    .foregroundStyle(Design.ink2)
+                    .padding(.horizontal, Design.Space.xs).frame(minHeight: 28).contentShape(Rectangle())
+                }.buttonStyle(.plain)
+            }
         }
+        .padding(.horizontal, -Design.Space.xs)
     }
 
     private func categoryRow(_ entry: (id: String, name: String, colorHex: String, seconds: TimeInterval), nameWidth: CGFloat) -> some View {
         let color = RefinedStyle.category(entry.id, hex: entry.colorHex)
         let ratio = entry.seconds / max(1, dashboard.maxCategorySeconds)
-        return HStack(spacing: 8) {
+        return HStack(spacing: Design.Space.sm) {
             Circle().fill(color).frame(width: 8, height: 8)
-            Text(entry.name).font(.body).lineLimit(1).frame(width: nameWidth, alignment: .leading)
+            Text(entry.name).foregroundStyle(Design.ink).lineLimit(1).frame(width: nameWidth, alignment: .leading)
             GeometryReader { geo in
-                Capsule().fill(.quaternary)
-                Capsule().fill(color).frame(width: geo.size.width * min(1, ratio))
-            }.frame(height: 5)
-            Text(Format.duration(entry.seconds)).font(.callout).monospacedDigit().fixedSize()
+                Capsule().fill(Design.track)
+                Capsule().fill(color).frame(width: max(3, geo.size.width * min(1, ratio)))
+            }.frame(height: 4)
+            Text(Format.duration(entry.seconds, compact: true)).monospacedDigit().foregroundStyle(Design.ink)
+                .frame(minWidth: 44, alignment: .trailing)
         }
-        .padding(.horizontal, 6)
-        .frame(minHeight: 28).contentShape(Rectangle())
+        .padding(.horizontal, Design.Space.xs)
+        .frame(height: 28).contentShape(Rectangle())
     }
 
     private func moveCategory(_ step: Int, from id: String) {
@@ -986,8 +956,8 @@ struct MenuBarDashboardView: View {
             BudgetProgressView.Row(id: $0.id, name: $0.name, colorHex: $0.colorHex, spent: $0.spent, limit: $0.limit)
         }
         let fold = LimitState.fold(rows, warnPercent: dashboard.budgetWarnPercent)
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
+        return platter(VStack(alignment: .leading, spacing: Design.Space.md) {
+            HStack(spacing: Design.Space.sm) {
                 Segmented(options: FocusPresets.minutes, selection: $focusMinutes) { Text(verbatim: "\($0)").monospacedDigit() }
                     .accessibilityLabel("专注时长")
                     .onChange(of: focusMinutes) { _, value in model.settings.setFocusDurationMinutes(value) }
@@ -996,21 +966,20 @@ struct MenuBarDashboardView: View {
                 Button { startFocus(minutes: focusMinutes) } label: {
                     Label("开始专注", systemImage: "scope").frame(maxWidth: .infinity)
                 }
+                .buttonStyle(AccentButtonStyle())
                 .matchedGeometryEffect(id: "focus", in: focusMorph, properties: reduceMotion ? [] : .frame)
-                .glassProminentButton().controlSize(.large)
                 .disabled(model.focus == nil)
             }
             if withLimits && !rows.isEmpty {
-                Divider().padding(.horizontal, 2)
+                Divider()
                 Button(action: openBudgetSettings) {
-                    VStack(alignment: .leading, spacing: 9) {
+                    VStack(alignment: .leading, spacing: Design.Space.sm) {
                         ForEach(fold.shown) { LimitRowView(row: $0, warnPercent: dashboard.budgetWarnPercent) }
                         if !fold.fine.isEmpty {
                             Label("\(fold.fine.map(\.name).joined(separator: String(localized: "、")))限额还很宽裕", systemImage: "checkmark")
-                                .font(.callout).foregroundStyle(.secondary).lineLimit(2)
+                                .font(.note).foregroundStyle(Design.ink2).lineLimit(2)
                         }
                     }
-                    .padding(.horizontal, 2)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
                 }
@@ -1018,69 +987,57 @@ struct MenuBarDashboardView: View {
                 .drillDown(host: panelHost, kind: .budget, hostWindow: hostWindow, anchorView: anchorView,
                     expandedDrill: $expandedDrill, shownKind: $shownKind) { budgetProgressContent() }
             }
-        }
-        .padding(10)
-        .glassPlatter()
+        })
     }
 
     // MARK: - Paused, permission
 
     private var pausedPlatter: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        platter(VStack(alignment: .leading, spacing: Design.Space.md) {
             if let until = model.trackingResumeAt {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(Format.mmss(until.timeIntervalSince(context.date)))
-                            .font(.system(size: heroSize * 1.3, weight: .semibold)).monospacedDigit()
-                        Text("后恢复").font(.callout).foregroundStyle(.secondary)
+                    HStack(alignment: .firstTextBaseline, spacing: Design.Space.sm) {
+                        Text(Format.mmss(until.timeIntervalSince(context.date))).font(.display).monospacedDigit()
+                        Text("后恢复").foregroundStyle(Design.ink2)
                     }
                 }
             }
             Text("暂停期间不记录应用、网站、窗口标题和屏幕画面。这段时间在时间带里留空，也不会问你补记。")
-                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 6) {
+                .font(.note).foregroundStyle(Design.ink2).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: Design.Space.sm) {
                 Button("+15 分钟") { model.extendTrackingPause(minutes: 15) }
                 Button("+1 小时") { model.extendTrackingPause(minutes: 60) }
                 Button("直到我恢复") { model.pauseTracking(minutes: nil) }
-            }.controlSize(.small)
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .glassPlatter()
+            }.buttonStyle(PillButtonStyle(height: 24))
+        })
     }
 
     private var permissionPlatter: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
-                    .frame(width: 38, height: 38)
-                    .background(Color.red.opacity(0.16), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("辅助功能已关闭").font(.body.weight(.semibold))
-                    Text("关闭期间不会记录任何时间").font(.callout).foregroundStyle(.secondary)
+        platter(VStack(alignment: .leading, spacing: Design.Space.md) {
+            HStack(spacing: Design.Space.sm) {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Design.alert).accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("辅助功能已关闭").fontWeight(.semibold)
+                    Text("关闭期间不会记录任何时间").font(.note).foregroundStyle(Design.ink2)
                 }
             }
             Button {
                 NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
             } label: { Text("打开系统设置…").frame(maxWidth: .infinity) }
-            .glassProminentButton().controlSize(.large)
-            Text("重新打开后自动继续，不用重启 TimeSink。").font(.subheadline).foregroundStyle(.tertiary)
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .glassPlatter()
+            .buttonStyle(AccentButtonStyle())
+            Text("重新打开后自动继续，不用重启 TimeSink。").font(.note).foregroundStyle(Design.ink2)
+        })
     }
 
     @ViewBuilder private var chromeRow: some View {
         if model.chromeDegraded {
             platterRow {
-                Image(systemName: "globe").foregroundStyle(.secondary).accessibilityHidden(true)
-                Text("Chrome 的网站暂时只记为「Chrome」").foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "globe").foregroundStyle(Design.iconInk).accessibilityHidden(true)
+                Text("Chrome 的网站暂时只记为「Chrome」").foregroundStyle(Design.ink2).frame(maxWidth: .infinity, alignment: .leading)
                 Button("允许…") {
                     model.settingsTab = .permissions
                     showSettings()
-                }.controlSize(.small)
+                }.buttonStyle(PillButtonStyle(height: 24))
             }
         }
     }
@@ -1105,24 +1062,16 @@ struct MenuBarDashboardView: View {
                 .keyboardShortcut(",")
             Spacer()
             if model.popoverShortcutAvailable {
-                Text(verbatim: model.popoverShortcutLabel).font(.subheadline).foregroundStyle(.tertiary)
-                    .padding(.trailing, 4).accessibilityHidden(true)
+                Text(verbatim: model.popoverShortcutLabel).font(.note).foregroundStyle(Design.ink2)
+                    .padding(.trailing, Design.Space.xs).accessibilityHidden(true)
             }
             footerButton("power", label: "退出 TimeSink", help: "退出 ⌘Q", action: quit)
                 .keyboardShortcut("q")
         }
-        .padding(.horizontal, 2)
     }
 
     private func footerButton(_ symbol: String, label: LocalizedStringKey, help: LocalizedStringKey, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol).font(.body)
-                .frame(width: 32, height: 28).contentShape(Rectangle())
-        }
-        .buttonStyle(.borderless)
-        .foregroundStyle(.secondary)
-        .help(help)
-        .accessibilityLabel(label)
+        StepperButton(symbol: symbol, label: label, action: action).help(help)
     }
 
     // MARK: - Actions
@@ -1311,7 +1260,7 @@ struct ScreenCaptureStatusView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("屏幕采集").font(.callout)
+                Text("屏幕采集").font(.body)
                 Spacer()
                 if permissionGranted {
                     Toggle("启用屏幕采集", isOn: $isEnabled)
@@ -1322,17 +1271,17 @@ struct ScreenCaptureStatusView: View {
                 if compact {
                     HStack {
                         Label("需屏幕录制权限 · 未采集", systemImage: "exclamationmark.circle")
-                            .font(.system(size: 11)).foregroundStyle(RefinedStyle.warning)
+                            .font(.note).foregroundStyle(RefinedStyle.warning)
                         Spacer(minLength: 4)
                         Button("打开系统设置…", action: openPermissions).controlSize(.small)
                     }
                 } else {
-                    Label("需要屏幕录制权限", systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(.orange)
-                    Text("当前不会保存屏幕画面").font(.caption).foregroundStyle(.secondary)
+                    Label("需要屏幕录制权限", systemImage: "exclamationmark.circle").font(.note).foregroundStyle(.orange)
+                    Text("当前不会保存屏幕画面").font(.note).foregroundStyle(Design.ink2)
                     Button("打开系统设置…", action: openPermissions).controlSize(.small)
                 }
             } else {
-                Text(statusLine).font(.caption).foregroundStyle(.secondary)
+                Text(statusLine).font(.note).foregroundStyle(Design.ink2)
             }
         }
     }

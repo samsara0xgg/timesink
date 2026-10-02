@@ -417,7 +417,7 @@ struct DayTimelineView: View {
                     if tall >= 18 {
                         VStack(alignment: .leading, spacing: 1) {
                             (mark.named ? Text(Image(systemName: "sparkles")).foregroundStyle(mark.color) + Text(" ") + Text(mark.title) : Text(mark.title))
-                                .font(.system(size: 12, weight: mark.named ? .medium : .regular))
+                                .font(.body.weight(mark.named ? .medium : .regular))
                                 .foregroundStyle(mark.named ? .primary : .secondary)
                                 .lineLimit(tall >= 48 ? 2 : 1)
                             if tall >= 34 {

@@ -122,7 +122,7 @@ struct AppIcon: View {
     var body: some View {
         Group {
             if let icon = icon ?? Self.icons[bundleID] { Image(nsImage: icon).resizable().interpolation(.high) }
-            else { Image(systemName: "app.fill").resizable().foregroundStyle(.secondary) }
+            else { Image(systemName: "app.fill").resizable().foregroundStyle(Design.ink2) }
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)

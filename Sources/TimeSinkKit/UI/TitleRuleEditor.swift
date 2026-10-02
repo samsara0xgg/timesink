@@ -153,9 +153,9 @@ struct TitleRuleEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("始终把这类标题归为…").font(.system(size: 15, weight: .semibold))
+            Text("始终把这类标题归为…").font(.figure)
             VStack(alignment: .leading, spacing: 6) {
-                Text("标题包含").font(.system(size: 12)).foregroundStyle(.secondary)
+                Text("标题包含").font(.body).foregroundStyle(Design.ink2)
                 VStack(alignment: .leading, spacing: 6) {
                     if !previewChips.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) {
@@ -164,9 +164,9 @@ struct TitleRuleEditor: View {
                                     HStack(spacing: 5) {
                                         Text(chip)
                                         Button { keywordText = previewChips.filter { $0 != chip }.joined(separator: String(localized: "，")) } label: {
-                                            Image(systemName: "xmark").font(.system(size: 9, weight: .semibold))
+                                            Image(systemName: "xmark").font(.note.weight(.semibold))
                                         }.buttonStyle(.plain).accessibilityLabel("移除关键词 \(chip)")
-                                    }.font(.system(size: 12)).padding(.horizontal, 6).padding(.vertical, 3)
+                                    }.font(.body).padding(.horizontal, 6).padding(.vertical, 3)
                                         .foregroundStyle(Color.accentColor)
                                         .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 5))
                                 }
@@ -184,43 +184,43 @@ struct TitleRuleEditor: View {
                 }.padding(7).background(RefinedStyle.panel, in: RoundedRectangle(cornerRadius: 7))
                     .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(.quaternary, lineWidth: 1))
                 Text("每个词至少 2 个字。以 re: 开头按正则匹配。")
-                    .font(.system(size: 11))
+                    .font(.note)
                     .foregroundStyle(rejected ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
             }
             Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 10) {
                 GridRow {
-                    Text("范围").foregroundStyle(.secondary).frame(width: 50, alignment: .leading)
+                    Text("范围").foregroundStyle(Design.ink2).frame(width: 50, alignment: .leading)
                     Picker("范围", selection: $scopeKey) {
                         if !pending.scopeKey.isEmpty { Text("只在 \(pending.scopeLabel)").tag(pending.scopeKey) }
                         Text("所有应用和网站").tag("")
                     }.pickerStyle(.segmented).labelsHidden()
                 }
                 GridRow {
-                    Text("归为").foregroundStyle(.secondary)
+                    Text("归为").foregroundStyle(Design.ink2)
                     Picker("归为", selection: $categoryID) {
                         ForEach(sortedCategories, id: \.id) { category in Text(category.name).tag(category.id) }
                     }.labelsHidden().fixedSize()
                 }
-            }.font(.system(size: 12))
+            }.font(.body)
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text("会影响 \(affectedPreview.count) 条记录 · \(Format.duration(affectedPreview.seconds))").fontWeight(.semibold)
                     Spacer()
-                    Text("近 30 天").foregroundStyle(.secondary)
+                    Text("近 30 天").foregroundStyle(Design.ink2)
                 }
                 ForEach(Array(matchingRows.prefix(3).enumerated()), id: \.offset) { _, item in
                     HStack(spacing: 5) {
-                        Text(model.resolver.categoriesByID[item.categoryID]?.name ?? String(localized: "未分类")).strikethrough().foregroundStyle(.tertiary)
-                        Image(systemName: "arrow.right").foregroundStyle(.tertiary)
+                        Text(model.resolver.categoriesByID[item.categoryID]?.name ?? String(localized: "未分类")).strikethrough().foregroundStyle(Design.ink2)
+                        Image(systemName: "arrow.right").foregroundStyle(Design.ink2)
                         Circle().fill(RefinedStyle.category(categoryID, hex: model.resolver.categoriesByID[categoryID]?.colorHex ?? "#B4B4BB")).frame(width: 6, height: 6)
                         Text(item.span.title ?? item.span.appName).lineLimit(1)
                         Spacer(minLength: 0)
-                        Text(Format.duration(item.span.duration)).monospacedDigit().foregroundStyle(.secondary)
-                    }.font(.system(size: 11))
+                        Text(Format.duration(item.span.duration)).monospacedDigit().foregroundStyle(Design.ink2)
+                    }.font(.note)
                 }
-            }.font(.system(size: 12)).padding(.vertical, 10).padding(.horizontal, 12)
+            }.font(.body).padding(.vertical, 10).padding(.horizontal, 12)
                 .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 9))
-            if let duplicateMessage { Text(duplicateMessage).font(.system(size: 12)).foregroundStyle(.red) }
+            if let duplicateMessage { Text(duplicateMessage).font(.body).foregroundStyle(Design.alert) }
             HStack(spacing: 8) {
                 Spacer()
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)

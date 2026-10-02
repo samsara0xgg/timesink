@@ -99,7 +99,7 @@ struct InterruptionRadarCard: View {
     private var summary: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("打断").font(.body.weight(.semibold))
-            (Text(data?.interruptions.count ?? 0, format: .number).font(.system(size: 26, weight: .semibold)).monospacedDigit()
+            (Text(data?.interruptions.count ?? 0, format: .number).font(.display).monospacedDigit()
                 + Text(" 次").font(.body).foregroundStyle(Design.ink2))
             Group {
                 if let data {
@@ -194,7 +194,7 @@ struct InterruptionRadarCard: View {
     private func cell(_ title: String, _ value: String, _ detail: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title).font(.body).foregroundStyle(Design.ink2).lineLimit(1)
-            Text(value).font(.system(size: 20, weight: .semibold)).monospacedDigit().lineLimit(1)
+            Text(value).font(.figure).monospacedDigit().lineLimit(1)
             Text(detail).font(.note).foregroundStyle(Design.ink2).lineLimit(1)
         }
         .padding(.horizontal, 12).frame(maxWidth: .infinity, alignment: .leading)

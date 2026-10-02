@@ -108,7 +108,7 @@ struct DayRibbonView: View {
             }.frame(height: compact ? 12 : 54)
             GeometryReader { geometry in
                 ForEach(ticks(width: geometry.size.width)) { tick in
-                    Text(tick.text).font(.system(size: 11, weight: tick.isNow ? .semibold : .regular)).monospacedDigit()
+                    Text(tick.text).font(.note.weight(tick.isNow ? .semibold : .regular)).monospacedDigit()
                         .foregroundStyle(tick.isNow ? .primary : .secondary)
                         .fixedSize().frame(width: tick.width)
                         .offset(x: tick.x)

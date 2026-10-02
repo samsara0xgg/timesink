@@ -33,23 +33,23 @@ struct AwayPrompt: View {
         VStack(alignment: .leading, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: "\(model.time(interval.start))–\(model.time(interval.end))")
-                    .font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit()
-                Text("刚才你离开了 \(minutes) 分钟").font(.system(size: 15, weight: .semibold))
-                if let context { Text(verbatim: context).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1) }
+                    .font(.body).foregroundStyle(Design.ink2).monospacedDigit()
+                Text("刚才你离开了 \(minutes) 分钟").font(.figure)
+                if let context { Text(verbatim: context).font(.body).foregroundStyle(Design.ink2).lineLimit(1) }
             }
             if let event = model.awaySuggestion(for: interval) {
                 Button { answer(event.title, "person.2") } label: {
                     HStack(spacing: 10) {
                         VStack(alignment: .leading, spacing: 1) {
-                            Label("日历里正好有", systemImage: "sparkles").font(.system(size: 11)).foregroundStyle(.secondary)
-                            Text(event.title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                            Label("日历里正好有", systemImage: "sparkles").font(.note).foregroundStyle(Design.ink2)
+                            Text(event.title).font(.body.weight(.semibold)).lineLimit(1)
                             Text(verbatim: "\(model.time(event.start))–\(model.time(event.end))")
-                                .font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit()
+                                .font(.body).foregroundStyle(Design.ink2).monospacedDigit()
                         }
                         Spacer(minLength: 8)
-                        Text("记为会议").font(.system(size: 12, weight: .semibold)).foregroundStyle(.tint)
+                        Text("记为会议").font(.body.weight(.semibold)).foregroundStyle(.tint)
                     }
-                    .padding(10).frame(maxWidth: .infinity, alignment: .leading).glassPlatter(cornerRadius: 12, strong: true)
+                    .padding(10).frame(maxWidth: .infinity, alignment: .leading).glassPlatter(cornerRadius: Design.Radius.card, strong: true)
                     .contentShape(Rectangle())
                 }.buttonStyle(.plain)
             }
@@ -69,11 +69,11 @@ struct AwayPrompt: View {
                             Image(systemName: "fork.knife").frame(width: 16)
                             Text("午饭")
                             Spacer(minLength: 8)
-                            Label("这个时间常是午饭", systemImage: "sparkles").font(.system(size: 11)).foregroundStyle(.secondary)
+                            Label("这个时间常是午饭", systemImage: "sparkles").font(.note).foregroundStyle(Design.ink2)
                         }
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.body.weight(.medium))
                         .padding(.horizontal, 10).frame(height: 38).frame(maxWidth: .infinity, alignment: .leading)
-                        .glassPlatter(cornerRadius: 10, strong: true).contentShape(Rectangle())
+                        .glassPlatter(cornerRadius: Design.Radius.control, strong: true).contentShape(Rectangle())
                     }.buttonStyle(.plain)
                 }
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
@@ -85,9 +85,9 @@ struct AwayPrompt: View {
                 }
             }
             Text("补记画成虚线框，和电脑上的时间分开统计，不计入评分。")
-                .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .font(.note).foregroundStyle(Design.ink2).fixedSize(horizontal: false, vertical: true)
         }
-        .padding(12).frame(maxWidth: .infinity, alignment: .leading).glassPlatter()
+        .padding(Design.Space.md).frame(maxWidth: .infinity, alignment: .leading).glassPlatter(cornerRadius: Design.Radius.card)
     }
 
     /// What was in front just before leaving and just after coming back.
@@ -110,9 +110,9 @@ struct AwayPrompt: View {
             Text(label).lineLimit(1)
             Spacer(minLength: 0)
         }
-        .font(.system(size: 13, weight: .medium))
+        .font(.body.weight(.medium))
         .padding(.horizontal, 10).frame(height: 34).frame(maxWidth: .infinity, alignment: .leading)
-        .glassPlatter(cornerRadius: 10)
+        .glassPlatter(cornerRadius: Design.Radius.control)
         .contentShape(Rectangle())
     }
 }

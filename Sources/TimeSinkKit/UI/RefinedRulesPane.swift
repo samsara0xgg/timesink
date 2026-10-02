@@ -89,7 +89,7 @@ struct RefinedRulesPane: View {
         .sheet(item: $pendingTitle) { TitleRuleEditor(model: model, pending: $0) }
         .sheet(isPresented: $showURL) {
             VStack(alignment: .leading, spacing: 16) {
-                Text("新建网址规则").font(.system(size: 17, weight: .semibold))
+                Text("新建网址规则").font(.figure)
                 TextField("网址包含，或 re: 正则表达式", text: $newPattern).textFieldStyle(.roundedBorder)
                 Picker("归为", selection: $newCategory) { ForEach(model.resolver.categoriesByID.values.sorted { $0.sortOrder < $1.sortOrder }, id: \.id) { Text($0.name).tag($0.id) } }
                 Text("仅检查记录中的网址；不访问网页。至少 3 个字符。").font(.note).foregroundStyle(Design.ink2)

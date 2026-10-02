@@ -48,14 +48,14 @@ struct CategoryEditSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(category == nil ? "新建分类" : "编辑分类").font(.system(size: 17, weight: .semibold))
+            Text(category == nil ? "新建分类" : "编辑分类").font(.figure)
             HStack(spacing: 10) {
                 ColorPicker("颜色", selection: $color, supportsOpacity: false).labelsHidden()
                 TextField("名称", text: $name).textFieldStyle(.roundedBorder)
             }
             VStack(alignment: .leading, spacing: 4) {
                 TextField("说明：什么内容属于这里", text: $details, axis: .vertical).lineLimit(2...4).textFieldStyle(.roundedBorder)
-                Text("说明会和名称一起发给 Jev，写得越具体，判断越准。").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text("说明会和名称一起发给 Jev，写得越具体，判断越准。").font(.note).foregroundStyle(Design.ink2)
             }
             Picker("投入程度", selection: $productivity) {
                 ForEach((-2...2).reversed(), id: \.self) { Text($0 > 0 ? "+\($0)" : "\($0)").tag($0) }
@@ -63,7 +63,7 @@ struct CategoryEditSheet: View {
             Toggle("会打断工作（计入分心）", isOn: $distracting)
             if let category, !confirmingRemoval { removal(for: category) }
             if confirmingRemoval, let category { removalConfirm(for: category) }
-            if let error { Text(error).font(.system(size: 12)).foregroundStyle(.red) }
+            if let error { Text(error).font(.body).foregroundStyle(Design.alert) }
             HStack {
                 Spacer()
                 Button("取消", action: done).keyboardShortcut(.cancelAction)
@@ -90,7 +90,7 @@ struct CategoryEditSheet: View {
             Picker("它的内容改归到", selection: $target) {
                 ForEach(others, id: \.id) { Text($0.name).tag($0.id) }
             }
-            Text("规则、已确认的判断、限额和专注拦截都会一起移过去。这一步不能撤销。").font(.system(size: 11)).foregroundStyle(.secondary)
+            Text("规则、已确认的判断、限额和专注拦截都会一起移过去。这一步不能撤销。").font(.note).foregroundStyle(Design.ink2)
             HStack {
                 Button("不删了") { confirmingRemoval = false }
                 Button("删除「\(category.name)」", role: .destructive) { remove(category, into: target) }.disabled(target.isEmpty)

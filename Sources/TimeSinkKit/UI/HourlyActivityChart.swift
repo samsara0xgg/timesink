@@ -45,7 +45,7 @@ struct HourlyActivityChart: View {
         let span = span, scale = scale
         VStack(alignment: .leading, spacing: 6) {
             Text("每小时活动时长 · 分钟")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.note).foregroundStyle(Design.ink2)
             Chart {
                 ForEach(Self.segments(for: bars)) { segment in
                     let bar = segment.bar
@@ -59,7 +59,7 @@ struct HourlyActivityChart: View {
                 }
                 if let selectedHour {
                     RuleMark(x: .value("小时", Double(selectedHour) + 0.5))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Design.ink2)
                 }
             }
             .chartXScale(domain: Double(span.lowerBound)...Double(span.upperBound))
@@ -101,7 +101,7 @@ struct HourlyActivityChart: View {
             }
             .frame(height: 100)
             Text(selectedHour.map(description) ?? (bars.allSatisfy { $0.seconds == 0 } ? String(localized: "暂无活动记录") : String(localized: "指向柱形查看具体时段与时长")))
-                .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                .font(.note).monospacedDigit().foregroundStyle(Design.ink2)
         }
         .focusable()
         .onKeyPress(.leftArrow) {

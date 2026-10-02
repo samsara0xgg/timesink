@@ -16,9 +16,9 @@ struct OnboardingView: View {
         VStack(spacing: 0) {
             VStack(spacing: 8) {
                 hourglass.font(.system(size: 56, weight: .light)).foregroundStyle(.tint).frame(height: 68)
-                Text("欢迎使用 TimeSink").font(.system(size: 22, weight: .semibold))
+                Text("欢迎使用 TimeSink").font(.display)
                 Text("它在菜单栏里安静地记下你的时间，把一天连成片。所有记录都留在这台 Mac 上。")
-                    .font(.system(size: 13)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    .font(.body).foregroundStyle(Design.ink2).multilineTextAlignment(.center)
                     .frame(maxWidth: 340).fixedSize(horizontal: false, vertical: true)
             }
             VStack(spacing: 8) {
@@ -48,7 +48,7 @@ struct OnboardingView: View {
             Spacer(minLength: 16)
             HStack {
                 Text(axState == .granted ? "可选项以后都能在设置里打开。" : "打开「辅助功能」后才能开始记录。")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .font(.body).foregroundStyle(Design.ink2)
                 Spacer()
                 Button("继续") { dismiss() }
                     .glassProminentButton().controlSize(.large).keyboardShortcut(.defaultAction)
@@ -90,19 +90,19 @@ struct OnboardingView: View {
     private func permission(_ icon: String, _ title: String, required: Bool, _ detail: String,
                             _ state: PermissionState, action: @escaping () -> Void) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: icon).font(.system(size: 16)).foregroundStyle(.tint)
+            Image(systemName: icon).font(.figure.weight(.regular)).foregroundStyle(.tint)
                 .frame(width: 34, height: 34).background(.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(title).font(.system(size: 13, weight: .semibold))
-                    Text(required ? "需要" : "可选").font(.system(size: 11, weight: .medium))
+                    Text(title).font(.body.weight(.semibold))
+                    Text(required ? "需要" : "可选").font(.note.weight(.medium))
                         .foregroundStyle(required ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
                 }
-                Text(detail).font(.system(size: 12)).foregroundStyle(.secondary)
+                Text(detail).font(.body).foregroundStyle(Design.ink2)
             }
             Spacer(minLength: 8)
             if state == .granted {
-                Label("已允许", systemImage: "checkmark").font(.system(size: 12)).foregroundStyle(.green)
+                Label("已允许", systemImage: "checkmark").font(.body).foregroundStyle(.green)
             } else {
                 Button("允许…", action: action).controlSize(.small).disabled(state.isUnavailable)
             }

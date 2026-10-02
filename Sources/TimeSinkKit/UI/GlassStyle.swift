@@ -122,7 +122,7 @@ extension View {
                               tint: tint, interactive: interactive))
     }
 
-    func glassPlatter(cornerRadius: CGFloat = 18, strong: Bool = false) -> some View {
+    func glassPlatter(cornerRadius: CGFloat = Design.Radius.card, strong: Bool = false) -> some View {
         modifier(GlassPlatter(shape: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous), strong: strong))
     }
 

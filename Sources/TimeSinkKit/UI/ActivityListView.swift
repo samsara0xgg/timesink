@@ -39,7 +39,7 @@ struct ActivityListView: View {
 
     private var summary: some View {
         Text("\(Format.duration(totalSeconds)) · \(activities.displayedItems.count) 条记录 · \(displayedGroups.count) 个分类")
-            .font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit().fixedSize()
+            .font(.body).foregroundStyle(Design.ink2).monospacedDigit().fixedSize()
     }
 
     private var displayedGroups: [ActivitiesModel.CategoryGroup] {
@@ -55,14 +55,14 @@ struct ActivityListView: View {
             }.padding(.horizontal, 14).padding(.top, 10)
             if let matchCount {
                 Text("命中 \(matchCount) 项 · 合计 \(Format.duration(matchSeconds ?? 0))")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .font(.body)
+                    .foregroundStyle(Design.ink2)
             }
 
             if meetingSeconds > 0 {
                 Text("会议时间 \(Format.duration(meetingSeconds))")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .font(.body)
+                    .foregroundStyle(Design.ink2)
             }
 
             if let filter = model.activityFilter {
@@ -94,7 +94,7 @@ struct ActivityListView: View {
                                         Spacer()
                                         Text(Format.duration(group.seconds, compact: true)).monospacedDigit()
                                     }
-                                    .font(.system(size: 12, weight: .semibold)).padding(.vertical, 5)
+                                    .font(.body.weight(.semibold)).padding(.vertical, 5)
                                     .background(RefinedStyle.panel)
                                 }
                             }
@@ -126,8 +126,8 @@ struct ActivityListView: View {
                 Circle().fill(categoryColor(row.selection.categoryID)).frame(width: 6, height: 6)
                     .help(model.resolver.categoriesByID[row.selection.categoryID]?.name ?? String(localized: "未分类"))
                 Spacer(minLength: 6)
-                Text(Format.duration(row.seconds, compact: true)).monospacedDigit().foregroundStyle(.secondary)
-            }.font(.system(size: 12)).padding(.vertical, 4).padding(.horizontal, 4)
+                Text(Format.duration(row.seconds, compact: true)).monospacedDigit().foregroundStyle(Design.ink2)
+            }.font(.body).padding(.vertical, 4).padding(.horizontal, 4)
                 .background(selected ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 4))
                 .contentShape(Rectangle())
         }
@@ -150,14 +150,14 @@ struct ActivityListView: View {
                     Text(others.isEmpty
                          ? "\(model.time(segment.start))–\(model.time(segment.end))"
                          : String(localized: "\(model.time(segment.start))–\(model.time(segment.end)) · 另有 \(others.count) 项"))
-                        .font(.system(size: 11)).foregroundStyle(.secondary).monospacedDigit()
+                        .font(.note).foregroundStyle(Design.ink2).monospacedDigit()
                 }
                 Spacer(minLength: 6)
                 if segment.isMixed {
                     CompositionBar(segment: segment, color: categoryColor).frame(width: 36, height: 4)
                 }
-                Text(Format.duration(segment.recorded, compact: true)).monospacedDigit().foregroundStyle(.secondary)
-            }.font(.system(size: 12)).padding(.vertical, 5).padding(.horizontal, 4)
+                Text(Format.duration(segment.recorded, compact: true)).monospacedDigit().foregroundStyle(Design.ink2)
+            }.font(.body).padding(.vertical, 5).padding(.horizontal, 4)
                 .background(selected ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 4))
                 .contentShape(Rectangle())
         }
@@ -170,7 +170,7 @@ struct ActivityListView: View {
         VStack {
             Spacer()
             Text(emptyStateText)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Design.ink2)
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -221,7 +221,7 @@ private struct FilterChip: View {
             }
             .buttonStyle(.plain)
         }
-        .font(.callout)
+        .font(.body)
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
         .background(Capsule().fill(Color.accentColor.opacity(0.15)))
@@ -267,7 +267,7 @@ private struct CategoryGroupRow: View {
                         }
                 }.frame(width: 70, height: 4)
                 Text(Format.duration(group.seconds, compact: true))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Design.ink2)
             }
         }
     }
@@ -307,7 +307,7 @@ private struct ActivityRowView: View {
                 Spacer()
                 if row.hasMeeting {
                     Text("会议")
-                        .font(.caption2)
+                        .font(.note)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(Capsule().fill(Color.accentColor.opacity(0.15)))
@@ -315,9 +315,9 @@ private struct ActivityRowView: View {
                         .help("由日历事件自动标注")
                 }
                 let count = activities.segmentCounts[ActivitySelection(categoryID: categoryID, rowID: row.id)] ?? 0
-                if count > 1 { Text("\(count) 次").font(.system(size: 11)).foregroundStyle(.tertiary).help("来回 \(count) 次") }
+                if count > 1 { Text("\(count) 次").font(.note).foregroundStyle(Design.ink2).help("来回 \(count) 次") }
                 Text(Format.duration(row.seconds, compact: true))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Design.ink2)
             }
             .padding(.vertical, 3)
             .padding(.horizontal, 4)
@@ -362,9 +362,9 @@ private struct TitleRowView: View {
                 .lineLimit(1)
             Spacer(minLength: 8)
             Text(Format.duration(title.seconds, compact: true))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Design.ink2)
         }
-        .font(.caption)
+        .font(.note)
         .padding(.vertical, 3)
         .padding(.horizontal, 4)
         .background(activities.selectedActivity == selection ? Color.accentColor.opacity(0.2) : .clear,

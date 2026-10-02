@@ -15,12 +15,12 @@ struct PermissionRow: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Circle().fill(statusColor).frame(width: 8, height: 8)
-                Text(title).font(.headline)
+                Text(title).font(.body.weight(.semibold))
                 Spacer()
-                Text(statusText).font(.caption).foregroundStyle(statusColor)
+                Text(statusText).font(.note).foregroundStyle(statusColor)
             }
             if let explanation {
-                Text(explanation).font(.callout).foregroundStyle(.secondary)
+                Text(explanation).font(.body).foregroundStyle(Design.ink2)
             }
             Button(actionTitle, action: action).disabled(state == .granted)
         }

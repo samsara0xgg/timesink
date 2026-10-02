@@ -66,7 +66,7 @@ struct RefinedGeneralPane: View {
                     loginEnabled = SMAppService.mainApp.status == .enabled
                 })).disabled(!Bundle.main.bundlePath.hasPrefix("/Applications"))
                 if !Bundle.main.bundlePath.hasPrefix("/Applications") {
-                    Text("安装到应用程序文件夹后可设置登录时启动。").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text("安装到应用程序文件夹后可设置登录时启动。").font(.note).foregroundStyle(Design.ink2)
                 }
                 }
                 Picker("菜单栏显示", selection: Binding(get: { model.menuDisplayMode }, set: { model.setMenuDisplayMode($0) })) {
@@ -78,7 +78,7 @@ struct RefinedGeneralPane: View {
                 VStack(alignment: .leading, spacing: 4) {
                     LabeledContent("打开弹出层") { ShortcutRecorder(model: model).frame(width: 122, height: 24) }
                 if !model.popoverShortcutAvailable {
-                    Text("快捷键当前不可用，可点按上方重新设置。").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text("快捷键当前不可用，可点按上方重新设置。").font(.note).foregroundStyle(Design.ink2)
                 }
                 }
             }
@@ -86,7 +86,7 @@ struct RefinedGeneralPane: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle("显示评分", isOn: $model.showScore)
                 Text("关闭后只在「趋势」里显示。")
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .font(.note).foregroundStyle(Design.ink2)
                 }
                 Picker("一周从哪天开始", selection: $model.firstWeekday) {
                     Text("周一").tag(2); Text("周日").tag(1)
@@ -100,10 +100,10 @@ struct RefinedGeneralPane: View {
                         Text(verbatim: "中文").tag("zh-Hans") // l10n: data
                         Text(verbatim: "English").tag("en")
                     }
-                    Text("重启 TimeSink 后生效。").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text("重启 TimeSink 后生效。").font(.note).foregroundStyle(Design.ink2)
                 }
             }
-            if let error { Text(error).foregroundStyle(.red) }
+            if let error { Text(error).foregroundStyle(Design.alert) }
             AboutSection(model: model)
         }.formStyle(.grouped)
         .onAppear {
@@ -185,7 +185,7 @@ struct RefinedRecordingPane: View {
                     caption(String(localized: "截图到期自动删除；识别文字保留。"))
                 }
                 HStack {
-                    Text("今天"); Spacer(); Text("\(summary.count) 次采集").foregroundStyle(.secondary).monospacedDigit()
+                    Text("今天"); Spacer(); Text("\(summary.count) 次采集").foregroundStyle(Design.ink2).monospacedDigit()
                     Button("删除今天的截图…") { confirmingDelete = true }.disabled(model.screenCollector == nil || summary.count == 0)
                 }
                 if let status { caption(status) }
@@ -221,7 +221,7 @@ struct RefinedRecordingPane: View {
         } message: { Text("截图删除后无法恢复。活动记录和已识别的文字会保留。") }
     }
     private func caption(_ text: String) -> some View {
-        Text(text).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        Text(text).font(.note).foregroundStyle(Design.ink2).fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -246,7 +246,7 @@ struct RefinedPrivacyPane: View {
                     Button { editDomains = true } label: { Image(systemName: "plus") }.help("编辑不记录的网站")
                 }
                 Text("已识别的无痕窗口不记录；无法识别时，只记录应用时长，不保存标题、网址或截图。")
-                    .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .font(.note).foregroundStyle(Design.ink2).fixedSize(horizontal: false, vertical: true)
             }
             PermissionsSection(model: model)
             DataSection(model: model)
@@ -260,7 +260,7 @@ struct RefinedPrivacyPane: View {
         }
         .popover(isPresented: $editDomains) {
             VStack(alignment: .leading, spacing: 14) {
-                Text("不记录这些网站").font(.headline)
+                Text("不记录这些网站").font(.body.weight(.semibold))
                 ForEach(domains, id: \.self) { domain in
                     HStack { Text(domain); Spacer(); Button { domains.removeAll { $0 == domain }; saveDomains() } label: { Image(systemName: "minus.circle") }.buttonStyle(.plain).accessibilityLabel("移除 \(domain)") }
                 }
@@ -268,7 +268,7 @@ struct RefinedPrivacyPane: View {
                     TextField("例如 accounts.google.com", text: $newDomain).textFieldStyle(.roundedBorder)
                     Button("添加", action: addDomain).disabled(normalizedDomain == nil)
                 }
-                Text("同时适用于子域名。不会保存这些网站的活动、标题或截图。").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text("同时适用于子域名。不会保存这些网站的活动、标题或截图。").font(.note).foregroundStyle(Design.ink2)
             }.padding(18).frame(width: 360)
         }
     }
@@ -316,7 +316,7 @@ struct PermissionsSection: View {
             Text("权限")
         } footer: {
             Text("回到 TimeSink 时自动重新检查。其他浏览器目前只按应用记录。")
-                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .font(.note).foregroundStyle(Design.ink2)
         }
         .task { await refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -355,7 +355,7 @@ struct RefinedNotificationsPane: View {
                     Stepper("剩余 \(warn)% 时提醒", value: $warn, in: 10...30, step: 10)
                     .onChange(of: warn) { _, value in model.settings.setBudgetWarnPercent(value) }
                 Text("接近上限和达到上限时各提醒一次。限额只提醒，不会拦截。")
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .font(.note).foregroundStyle(Design.ink2)
                 }
             }
             Section("每日小结") {
@@ -366,7 +366,7 @@ struct RefinedNotificationsPane: View {
                     }
                 Stepper("每天 \(model.time(Calendar.current.date(bySettingHour: hour, minute: 0, second: 0, of: Date()) ?? Date()))", value: $hour, in: 0...23).disabled(!summary)
                     .onChange(of: hour) { _, value in model.settings.setDailySummaryHour(value) }
-                Text("今天记录了多久、投入多少、评分。").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text("今天记录了多久、投入多少、评分。").font(.note).foregroundStyle(Design.ink2)
                 }
             }
             Section {
@@ -375,14 +375,14 @@ struct RefinedNotificationsPane: View {
                         model.settings.set("returnOfferEnabled", value ? "true" : "false")
                         if !value { model.setReturnOffer(nil) }
                     }
-                    Text("打了字或停留满 \(Int(model.interruptionRule.dwell)) 秒时出现，⌃⌥← 回去").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text("打了字或停留满 \(Int(model.interruptionRule.dwell)) 秒时出现，⌃⌥← 回去").font(.note).foregroundStyle(Design.ink2)
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle("离开补记", isOn: $awayPrompt).onChange(of: awayPrompt) { _, value in
                         model.settings.set("awayPromptEnabled", value ? "true" : "false")
                         if !value { model.awayOffer = nil }
                     }
-                    Text("离开 10 分钟以上回来时问一次，一天最多 5 次").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text("离开 10 分钟以上回来时问一次，一天最多 5 次").font(.note).foregroundStyle(Design.ink2)
                 }
             }
             Section {
@@ -414,14 +414,14 @@ struct FocusSettingsPane: View {
                 LabeledContent("隐藏的应用") {
                     HStack(spacing: 4) {
                         ForEach(Array(blockedApps.prefix(5)), id: \.self) { AppIcon(bundleID: $0, size: 18).help(AppIcon.name(for: $0)) }
-                        if blockedApps.isEmpty { Text("未选择").foregroundStyle(.secondary) }
+                        if blockedApps.isEmpty { Text("未选择").foregroundStyle(Design.ink2) }
                         Button("编辑…") { editApps = true }.controlSize(.small).padding(.leading, 6)
                     }
                 }
                 LabeledContent {
                     HStack(spacing: 6) {
                         Text(model.settings.focusBlockedCategories.isEmpty ? String(localized: "未选择") : model.settings.focusBlockedCategories.compactMap { model.resolver.categoriesByID[$0]?.name }.joined(separator: String(localized: "、")))
-                            .foregroundStyle(.secondary).lineLimit(1)
+                            .foregroundStyle(Design.ink2).lineLimit(1)
                         Button("编辑…") { editCategories = true }.controlSize(.small)
                             .popover(isPresented: $editCategories) { FocusCategoriesEditor(model: model) { editCategories = false } }
                     }
@@ -450,7 +450,7 @@ struct AboutSection: View {
                 ))
                 Button("检查更新…") { updates.checkForUpdates() }
             } else {
-                Text("开发版不检查更新。").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text("开发版不检查更新。").font(.note).foregroundStyle(Design.ink2)
             }
         }
         .onAppear { autoCheckUpdates = model.updates?.automaticallyChecks ?? false }
@@ -476,22 +476,22 @@ struct DataSection: View {
                 LabeledContent("诊断信息") {
                     Button("预览并导出…") { prepareExport(diagnostics: true) }.disabled(preparing)
                 }
-                Text("诊断信息默认不含窗口标题、网址、截图和识别文字。").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text("诊断信息默认不含窗口标题、网址、截图和识别文字。").font(.note).foregroundStyle(Design.ink2)
             }
-            if let error { Text(error).foregroundStyle(.red) }
+            if let error { Text(error).foregroundStyle(Design.alert) }
         } header: {
             Text("你的数据")
         } footer: {
             Text("活动记录保存在这台 Mac。云端同步、智能分类与屏幕采集分别控制。")
-                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .font(.note).foregroundStyle(Design.ink2)
         }
         .fileExporter(isPresented: $exporting, document: document, contentType: exportType, defaultFilename: exportName) { result in
             if case .failure(let failure) = result { error = String(localized: "导出失败：\(failure.localizedDescription)") }
         }
         .sheet(isPresented: Binding(get: { diagnostic != nil }, set: { if !$0 { diagnostic = nil } })) {
             VStack(alignment: .leading, spacing: 16) {
-                Text("诊断信息预览").font(.headline)
-                ScrollView { Text(diagnostic ?? "").font(.system(size: 12)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
+                Text("诊断信息预览").font(.body.weight(.semibold))
+                ScrollView { Text(diagnostic ?? "").font(.body).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
                 HStack { Spacer(); Button("取消") { diagnostic = nil }; Button("导出…") { document = TextExportDocument(text: diagnostic ?? ""); diagnostic = nil; exportType = .plainText; exportName = "TimeSink-diagnostics"; exporting = true } }
             }.padding(24).frame(width: 480, height: 350)
         }

@@ -19,7 +19,7 @@ struct FocusBlockedAppsEditor: View {
     @State private var apps: [(id: String, name: String)] = []
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(title).font(.system(size: 17, weight: .semibold))
+            Text(title).font(.figure)
             TextField("搜索已安装的应用", text: $search).textFieldStyle(.roundedBorder)
             List(apps.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) }, id: \.id) { app in
                 Toggle(isOn: Binding(get: { selected.contains(app.id) }, set: { value in
@@ -28,9 +28,9 @@ struct FocusBlockedAppsEditor: View {
                     HStack(spacing: 10) { AppIcon(bundleID: app.id); Text(app.name) }
                 }.padding(.vertical, 3)
             }.listStyle(.inset)
-            Text(onSave == nil ? "只在专注时隐藏，记录照常；修改从下一次专注开始生效。" : "选中的应用不会记录活动或保存屏幕画面。密码管理器始终不记录。").font(.system(size: 11)).foregroundStyle(.secondary)
+            Text(onSave == nil ? "只在专注时隐藏，记录照常；修改从下一次专注开始生效。" : "选中的应用不会记录活动或保存屏幕画面。密码管理器始终不记录。").font(.note).foregroundStyle(Design.ink2)
             HStack {
-                Text("已选择 \(selected.count) 个").font(.system(size: 12)).foregroundStyle(.secondary)
+                Text("已选择 \(selected.count) 个").font(.body).foregroundStyle(Design.ink2)
                 Spacer(); Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("保存") {
                     blockedApps = selected.sorted(); if let onSave { onSave(blockedApps) } else { model.settings.setFocusBlockedApps(blockedApps) }; dismiss()

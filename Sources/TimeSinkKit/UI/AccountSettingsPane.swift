@@ -17,7 +17,7 @@ struct AccountSettingsPane: View {
             if !CloudConfig.isConfigured {
                 Section {
                     Text("此版本暂未提供云端同步。活动记录、截图与识别文字保留在这台 Mac 上。")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Design.ink2)
                 }
             } else if let email {
                 Section("账号") {
@@ -37,8 +37,8 @@ struct AccountSettingsPane: View {
                             if on { run { await model.sync?.syncNow() } }
                         }
                     Text("上传每段活动的应用、窗口标题、网址和起止时间。截图和识别出的文字只留在本机。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.note)
+                        .foregroundStyle(Design.ink2)
                     if let sync = model.sync {
                         HStack {
                             Button("立即同步") { run { await sync.syncNow() } }
@@ -46,11 +46,11 @@ struct AccountSettingsPane: View {
                             if sync.isSyncing { ProgressView().controlSize(.small) }
                             Spacer()
                             Text("待上传 \(sync.pending) 条")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .font(.note)
+                                .foregroundStyle(Design.ink2)
                         }
                         Text(syncLine(sync))
-                            .font(.caption)
+                            .font(.note)
                             .foregroundStyle(sync.lastError == nil ? Color.secondary : Color.red)
                     }
                 }
@@ -75,12 +75,12 @@ struct AccountSettingsPane: View {
                         if busy { ProgressView().controlSize(.small) }
                     }
                     Text("登录后可以把活动记录备份到云端，并在多台 Mac 之间合并。默认不上传，登录后仍需打开同步开关。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.note)
+                        .foregroundStyle(Design.ink2)
                 }
             }
             if let status {
-                Section { Text(status).font(.caption).foregroundStyle(.red) }
+                Section { Text(status).font(.note).foregroundStyle(Design.alert) }
             }
         }
         .formStyle(.grouped)
