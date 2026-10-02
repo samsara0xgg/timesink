@@ -26,13 +26,15 @@ enum RefinedStyle {
     /// Shipped hex -> its light/dark pair, built once: this is called per
     /// block, row and chip on every render.
     private static let shipped: [String: (hex: String, color: Color)] = {
+        // Apple's system colours, the pairs the dashboard design names:
+        // each category keeps its hue and gets the dark variant made for it.
         let pairs: [String: (String, String)] = [
-            "softwareDev": ("#2F6BE4", "#4D8DFF"), "learning": ("#2C9A55", "#3CC46E"),
-            "writing": ("#0C8898", "#2BB8C8"), "business": ("#6B50D6", "#9580FF"),
-            "utilities": ("#6C7581", "#8D96A3"), "communication": ("#E27F0C", "#FFA23A"),
-            "news": ("#A043C4", "#C77AE8"), "shopping": ("#DB4F7B", "#FF7BA2"),
-            "socialMedia": ("#DA4338", "#FF645A"), "entertainment": ("#C29406", "#F2C51C"),
-            "misc": ("#978E82", "#A99F92"), "uncategorized": ("#B4B4BB", "#6A6A72")
+            "softwareDev": ("#3478F6", "#0A84FF"), "learning": ("#34C759", "#30D158"),
+            "writing": ("#30B0C7", "#40C8E0"), "business": ("#AF52DE", "#BF5AF2"),
+            "utilities": ("#8E8E93", "#A1A1A6"), "communication": ("#FF9F0A", "#FF9F0A"),
+            "news": ("#5856D6", "#5E5CE6"), "shopping": ("#FF2D55", "#FF375F"),
+            "socialMedia": ("#FF3B30", "#FF453A"), "entertainment": ("#FFD60A", "#FFD60A"),
+            "misc": ("#98989D", "#7C7C82"), "uncategorized": ("#C7C7CC", "#55575E")
         ]
         var result: [String: (hex: String, color: Color)] = [:]
         for category in Taxonomy.categories {
@@ -188,14 +190,20 @@ struct RecordingPauseMenu: View {
 }
 
 struct HatchFill: View {
+    /// The away look of the dashboard: a cool base under fine stripes. Without
+    /// it the stripes are drawn alone, over whatever lies behind.
+    var away = false
+
     var body: some View {
         Canvas { context, size in
+            if away { context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Design.hatchBase)) }
             var path = Path()
-            for x in stride(from: -size.height, to: size.width, by: 5) {
+            let step: CGFloat = away ? 9.9 : 5
+            for x in stride(from: -size.height, to: size.width, by: step) {
                 path.move(to: CGPoint(x: x, y: size.height))
                 path.addLine(to: CGPoint(x: x + size.height, y: 0))
             }
-            context.stroke(path, with: .color(.secondary.opacity(0.2)), lineWidth: 1)
+            context.stroke(path, with: .color(away ? Design.hatchLine : .secondary.opacity(0.2)), lineWidth: away ? 2 : 1)
         }.clipped().accessibilityHidden(true)
     }
 }
