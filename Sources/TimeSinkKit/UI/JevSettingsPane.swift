@@ -15,6 +15,7 @@ struct JevSettingsPane: View {
     @State private var hasStoredKey = false
     @State private var apiKeyStatus: String?
     @State private var status: JevService.Status?
+    @FocusState private var keyFocused: Bool
 
     var body: some View {
         Form {
@@ -49,7 +50,9 @@ struct JevSettingsPane: View {
                     // Never shows the stored key; typing replaces it.
                     SecureField(hasStoredKey ? String(localized: "已保存 · 输入新密钥可替换") : String(localized: "API 密钥"), text: $apiKeyInput)
                         .textFieldStyle(.roundedBorder)
+                        .focused($keyFocused)
                         .onSubmit { saveKey() }
+                        .onChange(of: keyFocused) { _, focused in if !focused { saveKey() } }
                     if hasStoredKey {
                         Button("移除密钥", role: .destructive) { removeKey() }
                     }
@@ -73,6 +76,8 @@ struct JevSettingsPane: View {
             }
         }
         .formStyle(.grouped)
+        .contentMargins(.top, 12, for: .scrollContent)
+        .softScrollEdges()
         .onAppear {
             enabled = model.settings.jevEnabled
             screenText = model.settings.jevScreenText
@@ -116,17 +121,26 @@ struct JevSettingsPane: View {
         }
     }
 
+    /// Outcome of saving the typed key; never carries the key itself.
+    enum KeySave: Equatable { case saved, empty, failed(String) }
+
     /// An empty field is not a request to erase the key; 移除密钥 is.
+    static func commitKey(_ input: String, set: (String) throws -> Void) -> KeySave {
+        let key = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { return .empty }
+        do { try set(key); return .saved } catch { return .failed(error.localizedDescription) }
+    }
+
+    /// Runs on Return and on focus loss, so a filled field is never left unsaved.
     private func saveKey() {
-        let key = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty else { return }
-        do {
-            try Keychain.set(key, account: JevService.apiKeyAccount)
+        switch Self.commitKey(apiKeyInput, set: { try Keychain.set($0, account: JevService.apiKeyAccount) }) {
+        case .empty: break
+        case .saved:
             apiKeyInput = ""
-            hasStoredKey = true
+            hasStoredKey = model.jev?.hasKey ?? true
             apiKeyStatus = String(localized: "已保存")
-        } catch {
-            apiKeyStatus = String(localized: "保存失败：\(error.localizedDescription)")
+        case .failed(let message):
+            apiKeyStatus = String(localized: "保存失败：\(message)")
         }
     }
 
