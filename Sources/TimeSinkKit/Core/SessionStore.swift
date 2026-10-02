@@ -62,6 +62,26 @@ extension ObservationStore {
         try writer.write { db in try db.execute(sql: "INSERT OR IGNORE INTO sessionSplit (at) VALUES (?)", arguments: [date]) }
     }
 
+    public func sessionJoins(in interval: DateInterval) throws -> [Date] {
+        try writer.read { db in
+            try Date.fetchAll(db, sql: "SELECT at FROM sessionJoin WHERE at >= ? AND at < ? ORDER BY at",
+                              arguments: [interval.start, interval.end])
+        }
+    }
+
+    /// Joins the session starting at `date` onto the one before it. A hand-made
+    /// split at the same moment goes, so the two do not fight.
+    public func addSessionJoin(at date: Date) throws {
+        try writer.write { db in
+            try db.execute(sql: "DELETE FROM sessionSplit WHERE at = ?", arguments: [date])
+            try db.execute(sql: "INSERT OR IGNORE INTO sessionJoin (at) VALUES (?)", arguments: [date])
+        }
+    }
+
+    public func removeSessionJoin(at date: Date) throws {
+        try writer.write { db in try db.execute(sql: "DELETE FROM sessionJoin WHERE at = ?", arguments: [date]) }
+    }
+
     public func sessionLabel(key: String) throws -> SessionLabel? {
         try writer.read { db in try SessionLabel.fetchOne(db, key: key) }
     }

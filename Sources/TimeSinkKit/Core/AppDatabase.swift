@@ -348,6 +348,11 @@ public enum AppDatabase {
                 t.column("createdAt", .datetime).notNull()
             }
         }
+        migrator.registerMigration("v14") { db in
+            // Where you joined a session onto the one before it. A new table
+            // only, so a rollback never sees it.
+            try db.create(table: "sessionJoin") { t in t.column("at", .datetime).primaryKey() }
+        }
         return migrator
     }
 }

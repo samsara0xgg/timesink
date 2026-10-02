@@ -44,6 +44,14 @@ final class SessionSegmenterTests: XCTestCase {
         XCTAssertEqual(starts([("xcode", "softwareDev", 30, nil), (nil, "", 10, nil), ("xcode", "softwareDev", 30, nil)]), [0, 40])
     }
 
+    func testAJoinedCutAndAJoinedAbsenceStayInside() {
+        let change: [(String?, String, Double, String?)] = [("xcode", "softwareDev", 30, nil), ("mail", "business", 10, nil)]
+        XCTAssertEqual(SessionSegmenter.sessions(day(change), joins: [ts(30 * 60)]).count, 1)
+        let away: [(String?, String, Double, String?)] = [("xcode", "softwareDev", 30, nil), (nil, "", 10, nil), ("xcode", "softwareDev", 30, nil)]
+        XCTAssertEqual(SessionSegmenter.sessions(day(away), joins: [ts(40 * 60)]).count, 1)
+        XCTAssertEqual(SessionSegmenter.sessions(day(away)).count, 2)
+    }
+
     func testAwayForLessThanTenMinutesStaysInside() {
         XCTAssertEqual(starts([("xcode", "softwareDev", 30, nil), (nil, "", 9, nil), ("xcode", "softwareDev", 30, nil)]), [0])
     }

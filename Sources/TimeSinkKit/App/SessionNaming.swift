@@ -12,8 +12,9 @@ extension AppModel {
         if let running = sessionTasks[day] { return await running.value }
         let items = rangedSpans(for: day)
         let splits = (try? observationStore?.sessionSplits(in: day)) ?? []
+        let joins = (try? observationStore?.sessionJoins(in: day)) ?? []
         let task = Task.detached(priority: .userInitiated) {
-            SessionSegmenter.sessions(items, threshold: threshold, splits: splits)
+            SessionSegmenter.sessions(items, threshold: threshold, splits: splits, joins: joins)
         }
         sessionTasks[day] = task
         let value = await task.value
@@ -75,6 +76,18 @@ extension AppModel {
 
     public func splitSession(at date: Date) {
         try? observationStore?.addSessionSplit(at: date)
+        sessionSplitsVersion += 1
+    }
+
+    /// Joins the session onto the one before it, even across a gap or a change
+    /// the segmenter cut on its own.
+    public func joinSession(_ session: WorkSession) {
+        try? observationStore?.addSessionJoin(at: session.start)
+        sessionSplitsVersion += 1
+    }
+
+    public func unjoinSession(startingAt date: Date) {
+        try? observationStore?.removeSessionJoin(at: date)
         sessionSplitsVersion += 1
     }
 

@@ -91,7 +91,9 @@ public enum SessionSegmenter {
 
     /// `items` sorted by start. `splits`: extra boundaries the user asked for.
     public static func sessions(_ items: [CategorizedSpan], threshold: TimeInterval = defaultThreshold,
-                                splits: [Date] = []) -> [WorkSession] {
+                                splits: [Date] = [], joins: [Date] = []) -> [WorkSession] {
+        /// A session start the user joined onto the one before it: no cut there.
+        func joined(_ date: Date) -> Bool { joins.contains { abs($0.timeIntervalSince(date)) < 1 } }
         let items = items.filter { $0.span.duration > 0 }
         guard !items.isEmpty else { return [] }
 
@@ -99,7 +101,7 @@ public enum SessionSegmenter {
         var chunks: [[CategorizedSpan]] = [[items[0]]]
         var reach = items[0].span.end
         for item in items.dropFirst() {
-            if item.span.start.timeIntervalSince(reach) >= threshold { chunks.append([]) }
+            if item.span.start.timeIntervalSince(reach) >= threshold, !joined(item.span.start) { chunks.append([]) }
             chunks[chunks.count - 1].append(item)
             reach = max(reach, item.span.end)
         }
@@ -111,10 +113,10 @@ public enum SessionSegmenter {
                 + lastingChanges(chunk.map { ($0.span.start, $0.span.end, changeKey($0.span)) }, threshold: threshold))
             let chunkStart = chunk[0].span.start
             let chunkEnd = chunk.map(\.span.end).max()!
-            let userCuts = splits.filter { $0 > chunkStart && $0 < chunkEnd }
+            let userCuts = splits.filter { $0 > chunkStart && $0 < chunkEnd && !joined($0) }
             // 3. A piece shorter than the threshold joins the next one (the
             // change it led into), or the previous one at the end.
-            var cuts = changes.filter { $0 > chunkStart }.sorted()
+            var cuts = changes.filter { $0 > chunkStart && !joined($0) }.sorted()
             var merged = true
             while merged {
                 merged = false
