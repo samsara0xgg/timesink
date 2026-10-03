@@ -15,7 +15,7 @@ extension SettingsStore {
         guard let url = sample.url, let domain = DomainParser.domain(from: url) else { return false }
         return excludedDomains.contains { domain == $0 || domain.hasSuffix("." + $0) }
     }
-    public var captureRetentionDays: Int { max(1, min(30, Int(get("captureRetentionDays") ?? "7") ?? 7)) }
+    public var captureRetentionDays: Int { max(1, min(30, Int(get("captureRetentionDays") ?? "30") ?? 30)) }
     public var budgetNotificationsEnabled: Bool { self.get("budgetNotificationsEnabled") != "false" }
     public var focusNotificationsEnabled: Bool { self.get("focusNotificationsEnabled") != "false" }
     public var notificationSound: Bool { self.get("notificationSound") == "true" }

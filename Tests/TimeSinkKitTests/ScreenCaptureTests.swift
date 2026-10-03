@@ -170,9 +170,9 @@ final class CaptureRetentionTests: XCTestCase {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "America/Los_Angeles")!
         let now = cal.date(from: DateComponents(year: 2026, month: 9, day: 20, hour: 15))!
-        XCTAssertTrue(CaptureRetention.isExpired(dayFolder: "2026-09-12", now: now, calendar: cal))
-        XCTAssertFalse(CaptureRetention.isExpired(dayFolder: "2026-09-13", now: now, calendar: cal))
-        XCTAssertFalse(CaptureRetention.isExpired(dayFolder: "2026-09-20", now: now, calendar: cal))
+        XCTAssertTrue(CaptureRetention.isExpired(dayFolder: "2026-09-12", now: now, calendar: cal, days: 7))
+        XCTAssertFalse(CaptureRetention.isExpired(dayFolder: "2026-09-13", now: now, calendar: cal, days: 7))
+        XCTAssertFalse(CaptureRetention.isExpired(dayFolder: "2026-09-20", now: now, calendar: cal, days: 7))
     }
 }
 
