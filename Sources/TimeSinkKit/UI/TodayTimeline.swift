@@ -233,9 +233,10 @@ struct TodayTimelineCard: View {
         return RefinedStyle.category(row.session.categoryID, hex: category?.colorHex ?? "#C7C7CC")
     }
 
-    /// "By project" with no project anywhere on this day: the blocks stay
-    /// neutral and the legend says how to make one.
-    private var noProjectsYet: Bool { colors == .project && !plan.rows.contains { $0.slot != nil } }
+    /// "By project" with no project anywhere on this day and none created: the
+    /// blocks stay neutral and the legend says how to make one. With projects
+    /// but none on this day, the blocks take their category colours.
+    private var noProjectsYet: Bool { colors == .project && model.projects.isEmpty && !plan.rows.contains { $0.slot != nil } }
 
     /// What the colours stand for, biggest first: the project or the main
     /// category of each block, once.
@@ -317,8 +318,8 @@ struct TodayTimelineCard: View {
         HStack(spacing: Design.Space.lg) {
             if noProjectsYet {
                 HStack(spacing: Design.Space.sm) {
-                    Text("还没有项目。在活动里给一段会话选「项目」，或新建一个，这里就会按项目着色。").lineLimit(1)
-                    if let row = plan.rows.last { Button("去活动设置 ›") { open(row) }.buttonStyle(LinkButtonStyle()) }
+                    Text("还没有项目。去创建一个，或看看 TimeSink 的推荐。").lineLimit(1)
+                    Button("去项目 ›") { model.organizationTab = .projects; model.sidebarSelection = .organization }.buttonStyle(LinkButtonStyle())
                 }
             } else {
                 ViewThatFits(in: .horizontal) {

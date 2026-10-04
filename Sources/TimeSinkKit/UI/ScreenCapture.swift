@@ -217,6 +217,28 @@ import WebKit
         }
         func refilter(_ activities: ActivitiesModel) { activities.recompute(model: model, events: []) }
 
+        // Projects, each on its own sample: the tab with none (recommendations open), with three and
+        // recommendations, before the recommendations open, and Today coloured by project.
+        func projectsPage(_ name: String, _ sample: AppModel, _ page: SidebarItem, sizes: [NSSize]) async throws {
+            sample.timeFormat = "24"
+            sample.sidebarSelection = page
+            sample.organizationTab = .projects
+            sample.range = DateRangeSelection(kind: .day, anchor: Date())
+            for size in sizes {
+                try await shoot("main-\(name)-\(Int(size.width))", MainWindowView(model: sample), size: size, settle: 3000)
+            }
+        }
+        if only?.contains("proj") ?? true {
+            try await projectsPage("projects-empty", model, .organization, sizes: [wide, small])
+            let young = try RefinedPreview.fixture(days: 2)
+            try await projectsPage("projects-gate", young, .organization, sizes: [wide, small])
+            let sample = try RefinedPreview.fixture(projects: true)
+            try await projectsPage("projects", sample, .organization, sizes: [wide, small])
+            UserDefaults.standard.set("project", forKey: "todayTimelineColors")
+            try await projectsPage("today-projects", sample, .today, sizes: [wide, small])
+            UserDefaults.standard.removeObject(forKey: "todayTimelineColors")
+        }
+
         try await main("today", .today, sizes: [wide, standard, small])
         // "By project" on a day with no project: the empty state, not a quiet fall back to categories.
         UserDefaults.standard.set("project", forKey: "todayTimelineColors")

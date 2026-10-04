@@ -10191,22 +10191,376 @@
         }
       }
     },
-    "还没有项目。在活动里给一段会话选「项目」，或新建一个，这里就会按项目着色。": {
+    "%lld 个项目，近 14 天共 %@。": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No projects yet. Pick or create a project for a session in Activities and it will show here."
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld project, %@ in the last 14 days."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld projects, %@ in the last 14 days."
+                }
+              }
+            }
           }
         }
       }
     },
-    "去活动设置 ›": {
+    "Claude Code 窗口": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Set up in Activities ›"
+            "value": "Claude Code windows"
+          }
+        }
+      }
+    },
+    "你的项目名称和描述": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your project names and descriptions"
+          }
+        }
+      }
+    },
+    "出现在%@，共 %@，分布在 %lld 天": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seen in %@, %@ over %lld days"
+          }
+        }
+      }
+    },
+    "分类页的标签": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Organization tabs"
+          }
+        }
+      }
+    },
+    "删除": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete"
+          }
+        }
+      }
+    },
+    "去项目 ›": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Go to Projects ›"
+          }
+        }
+      }
+    },
+    "名称不能为空。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The name cannot be empty."
+          }
+        }
+      }
+    },
+    "已经有同名的项目。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A project with that name already exists."
+          }
+        }
+      }
+    },
+    "我的项目": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "My projects"
+          }
+        }
+      }
+    },
+    "找不到这个项目。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That project was not found."
+          }
+        }
+      }
+    },
+    "推荐": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recommended"
+          }
+        }
+      }
+    },
+    "推荐只是线索，不会自动添加。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recommendations are only hints; nothing is added by itself."
+          }
+        }
+      }
+    },
+    "改名或改说明后，Jev 会按新的内容重新判断最近 14 天。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "After a rename or a new description, Jev judges the last 14 days again."
+          }
+        }
+      }
+    },
+    "文件夹": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Folders"
+          }
+        }
+      }
+    },
+    "新项目": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New project"
+          }
+        }
+      }
+    },
+    "最多 %lld 个": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Up to %lld"
+          }
+        }
+      }
+    },
+    "最多 %lld 个项目，先合并或删除一个。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "At most %lld projects; merge or delete one first."
+          }
+        }
+      }
+    },
+    "最近没有新的项目线索。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No new project hints lately."
+          }
+        }
+      }
+    },
+    "来自最近 14 天的记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "From the last 14 days"
+          }
+        }
+      }
+    },
+    "添加项目": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add a project"
+          }
+        }
+      }
+    },
+    "看起来有个新项目：%@，要加上吗？": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Looks like a new project: %@. Add it?"
+          }
+        }
+      }
+    },
+    "终端和编辑器": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "the terminal and editors"
+          }
+        }
+      }
+    },
+    "编辑项目": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit project"
+          }
+        }
+      }
+    },
+    "至少记录 3 天、共 8 小时之后才会推荐。目前 %lld 天，%@。": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Recommendations start after at least 3 days and 8 hours recorded. So far %lld day, %@."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Recommendations start after at least 3 days and 8 hours recorded. So far %lld days, %@."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "记录几天后会推荐你的项目": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your projects will be recommended after a few days of recording"
+          }
+        }
+      }
+    },
+    "说明（可不写）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Description (optional)"
+          }
+        }
+      }
+    },
+    "说明：什么内容属于这个项目": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Description: what belongs to this project"
+          }
+        }
+      }
+    },
+    "请选择另一个项目。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose another project."
+          }
+        }
+      }
+    },
+    "近 14 天": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last 14 days"
+          }
+        }
+      }
+    },
+    "还没有项目": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No projects"
+          }
+        }
+      }
+    },
+    "还没有项目。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No projects yet."
+          }
+        }
+      }
+    },
+    "还没有项目。去创建一个，或看看 TimeSink 的推荐。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No projects yet. Create one, or see what TimeSink recommends."
+          }
+        }
+      }
+    },
+    "项目是你在做的事，比如一个产品或一门课。添加后，Jev 会把每段时间归到对应的项目里。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A project is something you work on, like a product or a course. Once you add one, Jev puts each stretch of time into the right project."
+          }
+        }
+      }
+    },
+    "项目由 Jev 判断。在设置里打开 Jev 之后，才会自动把时间归到项目里。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jev decides the project. Turn Jev on in Settings and time is sorted into projects automatically."
           }
         }
       }

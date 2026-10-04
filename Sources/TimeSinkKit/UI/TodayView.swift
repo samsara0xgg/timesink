@@ -394,6 +394,9 @@ private struct TodayTodosCard: View {
             return Presentation(symbol: "tag",
                                 title: String(localized: "\(Format.chineseDuration(seconds))还没分类"),
                                 note: names.joined(separator: String(localized: "、")), action: "去分类")
+        case .newProject(let name):
+            return Presentation(symbol: "folder.badge.plus", title: String(localized: "新项目"),
+                                note: String(localized: "看起来有个新项目：\(name)，要加上吗？"), action: "添加")
         case .focus(let day, let minutes):
             let note = day.flatMap { day in minutes.map { String(localized: "最近一次是 \(day.formatted(.dateTime.month().day().locale(model.textLocale))) · \($0) 分钟") } }
                 ?? String(localized: "选一个时长，开始计时")
@@ -429,6 +432,12 @@ private struct TodayTodosCard: View {
         case .confirm:
             Button(p.action) {
                 for row in plan.guessedRows { if let project = row.project { model.assignSession(row.session, toProject: project) } }
+                changed()
+            }.buttonStyle(PillButtonStyle())
+        case .newProject(let name):
+            Button(p.action) {
+                _ = try? model.categoryStore.projects.add(name: name, source: "suggested")
+                model.projectsChanged()
                 changed()
             }.buttonStyle(PillButtonStyle())
         case .classify:
