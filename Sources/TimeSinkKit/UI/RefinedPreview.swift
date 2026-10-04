@@ -401,7 +401,8 @@ private enum SyntheticDay {
 
     static func spans(for day: Date, seed: UInt64, calendar: Calendar) -> [Span] {
         var rng = SplitMix64(state: seed &* 0x9E37_79B9 &+ 1)
-        let phases = calendar.isDateInWeekend(day) ? weekend : weekday
+        // Today is always a working day, so a Sunday capture still has a day to show.
+        let phases = calendar.isDateInWeekend(day) && !calendar.isDateInToday(day) ? weekend : weekday
         let shift = Double.random(in: -0.3...0.3, using: &rng) // hours
         var result: [Span] = []
         func add(_ source: Source, _ start: Date, _ seconds: Double) -> Date {

@@ -180,6 +180,20 @@ import WebKit
         // sample day, for auditing real lengths. Never the live file.
         let model = try ProcessInfo.processInfo.environment["TIMESINK_PREVIEW_DB"].map(PerfReview.realModel) ?? RefinedPreview.fixture()
         model.timeFormat = "24"
+        if ProcessInfo.processInfo.environment["TIMESINK_PREVIEW_MEASURE"] != nil {
+            // What readying Trends ahead costs: the time its numbers take and the memory they add.
+            let stats = StatsModel()
+            let before = footprintMB()
+            let started = ContinuousClock.now
+            await stats.recompute(model: model, range: DateRangeSelection(kind: .last7, anchor: Date()))
+            let elapsed = started.duration(to: .now)
+            print(String(format: "STATS_PREFETCH loaded=%@ ms=%.0f footprintMB before=%.1f after=%.1f", stats.hasLoaded ? "yes" : "no",
+                         Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15, before, footprintMB()))
+            let again = ContinuousClock.now
+            await stats.recompute(model: model, range: DateRangeSelection(kind: .last7, anchor: Date()))
+            let second = again.duration(to: .now)
+            print(String(format: "STATS_PREFETCH_AGAIN ms=%.0f", Double(second.components.seconds) * 1000 + Double(second.components.attoseconds) / 1e15))
+        }
         let calendar = Calendar.current
         let yesterday = calendar.date(byAdding: .day, value: -1, to: Date())!
         let quiet = calendar.date(byAdding: .day, value: -40, to: Date())!
@@ -264,6 +278,40 @@ import WebKit
 
         try await main("trends", .stats, kind: .last7, sizes: [wide, standard, small], settle: 3500)
         try await main("trends-30", .stats, kind: .last30, settle: 3500)
+        // Trends before its numbers: shot almost at once, the cards in their loading dress.
+        try await main("trends-loading", .stats, kind: .last7, sizes: [wide, small], settle: 30)
+        // The interruption radar: today, an hour pointed at, an hour chosen, an app pointed at, the week, the small card.
+        do {
+            let today = calendar.dateInterval(of: .day, for: Date())!
+            let rose = InterruptionRose(data: await model.interruptions(for: today))
+            var weekData = DayInterruptions()
+            for offset in 0..<7 {
+                let day = calendar.dateInterval(of: .day, for: calendar.date(byAdding: .day, value: -offset, to: today.start)!)!
+                let value = await model.interruptions(for: day)
+                weekData.episodes += value.episodes
+            }
+            let weekRose = InterruptionRose(data: weekData)
+            let busiest = rose.hourTotals.firstIndex(of: rose.busiest) ?? 12
+            let weekBusiest = weekRose.hourTotals.firstIndex(of: weekRose.busiest) ?? 12
+            let top = rose.sourceIDs.first
+            func radar(_ name: String, _ period: InterruptionRadarCard.Period = .today, hovered: Int? = nil, selected: Int? = nil, source: String? = nil) async throws {
+                InterruptionRadarCard.previewState = (hovered, selected, source)
+                try await shoot(name, InterruptionRadarCard(model: model, period: period).padding(24).background(WorkspaceBackground()),
+                                size: NSSize(width: 960, height: period == .today ? 660 : 580), settle: 1200)
+            }
+            try await radar("radar-today")
+            try await radar("radar-hover", hovered: busiest)
+            try await radar("radar-selected", selected: busiest)
+            try await radar("radar-app", source: top)
+            try await radar("radar-week", .week)
+            try await radar("radar-week-hover", .week, hovered: weekBusiest)
+            InterruptionRadarCard.previewState = (busiest, nil, nil)
+            try await shoot("radar-card-hover", InterruptionRadarCard(model: model, onOpen: {}).frame(width: 300).padding(24).background(WorkspaceBackground()),
+                            size: NSSize(width: 350, height: 460), settle: 1200)
+            InterruptionRadarCard.previewState = (nil, nil, nil)
+            try await shoot("radar-card", InterruptionRadarCard(model: model, onOpen: {}).frame(width: 300).padding(24).background(WorkspaceBackground()),
+                            size: NSSize(width: 350, height: 460), settle: 1200)
+        }
         try await main("focus", .focus, sizes: [wide, standard, small])
         try model.focus?.start(minutes: 25)
         try await main("focus-running", .focus)
@@ -321,4 +369,14 @@ import WebKit
         }
     }
 }
+/// This process's footprint in MB, as Activity Monitor counts it.
+private func footprintMB() -> Double {
+    var info = task_vm_info_data_t()
+    var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<integer_t>.size)
+    let result = withUnsafeMutablePointer(to: &info) {
+        $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count) }
+    }
+    return result == KERN_SUCCESS ? Double(info.phys_footprint) / 1_048_576 : 0
+}
+
 #endif

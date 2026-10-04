@@ -21,16 +21,6 @@
         }
       }
     },
-    " 次": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": " times"
-          }
-        }
-      }
-    },
     "%@\n%@\n点击固定并查看具体日期": {
       "localizations": {
         "en": {
@@ -919,16 +909,6 @@
         }
       }
     },
-    "· 另有 %lld 次看一眼": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "· plus peeks: %lld"
-          }
-        }
-      }
-    },
     "、": {
       "localizations": {
         "en": {
@@ -1089,26 +1069,6 @@
         }
       }
     },
-    "不算打断": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Not interruptions"
-          }
-        }
-      }
-    },
-    "不算离开": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Not counted as leaving"
-          }
-        }
-      }
-    },
     "不记": {
       "localizations": {
         "en": {
@@ -1195,16 +1155,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Focusing · %@ left"
-          }
-        }
-      }
-    },
-    "专注中拦下": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Blocked in focus"
           }
         }
       }
@@ -1781,16 +1731,6 @@
         }
       }
     },
-    "全天都有": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "All day"
-          }
-        }
-      }
-    },
     "关于": {
       "localizations": {
         "en": {
@@ -2243,16 +2183,6 @@
         }
       }
     },
-    "另有 %lld 次路过": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pass-throughs: %lld"
-          }
-        }
-      }
-    },
     "另有 %lld 项 · %@": {
       "localizations": {
         "en": {
@@ -2329,16 +2259,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Interruptions and blocks only"
-          }
-        }
-      }
-    },
-    "只看打断": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Interruptions"
           }
         }
       }
@@ -2673,26 +2593,6 @@
         }
       }
     },
-    "回消息 %lld · 停留 %lld": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Replied %lld · stayed %lld"
-          }
-        }
-      }
-    },
-    "回消息 %lld 次，停留 %lld 次": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Replied: %lld, stayed: %lld"
-          }
-        }
-      }
-    },
     "图标": {
       "localizations": {
         "en": {
@@ -2769,16 +2669,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ more"
-          }
-        }
-      }
-    },
-    "多在 %@ 点": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Mostly around %@:00"
           }
         }
       }
@@ -3631,16 +3521,6 @@
         }
       }
     },
-    "悬停一行，只看它": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hover a row to see only it"
-          }
-        }
-      }
-    },
     "悬停预览 · 点击查看日期 · 方向键浏览，回车固定": {
       "localizations": {
         "en": {
@@ -3697,26 +3577,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "All categories"
-          }
-        }
-      }
-    },
-    "所有切换": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "All switches"
-          }
-        }
-      }
-    },
-    "所有切换，路过的不画": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Every switch except pass-throughs"
           }
         }
       }
@@ -4781,16 +4641,6 @@
         }
       }
     },
-    "最长没被打断": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Longest uninterrupted"
-          }
-        }
-      }
-    },
     "最长没被打断：%@–%@": {
       "localizations": {
         "en": {
@@ -5525,16 +5375,6 @@
         }
       }
     },
-    "每次都回了消息": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Replied every time"
-          }
-        }
-      }
-    },
     "比昨天此时多 %@": {
       "localizations": {
         "en": {
@@ -5871,16 +5711,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Peek"
-          }
-        }
-      }
-    },
-    "看一眼就回来": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Quick peeks"
           }
         }
       }
@@ -7153,16 +6983,6 @@
         }
       }
     },
-    "都在看，共 %@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Just looking, %@ in all"
-          }
-        }
-      }
-    },
     "重新归类": {
       "localizations": {
         "en": {
@@ -7530,28 +7350,6 @@
                 "stringUnit": {
                   "state": "translated",
                   "value": "%lld sessions"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "%lld 段会话，按项目上色": {
-      "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld session, colored by project"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld sessions, colored by project"
                 }
               }
             }
@@ -10187,6 +9985,208 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ total"
+          }
+        }
+      }
+    },
+    "%lld 段会话，按项目或分类上色": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld session, colored by project or category"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld sessions, colored by project or category"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "按项目": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By project"
+          }
+        }
+      }
+    },
+    "时间轴颜色": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Timeline colors"
+          }
+        }
+      }
+    },
+    "专注时被拦下的切换，不算离开": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switches blocked during Focus; they don't count as leaving"
+          }
+        }
+      }
+    },
+    "停留够久或打了字的切换": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switches where you stayed long enough or typed"
+          }
+        }
+      }
+    },
+    "只是停留": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only stayed"
+          }
+        }
+      }
+    },
+    "回复 / 停留": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Replied / stayed"
+          }
+        }
+      }
+    },
+    "悬停或点一个小时，只看那一小时": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hover or click an hour to see just that hour"
+          }
+        }
+      }
+    },
+    "最长一段没被打断的时间": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The longest stretch without an interruption"
+          }
+        }
+      }
+    },
+    "最长连续": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Longest"
+          }
+        }
+      }
+    },
+    "点越大，停留越久": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bigger dot, longer stay"
+          }
+        }
+      }
+    },
+    "看一眼就回来的切换，不算打断": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switches where you glanced and came right back; not interruptions"
+          }
+        }
+      }
+    },
+    "瞄一眼": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Glances"
+          }
+        }
+      }
+    },
+    "这一小时没有被打断。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No interruptions in this hour."
+          }
+        }
+      }
+    },
+    "%@ %lld 次": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %lld"
+          }
+        }
+      }
+    },
+    "%lld–%lld 点": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld:00–%lld:00"
+          }
+        }
+      }
+    },
+    "%lld–%lld 点，%lld 次": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld:00–%lld:00, %lld"
+          }
+        }
+      }
+    },
+    "最长一段没被打断的时间：%@–%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The longest stretch without an interruption: %@–%@"
+          }
+        }
+      }
+    },
+    "次数": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Count"
           }
         }
       }

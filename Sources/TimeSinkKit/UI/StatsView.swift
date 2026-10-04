@@ -10,6 +10,7 @@ struct StatsView: View {
     @Bindable var stats: StatsModel
     @State private var granularity: StatsModel.Granularity = .day
     @State private var showsRadar = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private struct RefreshID: Equatable { let range: DateRangeSelection.Window; let version: Int }
 
     var body: some View {
@@ -42,11 +43,13 @@ struct StatsView: View {
                             appRanking
                             scoreTrend
                         } else if stats.loadError == nil {
-                            // The first two cards' places, so nothing moves when they fill.
-                            pair(wide: wide) { placeholder } trailing: { placeholder }
+                            // The first two cards drawn as they will be, grey where the data goes.
+                            pair(wide: wide) { skeletonHistory } trailing: { skeletonRanking }
+                                .accessibilityElement(children: .ignore)
                                 .accessibilityLabel("正在读取趋势")
                         }
                     }
+                    .animation(Design.motion(Design.page, reduced: reduceMotion), value: stats.hasLoaded)
                     .pagePadding()
                 }
                 .scrollIndicators(.never)
@@ -64,8 +67,8 @@ struct StatsView: View {
         .sheet(isPresented: $showsRadar) {
             VStack(alignment: .trailing, spacing: Design.Space.md) {
                 InterruptionRadarCard(model: model)
-                Button("完成") { showsRadar = false }.keyboardShortcut(.defaultAction)
-            }.padding(Design.Space.card).frame(minWidth: 820).background(WorkspaceBackground())
+                Button("完成") { showsRadar = false }.buttonStyle(PillButtonStyle()).keyboardShortcut(.defaultAction)
+            }.padding(Design.Space.card).frame(minWidth: 960).background(WorkspaceBackground())
         }
     }
 
@@ -83,8 +86,59 @@ struct StatsView: View {
         }
     }
 
-    private var placeholder: some View {
-        Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity).designCard()
+    /// The history card before its data: its heading and switch, the axis
+    /// and a week of grey bars. The content fades in over it.
+    private var skeletonHistory: some View {
+        VStack(alignment: .leading, spacing: Design.Space.md) {
+            HStack {
+                CardHeading(title: "每天的分类时长")
+                Spacer()
+                Capsule().fill(Design.track).frame(width: 64, height: 24)
+            }
+            HStack(alignment: .bottom, spacing: 0) {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(["12h", "8h", "4h", "0h"], id: \.self) { label in
+                        Text(verbatim: label).font(.note).foregroundStyle(Design.ink2.opacity(0.5))
+                        if label != "0h" { Spacer(minLength: 0) }
+                    }
+                }
+                .frame(width: 32)
+                HStack(alignment: .bottom, spacing: Design.Space.lg) {
+                    ForEach(Array([0.66, 0.68, 0.7, 0.67, 0.68, 0.18, 0.08].enumerated()), id: \.offset) { _, height in
+                        GeometryReader { geo in
+                            RoundedRectangle(cornerRadius: Design.Radius.mark, style: .continuous).fill(Design.track)
+                                .frame(height: geo.size.height * height).frame(maxHeight: .infinity, alignment: .bottom)
+                        }
+                    }
+                }
+                .padding(.leading, Design.Space.sm)
+            }
+            .frame(minHeight: 200, maxHeight: .infinity)
+            .transition(.opacity)
+        }
+        .cardBox()
+        .transition(.opacity)
+    }
+
+    private var skeletonRanking: some View {
+        VStack(alignment: .leading, spacing: Design.Space.sm) {
+            CardHeading(title: "分类")
+            VStack(spacing: 0) {
+                ForEach(0..<9, id: \.self) { index in
+                    HStack(spacing: Design.Space.sm) {
+                        Circle().fill(Design.track).frame(width: 8, height: 8)
+                        Capsule().fill(Design.track).frame(width: CGFloat(70 + (index * 23) % 50), height: 10)
+                        Capsule().fill(Design.track).frame(height: 4).opacity(1 - Double(index) * 0.08)
+                        Capsule().fill(Design.track).frame(width: 40, height: 10)
+                    }
+                    .padding(.horizontal, Design.Space.sm)
+                    .frame(height: Design.rowHeight)
+                }
+            }
+            .padding(.horizontal, -Design.Space.sm)
+        }
+        .cardBox()
+        .transition(.opacity)
     }
 
     private func header(width: CGFloat) -> some View {

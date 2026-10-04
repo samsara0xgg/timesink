@@ -1,37 +1,55 @@
 import SwiftUI
 
 /// F2 打断雷达 (Trends): who interrupted you, when, and what to do about
-/// it. Counts only interruptions by the rule the timeline draws; peeks show
-/// under 所有切换.
+/// it. A rose of the 24 hours stacked by app, the apps as a table beside it,
+/// and (today) the day as a strip of just the interruptions. Counts only
+/// interruptions by the rule the timeline draws; a glance back is counted
+/// apart, never as an interruption.
 struct InterruptionRadarCard: View {
     let model: AppModel
     @State private var period: Period
-    @State private var mode = Mode.interruptions
-    @State private var data: DayInterruptions?
-    @State private var longest: DateInterval?
-    @State private var runs: [BandRun] = []
+    @State private var loaded: Loaded?
+    @State private var hoveredHour: Int?
+    @State private var selectedHour: Int?
     @State private var hoveredSource: String?
-    /// The summary that sits beside the heatmap: radar, count, one line, and
+    /// The summary that sits beside the heatmap: rose, count, one line, and
     /// a button to the full card.
     private let onOpen: (() -> Void)?
 
-    enum Period: Hashable { case today, week }
+    enum Period: Hashable, CaseIterable { case today, week }
+
+    /// One colour per leading app, then the rest.
+    private static let palette: [Color] = (0..<InterruptionRose.maxSources).map { Design.projectColors[$0] } + [Design.projectColors[8]]
+
+    private struct Loaded: Equatable {
+        var data: DayInterruptions
+        var longest: DateInterval?
+        var runs: [BandRun]
+        var rose: InterruptionRose
+    }
 
     init(model: AppModel, period: Period = .today, onOpen: (() -> Void)? = nil) {
         self.model = model
         self.onOpen = onOpen
         _period = State(initialValue: period)
+        #if DEBUG
+        _hoveredHour = State(initialValue: Self.previewState.hovered)
+        _selectedHour = State(initialValue: Self.previewState.selected)
+        _hoveredSource = State(initialValue: Self.previewState.source)
+        #endif
         // The last result for this period and day, so the page's first frame
         // is laid out already; the load replaces it if a write came since.
         // No model reads here: an init runs inside the parent's body, so a
         // read would make the whole page redraw on every tracker write.
         if let last = Self.last, last.key.period == period, last.key.day == Calendar.current.startOfDay(for: Date()) {
-            _data = State(initialValue: last.data)
-            _longest = State(initialValue: last.longest)
-            _runs = State(initialValue: last.runs)
+            _loaded = State(initialValue: last.loaded)
         }
     }
-    enum Mode: Hashable { case interruptions, all }
+
+    #if DEBUG
+    /// What the review captures point at: an hour, a chosen hour, an app.
+    @MainActor static var previewState: (hovered: Int?, selected: Int?, source: String?) = (nil, nil, nil)
+    #endif
 
     private struct LoadKey: Equatable {
         let period: Period
@@ -46,7 +64,7 @@ struct InterruptionRadarCard: View {
             day = Calendar.current.startOfDay(for: Date())
         }
     }
-    @MainActor private static var last: (key: LoadKey, data: DayInterruptions, longest: DateInterval?, runs: [BandRun])?
+    @MainActor private static var last: (key: LoadKey, loaded: Loaded)?
     /// The card is built in its own pass after the page (80 ms later, so the
     /// two never share a frame): Trends then opens at its pre-radar cost,
     /// and an empty panel of the card's last height holds its place.
@@ -56,6 +74,10 @@ struct InterruptionRadarCard: View {
         get { Self.lastHeights[onOpen != nil] ?? 320 }
         nonmutating set { Self.lastHeights[onOpen != nil] = newValue }
     }
+
+    private static let numberWidth: CGFloat = 64
+    private static let repliedWidth: CGFloat = 88
+    private static let actionWidth: CGFloat = 140
 
     var body: some View {
         if built {
@@ -70,187 +92,176 @@ struct InterruptionRadarCard: View {
         }
     }
 
+    private var isToday: Bool { period == .today }
+    /// The hour the pointer is on, else the one chosen.
+    private var activeHour: Int? { hoveredHour ?? selectedHour }
+
+    // MARK: Card
+
     private var card: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text("打断雷达").font(.body.weight(.semibold))
-                Text("悬停一行，只看它").font(.body).foregroundStyle(Design.ink2)
+                Text("悬停或点一个小时，只看那一小时").font(.body).foregroundStyle(Design.ink2)
                 Spacer()
-                Picker("显示", selection: $mode) {
-                    Text("只看打断").tag(Mode.interruptions)
-                    Text("所有切换").tag(Mode.all)
-                }.pickerStyle(.segmented).labelsHidden().fixedSize()
-                Picker("时段", selection: $period) {
-                    Text("今天").tag(Period.today)
-                    Text("近 7 天").tag(Period.week)
-                }.pickerStyle(.segmented).labelsHidden().fixedSize()
+                Segmented(options: Period.allCases, selection: $period, height: 24) { option in
+                    option == .today ? Text("今天") : Text("近 7 天")
+                }
+                .accessibilityLabel("时段")
             }
-            if let data {
-                content(data)
+            if let loaded {
+                content(loaded)
             } else {
-                RoundedRectangle(cornerRadius: 12).fill(.quaternary).frame(height: 220)
+                RoundedRectangle(cornerRadius: Design.Radius.card).fill(Design.track).frame(height: 240)
             }
         }
-        .padding(18)
+        .padding(Design.Space.card)
         .designCard()
         .pageTask(id: LoadKey(model: model, period: period)) { await load() }
+        .onChange(of: period) { _, _ in selectedHour = nil; hoveredHour = nil; hoveredSource = nil }
     }
 
-    private var summary: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("打断").font(.body.weight(.semibold))
-            (Text(data?.interruptions.count ?? 0, format: .number).font(.display).monospacedDigit()
-                + Text(" 次").font(.body).foregroundStyle(Design.ink2))
-            Group {
-                if let data {
-                    InterruptionRadar(data: data, sources: Array(data.sources.prefix(4)), showsPeeks: false, highlighted: nil)
-                } else {
-                    Circle().fill(.quaternary)
-                }
+    @ViewBuilder private func content(_ loaded: Loaded) -> some View {
+        let data = loaded.data
+        let shown = selectedHour.map { data.restricted(toHour: $0) } ?? data
+        HStack(alignment: .top, spacing: 28) {
+            VStack(spacing: 8) {
+                InterruptionRoseView(rose: loaded.rose, colors: Self.palette, showsDots: isToday,
+                                     now: isToday ? Date() : nil, replay: period,
+                                     highlightedSource: hoveredSource.map { loaded.rose.sourceIndex(of: $0) },
+                                     hoveredHour: $hoveredHour, selectedHour: $selectedHour)
+                    .frame(width: 264, height: 264)
+                if isToday { dotKey }
             }
-            .frame(width: 180, height: 180).frame(maxWidth: .infinity).padding(.vertical, 6)
-            Group {
-                if let top = data?.sources.first {
-                    Text("停留 \(Int(model.interruptionRule.dwell)) 秒以上或打了字才算。最多的是\(top.label)，\(top.count) 次。")
-                } else {
-                    Text("今天还没有被打断。")
-                }
-                if let longest {
-                    Text("最长没被打断：\(model.time(longest.start))–\(model.time(longest.end))")
-                }
+            VStack(alignment: .leading, spacing: 16) {
+                stats(data, longest: loaded.longest)
+                table(loaded, shown)
             }
-            .font(.body).foregroundStyle(Design.ink2).fixedSize(horizontal: false, vertical: true)
-            Button { onOpen?() } label: { HStack(spacing: 4) { Text("打开打断雷达"); Image(systemName: "chevron.right").imageScale(.small) } }
-                .controlSize(.small).glassButton().fixedSize().padding(.top, 4)
         }
-        .padding(18)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .designCard()
-        .pageTask(id: LoadKey(model: model, period: period)) { await load() }
-    }
-
-    @ViewBuilder private func content(_ data: DayInterruptions) -> some View {
-        let sources = data.sources
-        columns(data, sources)
-        if period == .today, !runs.isEmpty {
+        if isToday, !loaded.runs.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 10) {
                     Text("时间带").font(.note.weight(.semibold))
-                    Text(mode == .all ? "所有切换，路过的不画" : "只画打断和拦下").font(.note).foregroundStyle(Design.ink2)
+                    Text("只画打断和拦下").font(.note).foregroundStyle(Design.ink2)
                 }
-                TimeBand(runs: runs, data: data, sources: sources, showsPeeks: mode == .all, highlighted: hoveredSource,
-                         color: { RefinedStyle.category($0, hex: model.resolver.categoriesByID[$0]?.colorHex ?? "#C7C7CC") },
-                         hourLabel: { model.time($0) })
+                TimeBand(runs: loaded.runs, data: data, rose: loaded.rose, colors: Self.palette, hour: activeHour,
+                         highlighted: hoveredSource, hourLabel: { model.time($0) })
             }
+        }
+        Label {
+            Text("切到聊天、社交、娱乐这类窗口，停留 \(Int(model.interruptionRule.dwell)) 秒以上或在那里打了字才算打断；看一眼就回来的不算，不到 3 秒的路过不画。")
+        } icon: { Image(systemName: "info.circle") }
+            .font(.note).foregroundStyle(Design.ink2).fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var dotKey: some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 4) { Circle().fill(Design.ink2).frame(width: 7, height: 7); Text("回了消息") }
+            HStack(spacing: 4) { Circle().stroke(Design.ink2, lineWidth: 1.2).frame(width: 7, height: 7); Text("只是停留") }
+            Text("点越大，停留越久")
+        }
+        .font(.note).foregroundStyle(Design.ink2).lineLimit(1).fixedSize()
+    }
+
+    // MARK: The four numbers
+
+    private func stats(_ data: DayInterruptions, longest: DateInterval?) -> some View {
+        HStack(spacing: 0) {
+            cell(String(localized: "打断"), "\(data.interruptions.count)", help: String(localized: "停留够久或打了字的切换"))
+            Divider().frame(height: 36)
+            cell(String(localized: "瞄一眼"), "\(data.peeks.count)", help: String(localized: "看一眼就回来的切换，不算打断"))
+            Divider().frame(height: 36)
+            if isToday {
+                cell(String(localized: "最长连续"), longest.map { Format.duration($0.duration) } ?? "—",
+                     help: longest.map { String(localized: "最长一段没被打断的时间：\(model.time($0.start))–\(model.time($0.end))") }
+                        ?? String(localized: "最长一段没被打断的时间"))
+                Divider().frame(height: 36)
+            }
+            cell(String(localized: "拦下"), "\(data.blocked.count)", help: String(localized: "专注时被拦下的切换，不算离开"))
         }
     }
 
-    private func columns(_ data: DayInterruptions, _ sources: [DayInterruptions.Source]) -> some View {
-        HStack(alignment: .top, spacing: 20) {
-            InterruptionRadar(data: data, sources: Array(sources.prefix(4)), showsPeeks: mode == .all, highlighted: hoveredSource)
-                .frame(width: 250, height: 250)
-            VStack(alignment: .leading, spacing: 12) {
-                stats(data)
-                if sources.isEmpty {
-                    Text(period == .today ? "今天还没有被打断。" : "这 7 天没有被打断。")
-                        .font(.body).foregroundStyle(Design.ink2).padding(.vertical, 8)
-                } else {
-                    VStack(spacing: 0) {
-                        ForEach(sources.prefix(6)) { source in
-                            row(source)
-                                .onHover { hoveredSource = $0 ? source.id : (hoveredSource == source.id ? nil : hoveredSource) }
-                            if source.id != sources.prefix(6).last?.id { Divider() }
-                        }
-                    }
-                }
-                Label {
-                    Text("切到聊天、社交、娱乐这类窗口，停留 \(Int(model.interruptionRule.dwell)) 秒以上或在那里打了字才算打断；看一眼就回来的不算，不到 3 秒的路过不画。")
-                } icon: { Image(systemName: "info.circle") }
-                    .font(.note).foregroundStyle(Design.ink2).fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    private func stats(_ data: DayInterruptions) -> some View {
-        let interruptions = data.interruptions
-        let typed = interruptions.filter { $0.reason == .typed }.count
-        return HStack(spacing: 0) {
-            cell(String(localized: "打断"), "\(interruptions.count)",
-                 String(localized: "回消息 \(typed) · 停留 \(interruptions.count - typed)"))
-            Divider().frame(height: 44)
-            cell(String(localized: "看一眼就回来"), "\(data.peeks.count)",
-                 mode == .all ? String(localized: "另有 \(data.passes) 次路过") : String(localized: "不算打断"))
-            Divider().frame(height: 44)
-            if period == .today {
-                cell(String(localized: "最长没被打断"), longest.map { Format.duration($0.duration) } ?? "—",
-                     longest.map { "\(model.time($0.start))–\(model.time($0.end))" } ?? "")
-                Divider().frame(height: 44)
-            }
-            cell(String(localized: "专注中拦下"), "\(data.blocked.count)", String(localized: "不算离开"))
-        }
-    }
-
-    private func cell(_ title: String, _ value: String, _ detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+    private func cell(_ title: String, _ value: String, help: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
             Text(title).font(.body).foregroundStyle(Design.ink2).lineLimit(1)
             Text(value).font(.figure).monospacedDigit().lineLimit(1)
-            Text(detail).font(.note).foregroundStyle(Design.ink2).lineLimit(1)
         }
         .padding(.horizontal, 12).frame(maxWidth: .infinity, alignment: .leading)
+        .help(help)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(help)
     }
 
-    private func row(_ source: DayInterruptions.Source) -> some View {
-        let hours = Dictionary(grouping: source.starts) { Calendar.current.component(.hour, from: $0) }.mapValues(\.count)
-        return HStack(spacing: 10) {
-            ActivityIcon(bundleID: source.bundleID, domain: source.domain, size: 24)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Text(source.label).fontWeight(.semibold).lineLimit(1)
-                    Text("打断 \(source.count) 次").foregroundStyle(Design.ink2)
-                    if source.peeks > 0 { Text("· 另有 \(source.peeks) 次看一眼").foregroundStyle(Design.ink2) }
-                }.font(.body)
-                Text(how(source)).font(.body).foregroundStyle(Design.ink2).lineLimit(1)
+    // MARK: The apps
+
+    private func table(_ loaded: Loaded, _ shown: DayInterruptions) -> some View {
+        let sources = Array(shown.sources.prefix(6))
+        return VStack(alignment: .leading, spacing: 0) {
+            if let hour = selectedHour {
+                HStack(spacing: 8) {
+                    Text("\(hour)–\(hour + 1) 点").font(.body.weight(.semibold))
+                    Button("取消") { selectedHour = nil }.buttonStyle(PillButtonStyle(height: 24))
+                }.padding(.bottom, 8)
             }
-            Spacer(minLength: 8)
-            VStack(alignment: .leading, spacing: 3) {
-                // One canvas, not a dozen shapes per row.
-                Canvas { context, _ in
-                    for hour in 8..<20 {
-                        let height = hours[hour].map { CGFloat(4 + min($0, 4) * 3) } ?? 2
-                        context.fill(Path(roundedRect: CGRect(x: CGFloat(hour - 8) * 6, y: 16 - height, width: 4, height: height), cornerRadius: 1),
-                                     with: .color(hours[hour] == nil ? Color.primary.opacity(0.12) : Color.red.opacity(0.8)))
-                    }
-                }.frame(width: 70, height: 16)
-                Text(peak(hours)).font(.note).foregroundStyle(Design.ink2)
+            if sources.isEmpty {
+                Text(selectedHour != nil ? "这一小时没有被打断。" : isToday ? "今天还没有被打断。" : "这 7 天没有被打断。")
+                    .font(.body).foregroundStyle(Design.ink2).padding(.vertical, 8)
+            } else {
+                header
+                Divider()
+                ForEach(sources) { source in
+                    row(source, loaded.rose)
+                        .onHover { hoveredSource = $0 ? source.id : (hoveredSource == source.id ? nil : hoveredSource) }
+                    if source.id != sources.last?.id { Divider() }
+                }
             }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(peak(hours))
-            action(source).frame(width: 140, alignment: .trailing)
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var header: some View {
+        HStack(spacing: 10) {
+            Text("应用").frame(maxWidth: .infinity, alignment: .leading)
+            Text("次数").frame(width: Self.numberWidth, alignment: .trailing)
+            Text("瞄一眼").frame(width: Self.numberWidth, alignment: .trailing)
+            Text("回复 / 停留").multilineTextAlignment(.trailing).frame(width: Self.repliedWidth, alignment: .trailing)
+            Color.clear.frame(width: Self.actionWidth, height: 1)
+        }
+        .font(.note).foregroundStyle(Design.ink2).fixedSize(horizontal: false, vertical: true)
+        .padding(.bottom, 6)
+    }
+
+    private func row(_ source: DayInterruptions.Source, _ rose: InterruptionRose) -> some View {
+        let index = rose.sourceIndex(of: source.id)
+        // Pointing at an hour keeps the apps that have something in it.
+        let dim: Bool = {
+            if let hour = activeHour, selectedHour == nil { return rose.counts[hour][index] == 0 }
+            return false
+        }()
+        return HStack(spacing: 10) {
+            HStack(spacing: 8) {
+                RoundedRectangle(cornerRadius: 2).fill(Self.palette[index]).frame(width: 8, height: 8)
+                ActivityIcon(bundleID: source.bundleID, domain: source.domain, size: 20)
+                Text(source.label).fontWeight(.semibold).fixedSize(horizontal: false, vertical: true)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            Text("\(source.count)").monospacedDigit().frame(width: Self.numberWidth, alignment: .trailing)
+            Text("\(source.peeks)").monospacedDigit().foregroundStyle(Design.ink2).frame(width: Self.numberWidth, alignment: .trailing)
+            Text("\(source.typed) / \(source.count - source.typed)").monospacedDigit().foregroundStyle(Design.ink2)
+                .frame(width: Self.repliedWidth, alignment: .trailing)
+            action(source).frame(width: Self.actionWidth, alignment: .trailing)
+        }
+        .font(.body)
         .padding(.vertical, 8)
-        .opacity(hoveredSource == nil || hoveredSource == source.id ? 1 : 0.45)
+        .opacity(dim ? 0.35 : 1)
         .contentShape(Rectangle())
-    }
-
-    private func how(_ source: DayInterruptions.Source) -> String {
-        if source.typed == source.count { return source.count > 1 ? String(localized: "每次都回了消息") : String(localized: "回了消息") }
-        if source.typed > 0 { return String(localized: "回消息 \(source.typed) 次，停留 \(source.count - source.typed) 次") }
-        return String(localized: "都在看，共 \(Format.duration(source.seconds))")
-    }
-
-    private func peak(_ hours: [Int: Int]) -> String {
-        guard let top = hours.values.max() else { return "" }
-        let peaks = hours.filter { $0.value == top }.keys.sorted()
-        return peaks.count > 2 ? String(localized: "全天都有")
-            : String(localized: "多在 \(peaks.map(String.init).joined(separator: String(localized: "、"))) 点")
+        .animation(Design.quick, value: dim)
     }
 
     /// What TimeSink can already do about a source: hide the app during
     /// focus, or put a limit on the site's category.
     @ViewBuilder private func action(_ source: DayInterruptions.Source) -> some View {
         if source.count < 2 {
-            Text("只有 1 次，不给建议").font(.note).foregroundStyle(Design.ink2)
+            Text("只有 1 次，不给建议").font(.note).foregroundStyle(Design.ink2).multilineTextAlignment(.trailing).fixedSize(horizontal: false, vertical: true)
         } else if source.domain == nil {
             let hidden = model.settings.focusBlockedApps.contains(source.bundleID)
             Button {
@@ -261,17 +272,54 @@ struct InterruptionRadarCard: View {
             } label: {
                 Label("专注时隐藏", systemImage: hidden ? "checkmark" : "eye.slash")
             }
-            .controlSize(.small).buttonStyle(.borderless)
+            .controlSize(.small).buttonStyle(.borderless).fixedSize()
         } else {
             Button { model.sidebarSelection = .focus } label: { Label("设限额…", systemImage: "gauge.with.dots.needle.33percent") }
-                .controlSize(.small).buttonStyle(.borderless)
+                .controlSize(.small).buttonStyle(.borderless).fixedSize()
         }
     }
+
+    // MARK: Summary
+
+    private var summary: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("打断").font(.body.weight(.semibold))
+            Group {
+                if let loaded {
+                    InterruptionRoseView(rose: loaded.rose, colors: Self.palette, showsDots: false, compact: true,
+                                         now: Date(), replay: period, highlightedSource: nil,
+                                         hoveredHour: $hoveredHour, selectedHour: .constant(nil))
+                } else {
+                    Circle().fill(Design.track)
+                }
+            }
+            .frame(width: 200, height: 200).frame(maxWidth: .infinity).padding(.vertical, 2)
+            Group {
+                if let top = loaded?.data.sources.first {
+                    Text("停留 \(Int(model.interruptionRule.dwell)) 秒以上或打了字才算。最多的是\(top.label)，\(top.count) 次。")
+                } else {
+                    Text("今天还没有被打断。")
+                }
+                if let longest = loaded?.longest {
+                    Text("最长没被打断：\(model.time(longest.start))–\(model.time(longest.end))")
+                }
+            }
+            .font(.body).foregroundStyle(Design.ink2).fixedSize(horizontal: false, vertical: true)
+            Button { onOpen?() } label: { HStack(spacing: 4) { Text("打开打断雷达"); Image(systemName: "chevron.right").imageScale(.small) } }
+                .buttonStyle(PillButtonStyle(height: 24)).fixedSize().padding(.top, 4)
+        }
+        .padding(Design.Space.card)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .designCard()
+        .pageTask(id: LoadKey(model: model, period: period)) { await load() }
+    }
+
+    // MARK: Loading
 
     private func load() async {
         let key = LoadKey(model: model, period: period)
         if let last = Self.last, last.key == key {
-            if data != last.data { data = last.data; longest = last.longest; runs = last.runs }
+            if loaded != last.loaded { loaded = last.loaded }
             return
         }
         let calendar = Calendar.current
@@ -286,11 +334,12 @@ struct InterruptionRadarCard: View {
             merged.blocked += value.blocked
         }
         guard !Task.isCancelled else { return }
+        var longest: DateInterval?
+        var bandRuns: [BandRun] = []
         if period == .today {
             // Stretches of continuous recording, split by away gaps, and the
-            // same spans as category runs for the time band.
+            // same spans as category runs, which only give the band its extent.
             var stretches: [DateInterval] = []
-            var bandRuns: [BandRun] = []
             for item in model.rangedSpans(for: DateRangeSelection.today()).sorted(by: { $0.span.start < $1.span.start })
             where item.span.end > item.span.start {
                 let joined = stretches.last.map { item.span.start.timeIntervalSince($0.end) <= InterruptionClassifier.awayGap } ?? false
@@ -306,79 +355,10 @@ struct InterruptionRadarCard: View {
                 }
             }
             longest = merged.longestUnbroken(activity: stretches)
-            runs = bandRuns
         }
-        data = merged
-        Self.last = (key, merged, longest, runs)
-    }
-}
-
-/// A 24-hour clock face: one ring per leading source, a dot for each
-/// interruption at its time (filled when typed), hollow dots for focus
-/// blocks, and the busiest hour shaded.
-private struct InterruptionRadar: View {
-    let data: DayInterruptions
-    let sources: [DayInterruptions.Source]
-    let showsPeeks: Bool
-    let highlighted: String?
-    @Environment(\.colorSchemeContrast) private var contrast
-
-    var body: some View {
-        Canvas { context, size in
-            let center = CGPoint(x: size.width / 2, y: size.height / 2)
-            let outer = min(size.width, size.height) / 2 - 18
-            func point(_ date: Date, _ radius: CGFloat) -> CGPoint {
-                let parts = Calendar.current.dateComponents([.hour, .minute], from: date)
-                let angle = (Double(parts.hour ?? 0) + Double(parts.minute ?? 0) / 60) / 24 * 2 * .pi - .pi / 2
-                return CGPoint(x: center.x + radius * cos(angle), y: center.y + radius * sin(angle))
-            }
-            let line = Color.primary.opacity(contrast == .increased ? 0.4 : 0.12)
-            // The busiest hour.
-            let byHour = data.byHour()
-            if let top = byHour.max(), top > 0, let hour = byHour.firstIndex(of: top) {
-                var wedge = Path()
-                let a0 = Angle.radians(Double(hour) / 24 * 2 * .pi - .pi / 2), a1 = Angle.radians(Double(hour + 1) / 24 * 2 * .pi - .pi / 2)
-                wedge.move(to: center)
-                wedge.addArc(center: center, radius: outer, startAngle: a0, endAngle: a1, clockwise: false)
-                wedge.closeSubpath()
-                context.fill(wedge, with: .color(.red.opacity(0.08)))
-            }
-            for index in 0...max(1, sources.count) {
-                let radius = outer * (0.35 + 0.65 * CGFloat(index) / CGFloat(max(1, sources.count)))
-                context.stroke(Path(ellipseIn: CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)),
-                               with: .color(line), lineWidth: 0.5)
-            }
-            for hour in stride(from: 0, to: 24, by: 6) {
-                let angle = Double(hour) / 24 * 2 * .pi - .pi / 2
-                let label = context.resolve(Text(verbatim: "\(hour)").font(.note).foregroundStyle(Design.ink2))
-                context.draw(label, at: CGPoint(x: center.x + (outer + 10) * cos(angle), y: center.y + (outer + 10) * sin(angle)))
-            }
-            // Blocked focus attempts sit on the innermost ring.
-            let inner = outer * 0.25
-            for date in data.blocked {
-                let p = point(date, inner)
-                context.stroke(Path(ellipseIn: CGRect(x: p.x - 3.5, y: p.y - 3.5, width: 7, height: 7)), with: .color(.primary), lineWidth: 1.5)
-            }
-            if showsPeeks {
-                for episode in data.peeks {
-                    let p = point(episode.start, inner * 1.3)
-                    context.fill(Path(ellipseIn: CGRect(x: p.x - 2, y: p.y - 2, width: 4, height: 4)), with: .color(.secondary))
-                }
-            }
-            for (index, source) in sources.enumerated() {
-                let radius = outer * (0.35 + 0.65 * CGFloat(index + 1) / CGFloat(max(1, sources.count)))
-                let dim = highlighted != nil && highlighted != source.id
-                for episode in data.interruptions where episode.destination.hasPrefix(source.destination + "\u{1F}") || episode.destination == source.destination {
-                    let p = point(episode.start, radius)
-                    let dot = Path(ellipseIn: CGRect(x: p.x - 4, y: p.y - 4, width: 8, height: 8))
-                    let red = Color.red.opacity(dim ? 0.2 : 1)
-                    if episode.reason == .typed { context.fill(dot, with: .color(red)) }
-                    else { context.stroke(dot, with: .color(red), lineWidth: 2) }
-                }
-            }
-        }
-        .accessibilityElement()
-        .accessibilityLabel(String(localized: "打断雷达：\(data.interruptions.count) 次打断"))
+        let result = Loaded(data: merged, longest: longest, runs: bandRuns, rose: InterruptionRose(data: merged))
+        loaded = result
+        Self.last = (key, result)
     }
 }
 
@@ -388,17 +368,17 @@ struct BandRun: Equatable {
     var categoryID: String
 }
 
-/// The day as one strip (F2 时间带): category runs, away time left empty,
-/// interruptions as red ticks (a bar when longer than 5 minutes), focus
-/// blocks hollow, and peeks grey under 所有切换. Hovering a source fades
-/// every other tick.
+/// The day as one strip (F2 时间带): a light baseline for the recorded day,
+/// with only the distractions on it, each in its app's colour (a bar when
+/// longer than 5 minutes), focus blocks hollow. Pointing at an app or an
+/// hour fades every other tick.
 private struct TimeBand: View {
     let runs: [BandRun]
     let data: DayInterruptions
-    let sources: [DayInterruptions.Source]
-    let showsPeeks: Bool
+    let rose: InterruptionRose
+    let colors: [Color]
+    let hour: Int?
     let highlighted: String?
-    let color: (String) -> Color
     let hourLabel: (Date) -> String
 
     private var span: DateInterval {
@@ -416,34 +396,27 @@ private struct TimeBand: View {
         VStack(spacing: 3) {
             Canvas { context, size in
                 func x(_ date: Date) -> CGFloat { CGFloat(date.timeIntervalSince(span.start) / span.duration) * size.width }
-                let bar = CGRect(x: 0, y: 8, width: size.width, height: 12)
-                context.fill(Path(roundedRect: bar, cornerRadius: 3), with: .color(.primary.opacity(0.05)))
+                let calendar = Calendar.current
+                let bar = CGRect(x: 0, y: 10, width: size.width, height: 8)
+                context.fill(Path(roundedRect: bar, cornerRadius: 3), with: .color(Design.track.opacity(0.6)))
                 for run in runs {
                     let rect = CGRect(x: x(run.start), y: bar.minY, width: max(1, x(run.end) - x(run.start) - 0.5), height: bar.height)
-                    context.fill(Path(rect), with: .color(color(run.categoryID).opacity(0.75)))
-                }
-                let sourceOf = { (episode: SwitchEpisode) in
-                    sources.first { episode.destination.hasPrefix($0.destination + "\u{1F}") || episode.destination == $0.destination }?.id
-                }
-                if showsPeeks {
-                    for episode in data.peeks {
-                        let dim = highlighted != nil && sourceOf(episode) != highlighted
-                        context.fill(Path(CGRect(x: x(episode.start) - 0.75, y: 2, width: 1.5, height: 24)),
-                                     with: .color(.secondary.opacity(dim ? 0.2 : 0.7)))
-                    }
+                    context.fill(Path(rect), with: .color(Design.line.opacity(0.4)))
                 }
                 for episode in data.interruptions {
-                    let dim = highlighted != nil && sourceOf(episode) != highlighted
-                    let width = episode.dwell > 300 ? max(2, x(episode.end) - x(episode.start)) : 2
-                    context.fill(Path(roundedRect: CGRect(x: x(episode.start) - 1, y: 0, width: width, height: 28), cornerRadius: 1),
-                                 with: .color(.red.opacity(dim ? 0.2 : 0.9)))
+                    let index = rose.sourceIndex(of: episode.destination)
+                    let dim = (highlighted != nil && rose.sourceIDs.indices.contains(index) ? rose.sourceIDs[index] != highlighted : highlighted != nil)
+                        || (hour != nil && calendar.component(.hour, from: episode.start) != hour)
+                    let width = episode.dwell > 300 ? max(3, x(episode.end) - x(episode.start)) : 3
+                    context.fill(Path(roundedRect: CGRect(x: x(episode.start) - 1, y: 2, width: width, height: 24), cornerRadius: 1.5),
+                                 with: .color(colors[index].opacity(dim ? 0.18 : 1)))
                 }
                 for date in data.blocked {
-                    context.stroke(Path(ellipseIn: CGRect(x: x(date) - 3.5, y: 10.5, width: 7, height: 7)), with: .color(.primary), lineWidth: 1.5)
+                    context.stroke(Path(ellipseIn: CGRect(x: x(date) - 3.5, y: 10.5, width: 7, height: 7)), with: .color(Design.ink), lineWidth: 1.5)
                 }
                 let now = x(.now)
                 if now < size.width {
-                    context.fill(Path(CGRect(x: now - 0.5, y: 0, width: 1, height: 28)), with: .color(.primary))
+                    context.fill(Path(CGRect(x: now - 0.5, y: 0, width: 1, height: 28)), with: .color(Design.ink))
                 }
             }
             .frame(height: 28)
