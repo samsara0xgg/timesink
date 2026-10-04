@@ -10574,6 +10574,28 @@
           }
         }
       }
+    },
+    "%lld 个项目。": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld project."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld projects."
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -166,4 +166,63 @@ final class ProjectLogicTests: XCTestCase {
         XCTAssertTrue(build(isToday: false, newProject: "alpha").isEmpty)
         XCTAssertTrue(build(isToday: true, newProject: nil).isEmpty)
     }
+
+    // MARK: Hours per project, off the main actor
+
+    @MainActor private func hoursModel() throws -> (AppModel, SpanStore) {
+        let db = try AppDatabase.openInMemory()
+        let spans = SpanStore(db), categories = CategoryStore(db), settings = SettingsStore(db)
+        let model = AppModel(categoryStore: categories, spanStore: spans, settings: settings,
+                             resolver: CategoryResolver(categoryStore: categories), engine: TrackerEngine(spanStore: spans, settings: settings))
+        model.observationStore = ObservationStore(db)
+        return (model, spans)
+    }
+
+    @MainActor func testHoursPerProjectAreWorkedOutOnceAndReusedUntilSomethingChanges() async throws {
+        let (model, spans) = try hoursModel()
+        let alpha = try model.categoryStore.projects.add(name: "Alpha")
+        model.reloadProjects()
+        let start = Calendar.current.startOfDay(for: Date().addingTimeInterval(-86400)).addingTimeInterval(10 * 3600)
+        let home = DocumentIdentity.homePath
+        _ = try spans.insert(Span(start: start, end: start.addingTimeInterval(1800), appBundleID: "com.test.term", appName: "Terminal",
+                                  title: nil, url: nil, domain: nil, document: "file://\(home)/Projects/alpha/"))
+        let first = await model.projectHours()
+        XCTAssertEqual(first["alpha"] ?? 0, 1800, accuracy: 1, "the repo label shows as the project named Alpha")
+        let again = await model.projectHours()
+        XCTAssertEqual(again, first)
+        XCTAssertEqual(model.projectHoursComputations, 1, "the second ask came from the cache")
+        // An engine write alone does not drop it; a project change does.
+        model.dataVersion += 1
+        _ = await model.projectHours()
+        XCTAssertEqual(model.projectHoursComputations, 1)
+        try model.categoryStore.projects.update(id: alpha.id, name: "Alpha", description: "now described")
+        model.projectsChanged()
+        _ = await model.projectHours()
+        XCTAssertEqual(model.projectHoursComputations, 2)
+        // So does one of your edits.
+        model.dataChanged()
+        _ = await model.projectHours()
+        XCTAssertEqual(model.projectHoursComputations, 3)
+    }
+
+    @MainActor func testTwoAsksAtOnceShareOnePass() async throws {
+        let (model, _) = try hoursModel()
+        async let a = model.projectHours()
+        async let b = model.projectHours()
+        _ = await (a, b)
+        XCTAssertEqual(model.projectHoursComputations, 1)
+    }
+
+    @MainActor func testTheNewProjectTodoArrivesWithoutRebuildingThePlan() {
+        var plan = TodayPlan.build(overview: DayOverview(items: [], categories: [:], sessions: [], now: at(day: 1, 12), calendar: calendar),
+                                   sessions: [], explicit: [], episodes: [], notes: [], categories: [:], lastFocus: nil,
+                                   hasFocusToday: false, isToday: true, calendar: calendar)
+        XCTAssertEqual(plan.todos.map(\.id), ["focus"])
+        plan.setNewProject("alpha")
+        XCTAssertEqual(plan.todos.map(\.id), ["project|alpha", "focus"])
+        plan.setNewProject("beta")
+        XCTAssertEqual(plan.todos.map(\.id), ["project|beta", "focus"])
+        plan.setNewProject(nil)
+        XCTAssertEqual(plan.todos.map(\.id), ["focus"])
+    }
 }

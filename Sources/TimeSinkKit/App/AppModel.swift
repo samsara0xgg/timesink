@@ -161,6 +161,12 @@ public final class AppModel {
     /// The projects you named (and accepted), in your order. Jev is asked about these.
     public internal(set) var projects: [UserProject] = []
     @ObservationIgnored var projectNames: [String: String] = [:]
+    @ObservationIgnored var projectsVersion = 0
+    @ObservationIgnored var projectSuggestionTask: Task<ProjectSuggester.Result, Never>?
+    @ObservationIgnored var projectHoursCache: (key: ProjectHours.Key, at: Date, value: [String: TimeInterval])?
+    @ObservationIgnored var projectHoursTask: (key: ProjectHours.Key, task: Task<[String: TimeInterval], Never>)?
+    /// How many times the 14-day pass actually ran (tests).
+    @ObservationIgnored var projectHoursComputations = 0
     @ObservationIgnored var projectSuggestionCache: (at: Date, value: ProjectSuggester.Result)?
     @ObservationIgnored var sessionCache: [DateInterval: (version: Int, threshold: TimeInterval, splits: Int, value: [WorkSession])] = [:]
     @ObservationIgnored var sessionTasks: [DateInterval: Task<[WorkSession], Never>] = [:]

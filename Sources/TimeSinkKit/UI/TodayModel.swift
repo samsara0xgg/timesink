@@ -15,6 +15,7 @@ final class TodayModel {
     @ObservationIgnored private let overviewModel = DayOverviewModel()
     @ObservationIgnored private let dashboard = TodayDashboardModel()
     @ObservationIgnored private var generation = 0
+    @ObservationIgnored private var suggestionTask: Task<Void, Never>?
 
     /// How far back the page can step.
     static let farthestBack = -90
@@ -55,11 +56,18 @@ final class TodayModel {
             streakDays = 0
             yesterdayTotal = nil
         }
-        let newProject = isToday ? await model.projectSuggestions().todoCandidate?.name : nil
-        guard request == generation, !Task.isCancelled else { return }
         plan = TodayPlan.build(overview: overview, sessions: sessions, explicit: sessions.map { model.sessionProject($0) },
                                episodes: episodes, notes: notes, categories: model.resolver.categoriesByID,
-                               lastFocus: lastFocus, hasFocusToday: !overview.sessions.isEmpty, isToday: isToday, newProject: newProject)
+                               lastFocus: lastFocus, hasFocusToday: !overview.sessions.isEmpty, isToday: isToday,
+                               newProject: isToday ? model.cachedProjectSuggestion?.todoCandidate?.name : nil)
         loadError = nil
+        // The 14-day read for the "new project" todo never holds the page: it joins the plan when it arrives.
+        suggestionTask?.cancel()
+        suggestionTask = isToday ? Task { [weak self] in
+            let name = await model.projectSuggestions().todoCandidate?.name
+            guard let self, request == self.generation, !Task.isCancelled, var plan = self.plan else { return }
+            plan.setNewProject(name)
+            if plan.todos.map(\.id) != self.plan?.todos.map(\.id) { self.plan = plan }
+        } : nil
     }
 }

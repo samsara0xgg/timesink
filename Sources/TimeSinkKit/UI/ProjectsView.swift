@@ -31,7 +31,8 @@ enum ProjectEditing {
 /// what it can answer with.
 struct ProjectsView: View {
     @Bindable var model: AppModel
-    @State private var hours: [String: TimeInterval] = [:]
+    /// nil until the 14-day pass is done: the page shows names at once and a dash for the time.
+    @State private var hours: [String: TimeInterval]?
     @State private var suggestions: ProjectSuggester.Result?
     @State private var name = ""
     @State private var details = ""
@@ -69,8 +70,10 @@ struct ProjectsView: View {
 
     private func header(width: CGFloat) -> some View {
         let count = model.projects.count
-        let total = hours.values.reduce(0, +)
-        let sentence = count == 0 ? Text("还没有项目。") : Text("\(count) 个项目，近 14 天共 \(Format.duration(total))。")
+        let sentence: Text
+        if count == 0 { sentence = Text("还没有项目。") }
+        else if let hours { sentence = Text("\(count) 个项目，近 14 天共 \(Format.duration(hours.values.reduce(0, +)))。") }
+        else { sentence = Text("\(count) 个项目。") }
         return PageHeader(sentence: sentence, stats: [
             StripStat(id: 0, label: "项目", value: String(localized: "\(count) 个"), note: String(localized: "最多 \(ProjectStore.maxProjects) 个")),
         ], width: width) {
@@ -108,7 +111,7 @@ struct ProjectsView: View {
     }
 
     private func row(_ project: UserProject) -> some View {
-        let seconds = hours[SessionProjectResolver.normalized(project.name)]
+        let time = hours.map { Format.duration($0[SessionProjectResolver.normalized(project.name)] ?? 0) } ?? "—"
         return HStack(spacing: Design.Space.md) {
             Circle().fill(Design.projectColor(ProjectPalette.preferredSlot(project.name))).frame(width: 9, height: 9)
             VStack(alignment: .leading, spacing: 1) {
@@ -118,7 +121,7 @@ struct ProjectsView: View {
                 }
             }
             Spacer(minLength: 0)
-            Text(seconds.map { Format.duration($0) } ?? "—").font(.body.monospacedDigit()).foregroundStyle(Design.ink2)
+            Text(verbatim: time).font(.body.monospacedDigit()).foregroundStyle(Design.ink2).refinedNumberMotion(time)
                 .frame(width: 84, alignment: .trailing)
             Button { editing = project } label: { Image(systemName: "pencil").font(.note).foregroundStyle(Design.ink2) }
                 .buttonStyle(.plain).help("编辑项目").accessibilityLabel("编辑项目")
@@ -203,20 +206,12 @@ struct ProjectsView: View {
 
     // MARK: Loading
 
-    /// The last 14 days' sessions, by project: what each project took, and what the recommendations are.
+    /// Both passes run off the main actor and are cached by the model; the page shows what it has meanwhile.
     private func load() async {
-        suggestions = await model.projectSuggestions()
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
-        var seconds: [String: TimeInterval] = [:]
-        for offset in 0..<ProjectSuggester.lookbackDays {
-            guard let start = calendar.date(byAdding: .day, value: -offset, to: today),
-                  let day = calendar.dateInterval(of: .day, for: start) else { continue }
-            for session in await model.sessions(for: day) {
-                if let project = model.sessionProject(session) { seconds[SessionProjectResolver.normalized(project), default: 0] += session.recorded }
-            }
-            hours = seconds
-        }
+        async let found = model.projectSuggestions()
+        async let time = model.projectHours()
+        suggestions = await found
+        hours = await time
     }
 }
 

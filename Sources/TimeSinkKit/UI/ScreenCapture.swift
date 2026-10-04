@@ -194,6 +194,22 @@ import WebKit
             let second = again.duration(to: .now)
             print(String(format: "STATS_PREFETCH_AGAIN ms=%.0f", Double(second.components.seconds) * 1000 + Double(second.components.attoseconds) / 1e15))
         }
+        if ProcessInfo.processInfo.environment["TIMESINK_PREVIEW_MEASURE_TODAY"] != nil {
+            // What opening Today costs: the first (cold) refresh and two more with every cache warm.
+            for run in 1...3 {
+                let today = TodayModel()
+                let started = ContinuousClock.now
+                await today.refresh(model: model, dayOffset: 0)
+                let elapsed = started.duration(to: .now)
+                print(String(format: "TODAY_REFRESH run=%d ms=%.0f", run, Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15))
+                // The background read for the "new project" todo, which Today does not wait for.
+                let suggested = ContinuousClock.now
+                _ = await model.projectSuggestions()
+                let waited = suggested.duration(to: .now)
+                print(String(format: "SUGGESTIONS_READY run=%d ms=%.0f", run, Double(waited.components.seconds) * 1000 + Double(waited.components.attoseconds) / 1e15))
+            }
+            return
+        }
         let calendar = Calendar.current
         let yesterday = calendar.date(byAdding: .day, value: -1, to: Date())!
         let quiet = calendar.date(byAdding: .day, value: -40, to: Date())!
@@ -226,7 +242,7 @@ import WebKit
             if page == .today { sample.todayDayOffset = 0 }
             sample.range = DateRangeSelection(kind: .day, anchor: Date())
             for size in sizes {
-                try await shoot("main-\(name)-\(Int(size.width))", MainWindowView(model: sample), size: size, settle: page == .today ? 4000 : 20000)
+                try await shoot("main-\(name)-\(Int(size.width))", MainWindowView(model: sample), size: size, settle: page == .today ? 4000 : 6000)
             }
         }
         if only?.contains("proj") ?? true {

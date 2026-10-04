@@ -269,12 +269,22 @@ struct TodayPlan {
             todos.append(.classify(seconds: unknownSeconds,
                                    names: unknown.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }.prefix(3).map(\.key)))
         }
-        if isToday, let newProject { todos.append(.newProject(name: newProject)) }
         if isToday, !hasFocusToday { todos.append(.focus(lastDay: lastFocus?.day, lastMinutes: lastFocus?.minutes)) }
 
-        return TodayPlan(day: overview.day, now: overview.now, isToday: isToday, total: overview.total, engaged: overview.engaged,
+        var plan = TodayPlan(day: overview.day, now: overview.now, isToday: isToday, total: overview.total, engaged: overview.engaged,
                          pulse: Aggregator.pulse(durationByCategory: byCategory, categories: categoryByID),
                          rows: rows, projects: projects, gaps: gaps, axis: axis(sessions, day: overview.day, calendar: calendar),
                          interruptions: interruptions, categories: categories, todos: todos, firstRecord: overview.firstRecord, notes: notes)
+        if isToday { plan.setNewProject(newProject) }
+        return plan
+    }
+
+    /// The "new project" todo: replaced, or removed for nil. It sits before the focus todo, and
+    /// arrives after the rest of the plan when the suggestions take longer than the page.
+    mutating func setNewProject(_ name: String?) {
+        todos.removeAll { if case .newProject = $0 { return true } else { return false } }
+        guard let name else { return }
+        let at = todos.firstIndex { if case .focus = $0 { return true } else { return false } } ?? todos.endIndex
+        todos.insert(.newProject(name: name), at: at)
     }
 }

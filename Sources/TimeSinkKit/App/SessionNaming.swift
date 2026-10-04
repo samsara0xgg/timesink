@@ -111,6 +111,8 @@ extension AppModel {
     /// Re-reads the project list; the sessions pick the change up on the next `dataVersion`.
     public func reloadProjects() {
         projects = (try? categoryStore.projects.list()) ?? []
+        projectsVersion += 1
+        projectSuggestionTask = nil
         projectNames = Dictionary(projects.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
         resolver.refreshProjectVerdicts()
         projectSuggestionCache = nil
@@ -124,16 +126,57 @@ extension AppModel {
         settingsChanged()
     }
 
+    /// The last 14 days' time per project (`SessionProjectResolver.normalized` name), read and cut into
+    /// sessions off the main actor, and kept while nothing it depends on changed (the tracker's own
+    /// writes only age it: ten minutes). Callers show what they have and fill this in when it arrives.
+    public func projectHours() async -> [String: TimeInterval] {
+        loadSessionOverrides()
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let key = ProjectHours.Key(edits: dataEditVersion, projects: projectsVersion,
+                                   assignments: Set(sessionOverrides.map { $0.key + ($0.value.project ?? "") }).hashValue,
+                                   splits: sessionSplitsVersion, threshold: sessionThreshold, day: today)
+        if let hit = projectHoursCache, hit.key == key, Date().timeIntervalSince(hit.at) < 600 { return hit.value }
+        if let running = projectHoursTask, running.key == key { return await running.task.value }
+        let days = (0..<ProjectSuggester.lookbackDays).compactMap { offset in
+            calendar.date(byAdding: .day, value: -offset, to: today).flatMap { calendar.dateInterval(of: .day, for: $0) }
+        }
+        let whole = DateInterval(start: days.last?.start ?? today, end: days.first?.end ?? today)
+        let input = ProjectHours.Input(
+            days: days, classification: resolver.snapshot(), threshold: sessionThreshold, verdicts: resolver.projectVerdicts,
+            overrides: sessionOverrides, names: projectNames, userNames: projects.map(\.name),
+            splits: (try? observationStore?.sessionSplits(in: whole)) ?? [], joins: (try? observationStore?.sessionJoins(in: whole)) ?? [])
+        let store = spanStore
+        let task = Task.detached(priority: .utility) {
+            ProjectHours.seconds(spans: (try? store.spans(overlapping: whole)) ?? [], input: input)
+        }
+        projectHoursTask = (key, task)
+        let value = await task.value
+        projectHoursComputations += 1
+        if projectHoursTask?.key == key { projectHoursTask = nil }
+        projectHoursCache = (key, Date(), value)
+        return value
+    }
+
+    /// Whatever suggestions were worked out last, however old; nil before the first.
+    var cachedProjectSuggestion: ProjectSuggester.Result? { projectSuggestionCache?.value }
+
     /// Candidate projects from the last two weeks, worked out off the main actor and kept ten minutes.
     public func projectSuggestions() async -> ProjectSuggester.Result {
         if let cache = projectSuggestionCache, Date().timeIntervalSince(cache.at) < 600 { return cache.value }
+        if let running = projectSuggestionTask { return await running.value }
         let now = Date()
         let interval = DateInterval(start: now.addingTimeInterval(-Double(ProjectSuggester.lookbackDays) * 86400), end: now)
         let store = spanStore, existing = projects.map(\.name)
-        let value = await Task.detached(priority: .utility) {
+        let task = Task.detached(priority: .utility) {
             ProjectSuggester.suggest((try? store.spans(overlapping: interval)) ?? [], existing: existing)
-        }.value
-        projectSuggestionCache = (now, value)
+        }
+        projectSuggestionTask = task
+        let version = projectsVersion
+        let value = await task.value
+        projectSuggestionTask = nil
+        // A project added meanwhile makes this list stale: leave it uncached.
+        if version == projectsVersion { projectSuggestionCache = (now, value) }
         return value
     }
 }
