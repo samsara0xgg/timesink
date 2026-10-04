@@ -79,6 +79,11 @@ extension AppModel {
         sessionSplitsVersion += 1
     }
 
+    public func unsplitSession(at date: Date) {
+        try? observationStore?.removeSessionSplit(at: date)
+        sessionSplitsVersion += 1
+    }
+
     /// Joins the session onto the one before it, even across a gap or a change
     /// the segmenter cut on its own.
     public func joinSession(_ session: WorkSession) {

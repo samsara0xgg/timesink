@@ -258,7 +258,19 @@ import WebKit
         try await main("act-day-empty", .activities, anchor: quiet)
         try await main("act-day-toast", .activities, anchor: yesterday) { activities in
             await longestSession(activities)
-            activities.joinToast = activities.selectedSession
+            activities.showUndo(String(localized: "已并入上一段")) {}
+        }
+        try await main("act-day-toast-split", .activities, anchor: yesterday, sizes: [wide, small]) { activities in
+            await longestSession(activities)
+            activities.showUndo(String(localized: "已拆开")) {}
+        }
+        try await main("act-day-toast-project", .activities, anchor: yesterday, sizes: [wide, small]) { activities in
+            await longestSession(activities)
+            activities.showUndo(String(localized: "已把这段归到「\("Atlas")」")) {}
+        }
+        try await main("act-day-toast-recat", .activities, anchor: yesterday, sizes: [wide, small]) { activities in
+            await longestSession(activities)
+            activities.showUndo(String(localized: "已改分类")) {}
         }
 
         // Seven days: the grouped list.

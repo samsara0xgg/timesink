@@ -10210,6 +10210,36 @@
           }
         }
       }
+    },
+    "已拆开": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Split"
+          }
+        }
+      }
+    },
+    "已把这段归到「%@」": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moved this session to “%@”"
+          }
+        }
+      }
+    },
+    "已改分类": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Category changed"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -170,15 +170,22 @@ struct SessionInspector: View {
 
     private func applyRecat() {
         let items = activities.displayedItems.filter { $0.span.start < session.end && $0.span.end > session.start }
+        var edits: [ReclassificationEdit] = []
         do {
             if recatScope == .segment {
                 for item in items where item.categoryID != recatCategory {
-                    _ = try model.categoryStore.reclassify(span: item.span, scope: .segment, categoryID: recatCategory)
+                    edits.append(try model.categoryStore.reclassify(span: item.span, scope: .segment, categoryID: recatCategory))
                 }
             } else if let top = session.apps.first, let item = items.first(where: { $0.span.appBundleID == top.bundleID }) {
-                _ = try model.categoryStore.reclassify(span: item.span, scope: .activity, categoryID: recatCategory)
+                edits.append(try model.categoryStore.reclassify(span: item.span, scope: .activity, categoryID: recatCategory))
             }
             model.resolver.refresh(); model.dataChanged()
+            if !edits.isEmpty {
+                activities.showUndo(String(localized: "已改分类")) { [model] in
+                    try? model.categoryStore.undoReclassifications(edits)
+                    model.resolver.refresh(); model.dataChanged()
+                }
+            }
             error = nil
             withAnimation(Design.motion(Design.layout, reduced: reduceMotion)) { recatOpen = false }
         } catch { self.error = String(localized: "分类未保存，请重试。") }
@@ -274,7 +281,7 @@ struct SessionInspector: View {
                 Spacer()
                 Menu {
                     ForEach(model.knownProjects, id: \.self) { name in
-                        Button(name) { model.assignSession(session, toProject: name) }
+                        Button(name) { assign(name) }
                     }
                     if !model.knownProjects.isEmpty { Divider() }
                     Button("新项目…") { project = ""; newProject = true }
@@ -289,10 +296,21 @@ struct SessionInspector: View {
             if newProject {
                 HStack {
                     TextField("项目名称", text: $project).textFieldStyle(.roundedBorder)
-                        .onSubmit { model.assignSession(session, toProject: project); newProject = false }
-                    Button("归入") { model.assignSession(session, toProject: project); newProject = false }.controlSize(.small)
+                        .onSubmit { assign(project); newProject = false }
+                    Button("归入") { assign(project); newProject = false }.controlSize(.small)
                 }
             }
+        }
+    }
+
+    /// Assigns the project and offers 撤销 back to the override there was (none, if none).
+    private func assign(_ project: String) {
+        let name = project.trimmingCharacters(in: .whitespacesAndNewlines)
+        let previous = override?.project, target = session
+        model.assignSession(target, toProject: name)
+        guard !name.isEmpty else { return }
+        activities.showUndo(String(localized: "已把这段归到「\(name)」")) { [model] in
+            model.assignSession(target, toProject: previous ?? "")
         }
     }
 
@@ -352,7 +370,11 @@ struct SessionInspector: View {
         if !points.isEmpty {
             Menu {
                 ForEach(Array(points), id: \.id) { block in
-                    Button("从 \(model.time(block.start)) 起拆开 · \(block.label)") { model.splitSession(at: block.start) }
+                    Button("从 \(model.time(block.start)) 起拆开 · \(block.label)") {
+                        let date = block.start
+                        model.splitSession(at: date)
+                        activities.showUndo(String(localized: "已拆开")) { [model] in model.unsplitSession(at: date) }
+                    }
                 }
             } label: {
                 Label("拆开", systemImage: "scissors")

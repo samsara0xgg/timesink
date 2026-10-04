@@ -62,6 +62,10 @@ extension ObservationStore {
         try writer.write { db in try db.execute(sql: "INSERT OR IGNORE INTO sessionSplit (at) VALUES (?)", arguments: [date]) }
     }
 
+    public func removeSessionSplit(at date: Date) throws {
+        try writer.write { db in try db.execute(sql: "DELETE FROM sessionSplit WHERE at = ?", arguments: [date]) }
+    }
+
     public func sessionJoins(in interval: DateInterval) throws -> [Date] {
         try writer.read { db in
             try Date.fetchAll(db, sql: "SELECT at FROM sessionJoin WHERE at >= ? AND at < ? ORDER BY at",
