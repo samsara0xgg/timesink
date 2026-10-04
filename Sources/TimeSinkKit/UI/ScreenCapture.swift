@@ -332,6 +332,23 @@ import WebKit
         try model.focus?.start(minutes: 25)
         try await main("focus-running", .focus)
         model.focus?.finish(completed: false)
+        // Earlier weeks: the sample only has the last four days, so give two older weeks a few sessions.
+        if let store = model.focusStore {
+            let displayCalendar = model.displayCalendar
+            for (weeksBack, days) in [(1, [0, 1, 1, 3, 4]), (3, [2])] {
+                let weekStart = FocusWeek.interval(weeksBack: weeksBack, now: Date(), calendar: displayCalendar).start
+                for (index, day) in days.enumerated() {
+                    let start = displayCalendar.date(byAdding: .day, value: day, to: weekStart)!.addingTimeInterval(Double(9 + index * 3) * 3600)
+                    let session = try store.start(at: start, plannedSeconds: 2700)
+                    try store.finish(id: session.id!, end: start.addingTimeInterval(Double(25 + index * 7) * 60), appBlocks: index % 2, siteBlocks: 0, completed: index != 2)
+                }
+            }
+            for (name, weeksBack) in [("focus-prev-week", 1), ("focus-empty-week", 2)] {
+                FocusWorkspaceView.previewWeeksBack = weeksBack
+                try await main(name, .focus, sizes: [wide, small])
+            }
+            FocusWorkspaceView.previewWeeksBack = 0
+        }
         // Its queue reads 30 days before it draws.
         try await main("org", .organization, sizes: [wide, standard, small], settle: 4000)
         do {

@@ -8247,16 +8247,6 @@
         }
       }
     },
-    "上一次：%@ %@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Last time: %1$@ %2$@"
-          }
-        }
-      }
-    },
     "再来一次 %lld 分钟": {
       "localizations": {
         "en": {
@@ -9651,16 +9641,6 @@
         }
       }
     },
-    "本周每天": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This week by day"
-          }
-        }
-      }
-    },
     "正在读取待分类": {
       "localizations": {
         "en": {
@@ -10237,6 +10217,68 @@
           "stringUnit": {
             "state": "translated",
             "value": "Category changed"
+          }
+        }
+      }
+    },
+    "上一周": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Previous week"
+          }
+        }
+      }
+    },
+    "下一周": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next week"
+          }
+        }
+      }
+    },
+    "这一周没有专注记录。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No focus sessions this week."
+          }
+        }
+      }
+    },
+    "专注 %@ · %@ · 最长 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ focused · %@ · longest %@"
+          }
+        }
+      }
+    },
+    "另有 %lld 次": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld more"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld more"
+                }
+              }
+            }
           }
         }
       }
