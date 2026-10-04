@@ -31,6 +31,10 @@ struct StatsSummary: Sendable {
     var appRows: [RankingRow] = []
     var categoryRows: [RankingRow] = []
     var categoryDeltas: [String: TimeInterval] = [:]
+    /// Per app or site against the same stretch of the previous period, by
+    /// row id; empty when there is no previous period.
+    var appDeltas: [String: TimeInterval] = [:]
+    var appMovers = AppMovers()
 
     init(items: [CategorizedSpan] = [], previous: [CategorizedSpan] = [],
          range: DateRangeSelection = .today(), categories: [String: Category] = [:],
@@ -77,7 +81,8 @@ struct StatsSummary: Sendable {
             if item.span.domain != nil { domains.insert(key) }
             appCategorySeconds[key, default: [:]][item.categoryID, default: 0] += item.span.duration
         }
-        appRows = StatsModel.distributionRows(Aggregator.durationByDomainOrApp(items).map { entry in
+        let apps = Aggregator.durationByDomainOrApp(items)
+        appRows = StatsModel.distributionRows(apps.map { entry in
             let dominant = appCategorySeconds[entry.key]?.max { $0.value < $1.value }?.key
             let colorHex = dominant.flatMap { categories[$0]?.colorHex } ?? "#98989D"
             return RankingRow(id: entry.key, name: entry.label, colorHex: colorHex, seconds: entry.seconds,
@@ -89,10 +94,10 @@ struct StatsSummary: Sendable {
                               colorHex: category?.colorHex ?? "#98989D", seconds: seconds)
         })
 
-        recomputeDeltas(prevItems: previous, range: range, categories: categories, now: now)
+        recomputeDeltas(prevItems: previous, apps: apps, range: range, categories: categories, now: now)
     }
 
-    private mutating func recomputeDeltas(prevItems: [CategorizedSpan], range: DateRangeSelection,
+    private mutating func recomputeDeltas(prevItems: [CategorizedSpan], apps: [AppMovers.Total], range: DateRangeSelection,
                                          categories: [String: Category], now: Date) {
         guard !prevItems.isEmpty else {
             totalDelta = nil
@@ -121,6 +126,10 @@ struct StatsSummary: Sendable {
         let prevDurationByCategory = Aggregator.durationByCategory(durationPrevItems)
         focusDelta = focus - Aggregator.focusTime(durationByCategory: prevDurationByCategory, categories: categories)
         categoryDeltas = Dictionary(uniqueKeysWithValues: categoryRows.map { ($0.id, Format.minuteDelta($0.seconds, prevDurationByCategory[$0.id] ?? 0)) })
+        let prevApps = Aggregator.durationByDomainOrApp(durationPrevItems)
+        let prevSeconds = Dictionary(prevApps.map { ($0.key, $0.seconds) }, uniquingKeysWith: { first, _ in first })
+        appDeltas = Dictionary(uniqueKeysWithValues: appRows.filter { $0.id != StatsModel.remainderID }.map { ($0.id, Format.minuteDelta($0.seconds, prevSeconds[$0.id] ?? 0)) })
+        appMovers = AppMovers(current: apps, previous: prevApps)
     }
 
     private static func hourScale(_ points: [StackedPoint]) -> (top: Double, step: Double) {
