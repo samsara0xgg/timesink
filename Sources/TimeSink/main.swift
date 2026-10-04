@@ -1,7 +1,9 @@
 import Foundation
 import TimeSinkKit
 #if DEBUG
-if ProcessInfo.processInfo.arguments.contains("--design-preview") {
+if let flag = ProcessInfo.processInfo.arguments.firstIndex(of: "--onboarding-frames"), flag + 1 < ProcessInfo.processInfo.arguments.count {
+    OnboardingFrames.run(outdir: ProcessInfo.processInfo.arguments[flag + 1])
+} else if ProcessInfo.processInfo.arguments.contains("--design-preview") {
     // `-AppleLanguages (zh-Hans)` only counts to the system when it comes
     // before the first plain argument; accept it anywhere.
     let args = ProcessInfo.processInfo.arguments

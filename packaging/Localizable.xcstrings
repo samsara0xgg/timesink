@@ -2913,16 +2913,6 @@
         }
       }
     },
-    "它在菜单栏里安静地记下你的时间，把一天连成片。所有记录都留在这台 Mac 上。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "It quietly keeps track of your time from the menu bar and joins your day into stretches. Everything stays on this Mac."
-          }
-        }
-      }
-    },
     "安装到应用程序文件夹后可设置登录时启动。": {
       "localizations": {
         "en": {
@@ -5359,16 +5349,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Check recording and permission settings"
-          }
-        }
-      }
-    },
-    "欢迎使用 TimeSink": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Welcome to TimeSink"
           }
         }
       }
@@ -10105,6 +10085,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "%1$@ · %2$lld guessed"
+          }
+        }
+      }
+    },
+    "你的时间，从这一刻开始被看见": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your time, seen from this moment on"
+          }
+        }
+      }
+    },
+    "它住在菜单栏里，点图标就能看到今天": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "It lives in the menu bar. Click its icon to see today."
+          }
+        }
+      }
+    },
+    "所有记录都留在这台 Mac 上。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Everything stays on this Mac."
+          }
+        }
+      }
+    },
+    "正在记录：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recording: %@"
           }
         }
       }
