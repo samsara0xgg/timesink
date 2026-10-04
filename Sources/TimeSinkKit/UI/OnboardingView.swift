@@ -19,6 +19,9 @@ struct OnboardingView: View {
     let model: AppModel
     var checksPermissions = true
     var preview: Preview?
+    /// Debug `--onboarding-demo`: permissions are simulated, "继续" calls `onContinue`.
+    var demo = false
+    var onContinue: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var axState: PermissionState = .denied
@@ -28,6 +31,7 @@ struct OnboardingView: View {
     @State private var introStart = Date()
     @State private var introDone = false
     @State private var pulse = false
+    @State private var demoStart = Date()
 
     private var ax: PermissionState { preview.map { $0.live == nil ? .denied : .granted } ?? axState }
 
@@ -68,20 +72,24 @@ struct OnboardingView: View {
             VStack(spacing: 8) {
                 if ax == .granted { liveRow.transition(.opacity.combined(with: .move(edge: .top))) }
                 permission("hand.raised", String(localized: "辅助功能"), required: true, String(localized: "读取前台应用和窗口标题"), ax) {
+                    if demo { axState = .granted; demoStart = Date(); return }
                     _ = Permissions.accessibilityGranted(prompt: true)
                     NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
                 }
                 permission("globe", String(localized: "Chrome 网址"), required: false, String(localized: "只读取当前标签页的网址"), chromeState) {
+                    if demo { chromeState = .granted; return }
                     model.settings.set("chromeTrackingEnabled", "true")
                     if chromeState == .denied { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")!) }
                     else { chromeState = Permissions.chromeAutomationState(ask: true) }
                 }
                 permission("viewfinder", String(localized: "屏幕录制"), required: false,
                            String(localized: "屏幕回看，只存 \(model.settings.captureRetentionDays) 天"), screenState) {
+                    if demo { screenState = .granted; return }
                     model.setScreenCapturePaused(false)
                     CGRequestScreenCaptureAccess()
                 }
                 permission("calendar", String(localized: "日历"), required: false, String(localized: "补记离开时间时给出建议"), calendarState) {
+                    if demo { calendarState = .granted; return }
                     model.calendarOverlayEnabled = true; model.settings.setCalendarOverlayEnabled(true)
                     Task {
                         _ = await Permissions.requestCalendarAccess()
@@ -97,7 +105,7 @@ struct OnboardingView: View {
                 Text(ax == .granted ? "可选项以后都能在设置里打开。" : "打开「辅助功能」后才能开始记录。")
                     .font(.body).foregroundStyle(Design.ink2)
                 Spacer()
-                Button("继续") { dismiss() }
+                Button("继续") { if let onContinue { onContinue() } else { dismiss() } }
                     .glassProminentButton().controlSize(.large).keyboardShortcut(p < 1 ? nil : .defaultAction)
                     .disabled(ax != .granted)
             }
@@ -114,7 +122,7 @@ struct OnboardingView: View {
             introDone = true
         }
         .task {
-            guard preview == nil else { return }
+            guard preview == nil, !demo else { return }
             guard checksPermissions else { axState = .granted; return }
             calendarState = await Permissions.calendarStateInBackground()
             while !Task.isCancelled {
@@ -161,6 +169,7 @@ struct OnboardingView: View {
     private var liveRow: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let live: (name: String, bundleID: String, since: Date)? = preview.map { $0.live.map { ($0.name, $0.bundleID, context.date.addingTimeInterval(-$0.elapsed)) } }
+                ?? (demo ? ("Safari", "com.apple.Safari", demoStart) : nil)
                 ?? model.engine.currentActivity.map { ($0.appName, $0.appBundleID, $0.start) }
             HStack(spacing: 10) {
                 Circle().fill(Design.live).frame(width: 7, height: 7).opacity(pulse ? 0.35 : 1).accessibilityHidden(true)

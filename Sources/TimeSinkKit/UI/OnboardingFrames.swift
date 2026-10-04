@@ -47,4 +47,45 @@ public enum OnboardingFrames {
         try png.write(to: url)
     }
 }
+
+/// `--onboarding-demo`: the welcome card in an ordinary window for trying by hand.
+/// A fixture model, simulated permissions; Cmd+R replays, "继续" quits.
+public enum OnboardingDemo {
+    private final class Host: NSObject, NSApplicationDelegate {
+        let model: AppModel
+        let window: NSWindow
+        init(model: AppModel) {
+            self.model = model
+            window = NSWindow(contentRect: NSRect(origin: .zero, size: OnboardingView.size),
+                              styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            window.title = "TimeSink"
+            window.isReleasedWhenClosed = false
+        }
+        func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+        @objc func replay() { show() }
+        func show() {
+            window.contentView = NSHostingView(rootView: OnboardingView(model: model, demo: true, onContinue: { NSApp.terminate(nil) }))
+            window.center()
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+    @MainActor private static var host: Host?
+
+    @MainActor public static func run() {
+        let app = NSApplication.shared
+        do { host = Host(model: try RefinedPreview.fixture()) } catch { print("Demo failed: \(error)"); exit(1) }
+        app.delegate = host
+        app.setActivationPolicy(.regular)
+        let menu = NSMenu(), appItem = NSMenuItem(), appMenu = NSMenu(), replay = NSMenuItem(title: "Replay", action: #selector(Host.replay), keyEquivalent: "r")
+        replay.target = host
+        appMenu.addItem(replay)
+        appMenu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        appItem.submenu = appMenu
+        menu.addItem(appItem)
+        app.mainMenu = menu
+        host?.show()
+        app.run()
+    }
+}
 #endif
