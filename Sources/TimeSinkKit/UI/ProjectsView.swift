@@ -6,7 +6,7 @@ struct OrganizationTabs: View {
 
     var body: some View {
         Segmented(options: [SettingsTab.uncategorized, .projects], selection: Binding(get: { model.organizationTab == .projects ? .projects : .uncategorized }, set: { model.organizationTab = $0 }), height: 28) { tab in
-            tab == .projects ? Text("项目") : Text("分类")
+            tab == .projects ? Text("所有项目") : Text("分类")
         }
         .accessibilityLabel("分类页的标签")
     }
@@ -205,6 +205,7 @@ struct ProjectsView: View {
 
     /// The last 14 days' sessions, by project: what each project took, and what the recommendations are.
     private func load() async {
+        suggestions = await model.projectSuggestions()
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         var seconds: [String: TimeInterval] = [:]
@@ -214,9 +215,8 @@ struct ProjectsView: View {
             for session in await model.sessions(for: day) {
                 if let project = model.sessionProject(session) { seconds[SessionProjectResolver.normalized(project), default: 0] += session.recorded }
             }
+            hours = seconds
         }
-        hours = seconds
-        suggestions = await model.projectSuggestions()
     }
 }
 

@@ -223,9 +223,10 @@ import WebKit
             sample.timeFormat = "24"
             sample.sidebarSelection = page
             sample.organizationTab = .projects
+            if page == .today { sample.todayDayOffset = 0 }
             sample.range = DateRangeSelection(kind: .day, anchor: Date())
             for size in sizes {
-                try await shoot("main-\(name)-\(Int(size.width))", MainWindowView(model: sample), size: size, settle: 3000)
+                try await shoot("main-\(name)-\(Int(size.width))", MainWindowView(model: sample), size: size, settle: page == .today ? 4000 : 20000)
             }
         }
         if only?.contains("proj") ?? true {
@@ -236,6 +237,9 @@ import WebKit
             try await projectsPage("projects", sample, .organization, sizes: [wide, small])
             UserDefaults.standard.set("project", forKey: "todayTimelineColors")
             try await projectsPage("today-projects", sample, .today, sizes: [wide, small])
+            // No project anywhere: the legend points at the Projects tab.
+            let bare = try RefinedPreview.fixture(repos: false)
+            try await projectsPage("today-projects-none", bare, .today, sizes: [wide, small])
             UserDefaults.standard.removeObject(forKey: "todayTimelineColors")
         }
 

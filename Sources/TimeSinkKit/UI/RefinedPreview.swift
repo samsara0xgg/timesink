@@ -306,7 +306,7 @@ public enum RefinedPreview {
     }
     /// `days`: how much history the sample day has. `projects`: three sample
     /// projects with Jev's project answers on the sample windows.
-    @MainActor static func fixture(days: Int = 30, projects withProjects: Bool = false) throws -> AppModel {
+    @MainActor static func fixture(days: Int = 30, projects withProjects: Bool = false, repos: Bool = true) throws -> AppModel {
         let db = try AppDatabase.openInMemory()
         let categories = CategoryStore(db), spans = SpanStore(db), settings = SettingsStore(db)
         SeedImporter.importIfNeeded(categoryStore: categories, settings: settings)
@@ -321,6 +321,8 @@ public enum RefinedPreview {
                 let day = calendar.date(byAdding: .day, value: -offset, to: today)!
                 for var span in SyntheticDay.spans(for: day, seed: UInt64(offset), calendar: calendar) where span.start < Date() {
                     span.end = min(span.end, Date())
+                    // `repos: false`: no repo in any address, so no folder or repo names a session.
+                    if !repos, span.domain == "github.com" { span.url = "https://github.com/" }
                     try span.insert(db)
                 }
             }

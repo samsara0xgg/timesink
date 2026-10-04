@@ -10564,6 +10564,16 @@
           }
         }
       }
+    },
+    "所有项目": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
