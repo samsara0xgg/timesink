@@ -81,9 +81,12 @@ struct ReviewTip: Tip {
 
     func close(_ kind: Kind) { Self.tip(kind).invalidate(reason: .tipClosed) }
     func done(_ kind: Kind) { Self.tip(kind).invalidate(reason: .actionPerformed) }
-    /// Opening the main window answers the review tip, but only once it was due:
-    /// onboarding opens the window on day one.
-    func mainWindowOpened() { if ReviewTip.due { done(.review) } }
+    /// Opening the main window answers the review tip, but only once it was due and
+    /// not as the tour's own last step: onboarding opens the window on day one, and
+    /// the tour sends the person there.
+    func mainWindowOpened(tourBusy: Bool) { if ReviewTip.due, !tourBusy { done(.review) } }
+    /// A hover pane opened: the hover tip has nothing left to teach, unless it was the tour's hover.
+    func drillOpened(quiet: Bool) { if !quiet { done(.hover) } }
 
     /// The first day with two hours on it is remembered; from the day after,
     /// yesterday's record is worth pointing to.
@@ -94,10 +97,25 @@ struct ReviewTip: Tip {
         ReviewTip.due = first.map { $0 < today } ?? false
     }
 
+    #if DEBUG
+    /// What the popover last reported, for the demo's terminal line and the flow check.
+    @ObservationIgnored var traced: (present: Set<Kind>, quiet: Bool) = ([], false)
+    func debugLine() -> String {
+        func status(_ kind: Kind) -> String { "\(kind)=\(Self.tip(kind).status)" }
+        return "tips: eligible=\(eligible.map(String.init(describing:)).sorted()) present=\(traced.present.map(String.init(describing:)).sorted()) quiet=\(traced.quiet) "
+            + "current=\(String(describing: current(present: traced.present, quiet: traced.quiet))) " + Kind.allCases.map(status).joined(separator: " ")
+    }
+    #endif
+
     /// The one tip to show: the first eligible whose target is on screen.
     func current(present: Set<Kind>, quiet: Bool) -> Kind? {
         quiet ? nil : Kind.allCases.first { eligible.contains($0) && present.contains($0) }
     }
+}
+
+extension AppModel {
+    /// The main window opened: the review tip is answered unless the tour is the one opening it.
+    func noteMainWindowOpened() { tips.mainWindowOpened(tourBusy: menuTour.armed || menuTour.current != nil) }
 }
 
 struct TipTargets: PreferenceKey {
@@ -141,11 +159,17 @@ struct ContextualTipsModifier: ViewModifier {
             .task(id: present) {
                 HoverTip.rowsShown = present.contains(.hover)
                 RecategorizeTip.itemShown = present.contains(.recategorize)
+                #if DEBUG
+                tips.traced.present = present
+                #endif
             }
+            #if DEBUG
+            .onChange(of: quiet, initial: true) { _, now in tips.traced.quiet = now }
+            #endif
             .task(id: model.dashboard.total >= 7200) { tips.noteDay(total: model.dashboard.total, settings: model.settings) }
             .task { await tips.watchAll() }
             .onChange(of: tour.current != nil || tour.armed) { _, busy in if busy { toured = true } }
-            .onChange(of: drillOpen) { _, open in if open { tips.done(.hover) } }
+            .onChange(of: drillOpen) { _, open in if open { tips.drillOpened(quiet: quiet) } }
             .onAppear { toured = tour.armed }
     }
 }

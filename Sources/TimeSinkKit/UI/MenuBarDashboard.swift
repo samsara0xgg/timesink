@@ -1100,7 +1100,7 @@ struct MenuBarDashboardView: View {
     }
 
     private func openToday() {
-        model.menuTour.end(); model.tips.mainWindowOpened()
+        model.noteMainWindowOpened(); model.menuTour.end()
         model.openToday()
         openWindow(id: "main"); AppWindow.main.bringForward()
         NSApp.activate(ignoringOtherApps: true)

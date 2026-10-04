@@ -2,6 +2,7 @@
 import AppKit
 import SwiftUI
 import TipKit
+import GRDB
 
 /// `--onboarding-frames <outdir>`: the welcome card's intro at progress 0, 0.1 ... 1,
 /// the settled card with the first-record row, the flight to the menu bar (`fly-*`),
@@ -48,13 +49,39 @@ public enum OnboardingFrames {
     }
 
     /// The fixture model with the tracker on Safari: the popover reads "recording".
-    @MainActor static func liveModel() throws -> AppModel {
+    /// `busyDay`: five more categories with a quarter hour each, as a full day has.
+    @MainActor static func liveModel(busyDay: Bool = false) throws -> AppModel {
         let model = try RefinedPreview.fixture()
         model.accessibilityGranted = true
+        if busyDay {
+            let dayStart = Calendar.current.startOfDay(for: Date())
+            for (index, app) in ["com.apple.dt.Xcode", "com.apple.mail", "com.apple.Music", "com.apple.Notes", "us.zoom.xos", "com.apple.MobileSMS"].enumerated() {
+                let start = dayStart.addingTimeInterval(Double(300 + index * 1000))
+                _ = try model.spanStore.insert(Span(start: start, end: start.addingTimeInterval(900), appBundleID: app, appName: app, title: nil, url: nil, domain: nil))
+            }
+        }
         // Some time nobody has named, so the popover has something uncategorized to show.
         let start = Date().addingTimeInterval(-9 * 60)
         _ = try model.spanStore.insert(Span(start: start, end: start.addingTimeInterval(6 * 60), appBundleID: "app.unnamed.demo", appName: "Scratchpad",
                                             title: "Untitled", url: nil, domain: nil))
+        // On any day the unnamed time must be among the popover's first five rows, or there is
+        // nothing to point at: it takes over the third-largest category's spans.
+        let today = DateInterval(start: Calendar.current.startOfDay(for: Date()), end: Date())
+        var byCategory: [String: [Span]] = [:]
+        for span in try model.spanStore.spans(overlapping: today) {
+            let id = model.resolver.categoryID(for: span)
+            if id != "uncategorized" { byCategory[id, default: []].append(span) }
+        }
+        let ranked = byCategory.sorted { $0.value.reduce(0) { $0 + $1.duration } > $1.value.reduce(0) { $0 + $1.duration } }
+        if ranked.count > 2 {
+            try model.spanStore.writer.write { db in
+                for var span in ranked[2].value {
+                    span.appBundleID = "app.unnamed.demo"; span.appName = "Scratchpad"; span.title = "Untitled"
+                    span.url = nil; span.domain = nil; span.document = nil
+                    try span.update(db)
+                }
+            }
+        }
         // A first two-hour day lies behind us: yesterday's record is worth a pointer.
         model.settings.set("firstLongDay", String(Calendar.current.startOfDay(for: Date().addingTimeInterval(-86400)).timeIntervalSince1970))
         model.dataChanged()
@@ -141,6 +168,84 @@ public enum OnboardingFrames {
     }
 }
 
+/// `--onboarding-tips-check`: the demo's path, offscreen. The popover is hosted the way the
+/// demo hosts it (a fresh `NSHostingController` per open), the tour runs and is clicked
+/// through, the popover is torn down and opened again, and each reopen must show the next
+/// tip: hover, then recategorize, then review. Exits 0 when it does, 1 when it does not.
+/// `busy` as an extra argument runs it on a full day's data (one process per scenario: TipKit's
+/// datastore is the process's).
+public enum OnboardingTipsCheck {
+    @MainActor public static func run() {
+        OnboardingFrames.configureTips()
+        MenuTour.keepsHoverTip = true
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        app.appearance = NSAppearance(named: .aqua)
+        Task { @MainActor in
+            var failed = false
+            do {
+                let busy = CommandLine.arguments.contains("busy")
+                print("-- \(busy ? "a busy day" : "an early day")")
+                let model = try OnboardingFrames.liveModel(busyDay: busy)
+                func check(_ ok: Bool, _ text: String) { print((ok ? "ok   " : "FAIL ") + text); if !ok { failed = true } }
+
+                // Open 1: the tour.
+                model.menuTour.armed = true
+                var popover = try await open(model, wait: 3)
+                print(model.tips.debugLine())
+                check(model.menuTour.current != nil, "the tour started")
+                // The user's path: each step, the hover step with a pane opening, the last step by clicking the open button.
+                var steps = 0
+                while let step = model.menuTour.current {
+                    steps += 1
+                    if step == .row { model.tips.drillOpened(quiet: model.menuTour.current != nil) }
+                    if step == .open { model.noteMainWindowOpened(); model.menuTour.end() } else { model.menuTour.next() }
+                    try await Task.sleep(for: .milliseconds(300))
+                }
+                check(steps >= 2, "the tour ran \(steps) steps")
+                close(popover)
+
+                // Reopens: one tip each, in order; closing one lets the next through.
+                for kind in ContextualTips.Kind.allCases {
+                    popover = try await open(model, wait: 3)
+                    print(model.tips.debugLine())
+                    let shown = model.tips.current(present: model.tips.traced.present, quiet: model.tips.traced.quiet)
+                    check(shown == kind, "reopen shows \(kind): \(String(describing: shown))")
+                    if let host = popover.contentView {
+                        let url = FileManager.default.temporaryDirectory.appendingPathComponent("tips-check-\(kind).png")
+                        let size = host.bounds.size
+                        try OnboardingFrames.capture(host, window: popover, size: size, scale: 2, to: url)
+                        print("     frame \(url.path)")
+                    }
+                    close(popover)
+                    model.tips.close(kind)
+                    try await Task.sleep(for: .milliseconds(300))
+                }
+            } catch { print("FAIL \(error)"); failed = true }
+            exit(failed ? 1 : 0)
+        }
+        app.run()
+    }
+
+    /// The popover as the demo builds it, in a window far off every screen.
+    @MainActor private static func open(_ model: AppModel, wait: Double) async throws -> NSWindow {
+        let window = NSWindow(contentRect: NSRect(x: -20000, y: -20000, width: 340, height: 700), styleMask: .borderless, backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: .aqua)
+        window.ignoresMouseEvents = true
+        let controller = NSHostingController(rootView: MenuBarDashboardView(model: model).dynamicTypeSize(...DynamicTypeSize.xxLarge))
+        controller.sizingOptions = .preferredContentSize
+        window.contentViewController = controller
+        window.orderFrontRegardless()
+        try await Task.sleep(for: .seconds(wait))
+        return window
+    }
+
+    @MainActor private static func close(_ window: NSWindow) {
+        window.orderOut(nil)
+        window.contentViewController = nil
+    }
+}
+
 /// A made-up screen for the flight frames: a menu bar with the icon, the welcome
 /// card fading out where the trail starts.
 private struct FlightScene: View {
@@ -224,6 +329,11 @@ public enum OnboardingDemo {
             controller.sizingOptions = .preferredContentSize
             popover.contentViewController = controller
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            // Once the popover has settled: why a tip shows, or why not.
+            Task { @MainActor [model] in
+                try? await Task.sleep(for: .seconds(1.5))
+                print(model.tips.debugLine())
+            }
         }
 
         /// A new process: TipKit's datastore cannot be reset after it is configured.

@@ -242,7 +242,7 @@ public struct TimeSinkApp: App {
                 .onAppear {
                     NSApp.setActivationPolicy(.regular)
                     NSApp.activate(ignoringOtherApps: true)
-                    model.tips.mainWindowOpened()
+                    model.noteMainWindowOpened()
                 }
                 .onDisappear {
                     NSApp.setActivationPolicy(.accessory)
