@@ -24,6 +24,7 @@ public actor JevWorker {
     }
 
     private let categoryStore: CategoryStore
+    private let projectStore: ProjectStore
     private let settings: SettingsStore
     private let transport: any JevTransport
     private let apiKey: @Sendable () -> String?
@@ -33,6 +34,7 @@ public actor JevWorker {
     public init(categoryStore: CategoryStore, settings: SettingsStore, transport: any JevTransport = URLSessionJevTransport(),
                 apiKey: @escaping @Sendable () -> String?) {
         self.categoryStore = categoryStore
+        self.projectStore = categoryStore.projects
         self.settings = settings
         self.transport = transport
         self.apiKey = apiKey
@@ -48,6 +50,9 @@ public actor JevWorker {
         let state: JevState
         let target: Target
     }
+
+    /// A combo's project is re-asked only when it was seen this recently.
+    public static let projectLookbackDays = 14
 
     /// One pass over everything seen since `since` (and, for answers from an older prompt, since `staleSince`): window contents without a
     /// verdict, then unsure verdicts asked again with the user's examples (plus
@@ -65,6 +70,12 @@ public actor JevWorker {
             let version = JevPrompt.version(categories)
             let ids = Set(criteria.map(\.id))
             let model = settings.jevModel
+            // With projects, the same request also asks which one the window belongs to.
+            let projects = try projectStore.list()
+            let projectCriteria = projects.isEmpty ? [] : JevPrompt.projectCriteria(projects)
+            let projectVersion = projects.isEmpty ? nil : JevPrompt.projectVersion(projects)
+            let projectIDs = Set(projects.map(\.id))
+            let projectSince = Calendar.current.date(byAdding: .day, value: -Self.projectLookbackDays, to: Date())
             let client = JevClient(endpoint: endpoint, apiKey: key, model: settings.jevModel, transport: transport)
             let settings = settings, categoryStore = categoryStore
 
@@ -72,11 +83,26 @@ public actor JevWorker {
                 Job(state: JevState(app: c.appName, bundleID: c.key.appBundleID, domain: c.key.domain, url: c.url,
                                     title: c.key.title, document: c.key.document), target: .combo(c))
             }
-            var halted = await Self.pass(try categoryStore.pendingCombos(since: since, staleSince: staleSince, promptVersion: version).map(combo), client: client,
-                                         criteria: criteria, settings: settings, maxConcurrent: maxConcurrent, into: &result) { job, answer in
-                guard case .combo(let c) = job.target, let v = Self.verdict(for: c, answer: answer, ids: ids, version: version, model: model),
-                      (try? categoryStore.saveVerdict(v)) != nil else { return false }
-                return true
+            let pending = try categoryStore.pendingCombos(since: since, staleSince: staleSince, promptVersion: version,
+                                                          projectVersion: projectVersion, projectSince: projectSince)
+            var halted = await Self.pass(pending.map(combo), client: client, criteria: criteria, projects: projectCriteria,
+                                         settings: settings, maxConcurrent: maxConcurrent, into: &result) { job, answer in
+                guard case .combo(let c) = job.target else { return false }
+                let project = projectVersion.map { Self.projectFields(answer, ids: projectIDs, version: $0) }
+                // The category is settled (the user's, or Jev's current): only the project is new.
+                if c.projectOnly {
+                    guard let project else { return false }
+                    return (try? categoryStore.saveProjectVerdict(c.key, projectID: project.id, prob: project.prob,
+                                                                  runnerUp: project.runnerUp, promptVersion: project.version)) != nil
+                }
+                guard var v = Self.verdict(for: c, answer: answer, ids: ids, version: version, model: model) else { return false }
+                if let project {
+                    v.projectID = project.id
+                    v.projectProb = project.prob
+                    v.projectRunnerUp = project.runnerUp
+                    v.projectPromptVersion = project.version
+                }
+                return (try? categoryStore.saveVerdict(v)) != nil
             }
             guard !halted else { wasRateLimited = result.retryAfter != nil; return result }
 
@@ -124,7 +150,8 @@ public actor JevWorker {
 
     /// Runs `jobs` a few at a time, adding to `result`. True when the run
     /// must stop altogether (monthly cap, or a key or balance error).
-    private static func pass(_ jobs: [Job], client: JevClient, criteria: [(id: String, text: String)], settings: SettingsStore,
+    private static func pass(_ jobs: [Job], client: JevClient, criteria: [(id: String, text: String)],
+                             projects: [(id: String, text: String)] = [], settings: SettingsStore,
                              maxConcurrent: Int, into result: inout RunResult,
                              apply: @escaping @Sendable (Job, JevAnswer) -> Bool) async -> Bool {
         typealias Outcome = (job: Job, answer: Result<JevAnswer, any Error>, seconds: Double)
@@ -142,7 +169,7 @@ public actor JevWorker {
                 group.addTask {
                     let t0 = ContinuousClock.now
                     do {
-                        let answer = try await client.decide(job.state, criteria: criteria)
+                        let answer = try await client.decide(job.state, criteria: criteria, projects: projects)
                         return (job, .success(answer), Self.seconds(since: t0))
                     } catch {
                         return (job, .failure(error), Self.seconds(since: t0))
@@ -179,6 +206,16 @@ public actor JevWorker {
     private static func seconds(since start: ContinuousClock.Instant) -> Double {
         let d = ContinuousClock.now - start
         return Double(d.components.seconds) + Double(d.components.attoseconds) / 1e18
+    }
+
+    /// The project columns for an answer: the project chosen, or 'none' when it chose none, named
+    /// an id that was not offered, or the reply had no project answer (asked, so not asked again).
+    static func projectFields(_ answer: JevAnswer, ids: Set<String>, version: String) -> (id: String, prob: Double, runnerUp: String, version: String) {
+        let choice = answer.projectChoice.flatMap { ids.contains($0) ? $0 : nil } ?? JevPrompt.noProject
+        let probabilities = answer.projectProbabilities ?? [:]
+        let ranked = probabilities.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }
+        return (choice, probabilities[choice] ?? (answer.projectChoice == choice ? answer.projectConfidence ?? 0 : 0),
+                ranked.first { $0.key != choice }?.key ?? "", version)
     }
 
     /// nil when the answer names a category that was not offered.

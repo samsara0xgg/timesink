@@ -33,6 +33,11 @@ public final class CategoryResolver {
     public private(set) var distractingIDs: Set<String> = []
     private var context = ClassificationContext(domainMap: [:], appMap: [:], urlRules: [], titleRules: [])
 
+    /// The project Jev named for each window content, for projects still in
+    /// the list. Not part of `context`: a category never depends on it, so
+    /// reloading it leaves the memo alone.
+    private(set) var projectVerdicts: [VerdictKey: ProjectVerdict] = [:]
+
     /// Whether cached verdicts count. Off, the resolver is what it was
     /// before Jev: rules, then the shipped lists.
     public var jevEnabled = false {
@@ -160,8 +165,20 @@ public final class CategoryResolver {
                                              titleRules: titleRules, userVerdicts: user, jevVerdicts: jev, captureVerdicts: shots,
                                              categoryIDs: Set(categories.map(\.id)))
             memo.removeAll(keepingCapacity: true)
+            refreshProjectVerdicts()
         } catch {
             logger.error("CategoryResolver.refresh failed, keeping previous context: \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    /// Reloads `projectVerdicts` alone, e.g. after a project was added or removed.
+    func refreshProjectVerdicts() {
+        guard jevEnabled else { projectVerdicts = [:]; return }
+        do {
+            let live = Set(try categoryStore.projects.list().map(\.id))
+            projectVerdicts = try categoryStore.projectVerdicts().filter { live.contains($0.value.projectID) }
+        } catch {
+            logger.error("CategoryResolver.refreshProjectVerdicts failed, keeping previous: \(String(describing: error), privacy: .public)")
         }
     }
 
