@@ -10,6 +10,11 @@ struct StatsView: View {
     @Bindable var stats: StatsModel
     @State private var granularity: StatsModel.Granularity = .day
     @State private var showsRadar = false
+    @State private var hoveredDay: Date?
+    #if DEBUG
+    /// What the review captures point at: a day of the daily chart.
+    @MainActor static var previewHover: Date?
+    #endif
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private struct RefreshID: Equatable { let range: DateRangeSelection.Window; let version: Int }
 
@@ -40,6 +45,9 @@ struct StatsView: View {
                                     }.fixedSize(horizontal: false, vertical: true)
                                 } else { heatmapCard; radar }
                             } else { radar }
+                            if let fourWeeks = stats.fourWeeks {
+                                pair(wide: wide) { FourWeekCard(data: fourWeeks) } trailing: { InterruptionTrendCard(days: stats.interruptionTrend) }
+                            }
                             appRanking
                             scoreTrend
                         } else if stats.loadError == nil {
@@ -54,12 +62,16 @@ struct StatsView: View {
                 }
                 .scrollIndicators(.never)
             }
-            .pageTask(id: RefreshID(range: model.range.window, version: model.dataVersion)) { await stats.recompute(model: model) }
+            .pageTask(id: RefreshID(range: model.range.window, version: model.dataVersion)) {
+                await stats.recompute(model: model)
+                await stats.loadInterruptionTrend(model: model)
+            }
             .whilePageShown {
                 if stats.heatmapInteraction.pinned != nil { await Task.yield(); proxy.scrollTo("heatmap", anchor: .top) }
                 while !Task.isCancelled {
                     do { try await Task.sleep(for: .seconds(60)) } catch { return }
                     await stats.recompute(model: model)
+                    await stats.loadInterruptionTrend(model: model)
                 }
             }
         }
@@ -177,7 +189,7 @@ struct StatsView: View {
                 }
             }
             Group { if granularity == .day {
-                historyChart(stats.stackedByDay, unit: .day, scale: stats.dayHourScale)
+                historyChart(stats.stackedByDay, unit: .day, scale: stats.dayHourScale, average: dayAverage)
                     .chartXScale(domain: (stats.days.first ?? .now)...(stats.days.last?.addingTimeInterval(86400) ?? .now))
                     .chartXAxis {
                         AxisMarks(values: stats.dayMarks.map(\.midday)) { value in
@@ -197,13 +209,37 @@ struct StatsView: View {
         .cardBox()
     }
 
-    private func historyChart(_ points: [StatsModel.StackedPoint], unit: Calendar.Component, scale: (top: Double, step: Double)) -> some View {
-        Chart(points) { point in
-            BarMark(x: .value("日期", point.bucketStart, unit: unit), y: .value("小时", point.hours))
-                .foregroundStyle(RefinedStyle.category(point.categoryID, hex: point.colorHex))
-                .accessibilityLabel("\(point.bucketStart.formatted(.dateTime.month().day())) · \(point.categoryName)")
-                .accessibilityValue(Format.duration(point.hours * 3600))
+    /// The mean day of the days so far, drawn on the daily bars once there are three.
+    private var dayAverage: TimeInterval? {
+        stats.days.filter { $0 < .now }.count >= 3 ? stats.avgPerDay : nil
+    }
+
+    /// With `average`, the bars are the days: a dashed line at the mean, the
+    /// day under the pointer lit, a click opening that day in Activities.
+    private func historyChart(_ points: [StatsModel.StackedPoint], unit: Calendar.Component, scale: (top: Double, step: Double),
+                              average: TimeInterval? = nil) -> some View {
+        let calendar = Calendar.current
+        let daily = unit == .day
+        return Chart {
+            ForEach(points) { point in
+                BarMark(x: .value("日期", point.bucketStart, unit: unit), y: .value("小时", point.hours))
+                    .foregroundStyle(RefinedStyle.category(point.categoryID, hex: point.colorHex)
+                        .opacity(hoveredDay == nil || !daily || hoveredDay == point.bucketStart ? 1 : 0.4))
+                    .accessibilityLabel("\(point.bucketStart.formatted(.dateTime.month().day())) · \(point.categoryName)")
+                    .accessibilityValue(Format.duration(point.hours * 3600))
+            }
+            if let average {
+                RuleMark(y: .value("日均", average / 3600))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                    .foregroundStyle(Design.ink2)
+                    .annotation(position: .top, alignment: .trailing, spacing: 2) {
+                        AverageTag(text: String(localized: "均 \(Format.duration(average))"))
+                    }
+            }
         }
+        #if DEBUG
+        .onAppear { if daily { hoveredDay = Self.previewHover } }
+        #endif
         .chartYScale(domain: 0...scale.top)
         .chartYAxis {
             AxisMarks(position: .leading, values: Array(stride(from: 0, through: scale.top, by: scale.step))) { value in
@@ -211,6 +247,40 @@ struct StatsView: View {
                 AxisValueLabel { if let hours = value.as(Double.self) { Text("\(hours.formatted())h").font(.note).foregroundStyle(Design.ink2) } }
             }
         }
+        .chartOverlay { proxy in
+            if daily {
+                GeometryReader { geometry in
+                    Rectangle().fill(.clear).contentShape(Rectangle())
+                        .onContinuousHover { phase in
+                            switch phase {
+                            case .active(let location): hoveredDay = day(at: location, proxy: proxy, geometry: geometry)
+                            case .ended: endHover()
+                            }
+                        }
+                        .onTapGesture { location in
+                            if let day = day(at: location, proxy: proxy, geometry: geometry) {
+                                model.openActivities(category: nil, range: DateRangeSelection(kind: .day, anchor: day))
+                            }
+                        }
+                        .help(hoveredDay.map { String(localized: "打开 \($0.formatted(.dateTime.month().day())) 的活动") } ?? "")
+                }
+            }
+        }
+    }
+
+    private func endHover() {
+        #if DEBUG
+        guard Self.previewHover == nil else { return }   // a capture holds its pointed-at day
+        #endif
+        hoveredDay = nil
+    }
+
+    /// The shown day under a point of the daily chart, if it has begun.
+    private func day(at location: CGPoint, proxy: ChartProxy, geometry: GeometryProxy) -> Date? {
+        guard let frame = proxy.plotFrame,
+              let date = proxy.value(atX: location.x - geometry[frame].origin.x, as: Date.self) else { return nil }
+        let day = Calendar.current.startOfDay(for: date)
+        return stats.days.contains(day) && day <= .now ? day : nil
     }
 
     private var ranking: some View {
@@ -250,8 +320,13 @@ struct StatsView: View {
 
     private var appRanking: some View {
         VStack(alignment: .leading, spacing: Design.Space.md) {
-            CardHeading(title: "应用与网站")
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 320), spacing: Design.Space.page)], spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                CardHeading(title: "应用与网站")
+                Spacer()
+                if !stats.appDeltas.isEmpty { Text("与上期差").font(.note).foregroundStyle(Design.ink2) }
+            }
+            if let movers = moversSentence { movers.foregroundStyle(Design.ink2).fixedSize(horizontal: false, vertical: true) }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 360), spacing: Design.Space.page)], spacing: 0) {
                 ForEach(stats.appRows) { row in
                     HStack(spacing: Design.Space.sm) {
                         ActivityIcon(bundleID: row.id, domain: row.isDomain ? row.id : nil, size: 20)
@@ -260,15 +335,40 @@ struct StatsView: View {
                             Capsule().fill(Design.track)
                             Capsule().fill(RefinedStyle.category(row.categoryID ?? "", hex: row.colorHex))
                                 .frame(width: max(3, geo.size.width * row.seconds / max(1, stats.appRows.first?.seconds ?? 1)))
-                        }.frame(width: 88, height: 4)
+                        }.frame(width: 72, height: 4)
                         Text(Format.duration(row.seconds)).monospacedDigit().foregroundStyle(Design.ink2)
                             .frame(width: Design.durationWidth, alignment: .trailing)
+                        if !stats.appDeltas.isEmpty {
+                            Text(stats.appDeltas[row.id].map { Format.durationDelta($0) } ?? "—").monospacedDigit()
+                                .foregroundStyle(Design.ink2).frame(width: Design.durationWidth, alignment: .trailing)
+                        }
                     }
                     .frame(height: Design.rowHeight)
                 }
             }
         }
         .cardBox()
+    }
+
+    /// The biggest riser and faller against the previous period, in a line.
+    private var moversSentence: Text? {
+        let movers = stats.appMovers
+        let reference: Text
+        switch model.range.kind {
+        case .day: reference = Text("上一天")
+        case .week, .last7: reference = Text("上一周")
+        default: reference = Text("上一期")
+        }
+        switch (movers.riser, movers.faller) {
+        case let (riser?, faller?):
+            return Text("\(riser.name) 比\(reference)多了 \(Format.duration(riser.delta))；\(faller.name) 少了 \(Format.duration(-faller.delta))。")
+        case let (riser?, nil):
+            return Text("\(riser.name) 比\(reference)多了 \(Format.duration(riser.delta))。")
+        case let (nil, faller?):
+            return Text("\(faller.name) 比\(reference)少了 \(Format.duration(-faller.delta))。")
+        default:
+            return nil
+        }
     }
 
     private var scoreTrend: some View {

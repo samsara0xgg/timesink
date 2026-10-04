@@ -189,6 +189,20 @@ import WebKit
             let elapsed = started.duration(to: .now)
             print(String(format: "STATS_PREFETCH loaded=%@ ms=%.0f footprintMB before=%.1f after=%.1f", stats.hasLoaded ? "yes" : "no",
                          Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15, before, footprintMB()))
+            // How much of that is memory freed but not yet handed back to the system.
+            _ = malloc_zone_pressure_relief(nil, 0)
+            print(String(format: "STATS_RELIEF footprintMB=%.1f", footprintMB()))
+            if let hold = ProcessInfo.processInfo.environment["TIMESINK_PREVIEW_MEASURE_HOLD"].flatMap(Double.init) {
+                print("STATS_HOLD pid=\(getpid())")
+                try await Task.sleep(for: .seconds(hold))
+            }
+            // The 14-day interruption counts the Trends page adds once it is shown.
+            let trendStart = ContinuousClock.now
+            let beforeTrend = footprintMB()
+            await stats.loadInterruptionTrend(model: model)
+            let trend = trendStart.duration(to: .now)
+            print(String(format: "STATS_TREND days=%d ms=%.0f footprintMB before=%.1f after=%.1f", stats.interruptionTrend?.count ?? 0,
+                         Double(trend.components.seconds) * 1000 + Double(trend.components.attoseconds) / 1e15, beforeTrend, footprintMB()))
             let again = ContinuousClock.now
             await stats.recompute(model: model, range: DateRangeSelection(kind: .last7, anchor: Date()))
             let second = again.duration(to: .now)
@@ -281,6 +295,14 @@ import WebKit
         try await main("act-week-closed", .activities, kind: .last7) { $0.showsInspector = false }
 
         try await main("trends", .stats, kind: .last7, sizes: [wide, standard, small], settle: 3500)
+        // The whole page at both ends of the width, then with a day pointed at in the daily bars and in the interruptions.
+        let tall = [NSSize(width: 1460, height: 2500), NSSize(width: small.width, height: 3700)]
+        try await main("trends-long", .stats, kind: .last7, sizes: tall, settle: 9000)
+        StatsView.previewHover = calendar.startOfDay(for: calendar.date(byAdding: .day, value: -2, to: Date())!)
+        InterruptionTrendCard.previewHover = StatsView.previewHover
+        try await main("trends-hover", .stats, kind: .last7, sizes: [tall[0]], settle: 9000)
+        StatsView.previewHover = nil
+        InterruptionTrendCard.previewHover = nil
         try await main("trends-30", .stats, kind: .last30, settle: 3500)
         // Trends before its numbers: shot almost at once, the cards in their loading dress.
         try await main("trends-loading", .stats, kind: .last7, sizes: [wide, small], settle: 30)

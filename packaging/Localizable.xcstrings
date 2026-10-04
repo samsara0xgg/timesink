@@ -10210,6 +10210,228 @@
           }
         }
       }
+    },
+    "最近 4 周": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last 4 weeks"
+          }
+        }
+      }
+    },
+    "每周，左边最早": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weekly, oldest on the left"
+          }
+        }
+      }
+    },
+    "最近一周": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Latest week"
+          }
+        }
+      }
+    },
+    "与前一周差": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "vs previous week"
+          }
+        }
+      }
+    },
+    "前两周还没有记录，没法比较。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing was recorded in the two weeks before, so there is nothing to compare with."
+          }
+        }
+      }
+    },
+    "最近两周和前两周差不多。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The last two weeks are about the same as the two before."
+          }
+        }
+      }
+    },
+    "最近两周比前两周多记录了 %@，主要是%@。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In the last two weeks you recorded %1$@ more than the two before, mostly %2$@."
+          }
+        }
+      }
+    },
+    "最近两周比前两周多记录了 %@。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In the last two weeks you recorded %@ more than the two before."
+          }
+        }
+      }
+    },
+    "最近两周比前两周少记录了 %@，主要是%@。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In the last two weeks you recorded %1$@ less than the two before, mostly %2$@."
+          }
+        }
+      }
+    },
+    "最近两周比前两周少记录了 %@。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In the last two weeks you recorded %@ less than the two before."
+          }
+        }
+      }
+    },
+    "每天的打断": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Interruptions per day"
+          }
+        }
+      }
+    },
+    "近 14 天": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last 14 days"
+          }
+        }
+      }
+    },
+    "均 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "avg %@"
+          }
+        }
+      }
+    },
+    "%@ · %lld 次打断": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@ · %lld interruption"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@ · %lld interruptions"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "打开 %@ 的活动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open activities for %@"
+          }
+        }
+      }
+    },
+    "上一期": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "the previous period"
+          }
+        }
+      }
+    },
+    "%@ 比%@多了 %@；%@ 少了 %@。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ %3$@ more than %2$@; %4$@ %5$@ less."
+          }
+        }
+      }
+    },
+    "%@ 比%@多了 %@。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ %3$@ more than %2$@."
+          }
+        }
+      }
+    },
+    "%@ 比%@少了 %@。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ %3$@ less than %2$@."
+          }
+        }
+      }
+    },
+    "上一天": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "the day before"
+          }
+        }
+      }
+    },
+    "上一周": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "the week before"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
