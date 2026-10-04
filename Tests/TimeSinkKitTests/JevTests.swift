@@ -154,7 +154,9 @@ final class JevTests: XCTestCase {
         XCTAssertNil(hit("x", title: "clean"))
         XCTAssertEqual(hit("x", domain: "linkedin.com"), "jobSearch")
         XCTAssertEqual(hit("x", domain: "boards.greenhouse.io"), "jobSearch")
-        XCTAssertEqual(hit("x", title: "RBC Interview"), "jobSearch")
+        XCTAssertEqual(hit("x", title: "Internship offer"), "jobSearch")
+        XCTAssertNil(hit("x", title: "RBC Interview"), "no company names in the rule")
+        XCTAssertNil(JevRules.match(appBundleID: "x", domain: "linkedin.com", url: nil, title: nil, document: nil, job: false))
         XCTAssertEqual(hit("com.alllllenshi.TimeSink"), "softwareDev")
         XCTAssertEqual(hit("com.nousresearch.hermes"), "softwareDev")
         XCTAssertEqual(hit("x", title: "Malibu Workshop"), "softwareDev")
@@ -180,6 +182,14 @@ final class JevTests: XCTestCase {
         try store.saveVerdict(JevVerdict(appBundleID: s.appBundleID, domain: s.domain ?? "", title: s.title ?? "", document: s.document ?? "",
                                          categoryID: category, prob: prob, runnerUp: "misc", runnerUpProb: 0.05,
                                          promptVersion: version, at: Date(), source: "jev"))
+    }
+
+    func testJobRuleIsJevsAlone() throws {
+        let item = try SpanStore(db).insert(span(domain: "linkedin.com", title: "My Resume", url: "https://linkedin.com/in/x"))
+        XCTAssertEqual(makeResolver(jev: true).categoryID(for: item), "jobSearch")
+        let off = makeResolver(jev: false)
+        XCTAssertNotEqual(off.categoryID(for: item), "jobSearch")
+        XCTAssertFalse(off.explanation(for: item).contains("求职"))
     }
 
     func testEachTierBeatsTheNext() throws {

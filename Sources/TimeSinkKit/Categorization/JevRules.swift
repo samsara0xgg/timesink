@@ -28,7 +28,6 @@ public enum JevRules {
         #"\bCL\b"#, "cover.?letter", "resume", "简历", "求职", "co-?op", #"\bJD\b"#, "岗位", "实习", "internship", "面试",  // l10n: data
         "myworkdayjobs", "learninginmotion", "sapsf", "bamboohr", "icims", "ashbyhq", "greenhouse", "teamtailor",
         #"lever\.co"#, #"webflow\.jobs"#, #"gate\.aon"#, "linkedin",
-        #"\bBCT\b"#, #"\bBCI\b"#, #"\bRBC\b"#, "quadreal", "seymour", "goverlytics", "klue",
     ]
     private static let jobRegex = try! NSRegularExpression(pattern: jobTerms.joined(separator: "|"), options: .caseInsensitive)
     private static let jobRegexWithoutResume = try! NSRegularExpression(
@@ -61,9 +60,10 @@ public enum JevRules {
         return Hit(categoryID: "jobSearch", reason: .job(String(haystack[range])))
     }
 
-    public static func match(appBundleID: String, domain: String?, url: String?, title: String?, document: String?) -> Hit? {
+    /// `job: false` leaves the job keyword rule out: it is Jev's, and only applies when Jev is on.
+    public static func match(appBundleID: String, domain: String?, url: String?, title: String?, document: String?, job withJob: Bool = true) -> Hit? {
         let domain = domain ?? "", url = url ?? "", title = title ?? "", document = document ?? ""
-        if let hit = job(appBundleID: appBundleID, domain: domain, url: url, title: title, document: document) { return hit }
+        if withJob, let hit = job(appBundleID: appBundleID, domain: domain, url: url, title: title, document: document) { return hit }
         let trimmed = title.trimmingCharacters(in: .whitespaces)
         if appBundleID == "com.google.Chrome", blankTabTitles.contains(trimmed), domain.isEmpty {
             return Hit(categoryID: "utilities", reason: .blankTab)

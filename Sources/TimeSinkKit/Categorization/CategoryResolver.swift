@@ -158,7 +158,7 @@ public final class CategoryResolver {
             let shots = jevEnabled && jevScreenText ? try categoryStore.captureVerdictsBySpan() : [:]
             context = ClassificationContext(domainMap: domainMap, appMap: appMap, urlRules: sortedRules,
                                              titleRules: titleRules, userVerdicts: user, jevVerdicts: jev, captureVerdicts: shots,
-                                             categoryIDs: Set(categories.map(\.id)))
+                                             categoryIDs: Set(categories.map(\.id)), jevEnabled: jevEnabled)
             memo.removeAll(keepingCapacity: true)
         } catch {
             logger.error("CategoryResolver.refresh failed, keeping previous context: \(String(describing: error), privacy: .public)")
@@ -285,7 +285,7 @@ public final class CategoryResolver {
         }
         let preview = ClassificationContext(domainMap: domains, appMap: apps, urlRules: context.urlRules, titleRules: titles,
                                             userVerdicts: context.userVerdicts, jevVerdicts: context.jevVerdicts, captureVerdicts: context.captureVerdicts,
-                                            categoryIDs: context.categoryIDs)
+                                            categoryIDs: context.categoryIDs, jevEnabled: context.jevEnabled)
         var memo: [MemoKey: String] = [:]
         return items.filter { item in
             guard reachable(item.span) else { return false }
@@ -353,7 +353,8 @@ public final class CategoryResolver {
 
     /// The job keyword rule, which outranks the user's app mapping.
     nonisolated private static func jobHit(for span: Span, context: ClassificationContext) -> JevRules.Hit? {
-        JevRules.job(appBundleID: span.appBundleID, domain: span.domain, url: span.url, title: span.title, document: span.document)
+        guard context.jevEnabled else { return nil }
+        return JevRules.job(appBundleID: span.appBundleID, domain: span.domain, url: span.url, title: span.title, document: span.document)
             .flatMap { context.categoryIDs?.contains($0.categoryID) ?? true ? $0 : nil }
     }
     /// The verdict of the span's screenshot, for an AI app with no conversation open.
@@ -372,7 +373,7 @@ public final class CategoryResolver {
 
     nonisolated private static func automaticReason(for span: Span, context: ClassificationContext) -> Automatic? {
         func exists(_ id: String) -> Bool { context.categoryIDs?.contains(id) ?? true }
-        if let hit = JevRules.match(appBundleID: span.appBundleID, domain: span.domain, url: span.url, title: span.title, document: span.document),
+        if let hit = JevRules.match(appBundleID: span.appBundleID, domain: span.domain, url: span.url, title: span.title, document: span.document, job: context.jevEnabled),
            exists(hit.categoryID) {
             if hit.reason == .assistantIdle, let id = span.id, let shot = context.captureVerdicts[id], exists(shot.categoryID) {
                 return .jev(shot.prob, screenText: true)
