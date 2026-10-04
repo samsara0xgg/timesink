@@ -7,6 +7,7 @@ actor StatsWorker {
         let trend: [Int?]
         let data: HeatmapData
         let occurrences: [Int]
+        let fourWeeks: FourWeekComparison
     }
     struct Result: Sendable {
         let summary: StatsSummary
@@ -16,7 +17,12 @@ actor StatsWorker {
     private var classification: CategoryResolver.Snapshot?
     private var editVersion = -1
     private var dataVersion = -1
+    /// The spans of recent short windows (a day or two), for the sidebar and
+    /// the day overview. A wider window is held only while one call works on
+    /// it: the Trends numbers are kept as summaries, never as spans.
     private var windows: [DateInterval: [CategorizedSpan]] = [:]
+    private static let cachedWindowLimit: TimeInterval = 2 * 86400 + 3600
+    private func dropWideWindows() { windows = windows.filter { $0.key.duration <= Self.cachedWindowLimit } }
 
     func dailyPulses(store: SpanStore, classification seed: CategoryResolver.Snapshot,
                      categories: [String: Category], editVersion: Int, dataVersion: Int,
@@ -33,15 +39,21 @@ actor StatsWorker {
     func compute(store: SpanStore, classification seed: CategoryResolver.Snapshot,
                  categories: [String: Category], editVersion: Int, dataVersion: Int, range: DateRangeSelection,
                  includeHeavy: Bool, now: Date, calendar: Calendar, writes: [(version: Int, from: Date)] = []) throws -> Result {
+        defer { dropWideWindows() }
         try prepare(classification: seed, editVersion: editVersion, dataVersion: dataVersion, writes: writes)
-        let current = try items(store: store, in: range.interval)
-        let previous = try items(store: store, in: range.previousInterval)
-        try Task.checkCancellation()
-        let summary = StatsSummary(items: current, previous: previous, range: range,
+        let summary: StatsSummary
+        do {
+            let current = try items(store: store, in: range.interval)
+            let previous = try items(store: store, in: range.previousInterval)
+            try Task.checkCancellation()
+            summary = StatsSummary(items: current, previous: previous, range: range,
                                    categories: categories, now: now, calendar: calendar)
+        }
         var heavy: Heavy?
         if includeHeavy {
             let window = DateRangeSelection(kind: .last30, anchor: now).interval
+            // Only the lookback is still needed; the two windows above can go first.
+            windows = windows.filter { $0.key == window }
             let lookback = try items(store: store, in: window)
             try Task.checkCancellation()
             let trend = Aggregator.dailyPulses(items: lookback, categories: categories,
@@ -54,7 +66,10 @@ actor StatsWorker {
                 guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
                 day = next
             }
-            heavy = Heavy(trend: trend, data: data, occurrences: occurrences)
+            let fourWeeks = FourWeekComparison(
+                daily: Aggregator.stackedSeries(lookback, bucket: .day, calendar: calendar),
+                today: now, categories: categories, calendar: calendar)
+            heavy = Heavy(trend: trend, data: data, occurrences: occurrences, fourWeeks: fourWeeks)
         }
         try Task.checkCancellation()
         return Result(summary: summary, heavy: heavy)
@@ -63,6 +78,7 @@ actor StatsWorker {
     func categoryRows(store: SpanStore, classification seed: CategoryResolver.Snapshot,
                       categories: [String: Category], editVersion: Int, dataVersion: Int,
                       interval: DateInterval, writes: [(version: Int, from: Date)] = []) throws -> [StatsModel.RankingRow] {
+        defer { dropWideWindows() }
         try prepare(classification: seed, editVersion: editVersion, dataVersion: dataVersion, writes: writes)
         let totals = Aggregator.durationByCategory(try items(store: store, in: interval))
         try Task.checkCancellation()
@@ -106,27 +122,40 @@ actor StatsWorker {
     /// Distinct apps and sites still uncategorized in `interval`.
     func uncategorizedCount(store: SpanStore, classification seed: CategoryResolver.Snapshot,
                             editVersion: Int, dataVersion: Int, interval: DateInterval) throws -> Int {
+        defer { dropWideWindows() }
         try prepare(classification: seed, editVersion: editVersion, dataVersion: dataVersion)
         return Set(try items(store: store, in: interval).lazy
             .filter { $0.categoryID == "uncategorized" }.map { $0.span.domain ?? $0.span.appBundleID }).count
     }
 
+    /// The window's spans, classified and cut down to what the Stats numbers
+    /// read: the title, address and document are left behind once the span is
+    /// classified, and the repeated names share one string each.
     private func items(store: SpanStore, in interval: DateInterval) throws -> [CategorizedSpan] {
         if let cached = windows[interval] { return cached }
         try Task.checkCancellation()
-        let spans = try store.spans(overlapping: interval)
         var result: [CategorizedSpan] = []
-        result.reserveCapacity(spans.count)
-        for (index, span) in spans.enumerated() {
-            if index.isMultiple(of: 128) { try Task.checkCancellation() }
+        var names: [String: String] = [:]
+        func shared(_ string: String) -> String { names[string] ?? { names[string] = string; return string }() }
+        var count = 0
+        try store.forEachSpan(overlapping: interval) { span in
+            count += 1
+            if count.isMultiple(of: 128) { try Task.checkCancellation() }
             var clipped = span
             clipped.start = max(span.start, interval.start)
             clipped.end = min(span.end, interval.end)
-            result.append(CategorizedSpan(span: clipped, categoryID: classification!.categoryID(for: clipped)))
+            let category = classification!.categoryID(for: clipped)
+            clipped.title = nil
+            clipped.url = nil
+            clipped.document = nil
+            clipped.appBundleID = shared(clipped.appBundleID)
+            clipped.appName = shared(clipped.appName)
+            clipped.domain = clipped.domain.map(shared)
+            result.append(CategorizedSpan(span: clipped, categoryID: shared(category)))
         }
+        result.sort { $0.span.start < $1.span.start }
         if windows.count >= 4 { windows.removeAll() }
         windows[interval] = result
         return result
     }
-
 }

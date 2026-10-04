@@ -29,6 +29,8 @@ final class StatsModel {
         var isDomain = false
     }
 
+    nonisolated static let remainderID = "__timesink_distribution_remainder__"
+
     /// The ranking may be shortened; the chart's denominator must never be.
     nonisolated static func distributionRows(_ rows: [RankingRow], limit: Int = 10) -> [RankingRow] {
         let ordered = rows.filter { $0.seconds > 0 }.sorted {
@@ -38,9 +40,16 @@ final class StatsModel {
         guard ordered.count > visibleCount else { return ordered }
         let remainder = ordered.dropFirst(visibleCount)
         return Array(ordered.prefix(visibleCount)) + [RankingRow(
-            id: "__timesink_distribution_remainder__", name: String(localized: "其余（\(remainder.count) 项）"),
+            id: remainderID, name: String(localized: "其余（\(remainder.count) 项）"),
             colorHex: "#98989D", seconds: remainder.reduce(0) { $0 + $1.seconds })]
     }
+
+    struct InterruptionDay: Identifiable, Sendable, Equatable {
+        var id: Date { day }
+        let day: Date
+        let count: Int
+    }
+    static let interruptionTrendDays = 14
 
     static let streakThreshold = 70
     private var summary = StatsSummary()
@@ -62,6 +71,8 @@ final class StatsModel {
     var appRows: [RankingRow] { summary.appRows }
     var categoryRows: [RankingRow] { summary.categoryRows }
     var categoryDeltas: [String: TimeInterval] { summary.categoryDeltas }
+    var appDeltas: [String: TimeInterval] { summary.appDeltas }
+    var appMovers: AppMovers { summary.appMovers }
 
     var scoreTrend: [Int?] = []
     var trendStreak = 0
@@ -69,6 +80,10 @@ final class StatsModel {
     var heatmapData: HeatmapData?
     var heatmapInteraction = HeatmapInteraction()
     var heatmapOccurrences = Array(repeating: 0, count: 7)
+    /// The last 28 days by week, whatever range is shown.
+    private(set) var fourWeeks: FourWeekComparison?
+    /// Interruptions on each of the last 14 days, today last; nil until counted.
+    private(set) var interruptionTrend: [InterruptionDay]?
     private(set) var lastHeavyUpdate: Date?
     private(set) var isLoading = false
     private(set) var hasLoaded = false
@@ -82,6 +97,10 @@ final class StatsModel {
     @ObservationIgnored private var lastHeavyEditVersion = -1
     @ObservationIgnored private var lastHeavyDay: Date?
     @ObservationIgnored private var generation = 0
+    /// Counts for days before yesterday, which a tracking write cannot change;
+    /// dropped when an edit, the rule or the date changes.
+    @ObservationIgnored private var settledCounts: (edit: Int, rule: InterruptionRule, today: Date, counts: [Date: Int])?
+    @ObservationIgnored private var trendKey: (version: Int, edit: Int, rule: InterruptionRule, today: Date)?
 
     func sidebarRows(model: AppModel) async throws -> [RankingRow] {
         try await worker.categoryRows(store: model.spanStore, classification: model.resolver.snapshot(),
@@ -134,6 +153,7 @@ final class StatsModel {
                     }
                 }
                 heatmapOccurrences = heavy.occurrences
+                fourWeeks = heavy.fourWeeks
                 lastHeavyDay = day
                 lastHeavyEditVersion = editVersion
                 lastHeavyUpdate = now
@@ -143,5 +163,32 @@ final class StatsModel {
         } catch {
             loadError = String(localized: "统计暂时无法读取，请重试。")
         }
+    }
+
+    /// Interruptions per day for the last 14 days, from the same per-day
+    /// classification the radar reads. Only the counts are kept.
+    func loadInterruptionTrend(model: AppModel) async {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let (version, edit, rule) = (model.dataVersion, model.dataEditVersion, model.interruptionRule)
+        if let key = trendKey, key == (version, edit, rule, today), interruptionTrend != nil { return }
+        var settled = settledCounts.flatMap { $0.edit == edit && $0.rule == rule && $0.today == today ? $0.counts : nil } ?? [:]
+        var days: [InterruptionDay] = []
+        for offset in (0..<Self.interruptionTrendDays).reversed() {
+            guard let start = calendar.date(byAdding: .day, value: -offset, to: today),
+                  let interval = calendar.dateInterval(of: .day, for: start) else { continue }
+            let count: Int
+            if offset >= 2, let known = settled[start] {
+                count = known
+            } else {
+                count = await model.interruptions(for: interval).interruptions.count
+                if offset >= 2 { settled[start] = count }
+            }
+            guard !Task.isCancelled else { return }
+            days.append(InterruptionDay(day: start, count: count))
+        }
+        settledCounts = (edit, rule, today, settled)
+        trendKey = (version, edit, rule, today)
+        if interruptionTrend != days { interruptionTrend = days }
     }
 }

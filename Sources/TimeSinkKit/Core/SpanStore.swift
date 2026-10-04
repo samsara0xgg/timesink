@@ -47,6 +47,16 @@ public final class SpanStore: Sendable {
         return spans.sorted { $0.start < $1.start }
     }
 
+    /// `spans(overlapping:)` one row at a time and in no particular order, for
+    /// a caller that keeps only part of each span and so never holds the
+    /// titles and addresses of the whole window at once.
+    public func forEachSpan(overlapping interval: DateInterval, _ body: (Span) throws -> Void) throws {
+        try writer.read { db in
+            let cursor = try Span.fetchCursor(db, sql: Self.overlapSQL, arguments: [interval.end, interval.start])
+            while let span = try cursor.next() { try body(span) }
+        }
+    }
+
     // MARK: - Day-bucketed aggregation
 
     /// One `(day bucket, classification tuple)` total from
