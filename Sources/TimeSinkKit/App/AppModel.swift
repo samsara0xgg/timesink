@@ -47,6 +47,8 @@ public final class AppModel {
     let popoverShortcut = PopoverShortcut()
     /// The first-run popover tour; lives here because the popover's content is rebuilt on every open.
     let menuTour = MenuTour()
+    /// The contextual tips that follow the tour.
+    let tips = ContextualTips()
     /// The status item's frame in screen coordinates, once the menu bar label has resolved its button.
     @ObservationIgnored var statusButtonFrame: (@MainActor () -> CGRect?)?
     let returnShortcut = PopoverShortcut(id: 2)

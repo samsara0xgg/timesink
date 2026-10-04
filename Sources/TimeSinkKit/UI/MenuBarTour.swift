@@ -20,6 +20,7 @@ import AppKit
         index = 0
         // One spotlight alone is not a tour.
         guard steps.count > 1 else { end(); return }
+        Task { await HoverTip.tourRan.donate() }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard event.keyCode == 53 else { return event }
             MainActor.assumeIsolated { self?.end() }
@@ -27,7 +28,12 @@ import AppKit
         }
     }
 
+    /// Debug demo: leave the hover tip for after the tour, to be seen.
+    nonisolated(unsafe) static var keepsHoverTip = false
+
     func next() {
+        // The hover step showed what the hover tip would say.
+        if current == .row, !Self.keepsHoverTip { HoverTip().invalidate(reason: .actionPerformed) }
         if index + 1 < steps.count { index += 1 } else { end() }
     }
 
@@ -58,7 +64,7 @@ struct TourTargets: PreferenceKey {
 extension View {
     /// Marks the view a tour step can point at.
     func tourTarget(_ target: MenuTour.Target, if enabled: Bool = true) -> some View {
-        anchorPreference(key: TourTargets.self, value: .bounds) { enabled ? [target: $0] : [:] }
+        transformAnchorPreference(key: TourTargets.self, value: .bounds) { if enabled { $0[target] = $1 } }
     }
 }
 
@@ -73,6 +79,7 @@ struct MenuTourModifier: ViewModifier {
     func body(content: Content) -> some View {
         let tour = model.menuTour
         content
+            .modifier(ContextualTipsModifier(model: model, drillOpen: drillOpen))
             .onPreferenceChange(TourTargets.self) { available = Set($0.keys) }
             .overlayPreferenceValue(TourTargets.self) { anchors in
                 GeometryReader { proxy in

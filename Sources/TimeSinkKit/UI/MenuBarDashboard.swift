@@ -899,6 +899,7 @@ struct MenuBarDashboardView: View {
                 Button { openActivities(category: entry.id) } label: { categoryRow(entry, nameWidth: nameWidth) }
                     .buttonStyle(HoverRowStyle())
                     .tourTarget(.row, if: entry.id == shown.first?.id)
+                    .tipTarget(.hover, if: entry.id == shown.first?.id).tipTarget(.recategorize, if: entry.id == "uncategorized")
                     .background(shownKind == .category(entry.id) ? Design.hoverFill : .clear,
                                 in: RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous))
                     .drillDown(host: panelHost, kind: .category(entry.id), hostWindow: hostWindow, anchorView: anchorView,
@@ -1060,7 +1061,7 @@ struct MenuBarDashboardView: View {
     private var footer: some View {
         HStack(spacing: 2) {
             footerButton("macwindow", label: "打开 TimeSink", help: "打开 TimeSink ⌘O", action: openToday)
-                .tourTarget(.open)
+                .tourTarget(.open).tipTarget(.review)
                 .keyboardShortcut("o")
             footerButton("gearshape", label: "设置…", help: "设置… ⌘,", action: showSettings)
                 .keyboardShortcut(",")
@@ -1099,7 +1100,7 @@ struct MenuBarDashboardView: View {
     }
 
     private func openToday() {
-        model.menuTour.end()
+        model.menuTour.end(); model.tips.mainWindowOpened()
         model.openToday()
         openWindow(id: "main"); AppWindow.main.bringForward()
         NSApp.activate(ignoringOtherApps: true)

@@ -145,6 +145,7 @@ public final class CategoryStore: Sendable {
                 arguments: [domain, categoryID, Date()]
             )
         }
+        NotificationCenter.default.post(name: .userRecategorized, object: nil)
     }
 
     /// Upserts a user override for `bundleID`. Always overwrites any existing row.
@@ -161,6 +162,7 @@ public final class CategoryStore: Sendable {
                 arguments: [bundleID, categoryID]
             )
         }
+        NotificationCenter.default.post(name: .userRecategorized, object: nil)
     }
 
     public func addUserURLRule(pattern: String, categoryID: String, priority: Int) throws {

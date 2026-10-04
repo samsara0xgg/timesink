@@ -10188,6 +10188,26 @@
           }
         }
       }
+    },
+    "分错了？点一下改，以后会记住": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wrong? Click to change it, and it will remember"
+          }
+        }
+      }
+    },
+    "昨天的完整记录在这里": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yesterday's full record is here"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -228,6 +228,7 @@ extension CategoryStore {
                     promptVersion = '', at = excluded.at, source = 'user'
                 """, arguments: [key.appBundleID, key.domain, key.title, key.document, categoryID, Date()])
         }
+        NotificationCenter.default.post(name: .userRecategorized, object: nil)
     }
 
     /// Takes back a user verdict; Jev is asked again on its next run.

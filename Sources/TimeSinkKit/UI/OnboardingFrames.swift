@@ -1,13 +1,25 @@
 #if DEBUG
 import AppKit
 import SwiftUI
+import TipKit
 
 /// `--onboarding-frames <outdir>`: the welcome card's intro at progress 0, 0.1 ... 1,
-/// the settled card with the first-record row, the flight to the menu bar (`fly-*`)
-/// and the popover tour (`tour-*`), as PNGs. No visible window, no activation, a
+/// the settled card with the first-record row, the flight to the menu bar (`fly-*`),
+/// the popover tour (`tour-*`) and the three contextual tips (`tip-*`), as PNGs. No visible window, no activation, a
 /// fixture model, never the system's permissions.
 public enum OnboardingFrames {
+    /// TipKit in a datastore of its own, never the app's: a throwaway directory per process.
+    @MainActor static func configureTips() {
+        let store = FileManager.default.temporaryDirectory.appendingPathComponent("timesink-tips-\(UUID().uuidString)", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: store, withIntermediateDirectories: true)
+            try Tips.configure([.datastoreLocation(.url(store))])
+        } catch { print("TipKit: \(error)") }
+    }
+
     @MainActor public static func run(outdir: String) {
+        configureTips()
+        MenuTour.keepsHoverTip = true
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         app.appearance = NSAppearance(named: .aqua)
@@ -28,6 +40,7 @@ public enum OnboardingFrames {
                                        to: dir.appendingPathComponent(String(format: "fly-%03d.png", Int((t * 100).rounded()))))
                 }
                 try await tourFrames(model, in: dir)
+                try await tipFrames(model, in: dir)
             } catch { print("Frames failed: \(error)"); exit(1) }
             exit(0)
         }
@@ -38,6 +51,13 @@ public enum OnboardingFrames {
     @MainActor static func liveModel() throws -> AppModel {
         let model = try RefinedPreview.fixture()
         model.accessibilityGranted = true
+        // Some time nobody has named, so the popover has something uncategorized to show.
+        let start = Date().addingTimeInterval(-9 * 60)
+        _ = try model.spanStore.insert(Span(start: start, end: start.addingTimeInterval(6 * 60), appBundleID: "app.unnamed.demo", appName: "Scratchpad",
+                                            title: "Untitled", url: nil, domain: nil))
+        // A first two-hour day lies behind us: yesterday's record is worth a pointer.
+        model.settings.set("firstLongDay", String(Calendar.current.startOfDay(for: Date().addingTimeInterval(-86400)).timeIntervalSince1970))
+        model.dataChanged()
         model.engine.windowSampleProvider = { now in
             Sample(timestamp: now, appBundleID: "com.apple.Safari", appName: "Safari", windowTitle: nil, url: nil)
         }
@@ -70,6 +90,30 @@ public enum OnboardingFrames {
         host.cacheDisplay(in: host.bounds, to: bitmap)
         guard let png = bitmap.representation(using: .png, properties: [:]) else { throw CocoaError(.fileWriteUnknown) }
         try png.write(to: url)
+    }
+
+    /// The popover with each tip, in the order they come: the hover tip, then
+    /// (once the hover opened) the recategorize tip, then (once closed) the review tip.
+    @MainActor private static func tipFrames(_ model: AppModel, in dir: URL) async throws {
+        for (index, kind) in ContextualTips.Kind.allCases.enumerated() {
+            let window = NSWindow(contentRect: NSRect(x: -20000, y: -20000, width: 340, height: 900), styleMask: .borderless, backing: .buffered, defer: false)
+            window.appearance = NSAppearance(named: .aqua)
+            window.ignoresMouseEvents = true
+            let host = NSHostingView(rootView: MenuBarDashboardView(model: model).background(Design.floor))
+            window.contentView = host
+            window.orderFrontRegardless()
+            try await Task.sleep(for: .seconds(2.5))
+            let size = CGSize(width: 340, height: host.fittingSize.height)
+            window.setContentSize(size)
+            try await Task.sleep(for: .milliseconds(600))
+            guard model.tips.eligible.contains(kind) else {
+                print("tip \(kind): eligible \(model.tips.eligible) status \(ContextualTips.tip(kind).status) rows \(HoverTip.rowsShown) item \(RecategorizeTip.itemShown) due \(ReviewTip.due)")
+                window.orderOut(nil); throw CocoaError(.fileReadUnknown) }
+            try capture(host, window: window, size: size, scale: 2, to: dir.appendingPathComponent("tip-\(index + 1).png"))
+            window.orderOut(nil)
+            model.tips.close(kind)
+            try await Task.sleep(for: .milliseconds(300))
+        }
     }
 
     /// The popover under each tour step. One window, so the spotlight moves as it would.
@@ -144,9 +188,6 @@ public enum OnboardingDemo {
             window.isReleasedWhenClosed = false
             popover.behavior = .transient
             popover.delegate = self
-            let controller = NSHostingController(rootView: MenuBarDashboardView(model: model).dynamicTypeSize(...DynamicTypeSize.xxLarge))
-            controller.sizingOptions = .preferredContentSize
-            popover.contentViewController = controller
             if let button = item.button {
                 button.image = NSImage(systemSymbolName: "hourglass", accessibilityDescription: "TimeSink")
                 button.target = self
@@ -178,15 +219,25 @@ public enum OnboardingDemo {
 
         func openPopover() {
             guard let button = item.button else { return }
+            // Built afresh on every open, as the menu bar's popover is.
+            let controller = NSHostingController(rootView: MenuBarDashboardView(model: model).dynamicTypeSize(...DynamicTypeSize.xxLarge))
+            controller.sizingOptions = .preferredContentSize
+            popover.contentViewController = controller
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         }
 
-        @objc func replay() { show() }
+        /// A new process: TipKit's datastore cannot be reset after it is configured.
+        @objc func replay() {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: CommandLine.arguments[0])
+            process.arguments = Array(CommandLine.arguments.dropFirst())
+            try? process.run()
+            NSApp.terminate(nil)
+        }
 
         func show() {
             popover.performClose(nil)
             model.menuTour.end()
-            model.settings.set("menuTourShown", "false")
             window.contentView = NSHostingView(rootView: OnboardingView(model: model, demo: true, onContinue: { [weak self] from, _ in
                 self?.window.orderOut(nil)
                 self?.model.finishOnboarding(from: from, launchAtLogin: false)
@@ -199,6 +250,8 @@ public enum OnboardingDemo {
     @MainActor private static var host: Host?
 
     @MainActor public static func run() {
+        OnboardingFrames.configureTips()
+        MenuTour.keepsHoverTip = true
         let app = NSApplication.shared
         do { host = Host(model: try OnboardingFrames.liveModel()) } catch { print("Demo failed: \(error)"); exit(1) }
         app.delegate = host
