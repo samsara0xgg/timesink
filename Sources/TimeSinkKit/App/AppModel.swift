@@ -45,6 +45,10 @@ public final class AppModel {
     /// Selected Settings window tab -- default `.general`; notification
     /// routing (`.settingsBudget`) jumps this to `.budget`.
     let popoverShortcut = PopoverShortcut()
+    /// The first-run popover tour; lives here because the popover's content is rebuilt on every open.
+    let menuTour = MenuTour()
+    /// The status item's frame in screen coordinates, once the menu bar label has resolved its button.
+    @ObservationIgnored var statusButtonFrame: (@MainActor () -> CGRect?)?
     let returnShortcut = PopoverShortcut(id: 2)
     /// F3: the window 回到刚才 would bring back; set only when it changes.
     var returnOffer: ReturnTracker.Origin?

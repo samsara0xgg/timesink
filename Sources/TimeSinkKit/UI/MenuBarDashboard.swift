@@ -567,6 +567,7 @@ struct MenuBarDashboardView: View {
         let kind = kind
         VStack(alignment: .leading, spacing: Design.Space.sm) {
             statusRow(kind)
+                .tourTarget(.status, if: kind == .recording || kind == .morning)
             if let away = model.awayOffer, kind != .focus {
                 AwayPrompt(model: model, interval: away).transition(transition)
             }
@@ -617,6 +618,7 @@ struct MenuBarDashboardView: View {
         }
         .padding(Design.Space.sm)
         .frame(width: width)
+        .modifier(MenuTourModifier(model: model, drillOpen: shownKind != nil))
         .environment(\.locale, model.displayLocale)
         .environment(\.calendar, model.displayCalendar)
         .coordinateSpace(.named(DrillSpace.name))
@@ -896,6 +898,7 @@ struct MenuBarDashboardView: View {
             ForEach(shown, id: \.id) { entry in
                 Button { openActivities(category: entry.id) } label: { categoryRow(entry, nameWidth: nameWidth) }
                     .buttonStyle(HoverRowStyle())
+                    .tourTarget(.row, if: entry.id == shown.first?.id)
                     .background(shownKind == .category(entry.id) ? Design.hoverFill : .clear,
                                 in: RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous))
                     .drillDown(host: panelHost, kind: .category(entry.id), hostWindow: hostWindow, anchorView: anchorView,
@@ -1057,6 +1060,7 @@ struct MenuBarDashboardView: View {
     private var footer: some View {
         HStack(spacing: 2) {
             footerButton("macwindow", label: "打开 TimeSink", help: "打开 TimeSink ⌘O", action: openToday)
+                .tourTarget(.open)
                 .keyboardShortcut("o")
             footerButton("gearshape", label: "设置…", help: "设置… ⌘,", action: showSettings)
                 .keyboardShortcut(",")
@@ -1095,6 +1099,7 @@ struct MenuBarDashboardView: View {
     }
 
     private func openToday() {
+        model.menuTour.end()
         model.openToday()
         openWindow(id: "main"); AppWindow.main.bringForward()
         NSApp.activate(ignoringOtherApps: true)

@@ -8,7 +8,7 @@ import SwiftUI
 /// the rest rises into place. Everything on screen is a function of one
 /// `progress` in 0...1; a click, Return or Space jumps to the end.
 struct OnboardingView: View {
-    static let size = CGSize(width: 500, height: 570)
+    static let size = CGSize(width: 500, height: 590)
     private static let duration = 3.0
     private static let hourglassY: CGFloat = 64   // top padding 30 + half of the 68 pt glyph slot
     private static let titleY: CGFloat = 122      // the headline's centre once settled
@@ -19,9 +19,10 @@ struct OnboardingView: View {
     let model: AppModel
     var checksPermissions = true
     var preview: Preview?
-    /// Debug `--onboarding-demo`: permissions are simulated, "继续" calls `onContinue`.
+    /// Debug `--onboarding-demo`: permissions are simulated, "继续" calls `onContinue`
+    /// with where the hourglass is on screen and whether to start at login.
     var demo = false
-    var onContinue: (() -> Void)?
+    var onContinue: ((_ from: CGPoint?, _ launchAtLogin: Bool) -> Void)?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var axState: PermissionState = .denied
@@ -32,6 +33,8 @@ struct OnboardingView: View {
     @State private var introDone = false
     @State private var pulse = false
     @State private var demoStart = Date()
+    @State private var launchAtLogin = true
+    @State private var window: NSWindow?
 
     private var ax: PermissionState { preview.map { $0.live == nil ? .denied : .granted } ?? axState }
 
@@ -101,11 +104,14 @@ struct OnboardingView: View {
             .animation(.smooth, value: ax == .granted)
             .padding(.top, 22).opacity(rest).offset(y: 14 * (1 - rest))
             Spacer(minLength: 16)
+            Toggle(isOn: $launchAtLogin) { Text("登录时自动启动").font(.body).foregroundStyle(Design.ink2) }
+                .toggleStyle(.checkbox).frame(maxWidth: .infinity, alignment: .leading).padding(.bottom, 10)
+                .opacity(rest).offset(y: 14 * (1 - rest)).allowsHitTesting(p >= 1)
             HStack {
                 Text(ax == .granted ? "可选项以后都能在设置里打开。" : "打开「辅助功能」后才能开始记录。")
                     .font(.body).foregroundStyle(Design.ink2)
                 Spacer()
-                Button("继续") { if let onContinue { onContinue() } else { dismiss() } }
+                Button("继续", action: finish)
                     .glassProminentButton().controlSize(.large).keyboardShortcut(p < 1 ? nil : .defaultAction)
                     .disabled(ax != .granted)
             }
@@ -114,6 +120,7 @@ struct OnboardingView: View {
         }
         .padding(.horizontal, 32).padding(.top, 30).padding(.bottom, 24).frame(width: Self.size.width, height: Self.size.height)
         .background(WorkspaceBackground())
+        .background(WindowProbe { window = $0 })
         .overlay { trail(p) }
         .overlay { if p < 1 { skipTargets } }
         .task {
@@ -133,6 +140,17 @@ struct OnboardingView: View {
                 do { try await Task.sleep(for: .seconds(2)) } catch { return }
             }
         }
+    }
+
+    /// 继续: the card closes and the light trail leaves from its hourglass.
+    private func finish() {
+        var from: CGPoint?
+        if let window {
+            let content = window.contentRect(forFrameRect: window.frame)
+            from = CGPoint(x: content.midX, y: content.maxY - Self.hourglassY)
+        }
+        if let onContinue { onContinue(from, launchAtLogin) }
+        else { dismiss(); model.finishOnboarding(from: from, launchAtLogin: launchAtLogin) }
     }
 
     private static func ramp(_ p: Double, _ from: Double, _ to: Double) -> Double { min(1, max(0, (p - from) / (to - from))) }
@@ -217,5 +235,21 @@ struct OnboardingView: View {
         .padding(.horizontal, 12).padding(.vertical, 10)
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// Hands back the window its view lives in.
+private struct WindowProbe: NSViewRepresentable {
+    let onResolve: (NSWindow) -> Void
+    func makeNSView(context: Context) -> Probe { Probe(onResolve: onResolve) }
+    func updateNSView(_ nsView: Probe, context: Context) {}
+    final class Probe: NSView {
+        let onResolve: (NSWindow) -> Void
+        init(onResolve: @escaping (NSWindow) -> Void) { self.onResolve = onResolve; super.init(frame: .zero) }
+        required init?(coder: NSCoder) { nil }
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let window { DispatchQueue.main.async { self.onResolve(window) } }
+        }
     }
 }
