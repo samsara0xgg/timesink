@@ -68,7 +68,7 @@ struct CategoryEditSheet: View {
                 Spacer()
                 Button("取消", action: done).keyboardShortcut(.cancelAction)
                 Button(category == nil ? "添加" : "保存", action: save)
-                    .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(!canSave)
+                    .buttonStyle(AccentButtonStyle()).keyboardShortcut(.defaultAction).disabled(!canSave)
             }
         }
         .padding(24).frame(width: 440)

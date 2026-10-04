@@ -275,7 +275,7 @@ struct RangeControls: View {
                     Button("应用此范围") {
                         model.range = DateRangeSelection(kind: .custom, anchor: customEnd, customStart: customStart, customEnd: customEnd)
                         showingCustomRange = false
-                    }.buttonStyle(.borderedProminent)
+                    }.buttonStyle(AccentButtonStyle())
                 }
             }
         }

@@ -224,7 +224,7 @@ struct TitleRuleEditor: View {
             HStack(spacing: 8) {
                 Spacer()
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("添加规则") { save() }.buttonStyle(.borderedProminent)
+                Button("添加规则") { save() }.buttonStyle(AccentButtonStyle())
                     .disabled(normalizedPattern == nil).keyboardShortcut(.defaultAction)
             }
         }.padding(20).frame(width: 460).fixedSize(horizontal: false, vertical: true)

@@ -34,7 +34,7 @@ struct FocusBlockedAppsEditor: View {
                 Spacer(); Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("保存") {
                     blockedApps = selected.sorted(); if let onSave { onSave(blockedApps) } else { model.settings.setFocusBlockedApps(blockedApps) }; dismiss()
-                }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+                }.keyboardShortcut(.defaultAction).buttonStyle(AccentButtonStyle())
             }
         }.padding(20).frame(width: 420, height: 480)
         .task {

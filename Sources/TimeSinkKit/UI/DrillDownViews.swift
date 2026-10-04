@@ -204,7 +204,7 @@ struct CategoryDetailView: View {
             Button(action: onOpenActivities) {
                 Label("查看该分类的全部活动", systemImage: "arrow.right")
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(PillButtonStyle(height: 24, font: .note))
             .padding(.top, 4)
         }
         .frame(width: width, alignment: .leading)
