@@ -45,6 +45,19 @@ struct MainWindowView: View {
         .environment(\.locale, model.displayLocale)
         .environment(\.calendar, model.displayCalendar)
         .frame(minWidth: Design.windowMinSize.width, minHeight: Design.windowMinSize.height)
+        // Trends is opened on its default range with its numbers already
+        // worked out: ready a moment after the window, then kept fresh while
+        // it is open, all at low priority and off the main actor.
+        .task(priority: .utility) {
+            do { try await Task.sleep(for: .seconds(1.5)) } catch { return }
+            while !Task.isCancelled {
+                await stats.recompute(model: model, range: DateRangeSelection(kind: .last7, anchor: Date()))
+                do { try await Task.sleep(for: .seconds(300)) } catch { return }
+            }
+        }
+        .onChange(of: model.dataEditVersion) { _, _ in
+            Task(priority: .utility) { await stats.recompute(model: model, range: DateRangeSelection(kind: .last7, anchor: Date())) }
+        }
     }
 
     private var detailContent: some View {

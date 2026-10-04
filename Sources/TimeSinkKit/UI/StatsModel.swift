@@ -89,16 +89,21 @@ final class StatsModel {
             dataVersion: model.dataVersion, interval: model.range.interval, writes: model.writeLog)
     }
 
-    func recompute(model: AppModel, forceHeavy: Bool = false) async {
+    /// `range` is the stretch to get ready before anyone is looking at it
+    /// (the default one, from the main window); without it, the stretch the
+    /// page is showing. The same window is not worked out twice.
+    func recompute(model: AppModel, range ahead: DateRangeSelection? = nil, forceHeavy: Bool = false) async {
         let now = Date()
         let calendar = Calendar.current
         let day = calendar.startOfDay(for: now)
-        let range = model.range
+        // Once the page is on screen it asks for its own range; getting ahead is for before.
+        let prefetch = ahead != nil && model.sidebarSelection != .stats
+        let range = prefetch ? ahead! : model.range
         let version = model.dataVersion
         let editVersion = model.dataEditVersion
         let needsHeavy = forceHeavy || lastHeavyDay != day || lastHeavyEditVersion != editVersion
             || now.timeIntervalSince(lastHeavyUpdate ?? .distantPast) >= 60
-        let needsSummary = !hasLoaded || lastRange != range || lastDataVersion != version || needsHeavy
+        let needsSummary = !hasLoaded || lastRange?.window != range.window || lastDataVersion != version || needsHeavy
         guard needsSummary || needsHeavy else { return }
         generation += 1
         let request = generation
@@ -112,7 +117,7 @@ final class StatsModel {
                 writes: model.writeLog)
             try Task.checkCancellation()
             // A newer route/edit must never be replaced by an older calculation.
-            guard request == generation, model.range == range, model.dataEditVersion == editVersion else { return }
+            guard request == generation, prefetch || model.range == range, model.dataEditVersion == editVersion else { return }
             summary = result.summary
             lastRange = range
             if shownRange != range { shownRange = range }
