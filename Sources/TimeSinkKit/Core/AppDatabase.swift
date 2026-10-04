@@ -425,6 +425,28 @@ public enum AppDatabase {
             try db.execute(sql: "UPDATE jevVerdict SET model = 'typesafe/jev-1.13' WHERE source = 'jev'")
             try db.execute(sql: "UPDATE jevCaptureVerdict SET model = 'typesafe/jev-1.13'")
         }
+        migrator.registerMigration("v18") { db in
+            // Projects you named (or accepted from a suggestion). Additive:
+            // a new table and new verdict columns only, so a rollback never
+            // sees them. `name` is unique ignoring case.
+            try db.create(table: "project") { t in
+                t.column("id", .text).primaryKey()
+                t.column("name", .text).notNull().collate(.nocase).unique()
+                t.column("description", .text).notNull().defaults(to: "")
+                t.column("sortOrder", .integer).notNull().defaults(to: 0)
+                t.column("source", .text).notNull().defaults(to: "user")
+                t.column("archived", .boolean).notNull().defaults(to: false)
+                t.column("createdAt", .datetime).notNull()
+            }
+            // Jev's project answer next to its category. '' = not asked,
+            // 'none' = asked, in no project.
+            try db.alter(table: "jevVerdict") { t in
+                t.add(column: "projectID", .text).notNull().defaults(to: "")
+                t.add(column: "projectProb", .double).notNull().defaults(to: 0)
+                t.add(column: "projectRunnerUp", .text).notNull().defaults(to: "")
+                t.add(column: "projectPromptVersion", .text).notNull().defaults(to: "")
+            }
+        }
         return migrator
     }
 }

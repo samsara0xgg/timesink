@@ -477,6 +477,6 @@ final class JevTests: XCTestCase {
     func testJevIsOffByDefaultAndSendsOnlyTheListedFields() {
         XCTAssertFalse(settings.jevEnabled)
         XCTAssertEqual(settings.jevEndpoint, "https://openrouter.ai/api/alpha/decisions")
-        XCTAssertEqual(JevService.sentFields.count, 7)
+        XCTAssertEqual(JevService.sentFields.count, 8)   // the 8th: your project names and descriptions
     }
 }

@@ -111,8 +111,11 @@ struct TodayPlan {
         case confirm(count: Int, projects: [String])
         case classify(seconds: TimeInterval, names: [String])
         case focus(lastDay: Date?, lastMinutes: Int?)
+        /// A name that keeps turning up and is not a project yet.
+        case newProject(name: String)
         var id: String {
             switch self {
+            case .newProject(let name): return "project|\(name)"
             case .fill(let gap): return "fill|\(gap.start.timeIntervalSince1970)"
             case .confirm: return "confirm"
             case .classify: return "classify"
@@ -209,7 +212,7 @@ struct TodayPlan {
     static func build(overview: DayOverview, sessions: [WorkSession], explicit: [String?],
                       episodes: [SwitchEpisode], notes: [AwayNote], categories categoryByID: [String: Category],
                       lastFocus: (day: Date, minutes: Int)?, hasFocusToday: Bool,
-                      isToday: Bool, calendar: Calendar = .current) -> TodayPlan {
+                      isToday: Bool, newProject: String? = nil, calendar: Calendar = .current) -> TodayPlan {
         let resolved = ProjectGuess.resolve(sessions, explicit: explicit)
         let interruptions = episodes.filter { $0.kind == .interruption }
         // Biggest projects get the first pick of colours.
@@ -268,9 +271,20 @@ struct TodayPlan {
         }
         if isToday, !hasFocusToday { todos.append(.focus(lastDay: lastFocus?.day, lastMinutes: lastFocus?.minutes)) }
 
-        return TodayPlan(day: overview.day, now: overview.now, isToday: isToday, total: overview.total, engaged: overview.engaged,
+        var plan = TodayPlan(day: overview.day, now: overview.now, isToday: isToday, total: overview.total, engaged: overview.engaged,
                          pulse: Aggregator.pulse(durationByCategory: byCategory, categories: categoryByID),
                          rows: rows, projects: projects, gaps: gaps, axis: axis(sessions, day: overview.day, calendar: calendar),
                          interruptions: interruptions, categories: categories, todos: todos, firstRecord: overview.firstRecord, notes: notes)
+        if isToday { plan.setNewProject(newProject) }
+        return plan
+    }
+
+    /// The "new project" todo: replaced, or removed for nil. It sits before the focus todo, and
+    /// arrives after the rest of the plan when the suggestions take longer than the page.
+    mutating func setNewProject(_ name: String?) {
+        todos.removeAll { if case .newProject = $0 { return true } else { return false } }
+        guard let name else { return }
+        let at = todos.firstIndex { if case .focus = $0 { return true } else { return false } } ?? todos.endIndex
+        todos.insert(.newProject(name: name), at: at)
     }
 }

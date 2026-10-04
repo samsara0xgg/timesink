@@ -11,10 +11,11 @@ extension AppModel {
         if let hit = sessionCache[day], hit.version == version, hit.threshold == threshold, hit.splits == splitsVersion { return hit.value }
         if let running = sessionTasks[day] { return await running.value }
         let items = rangedSpans(for: day)
+        let verdicts = resolver.projectVerdicts
         let splits = (try? observationStore?.sessionSplits(in: day)) ?? []
         let joins = (try? observationStore?.sessionJoins(in: day)) ?? []
         let task = Task.detached(priority: .userInitiated) {
-            SessionSegmenter.sessions(items, threshold: threshold, splits: splits, joins: joins)
+            SessionSegmenter.sessions(items, threshold: threshold, splits: splits, joins: joins, projectVerdicts: verdicts)
         }
         sessionTasks[day] = task
         let value = await task.value
@@ -59,8 +60,12 @@ extension AppModel {
         sessionOverrides[session.signature]?.name ?? sessionLabels[session.nameKey]?.name
     }
 
+    /// Your own assignment, else the project Jev's verdicts give the session,
+    /// else its repo or folder (shown as your project of that name, if you have one).
     public func sessionProject(_ session: WorkSession) -> String? {
-        sessionOverrides[session.signature]?.project ?? session.projectLabel
+        SessionProjectResolver.resolve(override: sessionOverrides[session.signature]?.project,
+                                       jev: session.jevProjectID.flatMap { projectNames[$0] },
+                                       ruleLabel: session.projectLabel, userNames: projects.map(\.name))
     }
 
     /// Reused for every session of the same kind.
@@ -91,8 +96,87 @@ extension AppModel {
         sessionSplitsVersion += 1
     }
 
-    /// Projects you have used, for the assign menu.
+    /// Projects you have used, for the assign menu: yours first, then the
+    /// names found in records that are not one of yours spelled differently.
     public var knownProjects: [String] {
-        Array(Set(sessionOverrides.values.compactMap(\.project) + sessionCache.values.flatMap { $0.value.compactMap(\.projectLabel) })).sorted()
+        let mine = projects.map(\.name)
+        let taken = Set(mine.map(SessionProjectResolver.normalized))
+        let seen = Set(sessionOverrides.values.compactMap(\.project) + sessionCache.values.flatMap { $0.value.compactMap(\.projectLabel) })
+            .filter { !taken.contains(SessionProjectResolver.normalized($0)) }.sorted()
+        return mine + seen
+    }
+
+    // MARK: - Projects
+
+    /// Re-reads the project list; the sessions pick the change up on the next `dataVersion`.
+    public func reloadProjects() {
+        projects = (try? categoryStore.projects.list()) ?? []
+        projectsVersion += 1
+        projectSuggestionTask = nil
+        projectNames = Dictionary(projects.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
+        resolver.refreshProjectVerdicts()
+        projectSuggestionCache = nil
+    }
+
+    /// After adding, renaming or removing a project.
+    public func projectsChanged() {
+        reloadProjects()
+        sessionOverridesLoaded = false
+        loadSessionOverrides()
+        settingsChanged()
+    }
+
+    /// The last 14 days' time per project (`SessionProjectResolver.normalized` name), read and cut into
+    /// sessions off the main actor, and kept while nothing it depends on changed (the tracker's own
+    /// writes only age it: ten minutes). Callers show what they have and fill this in when it arrives.
+    public func projectHours() async -> [String: TimeInterval] {
+        loadSessionOverrides()
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let key = ProjectHours.Key(edits: dataEditVersion, projects: projectsVersion,
+                                   assignments: Set(sessionOverrides.map { $0.key + ($0.value.project ?? "") }).hashValue,
+                                   splits: sessionSplitsVersion, threshold: sessionThreshold, day: today)
+        if let hit = projectHoursCache, hit.key == key, Date().timeIntervalSince(hit.at) < 600 { return hit.value }
+        if let running = projectHoursTask, running.key == key { return await running.task.value }
+        let days = (0..<ProjectSuggester.lookbackDays).compactMap { offset in
+            calendar.date(byAdding: .day, value: -offset, to: today).flatMap { calendar.dateInterval(of: .day, for: $0) }
+        }
+        let whole = DateInterval(start: days.last?.start ?? today, end: days.first?.end ?? today)
+        let input = ProjectHours.Input(
+            days: days, classification: resolver.snapshot(), threshold: sessionThreshold, verdicts: resolver.projectVerdicts,
+            overrides: sessionOverrides, names: projectNames, userNames: projects.map(\.name),
+            splits: (try? observationStore?.sessionSplits(in: whole)) ?? [], joins: (try? observationStore?.sessionJoins(in: whole)) ?? [])
+        let store = spanStore
+        let task = Task.detached(priority: .utility) {
+            ProjectHours.seconds(spans: (try? store.spans(overlapping: whole)) ?? [], input: input)
+        }
+        projectHoursTask = (key, task)
+        let value = await task.value
+        projectHoursComputations += 1
+        if projectHoursTask?.key == key { projectHoursTask = nil }
+        projectHoursCache = (key, Date(), value)
+        return value
+    }
+
+    /// Whatever suggestions were worked out last, however old; nil before the first.
+    var cachedProjectSuggestion: ProjectSuggester.Result? { projectSuggestionCache?.value }
+
+    /// Candidate projects from the last two weeks, worked out off the main actor and kept ten minutes.
+    public func projectSuggestions() async -> ProjectSuggester.Result {
+        if let cache = projectSuggestionCache, Date().timeIntervalSince(cache.at) < 600 { return cache.value }
+        if let running = projectSuggestionTask { return await running.value }
+        let now = Date()
+        let interval = DateInterval(start: now.addingTimeInterval(-Double(ProjectSuggester.lookbackDays) * 86400), end: now)
+        let store = spanStore, existing = projects.map(\.name)
+        let task = Task.detached(priority: .utility) {
+            ProjectSuggester.suggest((try? store.spans(overlapping: interval)) ?? [], existing: existing)
+        }
+        projectSuggestionTask = task
+        let version = projectsVersion
+        let value = await task.value
+        projectSuggestionTask = nil
+        // A project added meanwhile makes this list stale: leave it uncached.
+        if version == projectsVersion { projectSuggestionCache = (now, value) }
+        return value
     }
 }

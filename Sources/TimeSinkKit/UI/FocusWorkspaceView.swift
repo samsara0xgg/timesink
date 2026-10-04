@@ -432,6 +432,10 @@ struct OrganizationView: View {
     private struct CoverageKey: Equatable { let version: Int }
 
     var body: some View {
+        if model.organizationTab == .projects { ProjectsView(model: model) } else { categoriesBody }
+    }
+
+    private var categoriesBody: some View {
         GeometryReader { geometry in
             let width = geometry.size.width - 2 * Design.Space.page
             if width >= PageLayout.wideWidth {
@@ -495,8 +499,8 @@ struct OrganizationView: View {
                       note: pending.map { String(localized: "近 30 天共 \(Format.duration($0.seconds))") } ?? ""),
             StripStat(id: 1, label: "分类", value: String(localized: "\(categories) 个"), note: String(localized: "投入程度决定评分"))
         ], width: width) {
-            HeaderLabel(text: Text("近 7 天"))
-        } actions: { EmptyView() }
+            OrganizationTabs(model: model)
+        } actions: { HeaderLabel(text: Text("近 7 天")) }
     }
 
     /// Seven days, read and classified off the main thread: how much is

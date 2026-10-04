@@ -11,7 +11,7 @@ public enum SidebarItem: Hashable, CaseIterable {
 /// by `SettingsView`'s `TabView(selection:)` and written by notification
 /// routing (`.settingsBudget` → `.budget`).
 public enum SettingsTab: Hashable {
-    case general, recording, categories, rules, uncategorized, llm, budget, focus, account, privacy, permissions, notifications, about
+    case general, recording, categories, rules, uncategorized, projects, llm, budget, focus, account, privacy, permissions, notifications, about
 }
 
 /// App-wide observable state: the shared stores/engine, the current date-range
@@ -158,6 +158,16 @@ public final class AppModel {
     public var sessionOverrides: [String: SessionNameRow] = [:]
     /// Bumped when you split a session.
     public var sessionSplitsVersion = 0
+    /// The projects you named (and accepted), in your order. Jev is asked about these.
+    public internal(set) var projects: [UserProject] = []
+    @ObservationIgnored var projectNames: [String: String] = [:]
+    @ObservationIgnored var projectsVersion = 0
+    @ObservationIgnored var projectSuggestionTask: Task<ProjectSuggester.Result, Never>?
+    @ObservationIgnored var projectHoursCache: (key: ProjectHours.Key, at: Date, value: [String: TimeInterval])?
+    @ObservationIgnored var projectHoursTask: (key: ProjectHours.Key, task: Task<[String: TimeInterval], Never>)?
+    /// How many times the 14-day pass actually ran (tests).
+    @ObservationIgnored var projectHoursComputations = 0
+    @ObservationIgnored var projectSuggestionCache: (at: Date, value: ProjectSuggester.Result)?
     @ObservationIgnored var sessionCache: [DateInterval: (version: Int, threshold: TimeInterval, splits: Int, value: [WorkSession])] = [:]
     @ObservationIgnored var sessionTasks: [DateInterval: Task<[WorkSession], Never>] = [:]
     @ObservationIgnored var namingQueue: [WorkSession] = []
@@ -404,6 +414,7 @@ public final class AppModel {
             engineDirtyFrom = min(engineDirtyFrom ?? start, start)
             scheduleEngineDataChanged()
         }
+        reloadProjects()
         refreshPendingCount()
     }
 

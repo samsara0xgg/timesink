@@ -208,6 +208,22 @@ import WebKit
             let second = again.duration(to: .now)
             print(String(format: "STATS_PREFETCH_AGAIN ms=%.0f", Double(second.components.seconds) * 1000 + Double(second.components.attoseconds) / 1e15))
         }
+        if ProcessInfo.processInfo.environment["TIMESINK_PREVIEW_MEASURE_TODAY"] != nil {
+            // What opening Today costs: the first (cold) refresh and two more with every cache warm.
+            for run in 1...3 {
+                let today = TodayModel()
+                let started = ContinuousClock.now
+                await today.refresh(model: model, dayOffset: 0)
+                let elapsed = started.duration(to: .now)
+                print(String(format: "TODAY_REFRESH run=%d ms=%.0f", run, Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15))
+                // The background read for the "new project" todo, which Today does not wait for.
+                let suggested = ContinuousClock.now
+                _ = await model.projectSuggestions()
+                let waited = suggested.duration(to: .now)
+                print(String(format: "SUGGESTIONS_READY run=%d ms=%.0f", run, Double(waited.components.seconds) * 1000 + Double(waited.components.attoseconds) / 1e15))
+            }
+            return
+        }
         let calendar = Calendar.current
         let yesterday = calendar.date(byAdding: .day, value: -1, to: Date())!
         let quiet = calendar.date(byAdding: .day, value: -40, to: Date())!
@@ -230,6 +246,32 @@ import WebKit
             model.activityTimeInterval = nil
         }
         func refilter(_ activities: ActivitiesModel) { activities.recompute(model: model, events: []) }
+
+        // Projects, each on its own sample: the tab with none (recommendations open), with three and
+        // recommendations, before the recommendations open, and Today coloured by project.
+        func projectsPage(_ name: String, _ sample: AppModel, _ page: SidebarItem, sizes: [NSSize]) async throws {
+            sample.timeFormat = "24"
+            sample.sidebarSelection = page
+            sample.organizationTab = .projects
+            if page == .today { sample.todayDayOffset = 0 }
+            sample.range = DateRangeSelection(kind: .day, anchor: Date())
+            for size in sizes {
+                try await shoot("main-\(name)-\(Int(size.width))", MainWindowView(model: sample), size: size, settle: page == .today ? 4000 : 6000)
+            }
+        }
+        if only?.contains("proj") ?? true {
+            try await projectsPage("projects-empty", model, .organization, sizes: [wide, small])
+            let young = try RefinedPreview.fixture(days: 2)
+            try await projectsPage("projects-gate", young, .organization, sizes: [wide, small])
+            let sample = try RefinedPreview.fixture(projects: true)
+            try await projectsPage("projects", sample, .organization, sizes: [wide, small])
+            UserDefaults.standard.set("project", forKey: "todayTimelineColors")
+            try await projectsPage("today-projects", sample, .today, sizes: [wide, small])
+            // No project anywhere: the legend points at the Projects tab.
+            let bare = try RefinedPreview.fixture(repos: false)
+            try await projectsPage("today-projects-none", bare, .today, sizes: [wide, small])
+            UserDefaults.standard.removeObject(forKey: "todayTimelineColors")
+        }
 
         try await main("today", .today, sizes: [wide, standard, small])
         // "By project" on a day with no project: the empty state, not a quiet fall back to categories.
