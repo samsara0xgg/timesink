@@ -23,6 +23,9 @@ public struct WorkSession: Sendable, Equatable, Identifiable {
     /// share of it (`SessionSegmenter.projectKey`), with a display label.
     public var project: String?
     public var projectLabel: String?
+    /// The id of the project Jev's verdicts give this session, when clear enough
+    /// (`SessionProjectResolver`). The segmenter never cuts on it.
+    public var jevProjectID: String?
     /// Longest first.
     public var apps: [App]
     /// Window titles by time held, longest first, at most 12: what a name
@@ -91,7 +94,8 @@ public enum SessionSegmenter {
 
     /// `items` sorted by start. `splits`: extra boundaries the user asked for.
     public static func sessions(_ items: [CategorizedSpan], threshold: TimeInterval = defaultThreshold,
-                                splits: [Date] = [], joins: [Date] = []) -> [WorkSession] {
+                                splits: [Date] = [], joins: [Date] = [],
+                                projectVerdicts: [VerdictKey: ProjectVerdict] = [:]) -> [WorkSession] {
         /// A session start the user joined onto the one before it: no cut there.
         func joined(_ date: Date) -> Bool { joins.contains { abs($0.timeIntervalSince(date)) < 1 } }
         let items = items.filter { $0.span.duration > 0 }
@@ -141,7 +145,7 @@ public enum SessionSegmenter {
                     piece.span.end = e
                     return piece
                 }
-                if !pieces.isEmpty { sessions.append(session(pieces)) }
+                if !pieces.isEmpty { sessions.append(session(pieces, projectVerdicts: projectVerdicts)) }
             }
         }
         // A stretch under a minute between two absences is too short to name.
@@ -179,7 +183,7 @@ public enum SessionSegmenter {
         return changes
     }
 
-    static func session(_ pieces: [CategorizedSpan]) -> WorkSession {
+    static func session(_ pieces: [CategorizedSpan], projectVerdicts: [VerdictKey: ProjectVerdict] = [:]) -> WorkSession {
         var apps: [String: WorkSession.App] = [:]
         var categories: [String: TimeInterval] = [:]
         var projects: [String: (label: String, seconds: TimeInterval)] = [:]
@@ -209,6 +213,7 @@ public enum SessionSegmenter {
             start: pieces.map(\.span.start).min()!, end: pieces.map(\.span.end).max()!, recorded: recorded,
             categoryID: categories.max { $0.value == $1.value ? $0.key > $1.key : $0.value < $1.value }!.key,
             project: project?.key, projectLabel: project?.value.label,
+            jevProjectID: projectVerdicts.isEmpty ? nil : SessionProjectResolver.jevProjectID(of: pieces) { projectVerdicts[VerdictKey($0)] },
             apps: apps.values.sorted { $0.seconds == $1.seconds ? $0.bundleID < $1.bundleID : $0.seconds > $1.seconds },
             titles: Array(titles.values.sorted { $0.seconds == $1.seconds ? $0.title < $1.title : $0.seconds > $1.seconds }.prefix(12)),
             documents: Array(documents.values.sorted { $0.seconds == $1.seconds ? $0.title < $1.title : $0.seconds > $1.seconds }.prefix(8)))

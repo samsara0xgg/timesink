@@ -111,8 +111,11 @@ struct TodayPlan {
         case confirm(count: Int, projects: [String])
         case classify(seconds: TimeInterval, names: [String])
         case focus(lastDay: Date?, lastMinutes: Int?)
+        /// A name that keeps turning up and is not a project yet.
+        case newProject(name: String)
         var id: String {
             switch self {
+            case .newProject(let name): return "project|\(name)"
             case .fill(let gap): return "fill|\(gap.start.timeIntervalSince1970)"
             case .confirm: return "confirm"
             case .classify: return "classify"
@@ -209,7 +212,7 @@ struct TodayPlan {
     static func build(overview: DayOverview, sessions: [WorkSession], explicit: [String?],
                       episodes: [SwitchEpisode], notes: [AwayNote], categories categoryByID: [String: Category],
                       lastFocus: (day: Date, minutes: Int)?, hasFocusToday: Bool,
-                      isToday: Bool, calendar: Calendar = .current) -> TodayPlan {
+                      isToday: Bool, newProject: String? = nil, calendar: Calendar = .current) -> TodayPlan {
         let resolved = ProjectGuess.resolve(sessions, explicit: explicit)
         let interruptions = episodes.filter { $0.kind == .interruption }
         // Biggest projects get the first pick of colours.
@@ -266,6 +269,7 @@ struct TodayPlan {
             todos.append(.classify(seconds: unknownSeconds,
                                    names: unknown.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }.prefix(3).map(\.key)))
         }
+        if isToday, let newProject { todos.append(.newProject(name: newProject)) }
         if isToday, !hasFocusToday { todos.append(.focus(lastDay: lastFocus?.day, lastMinutes: lastFocus?.minutes)) }
 
         return TodayPlan(day: overview.day, now: overview.now, isToday: isToday, total: overview.total, engaged: overview.engaged,

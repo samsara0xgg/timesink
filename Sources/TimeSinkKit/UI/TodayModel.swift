@@ -55,9 +55,11 @@ final class TodayModel {
             streakDays = 0
             yesterdayTotal = nil
         }
+        let newProject = isToday ? await model.projectSuggestions().todoCandidate?.name : nil
+        guard request == generation, !Task.isCancelled else { return }
         plan = TodayPlan.build(overview: overview, sessions: sessions, explicit: sessions.map { model.sessionProject($0) },
                                episodes: episodes, notes: notes, categories: model.resolver.categoriesByID,
-                               lastFocus: lastFocus, hasFocusToday: !overview.sessions.isEmpty, isToday: isToday)
+                               lastFocus: lastFocus, hasFocusToday: !overview.sessions.isEmpty, isToday: isToday, newProject: newProject)
         loadError = nil
     }
 }
