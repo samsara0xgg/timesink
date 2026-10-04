@@ -96,7 +96,7 @@ struct RefinedRulesPane: View {
                 HStack {
                     Spacer()
                     Button("取消") { newPattern = ""; urlError = nil; showURL = false }.keyboardShortcut(.cancelAction)
-                    Button("添加规则", action: addURL).buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                    Button("添加规则", action: addURL).buttonStyle(AccentButtonStyle()).keyboardShortcut(.defaultAction)
                         .disabled(Self.urlPattern(newPattern) == nil)
                 }
                 if let urlError { Text(urlError).foregroundStyle(Design.alert) }

@@ -102,7 +102,7 @@ struct ActivityInspector: View {
                     // A record inside one minute reads as a moment, not "10:36–10:36".
                     let from = model.time(start), to = model.time(end)
                     if let aggregate {
-                        (Text("合计 \(Format.duration(aggregate.seconds))") + Text(verbatim: " · ") + Text("\(aggregate.count) 次"))
+                        (Text("合计 \(Format.duration(aggregate.seconds))") + Text(verbatim: " · ") + Text("\(aggregate.count) 条记录"))
                             .font(.body).foregroundStyle(Design.ink2).monospacedDigit()
                     } else {
                         Text(from == to ? "\(from) · \(Format.duration(seconds))" : "\(from)–\(to) · \(Format.duration(seconds))")

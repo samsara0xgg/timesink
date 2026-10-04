@@ -439,7 +439,7 @@ struct OrganizationView: View {
                     header(width: width)
                     HStack(alignment: .top, spacing: Design.Space.lg) {
                         VStack(spacing: Design.Space.lg) { ToConfirmCard(model: model); queue; rules }
-                        CategoryListCard(model: model, seconds: byCategory, selected: $category).frame(width: 440)
+                        CategoryListCard(model: model, seconds: byCategory, selected: $category).frame(width: 480)
                     }
                 }
                 .pagePadding()
