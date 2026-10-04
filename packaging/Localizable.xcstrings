@@ -10190,6 +10190,26 @@
           }
         }
       }
+    },
+    "还没有项目。在活动里给一段会话选「项目」，或新建一个，这里就会按项目着色。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No projects yet. Pick or create a project for a session in Activities and it will show here."
+          }
+        }
+      }
+    },
+    "去活动设置 ›": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set up in Activities ›"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -218,6 +218,10 @@ import WebKit
         func refilter(_ activities: ActivitiesModel) { activities.recompute(model: model, events: []) }
 
         try await main("today", .today, sizes: [wide, standard, small])
+        // "By project" on a day with no project: the empty state, not a quiet fall back to categories.
+        UserDefaults.standard.set("project", forKey: "todayTimelineColors")
+        try await main("today-by-project", .today, sizes: [wide, small])
+        UserDefaults.standard.removeObject(forKey: "todayTimelineColors")
         model.todayDayOffset = -40
         try await main("today-empty", .today)
         model.todayDayOffset = 0
