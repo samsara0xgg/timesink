@@ -15,6 +15,10 @@ struct TodayView: View {
     @State private var today = TodayModel()
     @State private var selected: Date?
     @State private var filter: ProjectFilter = nil
+    /// What the person chose for the timeline's colours; empty until they do.
+    @AppStorage("todayTimelineColors") private var chosenColors = ""
+    /// Whether the last plan had a project: the loading frame keeps its cards.
+    @AppStorage("todayHadProjects") private var hadProjects = true
 
     private struct RefreshKey: Equatable { let version: Int; let offset: Int }
     private var offset: Int { model.todayDayOffset }
@@ -52,6 +56,7 @@ struct TodayView: View {
             }
         }
         .onChange(of: offset) { _, _ in selected = nil; filter = nil }
+        .onChange(of: today.plan.map(hasProjects)) { _, value in if let value { hadProjects = value } }
     }
 
     private func refresh() async { await today.refresh(model: model, dayOffset: offset) }
@@ -70,8 +75,10 @@ struct TodayView: View {
     /// the place of one still loading.
     @ViewBuilder private func cards(_ plan: TodayPlan?, wide: Bool) -> some View {
         Group {
-            if let plan { TodayTimelineCard(plan: plan, model: model, filter: filter, selected: $selected, open: open) }
-            else { placeholder }
+            if let plan {
+                TodayTimelineCard(plan: plan, model: model, filter: filter, colors: colors(for: plan),
+                                  choose: { chosenColors = $0.rawValue }, selected: $selected, open: open)
+            } else { placeholder }
         }
         .frame(height: TodayTimelineCard.height)
         let categories = Group {
@@ -80,10 +87,15 @@ struct TodayView: View {
         let projects = Group {
             if let plan { TodayProjectsCard(plan: plan, filter: $filter, selected: $selected) } else { placeholder }
         }
+        // With no project to show, its card gives its width to the other two.
+        let showsProjects = plan.map(hasProjects) ?? hadProjects
         let todos = Group {
             if let plan { TodayTodosCard(plan: plan, model: model, changed: { Task { await refresh() } }, start: startFocus) } else { placeholder }
         }
-        if wide {
+        if !showsProjects {
+            HStack(alignment: .top, spacing: Design.Space.lg) { categories; todos }
+                .frame(minHeight: 240).fixedSize(horizontal: false, vertical: true)
+        } else if wide {
             HStack(alignment: .top, spacing: Design.Space.lg) {
                 categories; projects; todos
             }
@@ -93,6 +105,13 @@ struct TodayView: View {
                 .frame(minHeight: 240).fixedSize(horizontal: false, vertical: true)
             todos
         }
+    }
+
+    private func hasProjects(_ plan: TodayPlan) -> Bool { plan.projects.contains { $0.name != nil } }
+
+    /// The chosen colours, else by project when any was recognised.
+    private func colors(for plan: TodayPlan) -> TimelineColors {
+        TimelineColors(rawValue: chosenColors) ?? (hasProjects(plan) ? .project : .category)
     }
 
     private var placeholder: some View {

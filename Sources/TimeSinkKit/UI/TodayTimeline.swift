@@ -12,6 +12,12 @@ enum TodayFmt {
 /// Which project the page is narrowed to, if any; `.some(nil)` is "no project".
 typealias ProjectFilter = String??
 
+/// What the timeline's blocks are coloured by. A session whose project is not
+/// known takes its main category's colour in either mode.
+enum TimelineColors: String, CaseIterable {
+    case project, category
+}
+
 /// 今天的时间轴: the day's sessions as blocks, coloured by project, on an hour
 /// axis. Gaps are hatched, interruptions are ticks under the block where they
 /// happened, and now is a line. The heading says what is going on now; a
@@ -20,6 +26,8 @@ struct TodayTimelineCard: View {
     let plan: TodayPlan
     let model: AppModel
     let filter: ProjectFilter
+    let colors: TimelineColors
+    let choose: (TimelineColors) -> Void
     @Binding var selected: Date?
     let open: (TodayPlan.Row) -> Void
 
@@ -45,7 +53,7 @@ struct TodayTimelineCard: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: Design.Space.sm) {
-            CardHeading(title: plan.isToday ? "今天的时间轴" : "这一天的时间轴", caption: Text("\(plan.rows.count) 段会话，按项目上色"))
+            CardHeading(title: plan.isToday ? "今天的时间轴" : "这一天的时间轴", caption: Text("\(plan.rows.count) 段会话，按项目或分类上色"))
             Spacer(minLength: Design.Space.sm)
             if let carried = plan.carriedOver {
                 Button { select(carried) } label: {
@@ -55,6 +63,10 @@ struct TodayTimelineCard: View {
                 .buttonStyle(LinkButtonStyle()).font(.note).lineLimit(1)
             }
             if let row = plan.current { now(row) }
+            Segmented(options: TimelineColors.allCases, selection: Binding(get: { colors }, set: choose), height: 24) { option in
+                option == .project ? Text("按项目") : Text("按分类")
+            }
+            .accessibilityLabel("时间轴颜色")
         }
     }
 
@@ -188,7 +200,7 @@ struct TodayTimelineCard: View {
     private func block(_ row: TodayPlan.Row, index: Int, _ width: CGFloat) -> some View {
         let left = x(row.session.start, width)
         let w = max(x(row.session.end, width) - left - 2, 3)
-        let color = Design.projectColor(row.slot)
+        let color = color(of: row)
         let isSelected = selected == row.id
         let shape = RoundedRectangle(cornerRadius: Design.Radius.mark, style: .continuous)
         return Button { select(row) } label: {
@@ -212,6 +224,26 @@ struct TodayTimelineCard: View {
         .zIndex(isSelected ? 3 : 1)
         .offset(x: left, y: Self.top)
         .accessibilityLabel(Text(verbatim: "\(title(row)) \(model.time(row.session.start))–\(model.time(row.session.end))"))
+    }
+
+    /// The colour a block, and its card's dot, are drawn in.
+    private func color(of row: TodayPlan.Row) -> Color {
+        if colors == .project, row.slot != nil { return Design.projectColor(row.slot) }
+        let category = model.resolver.categoriesByID[row.session.categoryID]
+        return RefinedStyle.category(row.session.categoryID, hex: category?.colorHex ?? "#C7C7CC")
+    }
+
+    /// What the colours stand for, biggest first: the project or the main
+    /// category of each block, once.
+    private var colorKey: [(name: String, color: Color)] {
+        var seconds: [String: TimeInterval] = [:], swatch: [String: Color] = [:]
+        for row in plan.rows {
+            let byProject = colors == .project && row.slot != nil
+            let name = byProject ? (row.project ?? "") : (model.resolver.categoriesByID[row.session.categoryID]?.name ?? String(localized: "未分类"))
+            seconds[name, default: 0] += row.session.recorded
+            swatch[name] = color(of: row)
+        }
+        return seconds.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }.map { ($0.key, swatch[$0.key] ?? Design.ink2) }
     }
 
     private func ticks(_ width: CGFloat) -> some View {
@@ -253,7 +285,7 @@ struct TodayTimelineCard: View {
         let category = model.resolver.categoriesByID[row.session.categoryID]?.name ?? String(localized: "未分类")
         return VStack(alignment: .leading, spacing: Design.Space.xs) {
             HStack(spacing: Design.Space.sm) {
-                Circle().fill(Design.projectColor(row.slot)).frame(width: 8, height: 8)
+                Circle().fill(color(of: row)).frame(width: 8, height: 8)
                 Text(row.guessed ? String(localized: "\(title(row))（推测）") : title(row))
                     .font(.body.weight(.semibold)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                 Button { select(row) } label: {
@@ -279,6 +311,11 @@ struct TodayTimelineCard: View {
 
     private var legend: some View {
         HStack(spacing: Design.Space.lg) {
+            ViewThatFits(in: .horizontal) {
+                keyRow(colorKey.prefix(5))
+                keyRow(colorKey.prefix(3))
+                Color.clear.frame(width: 0, height: 0)
+            }
             HStack(spacing: 6) {
                 HatchFill(away: true).frame(width: 14, height: 10).clipShape(RoundedRectangle(cornerRadius: 2))
                 Text("离开")
@@ -295,5 +332,17 @@ struct TodayTimelineCard: View {
             }
         }
         .font(.note).foregroundStyle(Design.ink2)
+    }
+
+    private func keyRow(_ items: ArraySlice<(name: String, color: Color)>) -> some View {
+        HStack(spacing: Design.Space.md) {
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                HStack(spacing: 6) {
+                    Circle().fill(item.color).frame(width: 8, height: 8)
+                    Text(verbatim: item.name).lineLimit(1)
+                }
+            }
+        }
+        .fixedSize()
     }
 }
