@@ -277,10 +277,13 @@ private struct TodayCategoriesCard: View {
     var body: some View {
         let top = plan.categories.first?.seconds ?? 1
         VStack(alignment: .leading, spacing: Design.Space.md) {
-            HStack(alignment: .firstTextBaseline) {
-                CardHeading(title: "时间去了哪", caption: Text("投入 \(Int((plan.engaged / max(1, plan.total) * 100).rounded()))%"))
-                Spacer(minLength: Design.Space.sm)
-                Button("分类与规则 ›") { model.sidebarSelection = .organization }.buttonStyle(LinkButtonStyle()).font(.note)
+            let share = Text("投入 \(Int((plan.engaged / max(1, plan.total) * 100).rounded()))%")
+            let link = Button("分类与规则 ›") { model.sidebarSelection = .organization }.buttonStyle(LinkButtonStyle()).font(.note)
+            // Narrow, the caption goes first, then the link: the title never wraps.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline) { CardHeading(title: "时间去了哪", caption: share); Spacer(minLength: Design.Space.sm); link }
+                HStack(alignment: .firstTextBaseline) { CardHeading(title: "时间去了哪"); Spacer(minLength: Design.Space.sm); link }
+                CardHeading(title: "时间去了哪")
             }
             GeometryReader { proxy in
                 let usable = proxy.size.width - CGFloat(max(0, plan.categories.count - 1)) * 2
@@ -304,7 +307,7 @@ private struct TodayCategoriesCard: View {
                                     Capsule().fill(color(category)).frame(width: max(3, 72 * category.seconds / max(1, top)), height: 4)
                                 }
                             Text(verbatim: category.seconds < 60 ? String(localized: "<1 分") : TodayFmt.clock(category.seconds))
-                                .monospacedDigit().foregroundStyle(Design.ink2).frame(width: 48, alignment: .trailing)
+                                .monospacedDigit().foregroundStyle(Design.ink2).frame(width: Design.durationWidth, alignment: .trailing)
                         }
                         .padding(.horizontal, Design.Space.sm)
                         .frame(height: Design.rowHeight).contentShape(Rectangle())

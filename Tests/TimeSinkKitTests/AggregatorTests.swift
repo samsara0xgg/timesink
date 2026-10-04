@@ -151,9 +151,6 @@ final class AggregatorTests: XCTestCase {
         XCTAssertEqual(Format.duration(25 * 3600 + 23 * 60, locale: zh), "25 小时 23 分")
         XCTAssertEqual(Format.duration(30, locale: zh), "不到 1 分")
         XCTAssertEqual(Format.duration(0, locale: zh), "0 分")
-        XCTAssertEqual(Format.duration(96 * 60, compact: true, locale: zh), "1:36")
-        XCTAssertEqual(Format.duration(3600 + 5 * 60, compact: true, locale: en), "1:05")
-        XCTAssertEqual(Format.duration(11 * 60, compact: true, locale: zh), "11 分")
         XCTAssertEqual(Format.durationDelta(-96 * 60, locale: zh), "-1 小时 36 分")
     }
     func testPulseByWeekdayHourBuckets() {

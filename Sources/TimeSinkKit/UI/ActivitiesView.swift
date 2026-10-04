@@ -15,9 +15,6 @@ struct ActivitiesView: View {
     /// Every other trigger (`dataVersion`/`range`/`activityFilter`) recomputes
     /// immediately, unrelated to this.
     @State private var pendingSearch: Task<Void, Never>?
-    @State private var showsInspector = true
-    private enum Mode { case sessions, timeline }
-    @State private var mode: Mode = .sessions
     /// Whether the page is on screen; read by handlers only, never by `body`.
     @State private var isShown = true
 
@@ -80,29 +77,27 @@ struct ActivitiesView: View {
                 let daily = ActivitiesModel.showsTimeline(range)
                 // Always there on a day, so the list never moves when the sessions arrive.
                 if daily {
-                    SessionRibbon(model: model, activities: activities) { showsInspector = true }
+                    SessionRibbon(model: model, activities: activities) { activities.showsInspector = true }
                 }
                 HStack(alignment: .top, spacing: Design.Space.lg) {
                     VStack(alignment: .leading, spacing: Design.Space.md) {
                         timeFilterBanner
                         if daily {
-                            if mode == .sessions {
-                                SessionListCard(model: model, activities: activities, onSelect: { showsInspector = true }) { modeSwitch }
+                            if activities.mode == .sessions {
+                                SessionListCard(model: model, activities: activities, onSelect: { activities.showsInspector = true }) { modeSwitch }
                             } else {
                                 timelineCard(range)
                             }
                         } else {
                             ActivityListView(model: model, activities: activities, groups: activities.groups,
-                                              matchCount: activities.matchCount, matchSeconds: activities.matchSeconds,
-                                              meetingSeconds: activities.meetingSeconds)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .designCard()
+                                              matchCount: activities.matchCount)
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    if showsInspector {
+                    // Only with something to inspect: nothing chosen, the list takes the width.
+                    if activities.showsInspector, inspecting {
                         Group {
-                            if let session = activities.sessions.first(where: { $0.start == activities.selectedSession }) {
+                            if let session = selectedSession {
                                 SessionInspector(model: model, activities: activities, session: session)
                             } else {
                                 ActivityInspector(model: model, activities: activities)
@@ -134,7 +129,7 @@ struct ActivitiesView: View {
             // ⌘E opens the inspector's form for the selected block.
             Button("修改分类…") {
                 guard activities.selectedActivity != nil else { return }
-                showsInspector = true
+                activities.showsInspector = true
                 withAnimation(RefinedStyle.motion(reduced: reduceMotion)) { activities.isEditingCategory = true }
             }
             .keyboardShortcut("e").hidden()
@@ -155,8 +150,8 @@ struct ActivitiesView: View {
                                        timeInterval: model.activityTimeInterval, filter: model.activityFilter)) {
             activities.recompute(model: model, events: calendarEvents)
         }
-        .onChange(of: activities.selectedActivity) { _, value in if value != nil { showsInspector = true } }
-        .onChange(of: activities.selectedSession) { _, value in if value != nil { showsInspector = true } }
+        .onChange(of: activities.selectedActivity) { _, value in if value != nil { activities.showsInspector = true } }
+        .onChange(of: activities.selectedSession) { _, value in if value != nil { activities.showsInspector = true } }
         .onChange(of: model.activitySearch) { _, _ in scheduleSearchRecompute() }
         .onDisappear {
             pendingSearch?.cancel()
@@ -195,41 +190,63 @@ struct ActivitiesView: View {
 
     /// 会话 | 时间线: the same day as a list of sessions or as the detailed timeline.
     private var modeSwitch: some View {
-        Segmented(options: [Mode.sessions, .timeline], selection: $mode, height: 24) { item in
+        Segmented(options: [ActivitiesModel.Mode.sessions, .timeline], selection: $activities.mode, height: 24) { item in
             item == .sessions ? Text("会话") : Text("时间线")
         }
     }
 
-    /// The range, the filter and the inspector; then what was recorded.
+    private var selectedSession: WorkSession? {
+        activities.sessions.first { $0.start == activities.selectedSession }
+    }
+
+    /// A session or an activity is chosen: the inspector has something to show.
+    private var inspecting: Bool { selectedSession != nil || activities.selectedActivity != nil }
+
+    /// The range, the filter and the inspector; then one sentence about what
+    /// the list below shows: everything, or the part a filter keeps.
     private func header(_ range: DateRangeSelection, width: CGFloat) -> some View {
         let loaded = activities.rangeCount != nil
         let count = activities.rangeCount ?? 0
-        let time = Text(TodayFmt.long(activities.rangeSeconds)).monospacedDigit()
+        let query = ActivitiesModel.normalizedQuery(model.activitySearch)
+        let filtered = model.activityFilter != nil || activities.matchCount != nil
         let sentence: Text
         if !loaded {
             sentence = Text(verbatim: " ")
         } else if count == 0 {
             sentence = Text("这段时间还没有记录。")
+        } else if filtered {
+            let scope = query.map { "“\($0)”" }
+                ?? model.activityFilter.flatMap { model.resolver.categoriesByID[$0]?.name }
+                ?? String(localized: "这个时段")
+            let shown = Text(TodayFmt.long(activities.shownSeconds)).monospacedDigit()
+            let share = Int((activities.shownSeconds / max(1, activities.rangeSeconds) * 100).rounded())
+            sentence = Text("\(scope)：\(shown)，占全部的 \(share)%。")
         } else if ActivitiesModel.showsTimeline(range), !activities.sessions.isEmpty {
-            sentence = Text("记录了 \(time)，分成 \(activities.sessions.count) 段会话。")
+            sentence = Text("记录了 \(Text(TodayFmt.long(activities.rangeSeconds)).monospacedDigit())，分成 \(activities.sessions.count) 段会话。")
         } else {
-            sentence = Text("记录了 \(time)。")
+            sentence = Text("记录了 \(Text(TodayFmt.long(activities.rangeSeconds)).monospacedDigit())。")
         }
-        var stats = [StripStat(id: 0, label: "记录", value: loaded ? "\(count)" : "—", note: String(localized: "条"))]
+        let shownCount = filtered ? activities.displayedItems.count : count
+        var stats = [StripStat(id: 0, label: "记录数", value: loaded ? shownCount.formatted() : "—",
+                               note: filtered ? String(localized: "共 \(count.formatted())") : "")]
         if activities.meetingSeconds > 0 {
             stats.append(StripStat(id: 1, label: "会议", value: TodayFmt.clock(activities.meetingSeconds), note: String(localized: "来自日历")))
-        }
-        if let filtered = activities.matchCount {
-            stats.append(StripStat(id: 2, label: "搜索命中", value: "\(filtered)", note: activities.matchSeconds.map { Format.duration($0) } ?? ""))
         }
         return PageHeader(sentence: sentence, stats: stats, width: width) {
             RangeControls(model: model)
         } actions: {
-            filterMenu
-            SegmentButton(selected: showsInspector) { showsInspector.toggle() } label: {
-                Image(systemName: "sidebar.right").foregroundStyle(showsInspector ? Design.ink : Design.iconInk)
+            if model.activityFilter != nil {
+                SegmentButton(selected: false) { model.activityFilter = nil } label: {
+                    Image(systemName: "xmark").foregroundStyle(Design.iconInk)
+                }
+                .help("清除分类筛选").accessibilityLabel("清除分类筛选")
             }
-            .help("显示检查器").accessibilityLabel("显示检查器")
+            filterMenu
+            SegmentButton(selected: activities.showsInspector && inspecting) { activities.showsInspector.toggle() } label: {
+                Image(systemName: "sidebar.right").foregroundStyle(activities.showsInspector && inspecting ? Design.ink : Design.iconInk)
+            }
+            .disabled(!inspecting).opacity(inspecting ? 1 : 0.4)
+            .help(inspecting ? "显示检查器" : "选中一项后在这里看它的详情").accessibilityLabel("显示检查器")
         }
     }
 
@@ -258,7 +275,7 @@ struct ActivitiesView: View {
         let merge = String(localized: "短于 \(TimelineZoom.thresholdLabel(for: activities.timelineHourHeight)) 的切换并入所在的块")
         return VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center, spacing: Design.Space.sm) {
-                Text("时间线").cardTitle().help(merge)
+                Text("时间线").cardTitle().fixedSize().help(merge)
                 // Shown whole or not at all; the title's tooltip always has it.
                 ViewThatFits(in: .horizontal) {
                     Text(merge).font(.note).foregroundStyle(Design.ink2).fixedSize()
@@ -301,7 +318,7 @@ struct ActivitiesView: View {
                                 activities.selectedActivity = nil
                                 activities.selectedStart = nil
                                 activities.selectedSession = activities.selectedSession == start ? nil : start
-                                if activities.selectedSession != nil { showsInspector = true }
+                                if activities.selectedSession != nil { activities.showsInspector = true }
                             },
                             selectedActivity: activities.selectedActivity,
                             selectedStart: activities.selectedStart,
@@ -311,7 +328,7 @@ struct ActivitiesView: View {
                             categories: model.resolver.categoriesByID.values.sorted { $0.sortOrder < $1.sortOrder },
                             onEdit: { block in
                                 selectTimelineBlock(block)
-                                showsInspector = true
+                                activities.showsInspector = true
                                 withAnimation(RefinedStyle.motion(reduced: reduceMotion)) { activities.isEditingCategory = true }
                             },
                             onAssign: assign)
@@ -489,6 +506,13 @@ final class ActivitiesModel {
         let rows: [Row]
     }
 
+    /// Page state the view keeps across ranges (and a capture can set).
+    enum Mode { case sessions, timeline }
+    var mode: Mode = .sessions
+    var showsInspector = true
+    /// The list's grouping over longer ranges: 0 按分类, 1 按应用, 2 按时间.
+    var grouping = 0
+
     var groups: [CategoryGroup] = []
     /// The whole range, unfiltered, for the window subtitle; nil until the
     /// first recompute.
@@ -596,6 +620,8 @@ final class ActivitiesModel {
     /// active search" (distinct from "search matched zero items").
     var matchCount: Int?
     var matchSeconds: TimeInterval?
+    /// What the list shows after every filter, category included.
+    var shownSeconds: TimeInterval = 0
 
     var selectedActivity: ActivitySelection?
     /// The inspector's 修改分类… form is open (⌘E, the context menu).
@@ -733,6 +759,7 @@ final class ActivitiesModel {
             matchedItems = items
         }
         displayedItems = matchedItems
+        shownSeconds = Aggregator.totalDuration(matchedItems.map(\.span))
         let hasFilter = query != nil || model.activityTimeInterval != nil
         matchCount = hasFilter ? matchedItems.count : nil
         matchSeconds = hasFilter ? Aggregator.totalDuration(matchedItems.map(\.span)) : nil

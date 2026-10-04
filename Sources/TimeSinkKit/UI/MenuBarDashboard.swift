@@ -936,7 +936,7 @@ struct MenuBarDashboardView: View {
                 Capsule().fill(Design.track)
                 Capsule().fill(color).frame(width: max(3, geo.size.width * min(1, ratio)))
             }.frame(height: 4)
-            Text(Format.duration(entry.seconds, compact: true)).monospacedDigit().foregroundStyle(Design.ink)
+            Text(Format.duration(entry.seconds)).monospacedDigit().foregroundStyle(Design.ink)
                 .frame(minWidth: 44, alignment: .trailing)
         }
         .padding(.horizontal, Design.Space.xs)

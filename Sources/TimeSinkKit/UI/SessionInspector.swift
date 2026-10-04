@@ -40,6 +40,7 @@ struct SessionInspector: View {
             .padding(Design.Space.lg)
         }
         .scrollContentBackground(.hidden)
+        .fadeFoot()
         .onChange(of: session.start) { _, _ in editingName = false; newProject = false; recatOpen = false }
         .task(id: session.start) { loadCaptures() }
         .sheet(item: $selectedCapture) { CaptureReviewSheet(capture: $0) }
@@ -121,13 +122,16 @@ struct SessionInspector: View {
         let ordered = model.resolver.categoriesByID.values.sorted { $0.sortOrder < $1.sortOrder }
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("分类").font(.body.weight(.semibold))
+                Text("归为").font(.body.weight(.semibold))
                 Spacer()
                 CategoryChip(category: current)
-                if !recatOpen {
-                    Button("修改分类…") { recatCategory = session.categoryID; recatScope = .segment; recatOpen = true }
-                        .buttonStyle(PillButtonStyle(height: 24, font: .note))
+            }
+            if !recatOpen {
+                // Full width, as in the activity inspector: never squeezed beside the chip.
+                Button { recatCategory = session.categoryID; recatScope = .segment; recatOpen = true } label: {
+                    Label("修改分类…", systemImage: "tag").frame(maxWidth: .infinity)
                 }
+                .buttonStyle(PillButtonStyle())
             }
             if recatOpen {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: 6)], alignment: .leading, spacing: 6) {

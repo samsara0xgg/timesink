@@ -4,9 +4,8 @@ import SwiftUI
 import WebKit
 
 /// `--design-preview --screen-capture <dir>`: the sample-data surfaces in
-/// real windows (real glass, real toolbars) on the built-in display, each
-/// captured by window id with `screencapture -l`. The app never activates,
-/// so windows draw in their inactive state; nothing goes in the menu bar.
+/// real windows (real toolbars) that never reach a display, each drawn
+/// into a bitmap. The app never activates; nothing goes in the menu bar.
 @MainActor enum ScreenCapture {
     enum Host {
         /// A window with a hidden title bar, like the app's own.
@@ -15,6 +14,8 @@ import WebKit
         case glass(CGFloat)
         /// A transparent panel; the view draws its own card (flyouts, HUD).
         case clear
+
+        var isWindow: Bool { if case .window = self { true } else { false } }
     }
 
     static var output: URL {
@@ -35,15 +36,21 @@ import WebKit
     /// it smaller (a fresh small window hides layout that sticks).
     static let shrink = ProcessInfo.processInfo.environment["TIMESINK_PREVIEW_SHRINK"] != nil
 
-    static func shoot<V: View>(_ name: String, _ view: V, size: NSSize, dark: Bool, host: Host = .window, settle: Int = 900) async throws {
-        let file = output.appendingPathComponent("\(name)-\(dark ? "dark" : "light").png")
+    /// The language the strings resolve to (`-AppleLanguages`), for file names.
+    static let language = Bundle.main.preferredLocalizations.first?.hasPrefix("en") == true ? "en" : "zh"
+
+    /// Renders off screen: the window is built but never ordered in, so no
+    /// display ever shows it, and its frame view is drawn into a bitmap.
+    static func shoot<V: View>(_ name: String, _ view: V, size: NSSize, dark: Bool = false, host: Host = .window, settle: Int = 900) async throws {
+        let file = output.appendingPathComponent("\(name)-\(language).png")
         if let only, !file.lastPathComponent.contains(only) { return }
-        guard let screen = builtIn else { print("No built-in display: skipped \(file.lastPathComponent)"); return }
-        NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        NSApp.appearance = NSAppearance(named: .aqua)
         let resizable = shrink && name.hasPrefix("main-")
         let root = view
             .environment(\.locale, RefinedPreview.locale)
-            .environment(\.colorScheme, dark ? .dark : .light)
+            .environment(\.colorScheme, .light)
+            // Off screen no display drives an animation: everything lands at once.
+            .transaction { $0.disablesAnimations = true; $0.animation = nil }
             .frame(width: resizable ? nil : size.width, height: resizable ? nil : size.height)
         let window: NSWindow
         switch host {
@@ -60,62 +67,47 @@ import WebKit
             window.titleVisibility = .hidden
             window.toolbarStyle = .unified
         case .glass(let radius):
+            // Glass samples what is behind a window on screen; off screen it
+            // stands in as the light tint it shows over a plain desktop.
             window = NSPanel(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless, .nonactivatingPanel],
                              backing: .buffered, defer: false)
             window.isOpaque = false
             window.backgroundColor = .clear
-            window.hasShadow = true
-            let hosting = NSHostingView(rootView: root)
-            if #available(macOS 26, *) {
-                let glass = NSGlassEffectView(frame: NSRect(origin: .zero, size: size))
-                glass.cornerRadius = radius
-                glass.contentView = hosting
-                window.contentView = glass
-            } else {
-                let effect = NSVisualEffectView(frame: NSRect(origin: .zero, size: size))
-                effect.material = .popover
-                effect.state = .active
-                effect.wantsLayer = true
-                effect.layer?.cornerRadius = radius
-                hosting.frame = effect.bounds
-                hosting.autoresizingMask = [.width, .height]
-                effect.addSubview(hosting)
-                window.contentView = effect
-            }
+            window.contentView = NSHostingView(rootView: root.background(Color(white: 0.94), in: RoundedRectangle(cornerRadius: radius, style: .continuous)))
         case .clear:
             window = NSPanel(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless, .nonactivatingPanel],
                              backing: .buffered, defer: false)
             window.isOpaque = false
             window.backgroundColor = .clear
-            window.hasShadow = false
             window.contentView = NSHostingView(rootView: root)
         }
         window.appearance = NSApp.appearance
         window.colorSpace = .sRGB
-        window.ignoresMouseEvents = true
         window.isReleasedWhenClosed = false
         window.setContentSize(size)
-        let visible = screen.visibleFrame
-        window.setFrameTopLeftPoint(NSPoint(x: visible.minX + 20, y: visible.maxY - 20))
-        window.orderFrontRegardless()
-        defer { window.orderOut(nil) }
+        defer { window.close() }
         try await Task.sleep(for: .milliseconds(settle))
-        guard window.screen == screen else { print("Not on the built-in display: skipped \(file.lastPathComponent)"); return }
-        capture(window, to: file)
+        try render(window, to: file, frame: host.isWindow)
         if resizable {
             window.setContentSize(Design.windowMinSize)
-            window.setFrameTopLeftPoint(NSPoint(x: visible.minX + 20, y: visible.maxY - 20))
             try await Task.sleep(for: .milliseconds(settle))
-            capture(window, to: output.appendingPathComponent("\(name)-shrunk-\(dark ? "dark" : "light").png"))
+            try render(window, to: output.appendingPathComponent("\(name)-shrunk-\(language).png"), frame: true)
         }
     }
 
-    private static func capture(_ window: NSWindow, to file: URL) {
-        let shot = Process()
-        shot.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-        shot.arguments = ["-x", "-o", "-l", String(window.windowNumber), file.path]
-        try? shot.run()
-        shot.waitUntilExit()
+    /// Draws the window at 2x: with `frame`, the title bar and toolbar too.
+    private static func render(_ window: NSWindow, to file: URL, frame: Bool) throws {
+        guard let content = window.contentView else { return }
+        let view = frame ? (content.superview ?? content) : content
+        view.layoutSubtreeIfNeeded()
+        view.displayIfNeeded()
+        let bounds = view.bounds
+        guard let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(bounds.width * 2), pixelsHigh: Int(bounds.height * 2),
+                                            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return }
+        bitmap.size = bounds.size
+        view.cacheDisplay(in: bounds, to: bitmap)
+        try bitmap.representation(using: .png, properties: [:])?.write(to: file)
         print("Captured \(file.lastPathComponent)")
     }
 
@@ -188,42 +180,97 @@ import WebKit
         // sample day, for auditing real lengths. Never the live file.
         let model = try ProcessInfo.processInfo.environment["TIMESINK_PREVIEW_DB"].map(PerfReview.realModel) ?? RefinedPreview.fixture()
         model.timeFormat = "24"
-        let size = RefinedPreview.mainSize
         let calendar = Calendar.current
         let yesterday = calendar.date(byAdding: .day, value: -1, to: Date())!
-        // The app is light only.
-        for dark in [false] {
-            for (name, page) in [("today", SidebarItem.today), ("activities", .activities), ("trends", .stats),
-                                 ("focus", .focus), ("organization", .organization)] {
-                model.sidebarSelection = page
-                model.range = DateRangeSelection(kind: page == .stats ? .last7 : .day, anchor: page == .activities ? yesterday : Date())
-                let activities = ActivitiesModel()
-                activities.recompute(model: model, events: [])
-                if page == .activities {
-                    // The day's longest session open in the inspector.
-                    await activities.loadSessions(model: model)
-                    activities.selectedSession = activities.sessions.max { $0.recorded < $1.recorded }?.start
-                }
-                try await shoot("main-\(name)", MainWindowView(model: model, activities: activities), size: size, dark: dark,
-                                settle: page == .stats ? 3500 : 1200)
-                if page == .activities, activities.sessions.count > 1 {
-                    // A session that continues the one before it: the merge suggestion shows.
-                    let list = activities.sessions
-                    let same = list.indices.dropFirst().first { index in
-                        list[index].categoryID == list[index - 1].categoryID
-                            && list[index].start.timeIntervalSince(list[index - 1].end) < 15 * 60
-                    }
-                    if let same {
-                        activities.selectedSession = list[same].start
-                        try await shoot("main-activities-merge", MainWindowView(model: model, activities: activities), size: size, dark: dark, settle: 1200)
-                    }
-                }
+        let quiet = calendar.date(byAdding: .day, value: -40, to: Date())!
+        let wide = NSSize(width: 1460, height: 880), standard = NSSize(width: 1280, height: 820), small: NSSize = Design.windowMinSize
+        let dark = false
+        /// One state of one page at each size; `setup` runs on the built list.
+        func main(_ name: String, _ page: SidebarItem, kind: DateRangeSelection.Kind = .day, anchor: Date = Date(),
+                  sizes: [NSSize] = [wide], settle: Int = 1200,
+                  setup: (ActivitiesModel) async -> Void = { _ in }) async throws {
+            model.sidebarSelection = page
+            model.range = DateRangeSelection(kind: kind, anchor: anchor)
+            let activities = ActivitiesModel()
+            activities.recompute(model: model, events: [])
+            await setup(activities)
+            for size in sizes {
+                try await shoot("main-\(name)-\(Int(size.width))", MainWindowView(model: model, activities: activities), size: size, settle: settle)
             }
-            model.sidebarSelection = .organization
-            for (name, tab) in [("categories", SettingsTab.categories), ("rules", .rules)] {
-                model.organizationTab = tab
-                try await shoot("main-\(name)", MainWindowView(model: model), size: size, dark: dark)
+            model.activityFilter = nil
+            model.activitySearch = ""
+            model.activityTimeInterval = nil
+        }
+        func refilter(_ activities: ActivitiesModel) { activities.recompute(model: model, events: []) }
+
+        try await main("today", .today, sizes: [wide, standard, small])
+        model.todayDayOffset = -40
+        try await main("today-empty", .today)
+        model.todayDayOffset = 0
+
+        // A day: sessions, the timeline, the inspector in each state.
+        func longestSession(_ activities: ActivitiesModel) async {
+            await activities.loadSessions(model: model)
+            activities.selectedSession = activities.sessions.max { $0.recorded < $1.recorded }?.start
+        }
+        func longestBlock(_ activities: ActivitiesModel) {
+            activities.mode = .timeline
+            if let block = activities.timelineBlocks.filter(\.matchesFilter).max(by: { $0.end.timeIntervalSince($0.start) < $1.end.timeIntervalSince($1.start) }),
+               let activity = block.activity {
+                activities.select(activity, start: block.start)
             }
+        }
+        try await main("act-day", .activities, anchor: yesterday, sizes: [wide, standard, small], setup: longestSession)
+        try await main("act-day-none", .activities, anchor: yesterday) { await $0.loadSessions(model: model) }
+        try await main("act-day-closed", .activities, anchor: yesterday, sizes: [wide, small]) { activities in
+            await activities.loadSessions(model: model)
+            activities.showsInspector = false
+        }
+        try await main("act-day-timeline", .activities, anchor: yesterday, sizes: [wide, small]) { longestBlock($0) }
+        try await main("act-day-heatmap", .activities, anchor: yesterday) { activities in
+            let start = calendar.startOfDay(for: yesterday).addingTimeInterval(15 * 3600)
+            model.activityTimeInterval = DateInterval(start: start, duration: 3600)
+            refilter(activities)
+        }
+        try await main("act-day-filter", .activities, anchor: yesterday) { activities in
+            model.activityFilter = "softwareDev"
+            refilter(activities)
+            longestBlock(activities)
+        }
+        try await main("act-day-empty", .activities, anchor: quiet)
+        try await main("act-day-toast", .activities, anchor: yesterday) { activities in
+            await longestSession(activities)
+            activities.joinToast = activities.selectedSession
+        }
+
+        // Seven days: the grouped list.
+        try await main("act-week", .activities, kind: .last7, sizes: [wide, standard, small])
+        try await main("act-week-filter", .activities, kind: .last7, sizes: [wide, small]) { activities in
+            model.activityFilter = "softwareDev"
+            refilter(activities)
+        }
+        try await main("act-week-app", .activities, kind: .last7) { $0.grouping = 1 }
+        try await main("act-week-time", .activities, kind: .last7) { $0.grouping = 2 }
+        try await main("act-week-search", .activities, kind: .last7) { activities in
+            model.activitySearch = "github"
+            refilter(activities)
+        }
+        try await main("act-week-row", .activities, kind: .last7, sizes: [wide, small]) { activities in
+            if let group = activities.groups.first, let row = group.rows.first {
+                activities.select(ActivitySelection(categoryID: group.id, rowID: row.id))
+            }
+        }
+        try await main("act-week-closed", .activities, kind: .last7) { $0.showsInspector = false }
+
+        try await main("trends", .stats, kind: .last7, sizes: [wide, standard, small], settle: 3500)
+        try await main("trends-30", .stats, kind: .last30, settle: 3500)
+        try await main("focus", .focus, sizes: [wide, standard, small])
+        try model.focus?.start(minutes: 25)
+        try await main("focus-running", .focus)
+        model.focus?.finish(completed: false)
+        // Its queue reads 30 days before it draws.
+        try await main("org", .organization, sizes: [wide, standard, small], settle: 4000)
+        do {
             model.organizationTab = .uncategorized
             // No 隐私: its Chrome permission check blocks an unsigned build.
             for (name, tab) in [("general", SettingsTab.general), ("recording", .recording), ("llm", .llm),
@@ -267,6 +314,10 @@ import WebKit
                 try await shoot("focus-hud", FocusHUDContentView(appName: "信息", appKey: "com.apple.MobileSMS", hideCount: 1, controller: focus, onReturn: {}, onAllow: {}), // l10n: data
                                 size: NSSize(width: 300, height: 52), dark: dark, host: .clear)
             }
+            let rule = TitleRuleEditor(model: model, pending: PendingTitleRule(prefill: "WWDC", scopeKey: "youtube.com", // l10n: data
+                                                                                scopeLabel: "youtube.com", categoryID: "learning"))
+                .background(Design.surface)
+            try await shoot("sheet-title-rule", rule, size: RefinedPreview.fitting(rule, dark: dark), host: .clear)
         }
     }
 }

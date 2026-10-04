@@ -228,7 +228,8 @@ struct UncategorizedSettingsPane: View {
                 ContentUnavailableView("待分类暂时无法读取", systemImage: "exclamationmark.triangle",
                                        description: Text("记录没有丢失。稍后切回这里会再试一次。"))
             } else if rows.isEmpty && !loaded {
-                Color.clear.frame(height: 56).accessibilityLabel("正在读取待分类")
+                Text("正在读取近 30 天…").foregroundStyle(Design.ink2).frame(height: 56, alignment: .center)
+                    .accessibilityLabel("正在读取待分类")
             } else if rows.isEmpty {
                 emptyState
             } else {

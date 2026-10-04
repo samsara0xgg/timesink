@@ -38,6 +38,8 @@ enum Design {
     static let controlHeight: CGFloat = 28
     /// One row of a list.
     static let rowHeight: CGFloat = 32
+    /// A column of durations at body size: room for "24 小时 25 分".
+    static let durationWidth: CGFloat = 84
 
     // MARK: Colour
 
@@ -175,6 +177,23 @@ extension View {
     /// place a shadow is drawn, because it really is above.
     func floatingCard() -> some View {
         modifier(DesignCard()).shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+    }
+    /// A scrolling list in a card: its row plates reach into the card's
+    /// margin, so their text lines up with the heading, and its foot fades
+    /// out instead of cutting a row in half. The list ends with
+    /// `Design.Space.lg` of room for the fade.
+    func cardList() -> some View {
+        padding(.horizontal, -Design.Space.sm).fadeFoot()
+    }
+    /// A scroll view's last `Design.Space.lg` fades out: what continues
+    /// below shows that it does, and nothing ends cut in half.
+    func fadeFoot() -> some View {
+        mask {
+            VStack(spacing: 0) {
+                Color.black
+                LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: Design.Space.lg)
+            }
+        }
     }
     /// A card with the standard inner margin, its content packed at the top.
     func cardBox() -> some View {

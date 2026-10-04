@@ -11,16 +11,6 @@
         }
       }
     },
-    " · 在时间轴中定位": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": " · Locate on timeline"
-          }
-        }
-      }
-    },
     " · 计入投入时长": {
       "localizations": {
         "en": {
@@ -89,58 +79,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ · %lld min"
-          }
-        }
-      }
-    },
-    "%@ · %lld 条记录 · %lld 个分类": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@ · %#@n2@ · %#@n3@"
-          },
-          "substitutions": {
-            "n2": {
-              "argNum": 2,
-              "formatSpecifier": "lld",
-              "variations": {
-                "plural": {
-                  "one": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg record"
-                    }
-                  },
-                  "other": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg records"
-                    }
-                  }
-                }
-              }
-            },
-            "n3": {
-              "argNum": 3,
-              "formatSpecifier": "lld",
-              "variations": {
-                "plural": {
-                  "one": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg category"
-                    }
-                  },
-                  "other": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg categories"
-                    }
-                  }
-                }
-              }
-            }
           }
         }
       }
@@ -231,16 +169,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Week of %@"
-          }
-        }
-      }
-    },
-    "%@–%@ · 另有 %lld 项": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@–%@ · %lld more"
           }
         }
       }
@@ -669,13 +597,13 @@
               "one": {
                 "stringUnit": {
                   "state": "translated",
-                  "value": "%lld visit"
+                  "value": "%lld time"
                 }
               },
               "other": {
                 "stringUnit": {
                   "state": "translated",
-                  "value": "%lld visits"
+                  "value": "%lld times"
                 }
               }
             }
@@ -718,9 +646,21 @@
     "%lld 项": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld items"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld item"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld items"
+                }
+              }
+            }
           }
         }
       }
@@ -1591,16 +1531,6 @@
         }
       }
     },
-    "会议时间 %@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Meetings %@"
-          }
-        }
-      }
-    },
     "会话": {
       "localizations": {
         "en": {
@@ -2018,7 +1948,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Category"
+            "value": "Categories"
           }
         }
       }
@@ -2068,7 +1998,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Minutes"
+            "value": "min"
           }
         }
       }
@@ -2078,7 +2008,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Minutes · Ends %@"
+            "value": "min · ends %@"
           }
         }
       }
@@ -2663,16 +2593,6 @@
         }
       }
     },
-    "命中 %lld 项 · 合计 %@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Matches: %lld · total %@"
-          }
-        }
-      }
-    },
     "和昨天此时比": {
       "localizations": {
         "en": {
@@ -2809,16 +2729,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Show calendar events on timeline"
-          }
-        }
-      }
-    },
-    "在时间轴中定位这项活动": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Locate this activity on the timeline"
           }
         }
       }
@@ -3706,7 +3616,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Resume Recording"
+            "value": "Resume"
           }
         }
       }
@@ -3926,7 +3836,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Interruption"
+            "value": "Interruptions"
           }
         }
       }
@@ -5183,16 +5093,6 @@
         }
       }
     },
-    "查看分类来源、调整分类，或回看当时的屏幕。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "See why this category was chosen, change it or review the screen at the time."
-          }
-        }
-      }
-    },
     "查看权限…": {
       "localizations": {
         "en": {
@@ -5640,7 +5540,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ more than this time yesterday"
+            "value": "+%@ vs. yesterday"
           }
         }
       }
@@ -5650,7 +5550,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ less than this time yesterday"
+            "value": "−%@ vs. yesterday"
           }
         }
       }
@@ -6191,16 +6091,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Waiting for activity"
-          }
-        }
-      }
-    },
-    "筛选：%@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Filter: %@"
           }
         }
       }
@@ -7193,16 +7083,6 @@
         }
       }
     },
-    "选择一段活动": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Select an activity"
-          }
-        }
-      }
-    },
     "选择专注期间隐藏的应用": {
       "localizations": {
         "en": {
@@ -7684,7 +7564,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "<1 min"
+            "value": "<1m"
           }
         }
       }
@@ -8221,13 +8101,13 @@
               "one": {
                 "stringUnit": {
                   "state": "translated",
-                  "value": "%lld limit"
+                  "value": "%lld"
                 }
               },
               "other": {
                 "stringUnit": {
                   "state": "translated",
-                  "value": "%lld limits"
+                  "value": "%lld"
                 }
               }
             }
@@ -8300,7 +8180,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Engagement sets the score"
+            "value": "Sets the score"
           }
         }
       }
@@ -8315,32 +8195,12 @@
         }
       }
     },
-    "条": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "records"
-          }
-        }
-      }
-    },
     "来自日历": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "From the calendar"
-          }
-        }
-      }
-    },
-    "搜索命中": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Search hits"
           }
         }
       }
@@ -8560,9 +8420,21 @@
     "超出 %lld 天": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Over on %lld days"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Over on %lld day"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Over on %lld days"
+                }
+              }
+            }
           }
         }
       }
@@ -8722,7 +8594,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Colour is the app's category"
+            "value": "Color is the app's category"
           }
         }
       }
@@ -9160,9 +9032,21 @@
     "%lld 项 Jev 不太确定": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld items Jev is unsure about"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld item Jev is unsure about"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld items Jev is unsure about"
+                }
+              }
+            }
           }
         }
       }
@@ -9542,7 +9426,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Colour"
+            "value": "Color"
           }
         }
       }
@@ -10105,6 +9989,204 @@
           "stringUnit": {
             "state": "translated",
             "value": "%1$@ · %2$lld guessed"
+          }
+        }
+      }
+    },
+    "%@ · 另有 %lld 项": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ · %2$lld more"
+          }
+        }
+      }
+    },
+    "%@：%@，占全部的 %lld%%。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@: %2$@, %3$lld%% of everything recorded."
+          }
+        }
+      }
+    },
+    "%lld 个分类": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld category"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld categories"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld 个应用": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld app"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld apps"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "共 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "of %@"
+          }
+        }
+      }
+    },
+    "当前分类": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current category"
+          }
+        }
+      }
+    },
+    "明细": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Breakdown"
+          }
+        }
+      }
+    },
+    "正在读取近 30 天…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reading the last 30 days…"
+          }
+        }
+      }
+    },
+    "清除分类筛选": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear category filter"
+          }
+        }
+      }
+    },
+    "记录数": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Records"
+          }
+        }
+      }
+    },
+    "这个时段": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This period"
+          }
+        }
+      }
+    },
+    "选中一项后在这里看它的详情": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select something to see its details here"
+          }
+        }
+      }
+    },
+    "%lld 个时段": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld stretch"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld stretches"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld 条规则": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld rule"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld rules"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "合计 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ total"
           }
         }
       }

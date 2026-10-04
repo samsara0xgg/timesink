@@ -36,6 +36,10 @@ bundle: build
 	# through to the English one, and Chinese users would see English.
 	mkdir -p $(DIST)/Contents/Resources/zh-Hans.lproj
 	touch $(DIST)/Contents/Resources/zh-Hans.lproj/Localizable.strings $(DIST)/Contents/Resources/zh-Hans.lproj/InfoPlist.strings
+	# Plural keys fall through the same way, to the English stringsdict
+	# ("12 limits" in Chinese): each formats as its own key instead.
+	python3 -c 'import plistlib, sys; keys = plistlib.load(open(sys.argv[1], "rb")); plistlib.dump({k: {"NSStringLocalizedFormatKey": k} for k in keys}, open(sys.argv[2], "wb"))' \
+		$(DIST)/Contents/Resources/en.lproj/Localizable.stringsdict $(DIST)/Contents/Resources/zh-Hans.lproj/Localizable.stringsdict
 	# Inside out, never --deep: Sparkle's own recipe for signing it outside Xcode.
 	$(SIGN) $(SPARKLE)/Versions/B/XPCServices/Installer.xpc
 	$(SIGN) --preserve-metadata=entitlements $(SPARKLE)/Versions/B/XPCServices/Downloader.xpc

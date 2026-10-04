@@ -7,16 +7,14 @@ public enum Format {
 
     /// The one duration formatter, in the interface language: en "1h 36m",
     /// "9m", "<1m", "0m"; zh "1 小时 36 分", "9 分", "不到 1 分", "0 分".
-    /// `compact` is for tight numeric columns: whole hours and minutes as
-    /// "1:36" from one hour up, plain minutes below it.
-    public static func duration(_ t: TimeInterval, compact: Bool = false, locale: Locale = AppLanguage.locale) -> String {
+    /// Columns use it too: one style everywhere, never "1:36" beside "9m".
+    public static func duration(_ t: TimeInterval, locale: Locale = AppLanguage.locale) -> String {
         let zh = locale.language.languageCode?.identifier == "zh"
         guard t > 0 else { return zh ? "0 分" : "0m" } // l10n: data
         guard t >= 60 else { return zh ? "不到 1 分" : "<1m" } // l10n: data
         let totalMinutes = Int(t / 60)
         let hours = totalMinutes / 60
         let minutes = totalMinutes % 60
-        if hours > 0, compact { return "\(hours):" + (minutes < 10 ? "0" : "") + "\(minutes)" }
         guard hours > 0 else { return zh ? "\(minutes) 分" : "\(minutes)m" } // l10n: data
         if minutes == 0 { return zh ? "\(hours) 小时" : "\(hours)h" } // l10n: data
         return zh ? "\(hours) 小时 \(minutes) 分" : "\(hours)h \(minutes)m" // l10n: data

@@ -64,7 +64,7 @@ struct HeatmapCard: View {
                             Capsule().fill(Color.secondary.opacity(0.12))
                             Capsule().fill(Color.secondary.opacity(0.55)).frame(width: bar.size.width * rows[weekday] / max(1, rows.max() ?? 1))
                         }.frame(height: 6)
-                        Text(Format.duration(rows[weekday], compact: true)).font(.note).foregroundStyle(Design.ink2).monospacedDigit().frame(width: 48, alignment: .trailing)
+                        Text(Format.duration(rows[weekday])).font(.note).foregroundStyle(Design.ink2).monospacedDigit().frame(width: 72, alignment: .trailing)
                     }.frame(width: 96).help("每个\(HeatmapData.Key(weekday: weekday, hour: 0).weekdayLabel)平均记录时长")
                 }
             }

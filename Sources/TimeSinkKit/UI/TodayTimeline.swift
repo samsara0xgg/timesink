@@ -3,7 +3,7 @@ import SwiftUI
 /// Wording for lengths of time on the Today page: short, in whole minutes.
 enum TodayFmt {
     /// "55 分" or "4:42": a figure and its unit in a narrow place.
-    static func clock(_ seconds: TimeInterval) -> String { Format.duration(seconds, compact: true) }
+    static func clock(_ seconds: TimeInterval) -> String { Format.duration(seconds) }
 
     /// "55 分", "2 小时 49 分" (en "55m", "2h 49m").
     static func long(_ seconds: TimeInterval) -> String { Format.duration(seconds) }

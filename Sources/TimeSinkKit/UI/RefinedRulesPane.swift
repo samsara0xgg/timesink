@@ -105,7 +105,8 @@ struct RefinedRulesPane: View {
     }
     private var header: some View {
         HStack(spacing: 10) {
-            Text("启用").frame(width: 28, alignment: .leading)
+            // Wider than its checkbox column: it may run into the handle's, never wrap.
+            Text("启用").lineLimit(1).fixedSize().frame(width: 28, alignment: .leading)
             Color.clear.frame(width: 16, height: 1)
             Text("类型").frame(width: 56, alignment: .leading)
             Text("条件").frame(maxWidth: .infinity, alignment: .leading)
@@ -126,7 +127,7 @@ struct RefinedRulesPane: View {
                 Text(row.displayPattern)
             }.font(.body).foregroundStyle(row.enabled ? .primary : .secondary).lineLimit(1).truncationMode(.middle).frame(maxWidth: .infinity, alignment: .leading).help(row.scopeLabel + " " + row.displayPattern)
             CategoryChip(category: model.resolver.categoriesByID[row.category]).lineLimit(1).frame(width: chipWidth, alignment: .leading)
-            Text(row.seconds == 0 ? "—" : Format.duration(row.seconds, compact: true)).font(.body).foregroundStyle(Design.ink2).monospacedDigit().frame(width: 84, alignment: .trailing)
+            Text(row.seconds == 0 ? "—" : Format.duration(row.seconds)).font(.body).foregroundStyle(Design.ink2).monospacedDigit().frame(width: 84, alignment: .trailing)
             Text(row.source == "user" ? "你" : "内置").font(.note).foregroundStyle(Design.ink2).lineLimit(1).frame(width: 48)
         }.padding(.horizontal, 14).frame(minHeight: 42)
             .contextMenu {

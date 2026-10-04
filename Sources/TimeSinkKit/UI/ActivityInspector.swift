@@ -24,6 +24,9 @@ struct ActivityInspector: View {
     @State private var toastSeconds = 6
     @State private var toastHovered = false
     @State private var reason = ""
+    /// Everything the chosen list row stands for: the header says the row's
+    /// total, not just the one record shown below it.
+    @State private var rowTotal: (count: Int, seconds: TimeInterval)?
 
     private struct SelectionKey: Equatable {
         let activity: ActivitySelection?
@@ -52,21 +55,19 @@ struct ActivityInspector: View {
     var body: some View {
         ScrollView {
             if let selected {
-                inspector(selected).padding(16)
-            } else {
-                ContentUnavailableView("选择一段活动", systemImage: "sidebar.right", description: Text("查看分类来源、调整分类，或回看当时的屏幕。"))
-                    .frame(minHeight: 250)
+                inspector(selected).padding(Design.Space.lg)
             }
         }
         .scrollContentBackground(.hidden)
+        .fadeFoot()
         .overlay(alignment: .bottom) {
             if let toast {
-                HStack(spacing: 10) {
+                HStack(spacing: Design.Space.md) {
                     Text(toast).font(.body).lineLimit(2)
-                    Button("撤销", action: undo).controlSize(.small).glassButton()
+                    Button("撤销", action: undo).buttonStyle(PillButtonStyle(height: 24))
                 }
-                .padding(.horizontal, 14).padding(.vertical, 10)
-                .glassSurface(cornerRadius: 14)
+                .padding(.horizontal, Design.Space.lg).padding(.vertical, Design.Space.md)
+                .floatingCard()
                 .padding(10).onHover { toastHovered = $0 }
                 .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
             }
@@ -92,6 +93,7 @@ struct ActivityInspector: View {
         let block = activities.selectedBlock
         let start = block?.start ?? item.span.start, end = block?.end ?? item.span.end
         let seconds = block?.segment?.recorded ?? item.span.duration
+        let aggregate = block == nil ? rowTotal.flatMap { $0.count > 1 ? $0 : nil } : nil
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
                 ActivityIcon(bundleID: item.span.appBundleID, domain: item.span.domain, size: 32)
@@ -99,8 +101,13 @@ struct ActivityInspector: View {
                     Text(block?.label ?? item.span.domain ?? item.span.appName).font(.body.weight(.semibold)).lineLimit(1)
                     // A record inside one minute reads as a moment, not "10:36–10:36".
                     let from = model.time(start), to = model.time(end)
-                    Text(from == to ? "\(from) · \(Format.duration(seconds))" : "\(from)–\(to) · \(Format.duration(seconds))")
-                        .font(.body).foregroundStyle(Design.ink2).monospacedDigit()
+                    if let aggregate {
+                        (Text("合计 \(Format.duration(aggregate.seconds))") + Text(verbatim: " · ") + Text("\(aggregate.count) 次"))
+                            .font(.body).foregroundStyle(Design.ink2).monospacedDigit()
+                    } else {
+                        Text(from == to ? "\(from) · \(Format.duration(seconds))" : "\(from)–\(to) · \(Format.duration(seconds))")
+                            .font(.body).foregroundStyle(Design.ink2).monospacedDigit()
+                    }
                 }
             }
             if let segment = block?.segment {
@@ -108,16 +115,16 @@ struct ActivityInspector: View {
             }
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text("分类").foregroundStyle(Design.ink2)
+                    Text("归为").foregroundStyle(Design.ink2)
                     Spacer()
                     CategoryChip(category: model.resolver.categoriesByID[item.categoryID])
                 }
                 Text(reason).foregroundStyle(Design.ink2).fixedSize(horizontal: false, vertical: true)
             }
-            .font(.body).padding(10).frame(maxWidth: .infinity, alignment: .leading)
-            .background(item.categoryID == "uncategorized" ? RefinedStyle.warning.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .glassPlatter(cornerRadius: 12)
-            .padding(.top, 10)
+            .font(.body).padding(Design.Space.md).frame(maxWidth: .infinity, alignment: .leading)
+            .background(item.categoryID == "uncategorized" ? Design.warning.opacity(0.15) : Design.floor,
+                        in: RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous))
+            .padding(.top, Design.Space.md)
 
             Group {
                 if activities.isEditingCategory {
@@ -127,7 +134,7 @@ struct ActivityInspector: View {
                     Button { setEditing(true) } label: {
                         Label("修改分类…", systemImage: "tag").frame(maxWidth: .infinity)
                     }
-                    .glassButton()
+                    .buttonStyle(PillButtonStyle())
                     .transition(.opacity)
                 }
             }
@@ -172,35 +179,41 @@ struct ActivityInspector: View {
                             Circle().fill(RefinedStyle.category(category.id, hex: category.colorHex)).frame(width: 6, height: 6)
                             Text(category.name).lineLimit(1)
                         }
-                        .font(.body).padding(.horizontal, 8).frame(height: 26).frame(maxWidth: .infinity, alignment: .leading)
-                        .foregroundStyle(chosen ? Color.white : .primary)
-                        .background(chosen ? Color.accentColor : Color.primary.opacity(0.06), in: Capsule())
-                        .contentShape(Capsule())
+                        .font(.body.weight(chosen ? .semibold : .regular)).foregroundStyle(Design.ink)
+                        .padding(.horizontal, Design.Space.sm).frame(height: 26).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(chosen ? Design.selectedFill : Design.surface,
+                                    in: RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous)
+                            .strokeBorder(chosen ? Design.ink.opacity(0.5) : Design.line))
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityAddTraits(chosen ? .isSelected : [])
                 }
             }
             Text("应用到").font(.body.weight(.semibold))
-            Picker("应用范围", selection: $scope) {
-                Text("这一段").tag(ReclassificationEdit.Scope.segment)
-                Text(item.span.domain == nil ? "整个应用" : "整个网站").tag(ReclassificationEdit.Scope.activity)
-                Text("按标题").tag(ReclassificationEdit.Scope.title)
-            }.pickerStyle(.segmented).labelsHidden()
+            Segmented(options: [ReclassificationEdit.Scope.segment, .activity, .title], selection: $scope, height: 24) { option in
+                switch option {
+                case .segment: Text("这一段")
+                case .activity: Text(item.span.domain == nil ? "整个应用" : "整个网站")
+                default: Text("按标题")
+                }
+            }
+            .accessibilityLabel("应用范围")
             if scope == .title {
                 TextField("标题包含，至少两个字", text: $pattern).textFieldStyle(.roundedBorder)
             }
             Text(previewLine(item)).font(.note).foregroundStyle(Design.ink2)
             HStack(spacing: 8) {
                 Button { cancelEdit(item) } label: { Text("取消").frame(maxWidth: .infinity) }
-                    .glassButton().keyboardShortcut(.cancelAction)
+                    .buttonStyle(PillButtonStyle()).keyboardShortcut(.cancelAction)
                 Button(action: save) { Text("重新归类").frame(maxWidth: .infinity) }
-                    .glassProminentButton().keyboardShortcut(.defaultAction)
+                    .buttonStyle(AccentButtonStyle()).keyboardShortcut(.defaultAction)
                     .disabled(scope == .title && TitleRuleInput.normalizedPattern(pattern) == nil || affected.count == 0)
             }
         }
-        .padding(12)
-        .glassPlatter(cornerRadius: 14, strong: true)
+        .padding(Design.Space.md)
+        .background(Design.floor, in: RoundedRectangle(cornerRadius: Design.Radius.card, style: .continuous))
     }
 
     private func previewLine(_ item: CategorizedSpan) -> String {
@@ -242,7 +255,7 @@ struct ActivityInspector: View {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(part.label).lineLimit(1).truncationMode(.middle)
                                 GeometryReader { proxy in
-                                    Capsule().fill(Color.primary.opacity(0.08))
+                                    Capsule().fill(Design.track)
                                         .overlay(alignment: .leading) {
                                             Capsule().fill(RefinedStyle.category(part.categoryID, hex: model.resolver.categoriesByID[part.categoryID]?.colorHex ?? "#C7C7CC"))
                                                 .frame(width: proxy.size.width * min(1, part.seconds / max(1, segment.recorded)))
@@ -253,14 +266,15 @@ struct ActivityInspector: View {
                         }
                         .font(.body).contentShape(Rectangle())
                         .padding(.vertical, 1)
-                        .background(part.selection == current ? Color.accentColor.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: 5))
+                        .background(part.selection == current ? Design.selectedFill : .clear,
+                                    in: RoundedRectangle(cornerRadius: Design.Radius.mark, style: .continuous))
                     }
                     .buttonStyle(.plain)
                     .accessibilityAddTraits(part.selection == current ? .isSelected : [])
                 }
             }
-            .padding(.horizontal, 12).padding(.vertical, 10)
-            .glassPlatter(cornerRadius: 12)
+            .padding(.horizontal, Design.Space.md).padding(.vertical, Design.Space.md)
+            .background(Design.floor, in: RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous))
             if !outs.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(outs.prefix(6), id: \.start) { out in
@@ -331,6 +345,9 @@ struct ActivityInspector: View {
         let item = activities.selectedStart.flatMap { start in
             all.first { $0.span.start <= start && start < $0.span.end && selection.matches(ActivitiesModel.selection(for: $0)) }
         } ?? all.first { selection.matches(ActivitiesModel.selection(for: $0)) }
+        rowTotal = activities.selectedStart == nil
+            ? all.filter { selection.matches(ActivitiesModel.selection(for: $0)) }.reduce((0, 0)) { ($0.0 + 1, $0.1 + $1.span.duration) }
+            : nil
         // Keep the saved row visible even when changing category moves its list group.
         if let item { selected = item }
         else if keepForm, let previous = selected, let updated = all.first(where: { $0.span.id == previous.span.id }) { selected = updated }

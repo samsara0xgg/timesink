@@ -63,7 +63,7 @@ struct ShellBar: View {
             Color.clear.frame(width: 72, height: 1)
             NavTabs(model: model)
             HStack(spacing: Design.Space.sm) {
-                SearchField(model: model, provided: items.search, width: compact ? 150 : 190)
+                SearchField(model: model, provided: items.search, width: compact ? 150 : 190, compact: compact)
                 RecordingStatus(model: model, compact: compact)
             }
         }
@@ -90,11 +90,14 @@ private struct NavTabs: View {
         HStack(spacing: 2) {
             ForEach(SidebarItem.allCases, id: \.self) { page in
                 SegmentButton(selected: page == selection) { go(page) } label: {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 6) {
                         Text(title(page))
                         if page == .organization, model.pendingClassificationCount > 0 {
-                            Text(verbatim: "\(model.pendingClassificationCount)").font(.note).monospacedDigit()
-                                .foregroundStyle(Design.ink2)
+                            // A badge, not a word: on its own plate, never read as part of the name.
+                            Text(verbatim: "\(model.pendingClassificationCount)").font(.note.weight(.semibold)).monospacedDigit()
+                                .foregroundStyle(Design.surface)
+                                .padding(.horizontal, 5).frame(minWidth: 18, minHeight: 16)
+                                .background(Design.ink2, in: Capsule())
                         }
                     }
                 }
@@ -134,6 +137,8 @@ private struct SearchField: View {
     let model: AppModel
     let provided: ShellSearch?
     let width: CGFloat
+    /// Too narrow for the page's prompt: it says only 搜索, the rest on hover.
+    let compact: Bool
     @FocusState private var focused: Bool
 
     private var text: Binding<String> {
@@ -147,8 +152,9 @@ private struct SearchField: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass").foregroundStyle(Design.iconInk).accessibilityHidden(true)
-            TextField(provided?.prompt ?? "搜索活动", text: text)
+            TextField(compact ? "搜索" : provided?.prompt ?? "搜索活动", text: text)
                 .textFieldStyle(.plain).focused($focused)
+                .help(Text(provided?.prompt ?? "搜索活动"))
                 .onExitCommand { text.wrappedValue = ""; focused = false }
             if !text.wrappedValue.isEmpty {
                 Button { text.wrappedValue = "" } label: {

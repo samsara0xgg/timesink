@@ -28,7 +28,7 @@ struct CategoryListCard: View {
             HStack(spacing: Design.Space.md) {
                 Spacer()
                 Text("投入程度").frame(width: 92, alignment: .center)
-                Text("近 7 天").frame(width: 56, alignment: .trailing)
+                Text("近 7 天").frame(width: 84, alignment: .trailing)
             }.font(.note).foregroundStyle(Design.ink2).padding(.horizontal, 8).padding(.top, 4)
             ScrollView {
                 VStack(spacing: 2) { ForEach(categories, id: \.id) { row($0) } }
@@ -55,25 +55,30 @@ struct CategoryListCard: View {
                 HStack(spacing: 8) {
                     Circle().fill(color).frame(width: 9, height: 9)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(category.name).fontWeight(on ? .semibold : .regular).foregroundStyle(Design.ink).lineLimit(1)
-                        if !category.description.isEmpty {
-                            Text(category.description).font(.note).foregroundStyle(Design.ink2).lineLimit(1).help(category.description)
+                        HStack(spacing: Design.Space.xs) {
+                            Text(category.name).fontWeight(on ? .semibold : .regular).foregroundStyle(Design.ink).lineLimit(1)
+                            if category.distracting {
+                                Image(systemName: "bolt.horizontal.circle").font(.note).foregroundStyle(Design.ink2)
+                                    .help("会打断工作").accessibilityLabel("会打断工作")
+                            }
+                        }
+                        // The rule count, named, ahead of the description: never a bare number.
+                        let rules = ruleCounts[category.id, default: 0]
+                        let detail = [rules > 0 ? String(localized: "\(rules) 条规则") : nil,
+                                      category.description.isEmpty ? nil : category.description].compactMap { $0 }
+                        if !detail.isEmpty {
+                            Text(detail.joined(separator: " · ")).font(.note).foregroundStyle(Design.ink2).lineLimit(1)
+                                .help(category.description)
                         }
                     }
-                    if category.distracting {
-                        Image(systemName: "bolt.horizontal.circle").font(.note).foregroundStyle(Design.ink2)
-                            .help("会打断工作").accessibilityLabel("会打断工作")
-                    }
-                    Text(ruleCounts[category.id, default: 0] > 0 ? "\(ruleCounts[category.id, default: 0])" : "")
-                        .font(.note.monospacedDigit()).foregroundStyle(Design.ink2)
                     Spacer(minLength: 0)
                 }.contentShape(Rectangle())
             }.buttonStyle(.plain)
             scale(category, color: color)
             Button { editing = category } label: { Image(systemName: "pencil").font(.note).foregroundStyle(Design.ink2) }
                 .buttonStyle(.plain).help("编辑分类").accessibilityLabel("编辑分类")
-            Text(seconds[category.id].map { Format.duration($0, compact: true) } ?? "—").font(.body.monospacedDigit()).foregroundStyle(Design.ink2)
-                .frame(width: 56, alignment: .trailing)
+            Text(seconds[category.id].map { Format.duration($0) } ?? "—").font(.body.monospacedDigit()).foregroundStyle(Design.ink2)
+                .frame(width: 84, alignment: .trailing)
         }
         .padding(.horizontal, Design.Space.sm).frame(height: 44)
         .background(RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous).fill(on ? Design.selectedFill : .clear))

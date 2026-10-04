@@ -39,9 +39,12 @@ struct SessionListCard<Switch: View>: View {
                     }
                 }
                 .animation(Design.motion(Design.layout, reduced: reduceMotion), value: sessions.map(\.id))
-            }.scrollIndicators(.never)
+                .padding(.bottom, Design.Space.lg)
+            }
+            .scrollIndicators(.never)
+            .cardList()
         }
-        .padding(Design.Space.lg)
+        .padding([.horizontal, .top], Design.Space.lg)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .designCard()
     }
@@ -107,9 +110,13 @@ struct SessionListCard<Switch: View>: View {
                     }
                     Spacer(minLength: Design.Space.sm)
                     if let breaks = activities.dayInterruptions.map({ SessionKPIs.interruptions(in: session, episodes: $0.episodes) }), breaks > 0 {
-                        Text("打断 \(breaks)").font(.note).foregroundStyle(Design.ink2)
+                        // Whole or not at all: a narrow list keeps the title, not half a count.
+                        ViewThatFits(in: .horizontal) {
+                            Text("打断 \(breaks)").font(.note).foregroundStyle(Design.ink2).fixedSize()
+                            Color.clear.frame(width: 0, height: 0)
+                        }
                     }
-                    Text(Format.duration(session.recorded, compact: true)).monospacedDigit().foregroundStyle(Design.ink2)
+                    Text(Format.duration(session.recorded)).monospacedDigit().foregroundStyle(Design.ink2)
                         .frame(minWidth: 52, alignment: .trailing)
                         .contentTransition(reduceMotion ? .opacity : .numericText())
                 }

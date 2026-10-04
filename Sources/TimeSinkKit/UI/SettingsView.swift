@@ -73,8 +73,8 @@ struct RefinedGeneralPane: View {
                     Text("图标").tag("icon")
                     Text("时长").tag("total")
                     Text("投入").tag("productive")
-                    Text("分类").tag("category")
-                }.pickerStyle(.segmented).fixedSize()
+                    Text("当前分类").tag("category")
+                }
                 VStack(alignment: .leading, spacing: 4) {
                     LabeledContent("打开弹出层") { ShortcutRecorder(model: model).frame(width: 122, height: 24) }
                 if !model.popoverShortcutAvailable {

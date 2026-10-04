@@ -631,7 +631,7 @@ private struct TimelineBlocksCanvas: View, Animatable {
         }
         if current {
             context.stroke(RoundedRectangle(cornerRadius: corner + 3, style: .continuous).path(in: shape.insetBy(dx: -3, dy: -3)),
-                           with: .color(.accentColor), lineWidth: 2)
+                           with: .color(Design.ink), lineWidth: 2)
         }
         if blockHeight >= TimelineZoom.labelPoints {
             // Light categories take dark ink, the rest white.
@@ -671,11 +671,15 @@ struct TimelineZoomControl: View {
         HStack(spacing: 6) {
             Button { step(-1) } label: { Image(systemName: "minus.magnifyingglass") }
                 .keyboardShortcut("-").help("缩小时间线")
-            Slider(value: Binding(get: { TimelineZoom.position(for: hourHeight) },
-                                  set: { hourHeight = TimelineZoom.hourHeight(at: $0) }))
-                .controlSize(.small).frame(width: 110)
-                .accessibilityLabel("缩放时间线")
-                .accessibilityValue(TimelineZoom.resolutionLabel(for: hourHeight))
+            // Narrow, only the two buttons stay (and ⌘− ⌘+ with them).
+            ViewThatFits(in: .horizontal) {
+                Slider(value: Binding(get: { TimelineZoom.position(for: hourHeight) },
+                                      set: { hourHeight = TimelineZoom.hourHeight(at: $0) }))
+                    .controlSize(.small).frame(width: 110)
+                    .accessibilityLabel("缩放时间线")
+                    .accessibilityValue(TimelineZoom.resolutionLabel(for: hourHeight))
+                Color.clear.frame(width: 0, height: 0)
+            }
             Button { step(1) } label: { Image(systemName: "plus.magnifyingglass") }
                 .keyboardShortcut("+").help("放大时间线")
         }

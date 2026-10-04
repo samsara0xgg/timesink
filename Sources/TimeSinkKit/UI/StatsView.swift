@@ -107,7 +107,7 @@ struct StatsView: View {
         return PageHeader(sentence: sentence, stats: [
             StripStat(id: 0, label: "日均", value: loaded ? TodayFmt.clock(stats.avgPerDay) : "—", note: String(localized: "按已过的天数")),
             StripStat(id: 1, label: "投入", value: loaded ? TodayFmt.clock(stats.focus) : "—", note: loaded ? String(localized: "占 \(share)%") : ""),
-            StripStat(id: 2, label: "评分", value: stats.pulse.map(String.init) ?? "—", note: loaded ? String(localized: "连续 \(stats.trendStreak) 天达标") : "")
+            StripStat(id: 2, label: "评分", value: stats.pulse.map(String.init) ?? "—", note: loaded && stats.trendStreak > 0 ? String(localized: "连续 \(stats.trendStreak) 天达标") : "")
         ], width: width) {
             RangeControls(model: model, lenses: true)
         } actions: { EmptyView() }
@@ -179,9 +179,9 @@ struct StatsView: View {
                                 Capsule().fill(RefinedStyle.category(row.id, hex: row.colorHex))
                                     .frame(width: max(3, geo.size.width * row.seconds / max(1, stats.categoryRows.first?.seconds ?? 1)))
                             }.frame(height: 4)
-                            Text(Format.duration(row.seconds, compact: true)).monospacedDigit().frame(width: 52, alignment: .trailing)
+                            Text(Format.duration(row.seconds)).monospacedDigit().frame(width: Design.durationWidth, alignment: .trailing)
                             Text(stats.categoryDeltas[row.id].map { Format.durationDelta($0) } ?? "—").monospacedDigit()
-                                .foregroundStyle(Design.ink2).frame(width: 60, alignment: .trailing)
+                                .foregroundStyle(Design.ink2).frame(width: Design.durationWidth, alignment: .trailing)
                         }
                         .padding(.horizontal, Design.Space.sm)
                         .frame(height: Design.rowHeight).contentShape(Rectangle())
@@ -207,8 +207,8 @@ struct StatsView: View {
                             Capsule().fill(RefinedStyle.category(row.categoryID ?? "", hex: row.colorHex))
                                 .frame(width: max(3, geo.size.width * row.seconds / max(1, stats.appRows.first?.seconds ?? 1)))
                         }.frame(width: 88, height: 4)
-                        Text(Format.duration(row.seconds, compact: true)).monospacedDigit().foregroundStyle(Design.ink2)
-                            .frame(width: 52, alignment: .trailing)
+                        Text(Format.duration(row.seconds)).monospacedDigit().foregroundStyle(Design.ink2)
+                            .frame(width: Design.durationWidth, alignment: .trailing)
                     }
                     .frame(height: Design.rowHeight)
                 }

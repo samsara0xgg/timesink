@@ -70,7 +70,7 @@ struct ToConfirmCard: View {
                     .font(.note).foregroundStyle(Design.ink2).lineLimit(1)
             }
             Spacer(minLength: 8)
-            Text(Format.duration(row.verdict.seconds, compact: true)).font(.body.monospacedDigit()).foregroundStyle(Design.ink2)
+            Text(Format.duration(row.verdict.seconds)).font(.body.monospacedDigit()).foregroundStyle(Design.ink2)
             Button("确认") { set(row, row.verdict.categoryID, .none) }.buttonStyle(PillButtonStyle(height: 24, font: .note))
             Menu {
                 picks(row, rule: .none)
