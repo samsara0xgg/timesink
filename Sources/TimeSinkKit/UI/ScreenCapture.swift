@@ -343,9 +343,11 @@ import WebKit
                     try store.finish(id: session.id!, end: start.addingTimeInterval(Double(25 + index * 7) * 60), appBlocks: index % 2, siteBlocks: 0, completed: index != 2)
                 }
             }
-            for (name, weeksBack) in [("focus-prev-week", 1), ("focus-empty-week", 2)] {
+            // Taller than the usual window, so the history card at the foot of the page is in the frame.
+            let tall = [NSSize(width: wide.width, height: 1150), NSSize(width: small.width, height: 1500)]
+            for (name, weeksBack) in [("focus-week", 0), ("focus-prev-week", 1), ("focus-empty-week", 2)] {
                 FocusWorkspaceView.previewWeeksBack = weeksBack
-                try await main(name, .focus, sizes: [wide, small])
+                try await main(name, .focus, sizes: tall)
             }
             FocusWorkspaceView.previewWeeksBack = 0
         }
