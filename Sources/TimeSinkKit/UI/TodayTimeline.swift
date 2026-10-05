@@ -216,7 +216,7 @@ struct TodayTimelineCard: View {
                 // The label shows only if it fits whole; never an ellipsis.
                 ViewThatFits(in: .horizontal) {
                     Text(TodayFmt.clock(row.session.recorded)).font(.note.weight(.semibold)).monospacedDigit()
-                        .foregroundStyle(pending(row) ? Design.ink2 : .white)
+                        .foregroundStyle(pending(row) ? Design.ink2 : labelColor(of: row))
                         .lineLimit(1).fixedSize().padding(.horizontal, 6)
                     Color.clear.frame(width: 0, height: 0)
                 }
@@ -239,6 +239,13 @@ struct TodayTimelineCard: View {
         if colors == .project { return Design.projectColor(row.slot) }
         let category = model.resolver.categoriesByID[row.session.categoryID]
         return RefinedStyle.category(row.session.categoryID, hex: category?.colorHex ?? "#C7C7CC")
+    }
+
+    /// The ink of a block's label: white, or the dark ink where white would not reach 4.5:1.
+    private func labelColor(of row: TodayPlan.Row) -> Color {
+        if colors == .project { return Design.projectLabel(row.slot) }
+        let category = model.resolver.categoriesByID[row.session.categoryID]
+        return RefinedStyle.categoryLabel(row.session.categoryID, hex: category?.colorHex ?? "#C7C7CC")
     }
 
     /// A block in "By project" mode that waits for Jev.
@@ -267,7 +274,7 @@ struct TodayTimelineCard: View {
 
     private func ticks(_ width: CGFloat) -> some View {
         Canvas { context, _ in
-            let color = Design.alert
+            let color = Design.interruption
             for episode in plan.interruptions {
                 let row = plan.rows.first { episode.start >= $0.session.start && episode.start < $0.session.end }
                 let faded = row.map(dimmed) ?? false
@@ -362,7 +369,7 @@ struct TodayTimelineCard: View {
                 Text("离开")
             }
             HStack(spacing: 6) {
-                RoundedRectangle(cornerRadius: 1).fill(Design.alert).frame(width: 2, height: 9)
+                RoundedRectangle(cornerRadius: 1).fill(Design.interruption).frame(width: 2, height: 9)
                 Text("打断")
             }
             if plan.isToday {

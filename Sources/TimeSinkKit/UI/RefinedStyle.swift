@@ -6,46 +6,36 @@ enum RefinedStyle {
     static let popoverWidth: CGFloat = 340
     static func motion(reduced: Bool) -> Animation { Design.motion(Design.layout, reduced: reduced) }
 
-    static func adaptive(_ light: String, _ dark: String) -> Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
-            let hex = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
-            return NSColor(Color(hex: hex))
-        })
-    }
-    static let work = adaptive("#F6F6F7", "#1B1B1D")
-    static let panel = adaptive("#FFFFFF", "#252528")
-    static let warning = adaptive("#C98300", "#F2AA2E")
-    /// Neutral heatmap ink: the accent colour stays reserved for things you can click.
-    static let heat = adaptive("#2A3140", "#DDE3F0")
+    static let work = ColorSystem.floor
+    static let panel = ColorSystem.panel
+    static let warning = ColorSystem.warning
 
     /// Shipped hex -> its light/dark pair, built once: this is called per
-    /// block, row and chip on every render.
-    private static let shipped: [String: (hex: String, color: Color)] = {
-        // Apple's system colours, the pairs the dashboard design names:
-        // each category keeps its hue and gets the dark variant made for it.
-        let pairs: [String: (String, String)] = [
-            "softwareDev": ("#3478F6", "#0A84FF"), "learning": ("#34C759", "#30D158"),
-            "writing": ("#30B0C7", "#40C8E0"), "business": ("#AF52DE", "#BF5AF2"),
-            "utilities": ("#8E8E93", "#A1A1A6"), "communication": ("#FF9F0A", "#FF9F0A"),
-            "news": ("#5856D6", "#5E5CE6"), "jobSearch": ("#A2845E", "#AC8E68"),
-            "research": ("#64D2FF", "#70D7FF"),
-            "socialMedia": ("#FF3B30", "#FF453A"), "entertainment": ("#FFD60A", "#FFD60A"),
-            "misc": ("#98989D", "#7C7C82"), "uncategorized": ("#C7C7CC", "#55575E")
-        ]
-        var result: [String: (hex: String, color: Color)] = [:]
-        for category in Taxonomy.categories {
-            if let pair = pairs[category.id] { result[category.id] = (category.colorHex, adaptive(pair.0, pair.1)) }
-        }
+    /// block, row and chip on every render. Only a category whose stored
+    /// colour is still the shipped one is remapped to `ColorSystem`.
+    private static let shipped: [String: String] = {
+        var result: [String: String] = [:]
+        for category in Taxonomy.categories where ColorSystem.category(category.id) != nil { result[category.id] = category.colorHex }
         return result
     }()
 
-    static func category(_ id: String, hex: String) -> Color {
-        // Keep personal category colors; only remap the shipped palette.
-        guard let shipped = shipped[id], shipped.hex.caseInsensitiveCompare(hex) == .orderedSame else { return Color(hex: hex) }
-        return shipped.color
+    private static func isShipped(_ id: String, hex: String) -> Bool {
+        shipped[id]?.caseInsensitiveCompare(hex) == .orderedSame
     }
 
-    static func shippedHex(_ id: String) -> String? { shipped[id]?.hex }
+    static func category(_ id: String, hex: String) -> Color {
+        // Keep personal category colors; only remap the shipped palette.
+        guard isShipped(id, hex: hex), let color = ColorSystem.category(id) else { return Color(hex: hex) }
+        return color
+    }
+
+    /// The ink for text drawn on `category(id, hex:)`: white or dark, whichever reads (4.5:1).
+    static func categoryLabel(_ id: String, hex: String) -> Color {
+        guard isShipped(id, hex: hex), let label = ColorSystem.categoryLabel(id) else { return ColorSystem.label(onHex: hex) }
+        return label
+    }
+
+    static func shippedHex(_ id: String) -> String? { shipped[id] }
 
     /// One width for a column of names: the widest name, capped so the bar
     /// beside it keeps room. Fixed widths clipped English category names.

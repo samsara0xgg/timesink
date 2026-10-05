@@ -24,6 +24,8 @@ import WebKit
         return URL(fileURLWithPath: path ?? FileManager.default.currentDirectoryPath)
     }
     static let only = ProcessInfo.processInfo.environment["TIMESINK_PREVIEW_ONLY"]
+    /// `TIMESINK_PREVIEW_DARK=1`: every shot in the dark appearance (file names get a `-dark` suffix).
+    static let darkEnvironment = ProcessInfo.processInfo.environment["TIMESINK_PREVIEW_DARK"] != nil
 
     static var builtIn: NSScreen? {
         NSScreen.screens.first { screen in
@@ -42,13 +44,14 @@ import WebKit
     /// Renders off screen: the window is built but never ordered in, so no
     /// display ever shows it, and its frame view is drawn into a bitmap.
     static func shoot<V: View>(_ name: String, _ view: V, size: NSSize, dark: Bool = false, host: Host = .window, settle: Int = 900) async throws {
-        let file = output.appendingPathComponent("\(name)-\(language).png")
+        let file = output.appendingPathComponent("\(name)-\(language)\(Self.darkEnvironment ? "-dark" : "").png")
         if let only, !file.lastPathComponent.contains(only) { return }
-        NSApp.appearance = NSAppearance(named: .aqua)
+        let dark = dark || Self.darkEnvironment
+        NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         let resizable = shrink && name.hasPrefix("main-")
         let root = view
             .environment(\.locale, RefinedPreview.locale)
-            .environment(\.colorScheme, .light)
+            .environment(\.colorScheme, dark ? .dark : .light)
             // Off screen no display drives an animation: everything lands at once.
             .transaction { $0.disablesAnimations = true; $0.animation = nil }
             .frame(width: resizable ? nil : size.width, height: resizable ? nil : size.height)
@@ -73,7 +76,7 @@ import WebKit
                              backing: .buffered, defer: false)
             window.isOpaque = false
             window.backgroundColor = .clear
-            window.contentView = NSHostingView(rootView: root.background(Color(white: 0.94), in: RoundedRectangle(cornerRadius: radius, style: .continuous)))
+            window.contentView = NSHostingView(rootView: root.background(dark ? Color(white: 0.17) : Color(white: 0.94), in: RoundedRectangle(cornerRadius: radius, style: .continuous)))
         case .clear:
             window = NSPanel(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless, .nonactivatingPanel],
                              backing: .buffered, defer: false)

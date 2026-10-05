@@ -34,13 +34,13 @@ struct TimelineBlock: Identifiable {
     /// Per-category shares, only for blocks that mix several rows.
     var mix: [Share] = []
     /// Switch-outs drawn on the block's left edge (2.0 rule): interruptions
-    /// in red, focus-blocked attempts hollow, long related switches grey.
+    /// in amber, focus-blocked attempts hollow, long related switches grey.
     /// Peeks and passes are counted in the inspector, never drawn.
     var ticks: [TimelineTick] = []
     /// Highlight layer blocks drawn over a filtered day.
     var isHighlight = false
-    /// Light category colours read better with dark text.
-    var darkInk: Bool { ["entertainment", "uncategorized", "misc", "utilities", "research"].contains(activity?.categoryID ?? "") }
+    /// The ink of the label: white, or dark where white would not reach 4.5:1 on `color`.
+    var ink: Color? = nil
     /// The leading row's longest title, drawn after the label when it fits.
     var subtitle: String? {
         guard let title = segment?.dominant.longest.span.title, !title.isEmpty, title != label else { return nil }
@@ -356,7 +356,7 @@ struct DayTimelineView: View {
                     }
                     ForEach(focusBlocks) { block in
                         RoundedRectangle(cornerRadius: 10)
-                            .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                            .strokeBorder(Design.accent, style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
                             .frame(width: activityWidth + 10, height: height(block.duration) + 6)
                             .offset(x: labelWidth + 3, y: offset(block.start) - 3)
                             .help(block.tooltip).allowsHitTesting(false)
@@ -517,12 +517,12 @@ private struct NowLine: View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
             let y = context.date.timeIntervalSince(dayStart) / 3600 * hourHeight
             ZStack(alignment: .topLeading) {
-                Capsule().fill(.red).frame(width: width + 8, height: 2)
+                Capsule().fill(Design.ink).frame(width: width + 8, height: 2)
                     .offset(x: x - 4, y: y - 1)
                 Text(context.date, format: .dateTime.hour(.twoDigits(amPM: .omitted)).minute())
-                    .font(.note.weight(.bold)).monospacedDigit().foregroundStyle(.white)
+                    .font(.note.weight(.bold)).monospacedDigit().foregroundStyle(Design.surface)
                     .padding(.horizontal, 5).padding(.vertical, 1)
-                    .background(.red, in: RoundedRectangle(cornerRadius: 5))
+                    .background(Design.ink, in: RoundedRectangle(cornerRadius: 5))
                     .fixedSize()
                     .offset(x: max(0, x - 46), y: y - 8)
             }
@@ -594,7 +594,7 @@ private struct TimelineBlocksCanvas: View, Animatable {
             // Out of the tick: first a little wider, then the whole block, the red fading into the category.
             let grow = raw < 0.35 ? raw / 0.35 * 0.04 : 0.04 + (1 - pow(1 - (raw - 0.35) / 0.65, 3)) * 0.96
             shape = CGRect(x: x - 4 * (1 - grow), y: shape.minY, width: 9 + (width - 9) * grow, height: shape.height)
-            context.fill(RoundedRectangle(cornerRadius: 2).path(in: shape), with: .color(Color.red.opacity(1 - raw)))
+            context.fill(RoundedRectangle(cornerRadius: 2).path(in: shape), with: .color(Design.interruption.opacity(1 - raw)))
             context.opacity = raw
         }
         let corner = min(7, shape.height / 2)
@@ -623,7 +623,7 @@ private struct TimelineBlocksCanvas: View, Animatable {
                                    with: .color(.primary.opacity(0.8)), lineWidth: contrast ? 2 : 1.5)
                 case .interruption, .related:
                     let height = max(2, min(blockHeight - (y - shape.minY), tick.seconds / 3600 * hourHeight))
-                    let color: Color = tick.kind == .interruption ? .red : .primary.opacity(0.75)
+                    let color: Color = tick.kind == .interruption ? Design.interruption : .primary.opacity(0.75)
                     context.fill(RoundedRectangle(cornerRadius: 1.5).path(in: CGRect(x: shape.minX - 4, y: y, width: contrast ? 11 : 9, height: height)),
                                  with: .color(color))
                 }
@@ -634,8 +634,7 @@ private struct TimelineBlocksCanvas: View, Animatable {
                            with: .color(Design.ink), lineWidth: 2)
         }
         if blockHeight >= TimelineZoom.labelPoints {
-            // Light categories take dark ink, the rest white.
-            let ink: Color = block.darkInk ? .black.opacity(0.82) : .white
+            let ink: Color = block.ink.map(resolve) ?? .white
             let label = context.resolve(Text(block.label).font(.note.weight(.semibold)).foregroundStyle(ink))
             let duration = context.resolve(Text(Format.duration(block.segment?.recorded ?? block.duration))
                 .font(.note).monospacedDigit().foregroundStyle(ink.opacity(0.9)))

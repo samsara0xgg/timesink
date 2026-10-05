@@ -102,7 +102,7 @@ struct OnboardingView: View {
             }
             Spacer(minLength: 8)
             if state == .granted {
-                Label("已允许", systemImage: "checkmark").font(.body).foregroundStyle(.green)
+                Label("已允许", systemImage: "checkmark").font(.body).foregroundStyle(Design.live)
             } else {
                 Button("允许…", action: action).controlSize(.small).disabled(state.isUnavailable)
             }

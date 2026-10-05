@@ -1271,12 +1271,12 @@ struct ScreenCaptureStatusView: View {
                 if compact {
                     HStack {
                         Label("需屏幕录制权限 · 未采集", systemImage: "exclamationmark.circle")
-                            .font(.note).foregroundStyle(RefinedStyle.warning)
+                            .font(.note).foregroundStyle(Design.warning)
                         Spacer(minLength: 4)
                         Button("打开系统设置…", action: openPermissions).controlSize(.small)
                     }
                 } else {
-                    Label("需要屏幕录制权限", systemImage: "exclamationmark.circle").font(.note).foregroundStyle(.orange)
+                    Label("需要屏幕录制权限", systemImage: "exclamationmark.circle").font(.note).foregroundStyle(Design.warning)
                     Text("当前不会保存屏幕画面").font(.note).foregroundStyle(Design.ink2)
                     Button("打开系统设置…", action: openPermissions).controlSize(.small)
                 }

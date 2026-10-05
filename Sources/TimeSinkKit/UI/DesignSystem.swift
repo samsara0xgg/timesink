@@ -2,8 +2,7 @@ import AppKit
 import SwiftUI
 
 /// The design language: a flat light floor, white cards with a hairline,
-/// two inks, and colour kept for what it means: a category or project, the
-/// system accent on what you can press, red for over and interrupted.
+/// two inks, and colour kept for what it means (see `ColorSystem`).
 ///
 /// Everything the window, the popover and their panels draw with lives
 /// here. A size, a gap, a colour or a duration written anywhere else is a
@@ -43,8 +42,8 @@ enum Design {
 
     // MARK: Colour
 
-    /// A colour with a light and a dark value, each with its own alpha. The
-    /// app draws light only; the dark half is kept for the day it returns.
+    /// A colour with a light and a dark value, each with its own alpha; it
+    /// follows the appearance the view is drawn in.
     static func color(light: UInt32, _ lightAlpha: Double = 1, dark: UInt32, _ darkAlpha: Double = 1) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
@@ -54,56 +53,41 @@ enum Design {
         })
     }
 
-    /// The window under everything.
-    static let floor = color(light: 0xF5F5F7, dark: 0x1B1B1D)
-    /// Cards and panels.
-    static let surface = color(light: 0xFFFFFF, dark: 0x252528)
-
-    /// Text. Two inks only, both at 4.5:1 or better on the floor and on a card.
-    static let ink = color(light: 0x1D1D1F, dark: 0xEDEEF0)
-    static let ink2 = color(light: 0x6A6A71, dark: 0xA4A7AF)
-    /// Symbols that sit beside text.
-    static let iconInk = color(light: 0x55555C, dark: 0xC3C5CC)
-
-    /// Hairlines: card edges, dividers.
-    static let line = color(light: 0x000000, 0.09, dark: 0xFFFFFF, 0.1)
-    /// Row separators inside a card.
-    static let line2 = color(light: 0x000000, 0.055, dark: 0xFFFFFF, 0.06)
-    /// The empty part of a bar or meter.
-    static let track = color(light: 0x000000, 0.06, dark: 0xFFFFFF, 0.08)
-    /// A control or row under the pointer.
-    static let hoverFill = color(light: 0x000000, 0.045, dark: 0xFFFFFF, 0.06)
-    /// The chosen segment, the selected row.
-    static let selectedFill = color(light: 0x000000, 0.075, dark: 0xFFFFFF, 0.1)
+    /// The tokens below live in `ColorSystem`; these names are what the views use.
+    static let floor = ColorSystem.floor
+    static let surface = ColorSystem.surface
+    static let ink = ColorSystem.ink
+    static let ink2 = ColorSystem.ink2
+    static let iconInk = ColorSystem.iconInk
+    static let line = ColorSystem.line
+    static let line2 = ColorSystem.line2
+    static let track = ColorSystem.track
+    static let hoverFill = ColorSystem.hoverFill
+    static let selectedFill = ColorSystem.selectedFill
 
     /// What you can press: the person's own system accent.
     static let accent = Color.accentColor
-    /// Over a limit, an interruption.
-    static let alert = color(light: 0xD70015, dark: 0xFF6961)
+    /// Over a limit, an error. Never an interruption (`interruption`).
+    static let alert = ColorSystem.alert
     /// Near a limit.
-    static let warning = RefinedStyle.warning
+    static let warning = ColorSystem.warning
     /// Recording right now.
-    static let live = color(light: 0x248A3D, dark: 0x30D158)
+    static let live = ColorSystem.live
+    /// An interruption, and the same one a step stronger under the pointer.
+    static let interruption = ColorSystem.interruption
+    static let interruptionActive = ColorSystem.interruptionActive
 
     // Hatch (away or unrecorded time)
-    static let hatchBase = color(light: 0xECECEF, dark: 0x1A1C20)
-    static let hatchLine = color(light: 0x000000, 0.05, dark: 0xFFFFFF, 0.05)
+    static let hatchBase = ColorSystem.hatchBase
+    static let hatchLine = ColorSystem.hatchLine
 
     // MARK: Project colours
 
     /// Projects are named by the person, so their colour is picked by the
-    /// name (`ProjectPalette`). Index 8 is for time that belongs to no project.
-    static let projectColors: [Color] = [
-        color(light: 0x2F6BEA, dark: 0x4C8DFF), color(light: 0x7C5CE0, dark: 0x9B82FF),
-        color(light: 0x0F9488, dark: 0x22C3AE), color(light: 0xC27A0E, dark: 0xE3A23A),
-        color(light: 0xD6457A, dark: 0xFF6B9E), color(light: 0x5E9A2E, dark: 0x7CC24A),
-        color(light: 0xD6532E, dark: 0xFF7A5C), color(light: 0x0E8CB5, dark: 0x35B6E0),
-        color(light: 0x7A8494, dark: 0x8D95A5)
-    ]
-    static func projectColor(_ index: Int?) -> Color {
-        guard let index else { return projectColors[projectColors.count - 1] }
-        return projectColors[index % (projectColors.count - 1)]
-    }
+    /// name (`ProjectPalette`). The last slot is for time that belongs to no project.
+    static func projectColor(_ index: Int?) -> Color { ColorSystem.project(index) }
+    /// The ink for text on a project's colour.
+    static func projectLabel(_ index: Int?) -> Color { ColorSystem.projectLabel(index) }
 
     // MARK: Motion
 
