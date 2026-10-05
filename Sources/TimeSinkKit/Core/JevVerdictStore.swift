@@ -41,15 +41,6 @@ public struct JevVerdict: Codable, Equatable, Sendable, FetchableRecord, Persist
     public var screenText: Int = 0
     /// The model id that gave an automatic verdict.
     public var model: String = ""
-    /// Which project the window belongs to: '' not asked, 'none' asked and in
-    /// no project, else a `UserProject.id`. Jev fills it even on a row whose
-    /// category is the user's own.
-    public var projectID: String = ""
-    public var projectProb: Double = 0
-    public var projectRunnerUp: String = ""
-    /// The `JevPrompt.projectVersion` it was asked under; '' when not asked.
-    public var projectPromptVersion: String = ""
-
     public var key: VerdictKey { VerdictKey(appBundleID: appBundleID, domain: domain, title: title, document: document) }
     public var isUser: Bool { source == "user" }
     /// Written by hand from outside; only ever an example for Jev, never a verdict.
@@ -84,7 +75,7 @@ struct JevCombo: Sendable {
     let appName: String
     let url: String
     let seconds: Double
-    /// The category is settled (the user's, or Jev's under the current prompt):
+    /// The category is settled (a rule, the user's, or Jev's under the current prompt):
     /// only the project is wanted.
     var projectOnly = false
 }
@@ -116,46 +107,81 @@ extension CategoryStore {
     func saveVerdict(_ v: JevVerdict) throws {
         try writer.write { db in
             try db.execute(sql: """
-                INSERT INTO jevVerdict (appBundleID, domain, title, document, categoryID, prob, runnerUp, runnerUpProb, promptVersion, at, source, screenText, model,
-                                        projectID, projectProb, projectRunnerUp, projectPromptVersion)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'jev', ?, ?, ?, ?, ?, ?)
+                INSERT INTO jevVerdict (appBundleID, domain, title, document, categoryID, prob, runnerUp, runnerUpProb, promptVersion, at, source, screenText, model)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'jev', ?, ?)
                 ON CONFLICT(appBundleID, domain, title, document) DO UPDATE SET
                     categoryID = excluded.categoryID, prob = excluded.prob, runnerUp = excluded.runnerUp,
                     runnerUpProb = excluded.runnerUpProb, promptVersion = excluded.promptVersion, at = excluded.at,
-                    screenText = excluded.screenText, model = excluded.model,
-                    -- A request without the project question leaves the project answer as it was.
-                    projectID = CASE WHEN excluded.projectPromptVersion <> '' THEN excluded.projectID ELSE jevVerdict.projectID END,
-                    projectProb = CASE WHEN excluded.projectPromptVersion <> '' THEN excluded.projectProb ELSE jevVerdict.projectProb END,
-                    projectRunnerUp = CASE WHEN excluded.projectPromptVersion <> '' THEN excluded.projectRunnerUp ELSE jevVerdict.projectRunnerUp END,
-                    projectPromptVersion = CASE WHEN excluded.projectPromptVersion <> '' THEN excluded.projectPromptVersion ELSE jevVerdict.projectPromptVersion END
+                    screenText = excluded.screenText, model = excluded.model
                 WHERE jevVerdict.source = 'jev'
                 """, arguments: [v.appBundleID, v.domain, v.title, v.document, v.categoryID, v.prob, v.runnerUp,
-                                 v.runnerUpProb, v.promptVersion, v.at, v.screenText, v.model,
-                                 v.projectID, v.projectProb, v.projectRunnerUp, v.projectPromptVersion])
+                                 v.runnerUpProb, v.promptVersion, v.at, v.screenText, v.model])
         }
     }
 
-    /// Writes Jev's project answer on a row that already has its category
-    /// (the user's own included). Seed rows are examples only and get none.
+    /// Writes the project a window content belongs to (`ProjectVerdict.none`-style 'none' included).
     func saveProjectVerdict(_ key: VerdictKey, projectID: String, prob: Double, runnerUp: String, promptVersion: String) throws {
         try writer.write { db in
             try db.execute(sql: """
-                UPDATE jevVerdict SET projectID = ?, projectProb = ?, projectRunnerUp = ?, projectPromptVersion = ?
-                WHERE appBundleID = ? AND domain = ? AND title = ? AND document = ? AND source <> 'seed'
-                """, arguments: [projectID, prob, runnerUp, promptVersion, key.appBundleID, key.domain, key.title, key.document])
+                INSERT OR REPLACE INTO jevProjectVerdict (appBundleID, domain, title, document, projectID, prob, runnerUp, promptVersion, at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, arguments: [key.appBundleID, key.domain, key.title, key.document, projectID, prob, runnerUp, promptVersion, Date()])
         }
     }
 
-    /// The project Jev named for each window content, ignoring '' (not asked)
-    /// and 'none'. User rows count: the person chose their category, not their project.
+    /// Every window content that has a project answer, 'none' included: a window with no entry has not been judged.
     func projectVerdicts() throws -> [VerdictKey: ProjectVerdict] {
         try writer.read { db in
             var out: [VerdictKey: ProjectVerdict] = [:]
-            for row in try Row.fetchAll(db, sql: "SELECT appBundleID, domain, title, document, projectID, projectProb FROM jevVerdict WHERE projectID NOT IN ('', 'none') AND source <> 'seed'") {
+            for row in try Row.fetchAll(db, sql: "SELECT appBundleID, domain, title, document, projectID, prob FROM jevProjectVerdict") {
                 out[VerdictKey(appBundleID: row["appBundleID"], domain: row["domain"], title: row["title"], document: row["document"])] =
-                    ProjectVerdict(projectID: row["projectID"], prob: row["projectProb"])
+                    ProjectVerdict(projectID: row["projectID"], prob: row["prob"])
             }
             return out
+        }
+    }
+
+    /// Chat, music and feed apps and sites that are never a project; decided here, without a model call.
+    static let neverProjectCategories: Set<String> = ["entertainment", "socialMedia", "news"]
+    static let neverProjectApps: Set<String> = [
+        "com.tencent.xinWeChat", "com.apple.MobileSMS", "com.apple.Music", "com.apple.TV", "com.tencent.qq", "ru.keepcoder.Telegram",
+        "net.whatsapp.WhatsApp", "com.hnc.Discord", "com.spotify.client",
+    ]
+
+    /// Window contents seen since `since` that have no project answer for `version`, the longest first: `ask`
+    /// for the model, `none` for the ones that are never a project (a chat app, an entertainment or feed
+    /// category by app, site or verdict). `excluding`: contents the category request already carries the question for.
+    func pendingProjectCombos(since: Date, version: String, excluding: Set<VerdictKey> = []) throws -> (ask: [JevCombo], none: [VerdictKey]) {
+        try writer.read { db in
+            let done = Set(try Row.fetchAll(db, sql: "SELECT appBundleID, domain, title, document FROM jevProjectVerdict WHERE promptVersion = ?", arguments: [version]).map {
+                VerdictKey(appBundleID: $0["appBundleID"], domain: $0["domain"], title: $0["title"], document: $0["document"])
+            })
+            let byApp = Dictionary(try Row.fetchAll(db, sql: "SELECT bundleID, categoryID FROM appCategory").map { ($0["bundleID"] as String, $0["categoryID"] as String) },
+                                   uniquingKeysWith: { a, _ in a })
+            let byDomain = Dictionary(try Row.fetchAll(db, sql: "SELECT domain, categoryID FROM domainCategory").map { ($0["domain"] as String, $0["categoryID"] as String) },
+                                      uniquingKeysWith: { a, _ in a })
+            let decided = Dictionary(try Row.fetchAll(db, sql: "SELECT appBundleID, domain, title, document, categoryID FROM jevVerdict WHERE source <> 'seed'").map {
+                (VerdictKey(appBundleID: $0["appBundleID"], domain: $0["domain"], title: $0["title"], document: $0["document"]), $0["categoryID"] as String)
+            }, uniquingKeysWith: { a, _ in a })
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT appBundleID, MAX(appName) AS appName, COALESCE(domain, '') AS domain, COALESCE(title, '') AS title,
+                       COALESCE(document, '') AS document, MAX(COALESCE(url, '')) AS url,
+                       SUM(julianday("end") - julianday(start)) * 86400 AS seconds
+                FROM span WHERE "end" > ? GROUP BY appBundleID, COALESCE(domain, ''), COALESCE(title, ''), COALESCE(document, '')
+                ORDER BY seconds DESC
+                """, arguments: [since])
+            var ask: [JevCombo] = [], none: [VerdictKey] = []
+            for row in rows {
+                let key = VerdictKey(appBundleID: row["appBundleID"], domain: row["domain"], title: row["title"], document: row["document"])
+                guard !done.contains(key), !excluding.contains(key) else { continue }
+                let category = decided[key] ?? byDomain[key.domain] ?? byApp[key.appBundleID]
+                if Self.neverProjectApps.contains(key.appBundleID) || category.map(Self.neverProjectCategories.contains) == true {
+                    none.append(key)
+                } else {
+                    ask.append(JevCombo(key: key, appName: row["appName"], url: row["url"], seconds: row["seconds"], projectOnly: true))
+                }
+            }
+            return (ask, none)
         }
     }
 
@@ -291,21 +317,11 @@ extension CategoryStore {
     /// decides without it. A combo never asked is wanted if seen since `since`; one that
     /// has an answer from an older prompt only if seen since `staleSince` (older ones
     /// keep their stored answer).
-    ///
-    /// With `projectVersion` (projects exist), a combo whose category is settled is also
-    /// wanted when its project answer is from another version and it was seen since
-    /// `projectSince`; such a combo is `projectOnly`. Seed rows never get one.
-    func pendingCombos(since: Date, staleSince: Date? = nil, promptVersion: String,
-                       projectVersion: String? = nil, projectSince: Date? = nil) throws -> [JevCombo] {
+    func pendingCombos(since: Date, staleSince: Date? = nil, promptVersion: String) throws -> [JevCombo] {
         let staleSince = min(staleSince ?? since, since)
         return try writer.read { db in
-            let all = try Row.fetchAll(db, sql: "SELECT appBundleID, domain, title, document, promptVersion, source, projectPromptVersion FROM jevVerdict")
+            let all = try Row.fetchAll(db, sql: "SELECT appBundleID, domain, title, document, promptVersion, source FROM jevVerdict")
             let answered = Set(all.map { VerdictKey(appBundleID: $0["appBundleID"], domain: $0["domain"], title: $0["title"], document: $0["document"]) })
-            let projectSettled = Set(all.compactMap { row -> VerdictKey? in
-                let source: String = row["source"], version: String = row["projectPromptVersion"]
-                guard source == "seed" || version == projectVersion else { return nil }
-                return VerdictKey(appBundleID: row["appBundleID"], domain: row["domain"], title: row["title"], document: row["document"])
-            })
             let current = Set(all.compactMap { row -> VerdictKey? in
                 let source: String = row["source"], version: String = row["promptVersion"]
                 guard source != "jev" || version == promptVersion else { return nil }
@@ -322,16 +338,12 @@ extension CategoryStore {
                 let key = VerdictKey(appBundleID: row["appBundleID"], domain: row["domain"], title: row["title"], document: row["document"])
                 let url: String = row["url"]
                 let lastEnd: Date = row["lastEnd"]
-                // Without the url: a span's own url varies inside one combo, so a hit that only the
-                // url gives would leave the other spans of it with no verdict.
-                guard JevRules.match(appBundleID: key.appBundleID, domain: key.domain, url: nil, title: key.title, document: key.document) == nil
+                guard !current.contains(key), answered.contains(key) || lastEnd > since,
+                      // Without the url: a span's own url varies inside one combo, so a hit that only the
+                      // url gives would leave the other spans of it with no verdict.
+                      JevRules.match(appBundleID: key.appBundleID, domain: key.domain, url: nil, title: key.title, document: key.document) == nil
                 else { return nil }
-                if !current.contains(key), answered.contains(key) || lastEnd > since {
-                    return JevCombo(key: key, appName: row["appName"], url: url, seconds: row["seconds"])
-                }
-                guard projectVersion != nil, current.contains(key), !projectSettled.contains(key), lastEnd > (projectSince ?? since)
-                else { return nil }
-                return JevCombo(key: key, appName: row["appName"], url: url, seconds: row["seconds"], projectOnly: true)
+                return JevCombo(key: key, appName: row["appName"], url: url, seconds: row["seconds"])
             }
         }
     }

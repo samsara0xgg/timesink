@@ -99,8 +99,8 @@ public final class ProjectStore: Sendable {
                 throw ProjectError.notFound
             }
             try db.execute(sql: "UPDATE sessionName SET project = ? WHERE project = ? COLLATE NOCASE", arguments: [to.name, from.name])
-            try db.execute(sql: "UPDATE jevVerdict SET projectID = ? WHERE projectID = ?", arguments: [to.id, from.id])
-            try db.execute(sql: "UPDATE jevVerdict SET projectRunnerUp = ? WHERE projectRunnerUp = ?", arguments: [to.id, from.id])
+            try db.execute(sql: "UPDATE jevProjectVerdict SET projectID = ? WHERE projectID = ?", arguments: [to.id, from.id])
+            try db.execute(sql: "UPDATE jevProjectVerdict SET runnerUp = ? WHERE runnerUp = ?", arguments: [to.id, from.id])
             try db.execute(sql: "DELETE FROM project WHERE id = ?", arguments: [id])
         }
     }

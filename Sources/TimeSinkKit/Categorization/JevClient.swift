@@ -175,7 +175,8 @@ public struct JevClient: Sendable {
 
     /// Hand-assembled so the criteria keep their order, which a Foundation
     /// dictionary would not.
-    /// `projects`: `JevPrompt.projectCriteria`, or empty to ask the category question alone.
+    /// `projects`: `JevPrompt.projectCriteria`, or empty to ask the category question alone. Empty
+    /// `criteria` (with projects) asks the project question alone, for a window whose category is settled.
     static func body(state: JevState, criteria: [(id: String, text: String)], projects: [(id: String, text: String)] = [],
                      model: String = JevClient.defaultModel) -> Data {
         func q(_ s: String) -> String { (try? String(data: JSONEncoder().encode(s), encoding: .utf8)) ?? "\"\"" }
@@ -190,14 +191,14 @@ public struct JevClient: Sendable {
         }
         let exampleJSON = examples.map { ",\(q(JevPrompt.exampleListKey)):[" + $0.map(item).joined(separator: ",") + "]" } ?? ""
         let instructions = (screen == nil ? JevPrompt.instructions : JevPrompt.instructionsWithScreenText) + (examples == nil ? "" : JevPrompt.examplesNote)
-        let projectJSON = projects.isEmpty ? "" : ",\"project\":{\"type\":\"choice\",\"instructions\":\(q(JevPrompt.projectInstructions)),"
+        let projectJSON = projects.isEmpty ? "" : (criteria.isEmpty ? "" : ",") + "\"project\":{\"type\":\"choice\",\"instructions\":\(q(JevPrompt.projectInstructions)),"
             + "\"criteria\":{\(projects.map { "\(q($0.id)):\(q($0.text))" }.joined(separator: ","))}}"
+        let categoryJSON = "\"category\":{\"type\":\"choice\",\"instructions\":\(q(instructions)),\"criteria\":{\(list)}}"
         let json = """
             {"model":\(q(model)),"state":{"app":\(q(state.app)),"bundle_id":\(q(state.bundleID)),"domain":\(q(state.domain)),\
             "url":\(q(cut(state.url))),"window_title":\(q(cut(state.title))),"document":\(q(cut(state.document)))\
             \(screen.map { ",\"screen_text\":\(q($0))" } ?? "")\(exampleJSON)},\
-            "questions":{"category":{"type":"choice","instructions":\(q(instructions)),\
-            "criteria":{\(list)}}\(projectJSON)}}
+            "questions":{\(criteria.isEmpty ? "" : categoryJSON)\(projectJSON)}}
             """
         return Data(json.utf8)
     }
@@ -213,10 +214,10 @@ public struct JevClient: Sendable {
         let (data, status, retryAfter) = try await transport.post(request)
         if status == 429 { throw JevError.rateLimited(retryAfter: min(max(retryAfter.flatMap { Int($0.trimmingCharacters(in: .whitespaces)) } ?? 30, 1), 300)) }
         guard (200..<300).contains(status) else { throw JevError.http(status) }
-        return try Self.parse(data)
+        return try Self.parse(data, expectCategory: !criteria.isEmpty)
     }
 
-    static func parse(_ data: Data) throws -> JevAnswer {
+    static func parse(_ data: Data, expectCategory: Bool = true) throws -> JevAnswer {
         struct Answer: Decodable { let choice: String; let probabilities: [String: Double]?; let confidence: Double? }
         struct Usage: Decodable { let input_tokens: Int?; let cost: Double? }
         /// A malformed answer reads as missing, so a bad project answer never costs the category.
@@ -225,10 +226,15 @@ public struct JevClient: Sendable {
             init(from decoder: any Decoder) throws { value = try? Answer(from: decoder) }
         }
         struct Reply: Decodable { let answers: [String: Lenient]; let usage: Usage? }
-        guard let reply = try? JSONDecoder().decode(Reply.self, from: data), let answer = reply.answers["category"]?.value else {
-            throw JevError.badAnswer
-        }
+        guard let reply = try? JSONDecoder().decode(Reply.self, from: data) else { throw JevError.badAnswer }
         let project = reply.answers["project"]?.value
+        guard let answer = reply.answers["category"]?.value ?? (expectCategory ? nil : project) else { throw JevError.badAnswer }
+        if !expectCategory {
+            // The project question alone: no category came back, and none was asked.
+            return JevAnswer(choice: "", probabilities: [:], confidence: 0, inputTokens: reply.usage?.input_tokens ?? 0, cost: reply.usage?.cost ?? 0,
+                             projectChoice: project?.choice, projectProbabilities: project.map { $0.probabilities ?? [:] },
+                             projectConfidence: project.map { $0.confidence ?? 0 })
+        }
         return JevAnswer(choice: answer.choice, probabilities: answer.probabilities ?? [:], confidence: answer.confidence ?? 0,
                          inputTokens: reply.usage?.input_tokens ?? 0, cost: reply.usage?.cost ?? 0,
                          projectChoice: project?.choice, projectProbabilities: project.map { $0.probabilities ?? [:] },

@@ -83,25 +83,30 @@ public actor JevWorker {
                 Job(state: JevState(app: c.appName, bundleID: c.key.appBundleID, domain: c.key.domain, url: c.url,
                                     title: c.key.title, document: c.key.document), target: .combo(c))
             }
-            let pending = try categoryStore.pendingCombos(since: since, staleSince: staleSince, promptVersion: version,
-                                                          projectVersion: projectVersion, projectSince: projectSince)
-            var halted = await Self.pass(pending.map(combo), client: client, criteria: criteria, projects: projectCriteria,
+            let pending = try categoryStore.pendingCombos(since: since, staleSince: staleSince, promptVersion: version)
+            // Every window content of the last 14 days gets a project answer, whoever decides its category: the
+            // ones about to be asked for a category carry the question along; the rest are asked the project
+            // question alone, except those that are never a project, which are settled here.
+            var projectOnly: [JevCombo] = []
+            if let projectVersion {
+                let found = try categoryStore.pendingProjectCombos(since: projectSince ?? since, version: projectVersion,
+                                                                   excluding: Set(pending.map(\.key)))
+                projectOnly = found.ask
+                for key in found.none where (try? categoryStore.saveProjectVerdict(key, projectID: JevPrompt.noProject, prob: 1, runnerUp: "",
+                                                                                   promptVersion: projectVersion)) != nil {
+                    result.saved += 1
+                }
+            }
+            var halted = await Self.pass((pending + projectOnly).map(combo), client: client, criteria: criteria, projects: projectCriteria,
                                          settings: settings, maxConcurrent: maxConcurrent, into: &result) { job, answer in
                 guard case .combo(let c) = job.target else { return false }
                 let project = projectVersion.map { Self.projectFields(answer, ids: projectIDs, version: $0) }
-                // The category is settled (the user's, or Jev's current): only the project is new.
-                if c.projectOnly {
-                    guard let project else { return false }
-                    return (try? categoryStore.saveProjectVerdict(c.key, projectID: project.id, prob: project.prob,
-                                                                  runnerUp: project.runnerUp, promptVersion: project.version)) != nil
+                if let project, (try? categoryStore.saveProjectVerdict(c.key, projectID: project.id, prob: project.prob,
+                                                                       runnerUp: project.runnerUp, promptVersion: project.version)) == nil {
+                    return false
                 }
-                guard var v = Self.verdict(for: c, answer: answer, ids: ids, version: version, model: model) else { return false }
-                if let project {
-                    v.projectID = project.id
-                    v.projectProb = project.prob
-                    v.projectRunnerUp = project.runnerUp
-                    v.projectPromptVersion = project.version
-                }
+                if c.projectOnly { return project != nil }
+                guard let v = Self.verdict(for: c, answer: answer, ids: ids, version: version, model: model) else { return false }
                 return (try? categoryStore.saveVerdict(v)) != nil
             }
             guard !halted else { wasRateLimited = result.retryAfter != nil; return result }
@@ -169,7 +174,10 @@ public actor JevWorker {
                 group.addTask {
                     let t0 = ContinuousClock.now
                     do {
-                        let answer = try await client.decide(job.state, criteria: criteria, projects: projects)
+                        // A window whose category is settled is asked the project question alone.
+                        let asksCategory: Bool
+                        if case .combo(let c) = job.target { asksCategory = !c.projectOnly } else { asksCategory = true }
+                        let answer = try await client.decide(job.state, criteria: asksCategory ? criteria : [], projects: projects)
                         return (job, .success(answer), Self.seconds(since: t0))
                     } catch {
                         return (job, .failure(error), Self.seconds(since: t0))

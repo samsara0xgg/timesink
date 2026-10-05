@@ -447,6 +447,28 @@ public enum AppDatabase {
                 t.add(column: "projectPromptVersion", .text).notNull().defaults(to: "")
             }
         }
+        migrator.registerMigration("v19") { db in
+            // Jev's project answer per window content, on its own so that a window whose
+            // category a rule decides (and so has no jevVerdict row) is judged too. The
+            // project columns on jevVerdict (v18) are copied over and no longer written.
+            try db.create(table: "jevProjectVerdict") { t in
+                t.column("appBundleID", .text).notNull()
+                t.column("domain", .text).notNull().defaults(to: "")
+                t.column("title", .text).notNull().defaults(to: "")
+                t.column("document", .text).notNull().defaults(to: "")
+                t.column("projectID", .text).notNull()
+                t.column("prob", .double).notNull().defaults(to: 0)
+                t.column("runnerUp", .text).notNull().defaults(to: "")
+                t.column("promptVersion", .text).notNull()
+                t.column("at", .datetime).notNull()
+                t.primaryKey(["appBundleID", "domain", "title", "document"])
+            }
+            try db.execute(sql: """
+                INSERT INTO jevProjectVerdict (appBundleID, domain, title, document, projectID, prob, runnerUp, promptVersion, at)
+                SELECT appBundleID, domain, title, document, projectID, projectProb, projectRunnerUp, projectPromptVersion, at
+                FROM jevVerdict WHERE projectID <> '' AND source <> 'seed'
+                """)
+        }
         return migrator
     }
 }

@@ -21,7 +21,8 @@ final class ProjectStubTransport: JevTransport, @unchecked Sendable {
         lock.withLock { bodies.append(body) }
         let title = ((body["state"] as? [String: Any])?["window_title"] as? String) ?? ""
         let questions = body["questions"] as? [String: Any] ?? [:]
-        var answers: [String: Any] = ["category": ["choice": "misc", "probabilities": ["misc": 0.9, "writing": 0.05], "confidence": 0.9]]
+        var answers: [String: Any] = [:]
+        if questions["category"] != nil { answers["category"] = ["choice": "misc", "probabilities": ["misc": 0.9, "writing": 0.05], "confidence": 0.9] }
         if let asked = questions["project"] as? [String: Any], let criteria = asked["criteria"] as? [String: Any] {
             if let raw = rawProject { answers["project"] = raw }
             else if let p = project(title, Array(criteria.keys)) {
@@ -54,21 +55,27 @@ final class ProjectTests: XCTestCase {
 
     // MARK: - Store and migration
 
-    func testMigrationAddsTheTableAndKeepsVerdicts() throws {
+    func testMigrationAddsTheTablesAndMovesProjectAnswers() throws {
         let old = try DatabaseQueue()
-        try AppDatabase.migrator.migrate(old, upTo: "v17")
+        try AppDatabase.migrator.migrate(old, upTo: "v18")
         try old.write { db in
-            try db.execute(sql: "INSERT INTO jevVerdict (appBundleID, categoryID, prob, promptVersion, at, source) VALUES ('a', 'misc', 0.9, 'v', ?, 'jev')", arguments: [Date()])
+            try db.execute(sql: """
+                INSERT INTO jevVerdict (appBundleID, categoryID, prob, promptVersion, at, source, projectID, projectProb, projectRunnerUp, projectPromptVersion)
+                VALUES ('a', 'misc', 0.9, 'v', ?, 'jev', 'p-1', 0.8, 'none', 'pv'), ('b', 'misc', 0.9, 'v', ?, 'jev', '', 0, '', ''),
+                       ('c', 'misc', 0.9, 'v', ?, 'seed', 'p-1', 0.8, '', 'pv')
+                """, arguments: [Date(), Date(), Date()])
         }
         try AppDatabase.migrator.migrate(old)
         try old.read { db in
             XCTAssertTrue(try db.tableExists("project"))
-            let row = try XCTUnwrap(Row.fetchOne(db, sql: "SELECT * FROM jevVerdict"))
-            XCTAssertEqual(row["categoryID"] as String, "misc")
-            XCTAssertEqual(row["projectID"] as String, "")
-            XCTAssertEqual(row["projectProb"] as Double, 0)
-            XCTAssertEqual(row["projectRunnerUp"] as String, "")
-            XCTAssertEqual(row["projectPromptVersion"] as String, "")
+            XCTAssertEqual(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM jevVerdict"), 3, "category verdicts are kept")
+            let rows = try Row.fetchAll(db, sql: "SELECT * FROM jevProjectVerdict")
+            XCTAssertEqual(rows.count, 1, "only judged, non-seed rows move")
+            XCTAssertEqual(rows[0]["appBundleID"] as String, "a")
+            XCTAssertEqual(rows[0]["projectID"] as String, "p-1")
+            XCTAssertEqual(rows[0]["prob"] as Double, 0.8)
+            XCTAssertEqual(rows[0]["runnerUp"] as String, "none")
+            XCTAssertEqual(rows[0]["promptVersion"] as String, "pv")
         }
     }
 
@@ -111,15 +118,15 @@ final class ProjectTests: XCTestCase {
         try ObservationStore(db).setSessionName(signature: "p:x", project: "Alpha")
         try db.write { db in
             try db.execute(sql: """
-                INSERT INTO jevVerdict (appBundleID, categoryID, prob, promptVersion, at, source, projectID, projectRunnerUp, projectPromptVersion)
-                VALUES ('a', 'misc', 0.9, 'v', ?, 'jev', ?, ?, 'pv'), ('b', 'misc', 0.9, 'v', ?, 'user', ?, '', 'pv')
-                """, arguments: [Date(), a.id, b.id, Date(), b.id])
+                INSERT INTO jevProjectVerdict (appBundleID, projectID, runnerUp, promptVersion, at) VALUES ('a', ?, ?, 'pv', ?), ('b', ?, '', 'pv', ?)
+                """, arguments: [a.id, b.id, Date(), b.id, Date()])
         }
         try projects.merge(a.id, into: b.id)
         XCTAssertEqual(try projects.list().map(\.name), ["Beta"])
         XCTAssertEqual(try ObservationStore(db).sessionNames()["p:x"]?.project, "Beta")
-        XCTAssertEqual(try store.verdicts().map(\.projectID), [b.id, b.id])
-        XCTAssertEqual(try store.verdicts().first { $0.appBundleID == "a" }?.projectRunnerUp, b.id)
+        let verdicts = try store.projectVerdicts()
+        XCTAssertEqual(verdicts.values.map(\.projectID), [b.id, b.id])
+        XCTAssertEqual(try db.read { try String.fetchOne($0, sql: "SELECT runnerUp FROM jevProjectVerdict WHERE appBundleID = 'a'") }, b.id)
         XCTAssertThrowsError(try projects.merge(b.id, into: b.id)) { XCTAssertEqual($0 as? ProjectStore.ProjectError, .sameProject) }
     }
 
@@ -201,16 +208,18 @@ final class ProjectTests: XCTestCase {
     }
     private var longAgo: Date { Date().addingTimeInterval(-86_400 * 30) }
 
-    func testNoProjectsMeansNoSecondQuestionAndNoProjectColumns() async throws {
+    private func key(_ title: String) -> VerdictKey { VerdictKey(appBundleID: "com.google.Chrome", domain: nil, title: title, document: nil) }
+    private func questions(_ request: [String: Any]) -> Set<String> {
+        Set((request["questions"] as? [String: Any] ?? [:]).keys)
+    }
+
+    func testNoProjectsMeansNoSecondQuestionAndNoProjectRows() async throws {
         _ = try SpanStore(db).insert(span(domain: "one.example", title: "one"))
         let transport = ProjectStubTransport { _, _ in nil }
         let run = await worker(transport).run(since: longAgo)
         XCTAssertEqual(run.saved, 1)
-        let questions = try XCTUnwrap(transport.requests.first?["questions"] as? [String: Any])
-        XCTAssertEqual(Set(questions.keys), ["category"])
-        let verdict = try XCTUnwrap(store.verdicts().first)
-        XCTAssertEqual(verdict.projectID, "")
-        XCTAssertEqual(verdict.projectPromptVersion, "")
+        XCTAssertEqual(questions(try XCTUnwrap(transport.requests.first)), ["category"])
+        XCTAssertTrue(try store.projectVerdicts().isEmpty)
     }
 
     func testProjectAnswerIsSavedWithTheCategory() async throws {
@@ -224,15 +233,19 @@ final class ProjectTests: XCTestCase {
         XCTAssertEqual(run.saved, 2)
         XCTAssertEqual(run.inputTokens, 1800)
         XCTAssertEqual(run.costUSD, 0.0008, accuracy: 1e-9)
-        let all = try store.verdicts()
-        let one = try XCTUnwrap(all.first { $0.title == "one" }), two = try XCTUnwrap(all.first { $0.title == "two" })
-        XCTAssertEqual(one.categoryID, "misc")
+        XCTAssertEqual(Set(transport.requests.map(questions)), [["category", "project"]], "both questions, one request")
+        XCTAssertEqual(try store.verdicts().count, 2)
+        let found = try store.projectVerdicts()
+        XCTAssertEqual(found.count, 2)
+        let one = try XCTUnwrap(found.first { $0.key.title == "one" }?.value), two = try XCTUnwrap(found.first { $0.key.title == "two" }?.value)
         XCTAssertEqual(one.projectID, alpha.id)
-        XCTAssertEqual(one.projectProb, 0.85, accuracy: 1e-9)
-        XCTAssertEqual(one.projectRunnerUp, "none")
-        XCTAssertEqual(one.projectPromptVersion, JevPrompt.projectVersion(try projects.list()))
+        XCTAssertEqual(one.prob, 0.85, accuracy: 1e-9)
+        let extra = try await db.read { db -> [String] in
+            let row = try XCTUnwrap(Row.fetchOne(db, sql: "SELECT runnerUp, promptVersion FROM jevProjectVerdict WHERE title = 'one'"))
+            return [row["runnerUp"], row["promptVersion"]]
+        }
+        XCTAssertEqual(extra, ["none", JevPrompt.projectVersion(try projects.list())])
         XCTAssertEqual(two.projectID, "none")
-        XCTAssertEqual(try store.projectVerdicts().keys.map(\.title), ["one"])
     }
 
     func testAChangedProjectListAsksAgainButOnlyForRecentCombos() async throws {
@@ -243,17 +256,19 @@ final class ProjectTests: XCTestCase {
         let w = worker(transport)
         _ = await w.run(since: longAgo)
         XCTAssertEqual(transport.requests.count, 2)
-        // Nothing changed: nothing is asked.
         let quiet = await w.run(since: longAgo)
-        XCTAssertEqual(quiet.calls, 0)
-        // A new project changes the version: the combo seen in the last 14 days is asked again, the old one is not.
-        let beta = try projects.add(name: "Beta")
+        XCTAssertEqual(quiet.calls, 0, "nothing changed: nothing is asked")
+        // A new project changes the version: the combo seen in the last 14 days is asked again, the old one is not,
+        // and its category is settled so only the project is asked.
+        _ = try projects.add(name: "Beta")
         let again = await w.run(since: longAgo)
         XCTAssertEqual(again.calls, 1)
-        let verdicts = try store.verdicts()
-        XCTAssertEqual(verdicts.first { $0.title == "recent" }?.projectPromptVersion, JevPrompt.projectVersion(try projects.list()))
-        XCTAssertNotEqual(verdicts.first { $0.title == "old" }?.projectPromptVersion, JevPrompt.projectVersion(try projects.list()))
-        XCTAssertNotNil(beta)
+        XCTAssertEqual(questions(try XCTUnwrap(transport.requests.last)), ["project"])
+        let versions = try await db.read { db in
+            Dictionary(uniqueKeysWithValues: try Row.fetchAll(db, sql: "SELECT title, promptVersion FROM jevProjectVerdict").map { ($0["title"] as String, $0["promptVersion"] as String) })
+        }
+        XCTAssertEqual(versions["recent"], JevPrompt.projectVersion(try projects.list()))
+        XCTAssertNotEqual(versions["old"], JevPrompt.projectVersion(try projects.list()))
     }
 
     func testTheUsersCategoryStaysButItsProjectIsFilled() async throws {
@@ -263,24 +278,52 @@ final class ProjectTests: XCTestCase {
         let transport = ProjectStubTransport { _, _ in (alpha.id, [alpha.id: 0.9]) }
         let run = await worker(transport).run(since: longAgo)
         XCTAssertEqual(run.calls, 1)
+        XCTAssertEqual(questions(try XCTUnwrap(transport.requests.first)), ["project"])
         let verdict = try XCTUnwrap(store.verdicts().first)
         XCTAssertEqual(verdict.source, "user")
         XCTAssertEqual(verdict.categoryID, "writing")
-        XCTAssertEqual(verdict.projectID, alpha.id)
+        XCTAssertEqual(try store.projectVerdicts()[VerdictKey(mine)]?.projectID, alpha.id)
+    }
+
+    func testAWindowDecidedByARuleOrNeverAProjectIsStillJudged() async throws {
+        let alpha = try projects.add(name: "Alpha")
+        let store2 = SpanStore(db)
+        // A hard rule decides the category (the owner's own app): no category request, but a project question.
+        let own = try store2.insert(Span(start: Date().addingTimeInterval(-3600), end: Date().addingTimeInterval(-3000), appBundleID: "com.alllllenshi.timesink",
+                                         appName: "TimeSink", title: "Today", url: nil, domain: nil))
+        // A window the user filed under entertainment, a chat app, and a window with no rule at all.
+        let video = try store2.insert(span(domain: "videos.example", title: "clip"))
+        try store.setUserVerdict(VerdictKey(video), categoryID: "entertainment")
+        let chat = try store2.insert(Span(start: Date().addingTimeInterval(-3600), end: Date().addingTimeInterval(-3000), appBundleID: "com.tencent.xinWeChat",
+                                          appName: "WeChat", title: "Friends", url: nil, domain: nil))
+        try store.setUserVerdict(VerdictKey(chat), categoryID: "communication")
+        _ = try store2.insert(span(domain: "work.example", title: "work"))
+        let transport = ProjectStubTransport { _, _ in (alpha.id, [alpha.id: 0.9]) }
+        let run = await worker(transport).run(since: longAgo)
+        XCTAssertEqual(run.calls, 2, "the owner's app and the unruled window; the video and the chat are settled locally")
+        XCTAssertEqual(Set(transport.requests.map(questions)), [["project"], ["category", "project"]])
+        let found = try store.projectVerdicts()
+        XCTAssertEqual(found[VerdictKey(own)]?.projectID, alpha.id)
+        XCTAssertEqual(found[VerdictKey(video)]?.projectID, "none")
+        XCTAssertEqual(found[VerdictKey(chat)]?.projectID, "none")
+        XCTAssertEqual(found.count, 4)
+        XCTAssertEqual(try store.verdicts().filter { $0.source == "jev" }.count, 1, "only the unruled window got a category from Jev")
+        // Nothing left to ask.
+        let again = await worker(transport).run(since: longAgo)
+        XCTAssertEqual(again.calls, 0)
     }
 
     func testACurrentCategoryIsKeptWhenOnlyTheProjectIsAsked() async throws {
         _ = try SpanStore(db).insert(span(domain: "one.example", title: "one"))
         let transport = ProjectStubTransport { _, _ in nil }
-        let w = worker(transport)
-        _ = await w.run(since: longAgo)
+        _ = await worker(transport).run(since: longAgo)
         let first = try XCTUnwrap(store.verdicts().first)
         let alpha = try projects.add(name: "Alpha")
         let second = ProjectStubTransport { _, _ in (alpha.id, [alpha.id: 0.7]) }
         _ = await worker(second).run(since: longAgo)
         let after = try XCTUnwrap(store.verdicts().first)
         XCTAssertEqual(after.at, first.at, "the category verdict was not rewritten")
-        XCTAssertEqual(after.projectID, alpha.id)
+        XCTAssertEqual(try store.projectVerdicts().values.map(\.projectID), [alpha.id])
     }
 
     func testTheCapStopsProjectRequestsToo() async throws {
@@ -296,17 +339,19 @@ final class ProjectTests: XCTestCase {
     func testAnArchivedProjectIsNotAskedAndItsVerdictsAreIgnored() throws {
         let alpha = try projects.add(name: "Alpha")
         _ = try projects.add(name: "Beta")
-        let key = VerdictKey(appBundleID: "a", domain: "", title: "", document: "")
         let id = alpha.id
         try db.write { db in
-            try db.execute(sql: "INSERT INTO jevVerdict (appBundleID, categoryID, prob, promptVersion, at, source, projectID, projectProb, projectPromptVersion) VALUES ('a', 'misc', 0.9, 'v', ?, 'jev', ?, 0.9, 'pv')",
-                           arguments: [Date(), id])
+            try db.execute(sql: "INSERT INTO jevProjectVerdict (appBundleID, projectID, prob, promptVersion, at) VALUES ('a', ?, 0.9, 'pv', ?), ('b', 'none', 1, 'pv', ?)",
+                           arguments: [id, Date(), Date()])
         }
         try projects.archive(alpha.id)
         XCTAssertEqual(JevPrompt.projectCriteria(try projects.list()).count, 2)
         let resolver = CategoryResolver(categoryStore: store)
         resolver.jevEnabled = true
-        XCTAssertNil(resolver.projectVerdicts[key])
+        resolver.refreshProjectVerdicts()
+        XCTAssertNil(resolver.projectVerdicts[VerdictKey(appBundleID: "a", domain: "", title: "", document: "")], "an archived project is as good as unjudged")
+        XCTAssertEqual(resolver.projectVerdicts[VerdictKey(appBundleID: "b", domain: "", title: "", document: "")]?.projectID, "none")
+        XCTAssertTrue(resolver.projectsJudged)
     }
 
     // MARK: - Seed file
