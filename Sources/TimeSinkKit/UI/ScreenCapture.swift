@@ -283,6 +283,28 @@ import WebKit
             UserDefaults.standard.removeObject(forKey: "todayTimelineColors")
             return
         }
+        // `TIMESINK_PREVIEW_ONLY=lbl`: the Today timeline's duration labels at three widths, both colourings, and a selected block.
+        if only?.contains("lbl") ?? false {
+            let sample = try RefinedPreview.fixture(projects: true, ownerNames: ProcessInfo.processInfo.environment["TIMESINK_PREVIEW_PROJECT_NAMES"] != nil)
+            sample.timeFormat = "24"
+            sample.sidebarSelection = .today
+            sample.todayDayOffset = 0
+            sample.range = DateRangeSelection(kind: .day, anchor: Date())
+            let sizes = [("wide", wide), ("narrow", NSSize(width: 1000, height: 700)), ("min", small)]
+            for colors in ["category", "project"] {
+                UserDefaults.standard.set(colors, forKey: "todayTimelineColors")
+                for (tag, size) in sizes { try await shoot("lbl-\(tag)-\(colors)", MainWindowView(model: sample), size: size, settle: 4000) }
+                TodayView.previewSelect = 4
+                try await shoot("lbl-selected-\(colors)", MainWindowView(model: sample), size: wide, settle: 4000)
+                TodayView.previewSelect = nil
+            }
+            // Yesterday has a shorter axis, so the same widths give each block more room.
+            sample.todayDayOffset = -1
+            UserDefaults.standard.set("category", forKey: "todayTimelineColors")
+            for (tag, size) in sizes { try await shoot("lbl-yday-\(tag)", MainWindowView(model: sample), size: size, settle: 4000) }
+            UserDefaults.standard.removeObject(forKey: "todayTimelineColors")
+            return
+        }
         if only?.contains("proj") ?? true {
             try await projectsPage("projects-empty", model, .organization, sizes: [wide, small])
             let young = try RefinedPreview.fixture(days: 2)
