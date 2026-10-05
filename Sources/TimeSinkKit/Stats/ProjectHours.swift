@@ -21,7 +21,7 @@ enum ProjectHours {
         var days: [DateInterval]
         var classification: CategoryResolver.Snapshot
         var threshold: TimeInterval
-        var verdicts: [VerdictKey: ProjectVerdict]
+        var verdicts: [VerdictKey: ProjectVerdict]?
         var overrides: [String: SessionNameRow]
         var names: [String: String]
         var userNames: [String]

@@ -11,7 +11,7 @@ extension AppModel {
         if let hit = sessionCache[day], hit.version == version, hit.threshold == threshold, hit.splits == splitsVersion { return hit.value }
         if let running = sessionTasks[day] { return await running.value }
         let items = rangedSpans(for: day)
-        let verdicts = resolver.projectVerdicts
+        let verdicts = resolver.projectsJudged ? resolver.projectVerdicts : nil
         let splits = (try? observationStore?.sessionSplits(in: day)) ?? []
         let joins = (try? observationStore?.sessionJoins(in: day)) ?? []
         let task = Task.detached(priority: .userInitiated) {
@@ -148,7 +148,7 @@ extension AppModel {
         }
         let whole = DateInterval(start: days.last?.start ?? today, end: days.first?.end ?? today)
         let input = ProjectHours.Input(
-            days: days, classification: resolver.snapshot(), threshold: sessionThreshold, verdicts: resolver.projectVerdicts,
+            days: days, classification: resolver.snapshot(), threshold: sessionThreshold, verdicts: resolver.projectsJudged ? resolver.projectVerdicts : nil,
             overrides: sessionOverrides, names: projectNames, userNames: projects.map(\.name),
             splits: (try? observationStore?.sessionSplits(in: whole)) ?? [], joins: (try? observationStore?.sessionJoins(in: whole)) ?? [])
         let store = spanStore

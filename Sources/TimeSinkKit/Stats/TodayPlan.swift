@@ -80,6 +80,8 @@ struct TodayPlan {
         var guessed: Bool
         /// Colour slot of the project; nil for no project.
         var slot: Int?
+        /// No project, and Jev has not judged most of its windows yet: the block waits for an answer.
+        var projectPending = false
         var interruptions: Int
         var switches: Int
         /// Continues from the day before: it starts as the day does.
@@ -224,6 +226,7 @@ struct TodayPlan {
         let rows = zip(sessions, resolved).map { session, project in
             Row(session: session, project: project.project, guessed: project.guessed,
                 slot: project.project.flatMap { slots[$0] },
+                projectPending: project.project == nil && session.projectPending,
                 interruptions: interruptions.filter { $0.start >= session.start && $0.start < session.end }.count,
                 switches: switches(in: DateInterval(start: session.start, end: max(session.end, session.start.addingTimeInterval(1))), items: overview.items),
                 carriesOver: session.start.timeIntervalSince(overview.day.start) < 60)

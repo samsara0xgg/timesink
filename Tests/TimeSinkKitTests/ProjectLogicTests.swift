@@ -30,7 +30,9 @@ final class ProjectLogicTests: XCTestCase {
         XCTAssertEqual(pick([a], verdicts), "p1")
         // Exactly half the time is enough; less is not.
         XCTAssertEqual(pick([a, b], verdicts), "p1")
-        XCTAssertNil(pick([a, b, span(minutes: 5, title: "c")], verdicts))
+        // Windows nobody judged yet do not count against it, as long as it holds a quarter of the session.
+        XCTAssertEqual(pick([a, b, span(minutes: 5, title: "c")], verdicts), "p1")
+        XCTAssertNil(pick([a, span(minutes: 40, title: "x")], verdicts), "10 of 50 minutes is under a quarter")
         // 'none' and unasked windows are not a project.
         XCTAssertNil(pick([a, b], [VerdictKey(a): .init(projectID: "none", prob: 0.9)]))
         // The mean probability is time-weighted: 0.9 for 10 min and 0.3 for 10 min is 0.6, exactly enough.
@@ -39,6 +41,51 @@ final class ProjectLogicTests: XCTestCase {
         XCTAssertNil(pick([a, c], [VerdictKey(a): .init(projectID: "p1", prob: 0.8), VerdictKey(c): .init(projectID: "p1", prob: 0.3)]))
         XCTAssertNil(pick([a], [VerdictKey(a): .init(projectID: "p1", prob: 0.59)]))
         XCTAssertEqual(pick([a], [VerdictKey(a): .init(projectID: "p1", prob: 0.6)]), "p1")
+    }
+
+    /// A realistic stretch: `project` minutes on windows judged to be in one project, `none` on windows judged to be in none
+    /// (untitled assistant windows, a chat), `unjudged` on windows with no answer yet.
+    private func mix(_ parts: [(String?, Double)], prob: Double = 0.9) -> (items: [CategorizedSpan], verdicts: [VerdictKey: ProjectVerdict]) {
+        var verdicts: [VerdictKey: ProjectVerdict] = [:]
+        var items: [CategorizedSpan] = []
+        for (index, part) in parts.enumerated() {
+            let s = span(day: 1, 9 + Double(index), minutes: part.1, title: "w\(index)")
+            if let id = part.0, id != "?" { verdicts[VerdictKey(s)] = .init(projectID: id, prob: prob) }
+            items.append(item(s))
+        }
+        return (items, verdicts)
+    }
+    private func pick(_ m: (items: [CategorizedSpan], verdicts: [VerdictKey: ProjectVerdict])) -> String? {
+        SessionProjectResolver.jevProjectID(of: m.items) { m.verdicts[VerdictKey($0)] }
+    }
+
+    func testNoneWindowsDoNotDiluteAProjectButAThinSliceStillFails() {
+        // 20 of 60 minutes in the project, 30 judged none, 10 unjudged.
+        XCTAssertEqual(pick(mix([("p1", 20), ("none", 30), ("?", 10)])), "p1")
+        // Only 6 of 60 minutes: under a quarter of the session.
+        XCTAssertNil(pick(mix([("p1", 6), ("none", 44), ("?", 10)])))
+        // Everything judged none: no project.
+        XCTAssertNil(pick(mix([("none", 30), ("none", 30)])))
+        // Two projects: the larger needs half of the project time, and a quarter of the session.
+        XCTAssertEqual(pick(mix([("p1", 18), ("p2", 10), ("none", 32)])), "p1")
+        XCTAssertNil(pick(mix([("p1", 12), ("p2", 12), ("none", 36)])), "a tie that is also under a quarter")
+        XCTAssertNil(pick(mix([("p1", 14), ("p2", 14), ("p3", 14), ("none", 18)])), "14 of 42 project minutes is a third")
+        // Low confidence is unsure however large.
+        XCTAssertNil(pick(mix([("p1", 40), ("none", 20)], prob: 0.5)))
+    }
+
+    func testASessionWaitsForJevWhenHalfOfItIsUnjudged() {
+        func pending(_ m: (items: [CategorizedSpan], verdicts: [VerdictKey: ProjectVerdict])) -> Bool {
+            SessionProjectResolver.isPending(m.items) { m.verdicts[VerdictKey($0)] }
+        }
+        XCTAssertTrue(pending(mix([("?", 30), ("none", 30)])))
+        XCTAssertFalse(pending(mix([("?", 29), ("none", 31)])))
+        XCTAssertFalse(pending(mix([("none", 60)])), "judged none is an answer")
+        // Only sessions cut while projects are being judged know it; otherwise nothing waits.
+        let a = span(minutes: 30, title: "a")
+        XCTAssertFalse(SessionSegmenter.sessions([item(a)]).first!.projectPending)
+        XCTAssertTrue(SessionSegmenter.sessions([item(a)], projectVerdicts: [:]).first!.projectPending)
+        XCTAssertFalse(SessionSegmenter.sessions([item(a)], projectVerdicts: [VerdictKey(a): .init(projectID: "none", prob: 1)]).first!.projectPending)
     }
 
     func testTheMajorityProjectWinsAndIsWeightedByTime() {
@@ -224,5 +271,50 @@ final class ProjectLogicTests: XCTestCase {
         XCTAssertEqual(plan.todos.map(\.id), ["project|beta", "focus"])
         plan.setNewProject(nil)
         XCTAssertEqual(plan.todos.map(\.id), ["focus"])
+    }
+
+    // MARK: Today and the judgements arriving
+
+    func testABlockWaitsForJevOnlyWithoutAProject() {
+        func plan(explicit: String?, pending: Bool) -> TodayPlan.Row {
+            let s = WorkSession(start: at(day: 1, 9), end: at(day: 1, 10), recorded: 3600, categoryID: "dev", project: nil, projectLabel: nil,
+                                projectPending: pending, apps: [], titles: [], documents: [])
+            let overview = DayOverview(items: [], categories: [:], sessions: [], now: at(day: 1, 12), calendar: calendar)
+            return TodayPlan.build(overview: overview, sessions: [s], explicit: [explicit], episodes: [], notes: [], categories: [:], lastFocus: nil,
+                                   hasFocusToday: true, isToday: false, calendar: calendar).rows[0]
+        }
+        XCTAssertTrue(plan(explicit: nil, pending: true).projectPending)
+        XCTAssertFalse(plan(explicit: "Alpha", pending: true).projectPending)
+        XCTAssertFalse(plan(explicit: nil, pending: false).projectPending)
+    }
+
+    @MainActor func testVerdictsArrivingFromTheWorkerRedrawTheSessions() async throws {
+        let (model, spans) = try hoursModel()
+        let alpha = try model.categoryStore.projects.add(name: "Alpha")
+        model.reloadProjects()
+        let day = Calendar.current.dateInterval(of: .day, for: Date().addingTimeInterval(-86400))!
+        let start = day.start.addingTimeInterval(10 * 3600)
+        _ = try spans.insert(Span(start: start, end: start.addingTimeInterval(1200), appBundleID: "com.test.app", appName: "App",
+                                  title: "work", url: nil, domain: "work.example"))
+        let settings = model.settings
+        settings.setJevEnabled(true)
+        model.resolver.jevEnabled = true
+        model.resolver.refreshProjectVerdicts()
+        let before = await model.sessions(for: day)
+        XCTAssertEqual(before.map(\.projectPending), [true], "nothing judged yet")
+        XCTAssertEqual(model.sessionProject(before[0]), nil)
+
+        let transport = ProjectStubTransport { _, _ in (alpha.id, [alpha.id: 0.9]) }
+        let jev = JevService(categoryStore: model.categoryStore, settings: settings, resolver: model.resolver, transport: transport, apiKey: { "k" })
+        jev.onChange = { [weak model] in model?.dataChanged() }
+        let edits = model.dataEditVersion
+        jev.start()
+        jev.nudge()
+        for _ in 0..<200 where model.dataEditVersion == edits { try await Task.sleep(for: .milliseconds(50)) }
+        jev.stop()
+        XCTAssertGreaterThan(model.dataEditVersion, edits, "the worker's verdicts bump the version the caches are keyed on")
+        let after = await model.sessions(for: day)
+        XCTAssertEqual(after.map(\.projectPending), [false])
+        XCTAssertEqual(model.sessionProject(after[0]), "Alpha")
     }
 }

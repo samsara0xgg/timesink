@@ -26,6 +26,9 @@ public struct WorkSession: Sendable, Equatable, Identifiable {
     /// The id of the project Jev's verdicts give this session, when clear enough
     /// (`SessionProjectResolver`). The segmenter never cuts on it.
     public var jevProjectID: String?
+    /// At least half of the session's time is on windows Jev has not judged for a project yet.
+    /// False when nothing is being judged (no projects, or Jev off).
+    public var projectPending = false
     /// Longest first.
     public var apps: [App]
     /// Window titles by time held, longest first, at most 12: what a name
@@ -95,7 +98,7 @@ public enum SessionSegmenter {
     /// `items` sorted by start. `splits`: extra boundaries the user asked for.
     public static func sessions(_ items: [CategorizedSpan], threshold: TimeInterval = defaultThreshold,
                                 splits: [Date] = [], joins: [Date] = [],
-                                projectVerdicts: [VerdictKey: ProjectVerdict] = [:]) -> [WorkSession] {
+                                projectVerdicts: [VerdictKey: ProjectVerdict]? = nil) -> [WorkSession] {
         /// A session start the user joined onto the one before it: no cut there.
         func joined(_ date: Date) -> Bool { joins.contains { abs($0.timeIntervalSince(date)) < 1 } }
         let items = items.filter { $0.span.duration > 0 }
@@ -183,7 +186,7 @@ public enum SessionSegmenter {
         return changes
     }
 
-    static func session(_ pieces: [CategorizedSpan], projectVerdicts: [VerdictKey: ProjectVerdict] = [:]) -> WorkSession {
+    static func session(_ pieces: [CategorizedSpan], projectVerdicts: [VerdictKey: ProjectVerdict]? = nil) -> WorkSession {
         var apps: [String: WorkSession.App] = [:]
         var categories: [String: TimeInterval] = [:]
         var projects: [String: (label: String, seconds: TimeInterval)] = [:]
@@ -209,11 +212,15 @@ public enum SessionSegmenter {
         }
         let project = projects.max { $0.value.seconds == $1.value.seconds ? $0.key > $1.key : $0.value.seconds < $1.value.seconds }
             .flatMap { $0.value.seconds >= recorded * projectShare ? $0 : nil }
+        let judged = projectVerdicts.map { verdicts in
+            (id: SessionProjectResolver.jevProjectID(of: pieces) { verdicts[VerdictKey($0)] },
+             pending: SessionProjectResolver.isPending(pieces) { verdicts[VerdictKey($0)] })
+        }
         return WorkSession(
             start: pieces.map(\.span.start).min()!, end: pieces.map(\.span.end).max()!, recorded: recorded,
             categoryID: categories.max { $0.value == $1.value ? $0.key > $1.key : $0.value < $1.value }!.key,
             project: project?.key, projectLabel: project?.value.label,
-            jevProjectID: projectVerdicts.isEmpty ? nil : SessionProjectResolver.jevProjectID(of: pieces) { projectVerdicts[VerdictKey($0)] },
+            jevProjectID: judged?.id, projectPending: judged?.pending ?? false,
             apps: apps.values.sorted { $0.seconds == $1.seconds ? $0.bundleID < $1.bundleID : $0.seconds > $1.seconds },
             titles: Array(titles.values.sorted { $0.seconds == $1.seconds ? $0.title < $1.title : $0.seconds > $1.seconds }.prefix(12)),
             documents: Array(documents.values.sorted { $0.seconds == $1.seconds ? $0.title < $1.title : $0.seconds > $1.seconds }.prefix(8)))
