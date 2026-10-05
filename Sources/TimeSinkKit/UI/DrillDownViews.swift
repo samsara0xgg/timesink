@@ -248,7 +248,16 @@ struct HourlyBigView: View {
     let loadLast7Bars: () -> [Bar]
     var width: CGFloat = DrillWidths.hourly
 
-    @State private var mode: Mode = .today
+    #if DEBUG
+    /// Captures: open on the 7-day view.
+    @MainActor static var previewLast7 = false
+    #endif
+    @State private var mode: Mode = {
+        #if DEBUG
+        if HourlyBigView.previewLast7 { return .last7 }
+        #endif
+        return .today
+    }()
     @State private var last7Bars: [Bar]?
 
     private var activeBars: [Bar] {
@@ -282,10 +291,12 @@ struct HourlyBigView: View {
                 .padding(8).glassPlatter(cornerRadius: 14)
             Text("纵轴按数据取整到 15 分钟；横轴只画有记录的时段。")
                 .font(.note).foregroundStyle(Design.ink2)
+                .fixedSize(horizontal: false, vertical: true)
             legend(categoryOrder)
         }
         .frame(width: width, alignment: .leading)
         .flyoutCard()
+        .onAppear { if mode == .last7, last7Bars == nil { last7Bars = loadLast7Bars() } }
     }
 
     private func legend(_ ids: [String]) -> some View {

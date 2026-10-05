@@ -65,7 +65,7 @@ struct HourlyActivityChart: View {
             .chartXScale(domain: Double(span.lowerBound)...Double(span.upperBound))
             .chartYScale(domain: 0...scale.top)
             .chartXAxis {
-                AxisMarks(values: Array(stride(from: Double(span.lowerBound), through: Double(span.upperBound), by: 3))) { value in
+                AxisMarks(values: Array(stride(from: Double(span.lowerBound), through: Double(span.upperBound), by: span.count > 12 ? 6 : 3))) { value in
                     let hour = Int(value.as(Double.self) ?? 0)
                     AxisTick()
                     AxisValueLabel(anchor: hour == span.upperBound ? .topTrailing : (hour == span.lowerBound ? .topLeading : .top),

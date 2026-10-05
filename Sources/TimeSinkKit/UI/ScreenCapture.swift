@@ -473,6 +473,13 @@ import WebKit
                     try await shoot("flyout-\(name)", pane.padding(24), size: NSSize(width: fit.width + 48, height: fit.height + 48), dark: dark, host: .clear)
                 }
             }
+            // The 24-hour card on its 7-day view: the axis runs the whole day, so its labels must not touch.
+            HourlyBigView.previewLast7 = true
+            if let panes = await RefinedPreview.flyoutPanes(model: model), let pane = panes.first(where: { $0.0 == "hourly" })?.1 {
+                let fit = RefinedPreview.fitting(pane, dark: dark)
+                try await shoot("flyout-hourly-last7", pane.padding(24), size: NSSize(width: fit.width + 48, height: fit.height + 48), dark: dark, host: .clear)
+            }
+            HourlyBigView.previewLast7 = false
             try await shoot("menubar-items", HStack(spacing: 18) {
                 Image(systemName: "hourglass"); Text(verbatim: "6:42")
                 Image(nsImage: FocusCapsule.image(remaining: 26 * 60 + 12, planned: 45 * 60))
