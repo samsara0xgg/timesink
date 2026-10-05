@@ -81,6 +81,8 @@ struct TodayView: View {
             } else { placeholder }
         }
         .frame(height: TodayTimelineCard.height)
+        // A block's card hangs below the timeline card: keep it above the cards that follow.
+        .zIndex(1)
         let categories = Group {
             if let plan { TodayCategoriesCard(plan: plan, model: model) } else { placeholder }
         }

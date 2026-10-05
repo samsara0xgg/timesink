@@ -10900,6 +10900,26 @@
           }
         }
       }
+    },
+    "项目：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Project: %@"
+          }
+        }
+      }
+    },
+    "项目：判定中…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Project: judging…"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

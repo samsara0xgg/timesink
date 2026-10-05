@@ -45,7 +45,7 @@ struct TodayTimelineCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header.frame(height: Self.headerHeight).padding(.bottom, Design.Space.md)
-            chart.frame(height: Self.chartHeight)
+            chart.frame(height: Self.chartHeight).zIndex(1)
             legend.frame(height: Self.legendHeight).padding(.top, Design.Space.sm)
         }
         .cardBox()
@@ -314,6 +314,11 @@ struct TodayTimelineCard: View {
             }
             Text(verbatim: "\(model.time(row.session.start))–\(model.time(row.session.end)) · \(TodayFmt.long(row.session.recorded)) · \(category)")
                 .font(.note).monospacedDigit().foregroundStyle(Design.ink2).lineLimit(2)
+            if colors == .project {
+                Text(row.projectPending ? String(localized: "项目：判定中…")
+                     : String(localized: "项目：\(row.project ?? String(localized: "没有项目"))"))
+                    .font(.note).foregroundStyle(Design.ink2).lineLimit(1)
+            }
             Text(row.interruptions > 0 ? String(localized: "切换 \(row.switches) 次 · 打断 \(row.interruptions) 次")
                  : String(localized: "切换 \(row.switches) 次 · 没有打断"))
                 .font(.note).monospacedDigit().foregroundStyle(Design.ink2)
