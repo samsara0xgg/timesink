@@ -342,11 +342,16 @@ struct ActivityInspector: View {
         guard let selection = activities.selectedActivity else { selected = nil; return }
         // Time first: the identity check (a URL parse) then runs on a handful
         // of spans instead of the whole range.
+        // The category test first: `matches` needs it too, and it is far
+        // cheaper than the identity parse it saves for most of a month.
+        func isSelected(_ item: CategorizedSpan) -> Bool {
+            item.categoryID == selection.categoryID && selection.matches(ActivitiesModel.selection(for: item))
+        }
         let item = activities.selectedStart.flatMap { start in
-            all.first { $0.span.start <= start && start < $0.span.end && selection.matches(ActivitiesModel.selection(for: $0)) }
-        } ?? all.first { selection.matches(ActivitiesModel.selection(for: $0)) }
+            all.first { $0.span.start <= start && start < $0.span.end && isSelected($0) }
+        } ?? all.first(where: isSelected)
         rowTotal = activities.selectedStart == nil
-            ? all.filter { selection.matches(ActivitiesModel.selection(for: $0)) }.reduce((0, 0)) { ($0.0 + 1, $0.1 + $1.span.duration) }
+            ? all.filter(isSelected).reduce((0, 0)) { ($0.0 + 1, $0.1 + $1.span.duration) }
             : nil
         // Keep the saved row visible even when changing category moves its list group.
         if let item { selected = item }

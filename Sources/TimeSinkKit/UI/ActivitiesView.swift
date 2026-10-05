@@ -456,7 +456,7 @@ struct ActivitiesView: View {
 @MainActor
 @Observable
 final class ActivitiesModel {
-    struct TitleRow: Identifiable {
+    struct TitleRow: Identifiable, Equatable {
         var id: String { title }
         let title: String
         let seconds: TimeInterval
@@ -470,7 +470,7 @@ final class ActivitiesModel {
     /// `EntityParser` key), while `reassignKey` is always the domain or
     /// bundleID a reassignment actually writes to `CategoryStore` — the two
     /// diverge exactly when `isEntity` is true.
-    struct ActivityRow: Identifiable {
+    struct ActivityRow: Identifiable, Equatable {
         let id: String
         let label: String
         let seconds: TimeInterval
@@ -483,7 +483,7 @@ final class ActivitiesModel {
         let titles: [TitleRow]
     }
 
-    struct CategoryGroup: Identifiable {
+    struct CategoryGroup: Identifiable, Equatable {
         let id: String
         let name: String
         let colorHex: String
@@ -492,8 +492,8 @@ final class ActivitiesModel {
     }
 
     /// One app's time in the 按应用 grouping: its rows, not its raw records.
-    struct AppGroup: Identifiable {
-        struct Row: Identifiable {
+    struct AppGroup: Identifiable, Equatable {
+        struct Row: Identifiable, Equatable {
             let selection: ActivitySelection
             let label: String
             let domain: String?
