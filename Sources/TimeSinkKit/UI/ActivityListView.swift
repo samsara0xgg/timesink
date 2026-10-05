@@ -3,6 +3,14 @@ import os
 
 private let activityListLogger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "activityList")
 
+#if DEBUG
+/// Counts row builds, so a test can say how many rows an interaction redraws.
+@MainActor enum ActivityListProbe {
+    static var rows = 0
+    static var bodies = 0
+}
+#endif
+
 /// Over a stretch of days: what was recorded by category (each with its
 /// apps and sites, each of those with its titles), by app, or by time.
 /// Every row is one height and one indent per level; the share or visits
@@ -28,7 +36,10 @@ struct ActivityListView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Design.Space.md) {
+        #if DEBUG
+        let _ = ActivityListProbe.bodies += 1
+        #endif
+        return VStack(alignment: .leading, spacing: Design.Space.md) {
             ViewThatFits(in: .horizontal) {
                 HStack { heading(caption: true); Spacer(minLength: Design.Space.md); groupingControl }
                 HStack { heading(caption: false); Spacer(minLength: Design.Space.md); groupingControl }
@@ -68,22 +79,145 @@ struct ActivityListView: View {
     }
 
     private var list: some View {
-        ScrollViewReader { proxy in
+        let entries = entries
+        return ScrollViewReader { proxy in
             // A lazy stack instead of List: List measured every row of a
             // month-long range up front.
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    switch activities.grouping {
-                    case 0: ForEach(displayedGroups) { categoryRows($0) }
-                    case 1: ForEach(activities.appGroups) { appRows($0) }
-                    default: timeRows
-                    }
+                    // One flat run of one-view elements: a lazy stack builds
+                    // and sizes only the rows near the viewport, and its
+                    // scroll bar knows the true length. Nested ForEach groups
+                    // were built whole and made it guess.
+                    ForEach(entries) { EntryRow(list: self, entry: $0, selected: isSelected($0)).equatable() }
                 }
                 // The fade covers this margin, never the last row.
                 .padding(.bottom, Design.Space.lg)
             }
             .cardList()
             .modifier(FollowSelection(activities: activities, proxy: proxy))
+        }
+    }
+
+    /// One row of the list, whatever its level; everything a row needs that
+    /// does not change with the selection is settled here, once per rebuild.
+    private enum Entry: Identifiable, Equatable {
+        case category(ActivitiesModel.CategoryGroup, open: Bool, share: Int)
+        case activity(ActivitiesModel.ActivityRow, categoryID: String, open: Bool, visits: Int)
+        case title(ActivitiesModel.TitleRow, parent: ActivitiesModel.ActivityRow, categoryID: String)
+        case app(ActivitiesModel.AppGroup)
+        case appRow(ActivitiesModel.AppGroup.Row, app: String, level: Int, strong: Bool, dot: Color, dotName: String)
+        case day(Date)
+        /// `colors`: what the stretch's category bar is drawn with.
+        case time(TimelineSegment, colors: [String])
+
+        /// Two entries that draw the same: a row is redrawn only when its entry changes.
+        static func == (a: Entry, b: Entry) -> Bool {
+            switch (a, b) {
+            case let (.category(g1, o1, s1), .category(g2, o2, s2)): g1 == g2 && o1 == o2 && s1 == s2
+            case let (.activity(i1, c1, o1, v1), .activity(i2, c2, o2, v2)): i1 == i2 && c1 == c2 && o1 == o2 && v1 == v2
+            case let (.title(t1, p1, c1), .title(t2, p2, c2)): t1 == t2 && p1.id == p2.id && c1 == c2
+            case let (.app(g1), .app(g2)): g1 == g2
+            case let (.appRow(i1, a1, l1, s1, d1, n1), .appRow(i2, a2, l2, s2, d2, n2)): i1 == i2 && a1 == a2 && l1 == l2 && s1 == s2 && d1 == d2 && n1 == n2
+            case let (.day(d1), .day(d2)): d1 == d2
+            case let (.time(t1, c1), .time(t2, c2)):
+                t1.id == t2.id && t1.end == t2.end && t1.recorded == t2.recorded && t1.spanCount == t2.spanCount && c1 == c2
+            default: false
+            }
+        }
+
+        /// `scrollTo(selection)` finds a selectable row by its selection.
+        var id: AnyHashable {
+            switch self {
+            case .category(let group, _, _): "category:\(group.id)"
+            case .activity(let item, let categoryID, _, _): ActivitySelection(categoryID: categoryID, rowID: item.id)
+            case .title(let title, let parent, let categoryID): ActivitySelection(categoryID: categoryID, rowID: parent.id, title: title.title)
+            case .app(let group): "app:\(group.id)"
+            case .appRow(let item, _, _, _, _, _): item.selection
+            case .day(let day): day
+            case .time(let segment, _): segment.id
+            }
+        }
+    }
+
+    private var entries: [Entry] {
+        switch activities.grouping {
+        case 0:
+            let total = displayedGroups.reduce(0) { $0 + $1.seconds }
+            var out: [Entry] = []
+            for group in displayedGroups {
+                let open = !activities.collapsedCategories.contains(group.id)
+                out.append(.category(group, open: open, share: Int((group.seconds / max(1, total) * 100).rounded())))
+                guard open else { continue }
+                for item in group.rows {
+                    let key = ActivitySelection(categoryID: group.id, rowID: item.id)
+                    let expanded = activities.expandedRows.contains(key)
+                    out.append(.activity(item, categoryID: group.id, open: expanded, visits: activities.segmentCounts[key] ?? 0))
+                    if expanded { out += item.titles.map { .title($0, parent: item, categoryID: group.id) } }
+                }
+            }
+            return out
+        case 1:
+            return activities.appGroups.flatMap { group -> [Entry] in
+                if group.rows.count == 1, let only = group.rows.first, only.label == group.name {
+                    return [appEntry(only, app: group.id, level: 0, strong: true)]
+                }
+                return [.app(group)] + group.rows.map { appEntry($0, app: group.id, level: 1, strong: false) }
+            }
+        default:
+            let days = Dictionary(grouping: activities.timeRows) { Calendar.current.startOfDay(for: $0.start) }
+            return days.keys.sorted(by: >).flatMap { day in [Entry.day(day)] + (days[day] ?? []).map { segment in
+                .time(segment, colors: segment.isMixed ? segment.parts.map { categoryHex($0.categoryID) } : [])
+            } }
+        }
+    }
+
+    private func appEntry(_ item: ActivitiesModel.AppGroup.Row, app: String, level: Int, strong: Bool) -> Entry {
+        let id = item.selection.categoryID
+        return .appRow(item, app: app, level: level, strong: strong, dot: categoryColor(id),
+                       dotName: model.resolver.categoriesByID[id]?.name ?? String(localized: "未分类"))
+    }
+
+    private func categoryHex(_ id: String) -> String { model.resolver.categoriesByID[id]?.colorHex ?? "#C7C7CC" }
+
+    /// Whether the inspected activity is this row. Read per row here, not in
+    /// the row, so a selection redraws only the rows whose answer changed.
+    private func isSelected(_ entry: Entry) -> Bool {
+        switch entry {
+        case .activity(let item, let categoryID, _, _): activities.selectedActivity == ActivitySelection(categoryID: categoryID, rowID: item.id)
+        case .title(let title, let parent, let categoryID):
+            activities.selectedActivity == ActivitySelection(categoryID: categoryID, rowID: parent.id, title: title.title)
+        case .appRow(let item, _, _, _, _, _): activities.selectedActivity?.row == item.selection
+        case .time(let segment, _):
+            activities.selectedActivity.map(segment.contains) == true
+                && activities.selectedStart.map { segment.start <= $0 && $0 < segment.end } == true
+        default: false
+        }
+    }
+
+    /// One list row as its own view: SwiftUI skips its body while `entry`
+    /// and `selected` are unchanged.
+    private struct EntryRow: View, Equatable {
+        let list: ActivityListView
+        let entry: Entry
+        let selected: Bool
+
+        nonisolated static func == (a: Self, b: Self) -> Bool { a.entry == b.entry && a.selected == b.selected }
+
+        var body: some View {
+            switch entry {
+            case .category(let group, let open, let share): list.categoryRow(group, open: open, share: share)
+            case .activity(let item, let categoryID, let open, let visits):
+                list.activityRow(item, in: categoryID, open: open, visits: visits, selected: selected)
+            case .title(let title, let parent, let categoryID): list.titleRow(title, parent: parent, categoryID: categoryID, selected: selected)
+            case .app(let group): list.appHeader(group)
+            case .appRow(let item, let app, let level, let strong, let dot, let dotName):
+                list.appRow(item, app: app, level: level, strong: strong, dot: dot, dotName: dotName, selected: selected)
+            case .day(let day):
+                Text(list.dayLabel(day)).font(.note.weight(.semibold)).foregroundStyle(Design.ink2)
+                    .padding(.horizontal, Design.Space.sm).padding(.top, Design.Space.md).padding(.bottom, Design.Space.xs)
+            case .time(let segment, _): list.timeRow(segment, selected: selected)
+            }
         }
     }
 
@@ -95,7 +229,10 @@ struct ActivityListView: View {
                                               height: CGFloat = Design.rowHeight, seconds: TimeInterval, strong: Bool = false,
                                               @ViewBuilder lead: () -> Lead,
                                               @ViewBuilder count: () -> Count = { EmptyView() }) -> some View {
-        HStack(spacing: Design.Space.sm) {
+        #if DEBUG
+        ActivityListProbe.rows += 1
+        #endif
+        return HStack(spacing: Design.Space.sm) {
             Image(systemName: "chevron.right").font(.note.weight(.semibold)).foregroundStyle(Design.iconInk)
                 .rotationEffect(.degrees(open == true ? 90 : 0))
                 .opacity(open == nil ? 0 : 1)
@@ -123,10 +260,7 @@ struct ActivityListView: View {
     }
 
     /// Level 1: a category and its share; a click folds it.
-    @ViewBuilder private func categoryRows(_ group: ActivitiesModel.CategoryGroup) -> some View {
-        let open = !activities.collapsedCategories.contains(group.id)
-        let total = displayedGroups.reduce(0) { $0 + $1.seconds }
-        let share = Int((group.seconds / max(1, total) * 100).rounded())
+    private func categoryRow(_ group: ActivitiesModel.CategoryGroup, open: Bool, share: Int) -> some View {
         Button {
             if open { activities.collapsedCategories.insert(group.id) } else { activities.collapsedCategories.remove(group.id) }
         } label: {
@@ -138,25 +272,20 @@ struct ActivityListView: View {
             }
         }
         .buttonStyle(HoverRowStyle())
-        if open {
-            ForEach(group.rows) { activityRows($0, in: group.id) }
-        }
     }
 
     /// Level 2: a site or app. A click selects it (and opens its titles);
     /// a click on the selected one folds or opens them.
-    @ViewBuilder private func activityRows(_ item: ActivitiesModel.ActivityRow, in categoryID: String) -> some View {
+    private func activityRow(_ item: ActivitiesModel.ActivityRow, in categoryID: String, open: Bool, visits: Int, selected: Bool) -> some View {
         let key = ActivitySelection(categoryID: categoryID, rowID: item.id)
-        let open = activities.expandedRows.contains(key)
-        let visits = activities.segmentCounts[key] ?? 0
-        Button {
+        return Button {
             if activities.selectedActivity == key {
                 if open { activities.expandedRows.remove(key) } else { activities.expandedRows.insert(key) }
             } else {
                 activities.select(key)
             }
         } label: {
-            row(level: 1, open: item.titles.isEmpty ? nil : open, selected: activities.selectedActivity == key, seconds: item.seconds) {
+            row(level: 1, open: item.titles.isEmpty ? nil : open, selected: selected, seconds: item.seconds) {
                 ActivityIcon(bundleID: item.reassignKey, domain: item.isDomain ? item.reassignKey : nil, size: 16)
                 Text(item.label).foregroundStyle(Design.ink)
                 if item.hasMeeting {
@@ -169,28 +298,23 @@ struct ActivityListView: View {
             }
         }
         .buttonStyle(HoverRowStyle())
-        .id(key)
         .contextMenu {
             Button("检查并调整分类…", systemImage: "tag") { activities.select(key, start: nil) }
-        }
-        if open {
-            ForEach(item.titles) { titleRow($0, parent: item, categoryID: categoryID) }
         }
     }
 
     /// Level 3: one title of a site or app. Right-click: always file this
     /// title under a category, scoped to its site or app.
-    private func titleRow(_ title: ActivitiesModel.TitleRow, parent: ActivitiesModel.ActivityRow, categoryID: String) -> some View {
+    private func titleRow(_ title: ActivitiesModel.TitleRow, parent: ActivitiesModel.ActivityRow, categoryID: String, selected: Bool) -> some View {
         let selection = ActivitySelection(categoryID: categoryID, rowID: parent.id, title: title.title)
         return Button { activities.select(selection) } label: {
             // Under its site or app's name, where that row's icon would be blank.
-            row(level: 1, selected: activities.selectedActivity == selection, seconds: title.seconds) {
+            row(level: 1, selected: selected, seconds: title.seconds) {
                 Color.clear.frame(width: 16, height: 1)
                 Text(title.title).foregroundStyle(Design.ink2)
             }
         }
         .buttonStyle(HoverRowStyle())
-        .id(selection)
         .help(title.title)
         .contextMenu {
             Button("始终把此标题归为…", systemImage: "text.badge.checkmark") {
@@ -216,40 +340,23 @@ struct ActivityListView: View {
     }
 
     /// 按应用: an app, then its documents and sites. An app that is its own
-    /// only row is one selectable row, not a header over a copy of itself.
-    @ViewBuilder private func appRows(_ group: ActivitiesModel.AppGroup) -> some View {
-        if group.rows.count == 1, let only = group.rows.first, only.label == group.name {
-            appRow(only, app: group.id, level: 0, strong: true)
-        } else {
-            row(level: 0, seconds: group.seconds, strong: true) {
-                AppIcon(bundleID: group.id, size: 16)
-                Text(group.name).fontWeight(.semibold).foregroundStyle(Design.ink)
-            }
-            ForEach(group.rows) { appRow($0, app: group.id, level: 1) }
+    /// only row is one selectable row (`appRow`), not a header over a copy of itself.
+    private func appHeader(_ group: ActivitiesModel.AppGroup) -> some View {
+        row(level: 0, seconds: group.seconds, strong: true) {
+            AppIcon(bundleID: group.id, size: 16)
+            Text(group.name).fontWeight(.semibold).foregroundStyle(Design.ink)
         }
     }
 
-    private func appRow(_ item: ActivitiesModel.AppGroup.Row, app: String, level: Int, strong: Bool = false) -> some View {
+    private func appRow(_ item: ActivitiesModel.AppGroup.Row, app: String, level: Int, strong: Bool, dot: Color, dotName: String, selected: Bool) -> some View {
         Button { activities.select(item.selection) } label: {
-            row(level: level, selected: activities.selectedActivity?.row == item.selection, seconds: item.seconds, strong: strong) {
+            row(level: level, selected: selected, seconds: item.seconds, strong: strong) {
                 ActivityIcon(bundleID: app, domain: item.domain, size: 16)
                 Text(item.label).fontWeight(strong ? .semibold : .regular).foregroundStyle(Design.ink)
-                Circle().fill(categoryColor(item.selection.categoryID)).frame(width: 6, height: 6)
-                    .help(model.resolver.categoriesByID[item.selection.categoryID]?.name ?? String(localized: "未分类"))
+                Circle().fill(dot).frame(width: 6, height: 6).help(dotName)
             }
         }
         .buttonStyle(HoverRowStyle())
-        .id(item.selection)
-    }
-
-    /// 按时间: folded stretches, newest first, under the day they fall on.
-    @ViewBuilder private var timeRows: some View {
-        let days = Dictionary(grouping: activities.timeRows) { Calendar.current.startOfDay(for: $0.start) }
-        ForEach(days.keys.sorted(by: >), id: \.self) { day in
-            Text(dayLabel(day)).font(.note.weight(.semibold)).foregroundStyle(Design.ink2)
-                .padding(.horizontal, Design.Space.sm).padding(.top, Design.Space.md).padding(.bottom, Design.Space.xs)
-            ForEach(days[day] ?? []) { timeRow($0) }
-        }
     }
 
     private func dayLabel(_ day: Date) -> String {
@@ -261,10 +368,8 @@ struct ActivityListView: View {
 
     /// A folded stretch: its leading activity, what else it holds, and its
     /// category mix when no single activity dominates.
-    private func timeRow(_ segment: TimelineSegment) -> some View {
+    private func timeRow(_ segment: TimelineSegment, selected: Bool) -> some View {
         let part = segment.dominant
-        let selected = activities.selectedActivity.map(segment.contains) == true
-            && activities.selectedStart.map { segment.start <= $0 && $0 < segment.end } == true
         let others = segment.parts.dropFirst()
         let span = "\(model.time(segment.start))–\(model.time(segment.end))"
         return Button { activities.select(part.selection, start: part.longest.span.start) } label: {
