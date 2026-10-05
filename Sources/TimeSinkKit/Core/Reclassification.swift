@@ -25,6 +25,12 @@ extension CategoryStore {
     }
 
     func reclassify(span: Span, scope: ReclassificationEdit.Scope, categoryID: String, pattern: String = "") throws -> ReclassificationEdit {
+        let edit = try writeReclassification(span: span, scope: scope, categoryID: categoryID, pattern: pattern)
+        NotificationCenter.default.post(name: .userRecategorized, object: nil)
+        return edit
+    }
+
+    private func writeReclassification(span: Span, scope: ReclassificationEdit.Scope, categoryID: String, pattern: String) throws -> ReclassificationEdit {
         try writer.write { db in
             let now = Date(timeIntervalSince1970: (Date().timeIntervalSince1970 * 1000).rounded(.down) / 1000)
             let activityKey = span.domain ?? span.appBundleID

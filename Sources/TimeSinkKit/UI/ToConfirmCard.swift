@@ -42,6 +42,7 @@ struct ToConfirmCard: View {
             } else if rows.isEmpty {
                 empty("现在没有需要确认的内容。")
             } else {
+                if model.tips.eligible.contains(.recategorize) { RecategorizeCallout(model: model) }
                 ScrollView {
                     LazyVStack(spacing: 0) { ForEach(rows) { row in line(row); Divider() } }
                 }.scrollIndicators(.never).frame(maxHeight: 260)
@@ -52,6 +53,9 @@ struct ToConfirmCard: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .designCard()
         .pageTask(id: LoadKey(version: model.dataVersion, range: model.range)) { load() }
+        .task(id: rows.isEmpty) { RecategorizeTip.itemShown = !rows.isEmpty }
+        .task { await model.tips.watch(.recategorize) }
+        .onDisappear { RecategorizeTip.itemShown = false }
     }
 
     private func empty(_ text: LocalizedStringKey) -> some View {

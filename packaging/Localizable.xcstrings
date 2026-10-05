@@ -2713,16 +2713,6 @@
         }
       }
     },
-    "它在菜单栏里安静地记下你的时间，把一天连成片。所有记录都留在这台 Mac 上。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "It quietly keeps track of your time from the menu bar and joins your day into stretches. Everything stays on this Mac."
-          }
-        }
-      }
-    },
     "安装到应用程序文件夹后可设置登录时启动。": {
       "localizations": {
         "en": {
@@ -5109,16 +5099,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Check recording and permission settings"
-          }
-        }
-      }
-    },
-    "欢迎使用 TimeSink": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Welcome to TimeSink"
           }
         }
       }
@@ -11067,6 +11047,126 @@
           "stringUnit": {
             "state": "translated",
             "value": "Switching keeps each project's colour number and applies at once."
+          }
+        }
+      }
+    },
+    "你的时间，从这一刻开始被看见": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your time, seen from this moment on"
+          }
+        }
+      }
+    },
+    "它住在菜单栏里，点图标就能看到今天": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "It lives in the menu bar. Click its icon to see today."
+          }
+        }
+      }
+    },
+    "所有记录都留在这台 Mac 上。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Everything stays on this Mac."
+          }
+        }
+      }
+    },
+    "正在记录：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recording: %@"
+          }
+        }
+      }
+    },
+    "登录时自动启动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open at login"
+          }
+        }
+      }
+    },
+    "这里是你此刻在做的事": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This is what you are doing right now"
+          }
+        }
+      }
+    },
+    "把鼠标停在一行上，旁边会展开细节": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rest the pointer on a row to see details beside it"
+          }
+        }
+      }
+    },
+    "点一下，进入完整的一天": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Click to open the whole day"
+          }
+        }
+      }
+    },
+    "跳过": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skip"
+          }
+        }
+      }
+    },
+    "下一步": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next"
+          }
+        }
+      }
+    },
+    "分错了？点一下改，以后会记住": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wrong? Click to change it, and it will remember"
+          }
+        }
+      }
+    },
+    "昨天的完整记录在这里": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yesterday's full record is here"
           }
         }
       }

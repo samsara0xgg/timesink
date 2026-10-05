@@ -45,11 +45,14 @@ public struct ClassificationContext: Sendable {
     /// The categories that exist; a hard rule or verdict that names another
     /// is skipped. nil means do not check.
     public var categoryIDs: Set<String>?
+    /// Whether Jev is on. The job keyword rule belongs to Jev and applies only then.
+    public var jevEnabled: Bool
 
     public init(domainMap: [String: DomainEntry], appMap: [String: DomainEntry], urlRules: [URLRule],
                 titleRules: [TitleRule] = [], userVerdicts: [VerdictKey: String] = [:],
                 jevVerdicts: [VerdictKey: JevVerdictEntry] = [:], captureVerdicts: [Int64: JevVerdictEntry] = [:],
-                categoryIDs: Set<String>? = nil) {
+                categoryIDs: Set<String>? = nil, jevEnabled: Bool = false) {
+        self.jevEnabled = jevEnabled
         self.userVerdicts = userVerdicts
         self.captureVerdicts = captureVerdicts
         self.jevVerdicts = jevVerdicts
@@ -257,7 +260,7 @@ public enum Classifier {
 
         // 3b-3d. the job keyword rule, then what the user mapped for the app,
         // then the other hard rules, then Jev.
-        if let hit = JevRules.job(appBundleID: appBundleID, domain: domain, url: url, title: title, document: document),
+        if context.jevEnabled, let hit = JevRules.job(appBundleID: appBundleID, domain: domain, url: url, title: title, document: document),
            exists(hit.categoryID) {
             return hit.categoryID
         }
@@ -269,7 +272,7 @@ public enum Classifier {
         if domain == nil, let entry = context.appMap[appBundleID], entry.source == "user" {
             return entry.categoryID
         }
-        if let hit = JevRules.match(appBundleID: appBundleID, domain: domain, url: url, title: title, document: document),
+        if let hit = JevRules.match(appBundleID: appBundleID, domain: domain, url: url, title: title, document: document, job: context.jevEnabled),
            exists(hit.categoryID) {
             return hit.categoryID
         }

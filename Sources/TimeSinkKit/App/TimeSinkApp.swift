@@ -246,6 +246,7 @@ public struct TimeSinkApp: App {
                 .onAppear {
                     NSApp.setActivationPolicy(.regular)
                     NSApp.activate(ignoringOtherApps: true)
+                    model.noteMainWindowOpened()
                 }
                 .onDisappear {
                     NSApp.setActivationPolicy(.accessory)
@@ -333,6 +334,10 @@ struct MenuBarLabel: View {
         }
         .background(StatusButtonBridge { button in
             model.popoverShortcut.action = { [weak button] in button?.performClick(nil) }
+            model.statusButtonFrame = { [weak button] in
+                guard let button, let window = button.window else { return nil }
+                return window.convertToScreen(button.convert(button.bounds, to: nil))
+            }
             model.registerPopoverShortcut()
         })
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
