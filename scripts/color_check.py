@@ -79,8 +79,8 @@ def check():
     def need(ok, msg):
         if not ok: fails.append(msg)
     surfaces = {"light": ("#F5F5F7", "#FFFFFF"), "dark": ("#1B1B1D", "#252528")}
-    for scheme in "AB":
-        cats, projs = pairs(text, f"categories{scheme}"), pairs(text, f"projects{scheme}")
+    for scheme in "ABC":
+        cats, projs = pairs(text, "categoriesB" if scheme == "B" else "categoriesA"), pairs(text, f"projects{scheme}")
         print(f"\n=== Scheme {scheme} ===")
         for mode, idx in (("light", 0), ("dark", 1)):
             fills = {k: v[idx] for k, v in cats.items()}
@@ -97,11 +97,16 @@ def check():
             for kind in ("normal", "deuteranopia", "protanopia"):
                 ranked = sorted((delta(simulate(a, kind), simulate(b, kind)), i, j) for (i, a), (j, b) in itertools.combinations(chroma.items(), 2))
                 print(f"   categories {kind:13} min dE {ranked[0][0]:.1f} ({ranked[0][1]}/{ranked[0][2]})")
-                need(ranked[0][0] >= 4.0 or scheme == "A", f"{scheme} {mode} {kind} categories dE {ranked[0][0]:.1f}")
+                need(ranked[0][0] >= 4.0 or scheme in "AC", f"{scheme} {mode} {kind} categories dE {ranked[0][0]:.1f}")
                 prank = sorted((delta(simulate(a, kind), simulate(b, kind)), i, j) for (i, a), (j, b) in itertools.combinations(list(enumerate(pf[:8])), 2))
                 print(f"   projects   {kind:13} min dE {prank[0][0]:.1f}")
+                if scheme == "C":  # the project set must stay separable, slate included
+                    allp = list(enumerate(pf))
+                    pall = min(delta(simulate(a, kind), simulate(b, kind)) for (_, a), (_, b) in itertools.combinations(allp, 2))
+                    need(pall >= 5.0, f"C {mode} {kind} projects (with slate) dE {pall:.1f}")
             vs = min(delta(p, c) for p in pf[:8] for c in fills.values())
             print(f"   projects vs categories (normal) min dE {vs:.1f}")
+            if scheme == "C": need(vs >= 8.0, f"C {mode} projects vs categories dE {vs:.1f}")
     # inks on the floor and on a card
     def token(name, idx):
         m = re.search(rf"static let {name} = Design\.color\(light: 0x([0-9A-F]{{6}}),(?: [0-9.]+,)? dark: 0x([0-9A-F]{{6}})", text)

@@ -10,25 +10,27 @@ import SwiftUI
 /// - everything else: two inks, two greys, white cards, and the system
 ///   accent for what you can press. Red is for a limit passed or an error.
 ///
-/// Two schemes are kept side by side until the owner chooses:
+/// Three schemes are kept side by side until the owner chooses:
 /// - A "conservative": the shipped category and project colours, nudged only
 ///   where a label could not be read;
 /// - B "harmonised": the same hues re-cut in OKLCH (even lightness and
 ///   chroma, warm and green fills lifted), projects in a deeper, duller family.
+/// - C "vivid" (the default): A for everything, but projects redone in clean,
+///   lifted hues that stay clear of every category colour.
 /// `scripts/color_check.py` reads the tables below and checks them (label
 /// contrast, colour-blind separation, ramp steps); `ColorSystemTests` repeats
 /// the label rule.
 enum ColorSystem {
-    enum Scheme: String { case conservative = "A", harmonised = "B" }
+    enum Scheme: String { case conservative = "A", harmonised = "B", vivid = "C" }
 
-    /// The scheme in use. DEBUG builds read `TIMESINK_COLOR_SCHEME=A|B`.
+    /// The scheme in use. DEBUG builds read `TIMESINK_COLOR_SCHEME=A|B|C`.
     static let scheme: Scheme = {
         #if DEBUG
         if let name = ProcessInfo.processInfo.environment["TIMESINK_COLOR_SCHEME"], let scheme = Scheme(rawValue: name.uppercased()) {
             return scheme
         }
         #endif
-        return .conservative
+        return .vivid
     }()
 
     typealias Pair = (light: UInt32, dark: UInt32)
@@ -95,7 +97,7 @@ enum ColorSystem {
         "uncategorized": (0xC9CBCE, 0x4B4D50)
     ]
 
-    static var categories: [String: Pair] { scheme == .conservative ? categoriesA : categoriesB }
+    static var categories: [String: Pair] { scheme == .harmonised ? categoriesB : categoriesA }
 
     // MARK: Projects (index 8: time that belongs to no project)
 
@@ -117,12 +119,26 @@ enum ColorSystem {
         (0x616A75, 0x848D98)
     ]
 
-    static var projects: [Pair] { scheme == .conservative ? projectsA : projectsB }
+    /// Scheme C: lifted, clean hues in the gaps between the category hues (violet, orange-red, aqua, pink, lime,
+    /// orchid, green, coral). Light fills sit at OKLab L 0.66-0.78 and take the dark ink; dark fills at 0.72-0.84.
+    static let projectsC: [Pair] = [
+        (0x9477FC, 0xA492FB), (0xEC7A2C, 0xFE7802), (0x1ED5A9, 0x04CFA2), (0xFB72C6, 0xF46CBF),
+        (0x9CCB1B, 0xA2D128), (0xD386F3, 0xE19FFF), (0x29AC68, 0x3EEE92), (0xFF7D81, 0xF47A7D),
+        (0x7D8797, 0x8D95A5)
+    ]
+
+    static var projects: [Pair] {
+        switch scheme {
+        case .conservative: projectsA
+        case .harmonised: projectsB
+        case .vivid: projectsC
+        }
+    }
 
     // MARK: Magnitude ramp (indigo): little -> much
 
     static let rampLight: [UInt32] = [0xEAEEFC, 0xC4CCEF, 0x8E9AD7, 0x5C68AE, 0x343C77]
-    static let rampDark: [UInt32] = [0x2B2F42, 0x474F79, 0x6B76B0, 0x93A0E0, 0xC3CEFF]
+    static let rampDark: [UInt32] = [0x2B2F42, 0x4A5388, 0x6E7AC2, 0x96A3EA, 0xC5CFFF]
 
     // MARK: Interruptions (one soft amber)
 
@@ -131,7 +147,7 @@ enum ColorSystem {
     static let interruptionActive = Design.color(light: 0xD28A0E, dark: 0xF8CE78)
     /// The radar's five leading apps (the first interrupts most), then the rest.
     static let radarLight: [UInt32] = [0x935A03, 0xB47819, 0xD39837, 0xE9B860, 0xF6D795, 0xA6ABB3]
-    static let radarDark: [UInt32] = [0xF3CB7A, 0xDBAC59, 0xC18E3D, 0xA3722D, 0x885B26, 0x5A5E65]
+    static let radarDark: [UInt32] = [0xF4CF7D, 0xE4B65C, 0xD39D40, 0xC2882D, 0xB2782C, 0x5A5E65]
     static let radar: [Color] = zip(radarLight, radarDark).map { Design.color(light: $0, dark: $1) }
 
     // MARK: Lookups
