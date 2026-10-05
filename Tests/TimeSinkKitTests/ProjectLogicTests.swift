@@ -1,3 +1,4 @@
+import GRDB
 import XCTest
 @testable import TimeSinkKit
 
@@ -316,5 +317,74 @@ final class ProjectLogicTests: XCTestCase {
         let after = await model.sessions(for: day)
         XCTAssertEqual(after.map(\.projectPending), [false])
         XCTAssertEqual(model.sessionProject(after[0]), "Alpha")
+    }
+}
+
+/// A project's colour is stored (v20): the migration, creation, and what the pages read.
+final class ProjectColorTests: XCTestCase {
+    private func store(_ db: DatabaseQueue) -> ProjectStore { ProjectStore(db) }
+
+    func testMigrationGivesExistingProjectsDistinctColoursAndIsRepeatable() throws {
+        let db = try DatabaseQueue()
+        try AppDatabase.migrator.migrate(db, upTo: "v19")
+        // Eight live projects whose names propose colours that collide, plus an archived one.
+        let names = (0..<8).map { "project \($0)" } + ["archived one"]
+        try db.write { db in
+            for (index, name) in names.enumerated() {
+                try db.execute(sql: "INSERT INTO project (id, name, description, sortOrder, source, archived, createdAt) VALUES (?, ?, '', ?, 'user', ?, ?)",
+                               arguments: ["p-\(index)", name, index, index == 8, Date()])
+            }
+        }
+        try AppDatabase.migrator.migrate(db)
+        let live = try db.read { try Int.fetchAll($0, sql: "SELECT colorIndex FROM project WHERE archived = 0 ORDER BY sortOrder") }
+        XCTAssertEqual(Set(live).count, 8)
+        XCTAssertEqual(Set(live), Set(0..<8))
+        XCTAssertEqual(live[0], ProjectPalette.preferredSlot("project 0"))
+        let archived = try db.read { try Int.fetchOne($0, sql: "SELECT colorIndex FROM project WHERE archived = 1") }
+        XCTAssertNotNil(archived)
+        // A second run changes nothing.
+        try AppDatabase.migrator.migrate(db)
+        let again = try db.read { try Int.fetchAll($0, sql: "SELECT colorIndex FROM project WHERE archived = 0 ORDER BY sortOrder") }
+        XCTAssertEqual(live, again)
+    }
+
+    func testANewProjectTakesAFreeColourUntilAllEightAreUsed() throws {
+        let projects = store(try AppDatabase.openInMemory())
+        var colours: [Int] = []
+        for index in 0..<8 { colours.append(try projects.add(name: "p\(index)").colorIndex!) }
+        XCTAssertEqual(Set(colours), Set(0..<8))
+        // The ninth shares: its own proposal.
+        XCTAssertEqual(try projects.add(name: "ninth").colorIndex, ProjectPalette.preferredSlot("ninth"))
+    }
+
+    func testRenameKeepsTheColourAndMergeKeepsTheSurvivors() throws {
+        let projects = store(try AppDatabase.openInMemory())
+        let a = try projects.add(name: "Alpha"), b = try projects.add(name: "Beta")
+        try projects.setColor(id: a.id, index: 6)
+        try projects.update(id: a.id, name: "Alpha 2", description: "")
+        XCTAssertEqual(try projects.list().first { $0.id == a.id }?.colorIndex, 6)
+        try projects.merge(a.id, into: b.id)
+        XCTAssertEqual(try projects.list().map(\.colorIndex), [b.colorIndex])
+    }
+
+    func testRestoringAnArchivedProjectKeepsItsColourUnlessTaken() throws {
+        let projects = store(try AppDatabase.openInMemory())
+        let a = try projects.add(name: "Alpha")
+        try projects.archive(a.id)
+        XCTAssertEqual(try projects.add(name: "Alpha").colorIndex, a.colorIndex)
+        try projects.archive(a.id)
+        let other = try projects.add(name: "Other")
+        try projects.setColor(id: other.id, index: a.colorIndex!)
+        XCTAssertNotEqual(try projects.add(name: "Alpha").colorIndex, a.colorIndex)
+    }
+
+    func testProjectsPageAndTodayAgree() throws {
+        let projects = store(try AppDatabase.openInMemory())
+        let a = try projects.add(name: "TimeSink"), b = try projects.add(name: "Drum Machine Pro")
+        XCTAssertNotEqual(a.colorIndex, b.colorIndex)
+        try projects.setColor(id: b.id, index: 2)
+        let lookup = ProjectPalette.lookup(try projects.list())
+        XCTAssertEqual(lookup["timesink"], a.colorIndex)
+        XCTAssertEqual(lookup[SessionProjectResolver.normalized("Drum Machine Pro")], 2)
     }
 }

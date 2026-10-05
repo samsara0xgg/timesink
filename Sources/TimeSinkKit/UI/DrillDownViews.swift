@@ -79,7 +79,7 @@ struct ScoreFlyoutView: View {
     @ViewBuilder private func square(_ pulse: Int?) -> some View {
         let shape = RoundedRectangle(cornerRadius: 5, style: .continuous)
         if let pulse {
-            shape.fill(pulse >= threshold ? Color.green.opacity(0.85) : Color.secondary.opacity(0.25))
+            shape.fill(pulse >= threshold ? ColorSystem.ramp(0.8) : Color.secondary.opacity(0.25))
         } else {
             HatchFill().clipShape(shape).overlay(shape.strokeBorder(Color.secondary.opacity(0.2)))
         }
@@ -378,7 +378,7 @@ struct LimitRowView: View {
         let state = LimitState.of(spent: row.spent, limit: row.limit, warnPercent: warnPercent)
         let color: Color = switch state {
         case .over: Design.alert
-        case .near: RefinedStyle.warning
+        case .near: Design.warning
         case .fine: RefinedStyle.category(row.id, hex: row.colorHex)
         }
         VStack(spacing: 5) {
@@ -388,7 +388,7 @@ struct LimitRowView: View {
                     Label("\(row.name)超出 \(minutes) 分钟", systemImage: "exclamationmark.triangle.fill").foregroundStyle(Design.alert)
                 case .near(let minutes):
                     Label("\(row.name)还剩 \(minutes) 分钟", systemImage: "gauge.with.dots.needle.67percent")
-                        .foregroundStyle(RefinedStyle.warning)
+                        .foregroundStyle(Design.warning)
                 case .fine:
                     HStack(spacing: 6) {
                         Circle().fill(color).frame(width: 8, height: 8)

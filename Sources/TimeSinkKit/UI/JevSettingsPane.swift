@@ -27,11 +27,11 @@ struct JevSettingsPane: View {
                     .disabled(!hasStoredKey && !enabled)
                     .onChange(of: enabled) { _, newValue in model.jev?.setEnabled(newValue); refreshStatus() }
                 if !hasStoredKey && !enabled {
-                    Text("先在下面保存 API 密钥，才能开启。").font(.note).foregroundStyle(.orange)
+                    Text("先在下面保存 API 密钥，才能开启。").font(.note).foregroundStyle(Design.warning)
                     keyField
                 }
                 if hasStoredKey {
-                    Label("API 密钥已保存", systemImage: "checkmark.circle.fill").font(.note).foregroundStyle(.green)
+                    Label("API 密钥已保存", systemImage: "checkmark.circle.fill").font(.note).foregroundStyle(Design.live)
                 }
                 if enabled, let jev = model.jev {
                     if let line = statusLine { Text(line).font(.note).foregroundStyle(Design.ink2) }
@@ -111,7 +111,7 @@ struct JevSettingsPane: View {
                     .onChange(of: keyFocused) { _, focused in if !focused { saveKey() } }
                     .onChange(of: apiKeyInput) { _, _ in keyError = nil }
                 if apiKeyStatus == String(localized: "已保存") {
-                    Label("已保存", systemImage: "checkmark").font(.note).foregroundStyle(.green)
+                    Label("已保存", systemImage: "checkmark").font(.note).foregroundStyle(Design.live)
                 }
                 if hasStoredKey {
                     Button("移除密钥", role: .destructive) { removeKey() }

@@ -91,7 +91,7 @@ struct SessionListCard<Switch: View>: View {
 
     private func row(_ session: WorkSession, index: Int) -> some View {
         let selected = activities.selectedSession == session.start
-        let color = Color(hex: model.resolver.categoriesByID[session.categoryID]?.colorHex ?? "#8E8E93")
+        let color = RefinedStyle.category(session.categoryID, hex: model.resolver.categoriesByID[session.categoryID]?.colorHex ?? "#8E8E93")
         let apps = session.apps.prefix(2).map(\.name).joined(separator: String(localized: "、"))
         return VStack(spacing: 0) {
             Button {
@@ -160,7 +160,7 @@ struct SessionRibbon: View {
                             let w = max(3, width * session.end.timeIntervalSince(session.start) / span - 1)
                             let on = activities.selectedSession == session.start
                             RoundedRectangle(cornerRadius: Design.Radius.mark, style: .continuous)
-                                .fill(Color(hex: model.resolver.categoriesByID[session.categoryID]?.colorHex ?? "#8E8E93"))
+                                .fill(RefinedStyle.category(session.categoryID, hex: model.resolver.categoriesByID[session.categoryID]?.colorHex ?? "#8E8E93"))
                                 .overlay { if on { RoundedRectangle(cornerRadius: Design.Radius.mark, style: .continuous).strokeBorder(Design.ink, lineWidth: 2) } }
                                 .frame(width: w, height: 32).offset(x: x)
                                 .onTapGesture { activities.selectedActivity = nil; activities.selectedStart = nil; activities.selectedSession = on ? nil : session.start; if !on { onSelect() } }

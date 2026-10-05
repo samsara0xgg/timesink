@@ -33,16 +33,24 @@ final class TodayPlanTests: XCTestCase {
         XCTAssertTrue((0..<ProjectPalette.slots).contains(ProjectPalette.preferredSlot("求职申请")))
     }
 
-    func testTwoProjectsOnOneDayNeverShareAColourWhileSlotsLast() {
-        let names = (0..<ProjectPalette.slots).map { "project-\($0)" }
-        XCTAssertEqual(Set(ProjectPalette.assign(names).values).count, ProjectPalette.slots)
-        // The first in line keeps its preferred colour.
-        XCTAssertEqual(ProjectPalette.assign(names)[names[0]], ProjectPalette.preferredSlot(names[0]))
+    func testANewProjectTakesItsPreferredSlotIfFreeElseTheFirstFreeOne() {
+        let preferred = ProjectPalette.preferredSlot("jarvis")
+        XCTAssertEqual(ProjectPalette.slot(for: "jarvis", taken: []), preferred)
+        let next = ProjectPalette.slot(for: "jarvis", taken: [preferred])
+        XCTAssertNotEqual(next, preferred)
+        XCTAssertEqual(next, (0..<ProjectPalette.slots).first { $0 != preferred })
+        // All eight in use: the preferred one again.
+        XCTAssertEqual(ProjectPalette.slot(for: "jarvis", taken: Set(0..<ProjectPalette.slots)), preferred)
     }
 
-    func testMoreProjectsThanColoursStillAllGetOne() {
-        let names = (0..<12).map { "p\($0)" }
-        XCTAssertEqual(ProjectPalette.assign(names).count, 12)
+    func testTodayReadsTheStoredColourNotTheDaysOrder() {
+        let items = [item(date(9), date(10)), item(date(14), date(15))]
+        let overview = DayOverview(items: items, categories: categories, sessions: [], now: date(16), calendar: calendar)
+        let sessions = [session(date(9), date(10)), session(date(14), date(15))]
+        let plan = TodayPlan.build(overview: overview, sessions: sessions, explicit: ["TimeSink", "unknown"], episodes: [], notes: [],
+                                   categories: categories, lastFocus: nil, hasFocusToday: false, isToday: true,
+                                   colors: ["timesink": 5], calendar: calendar)
+        XCTAssertEqual(plan.rows.map(\.slot), [5, ProjectPalette.preferredSlot("unknown")])
     }
 
     // MARK: Guess

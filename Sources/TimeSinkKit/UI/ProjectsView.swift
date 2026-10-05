@@ -95,7 +95,7 @@ struct ProjectsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, Design.Space.md)
             } else {
                 ScrollView {
-                    VStack(spacing: 2) { ForEach(model.projects) { row($0) } }
+                    VStack(spacing: 2) { ForEach(model.projects) { row($0).zIndex(ProjectColorDot.lift($0, in: model)) } }
                 }.scrollIndicators(.never)
             }
             if !model.settings.jevEnabled {
@@ -113,7 +113,7 @@ struct ProjectsView: View {
     private func row(_ project: UserProject) -> some View {
         let time = hours.map { Format.duration($0[SessionProjectResolver.normalized(project.name)] ?? 0) } ?? "—"
         return HStack(spacing: Design.Space.md) {
-            Circle().fill(Design.projectColor(ProjectPalette.preferredSlot(project.name))).frame(width: 9, height: 9)
+            ProjectColorDot(model: model, project: project)
             VStack(alignment: .leading, spacing: 1) {
                 Text(project.name).foregroundStyle(Design.ink).lineLimit(1)
                 if !project.description.isEmpty {
@@ -263,5 +263,67 @@ struct ProjectEditSheet: View {
         } catch {
             self.error = ProjectEditing.errorText(error)
         }
+    }
+}
+
+/// A project's colour: a dot that opens the palette's eight colours. Picking one is stored at once and
+/// every page follows. Another project's colour may be picked; the tooltip says who wears it.
+struct ProjectColorDot: View {
+    let model: AppModel
+    let project: UserProject
+    @State private var open = false
+    #if DEBUG
+    /// Capture hook: `TIMESINK_PREVIEW_COLOR_MENU=1` shows the first project's palette in place (a popover
+    /// does not render in an offscreen capture).
+    private static let previewOpen = ProcessInfo.processInfo.environment["TIMESINK_PREVIEW_COLOR_MENU"] != nil
+    private var showsInPlace: Bool { Self.previewOpen && model.projects.first?.id == project.id }
+    static func lift(_ project: UserProject, in model: AppModel) -> Double { previewOpen && model.projects.first?.id == project.id ? 1 : 0 }
+    #else
+    static func lift(_ project: UserProject, in model: AppModel) -> Double { 0 }
+    #endif
+
+    private var current: Int { project.colorIndex ?? ProjectPalette.preferredSlot(project.name) }
+
+    var body: some View {
+        Button { open.toggle() } label: {
+            Circle().fill(Design.projectColor(current)).frame(width: 9, height: 9)
+                .padding(8).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).padding(-8)
+        .help("项目颜色").accessibilityLabel("项目颜色")
+        .popover(isPresented: $open, arrowEdge: .bottom) { palette }
+        #if DEBUG
+        .overlay(alignment: .topLeading) {
+            if showsInPlace {
+                palette.background(Design.surface, in: RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous).stroke(Design.line))
+                    .shadow(color: .black.opacity(0.15), radius: 8, y: 3).fixedSize().offset(x: -8, y: 24)
+            }
+        }
+        #endif
+    }
+
+    private var palette: some View {
+        HStack(spacing: 6) {
+            ForEach(0..<ProjectPalette.slots, id: \.self) { slot in
+                let others = model.projects.filter { $0.id != project.id && ($0.colorIndex ?? ProjectPalette.preferredSlot($0.name)) == slot }.map(\.name)
+                Button { pick(slot) } label: {
+                    Circle().fill(Design.projectColor(slot)).frame(width: 20, height: 20)
+                        .overlay { if slot == current { Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(Design.projectLabel(slot)) } }
+                        .padding(3).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(others.isEmpty ? Text("没有其他项目用这个颜色") : Text("也用于：\(ListFormatter.localizedString(byJoining: others))"))
+                .accessibilityLabel("颜色 \(slot + 1)")
+                .accessibilityAddTraits(slot == current ? .isSelected : [])
+            }
+        }
+        .padding(Design.Space.sm)
+    }
+
+    private func pick(_ slot: Int) {
+        try? model.categoryStore.projects.setColor(id: project.id, index: slot)
+        model.projectsChanged()
+        open = false
     }
 }

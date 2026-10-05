@@ -18,8 +18,8 @@ struct InterruptionRadarCard: View {
 
     enum Period: Hashable, CaseIterable { case today, week }
 
-    /// One colour per leading app, then the rest.
-    private static let palette: [Color] = (0..<InterruptionRose.maxSources).map { Design.projectColors[$0] } + [Design.projectColors[8]]
+    /// Amber in steps for the leading apps (darkest first), grey for the rest.
+    private static let palette: [Color] = ColorSystem.radar
 
     private struct Loaded: Equatable {
         var data: DayInterruptions

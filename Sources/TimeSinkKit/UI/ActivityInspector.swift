@@ -284,8 +284,11 @@ struct ActivityInspector: View {
                             (Text(out.label) + Text(" ") + Text(Format.duration(out.seconds)).foregroundStyle(Design.ink2))
                                 .lineLimit(1).truncationMode(.middle)
                             Spacer(minLength: 4)
-                            Text(out.tag).font(.note.weight(.semibold)).fixedSize()
-                                .foregroundStyle(out.isInterruption ? Design.ink : Design.ink2)
+                            HStack(spacing: 5) {
+                                if out.isInterruption { RoundedRectangle(cornerRadius: 1).fill(Design.interruption).frame(width: 3, height: 11) }
+                                Text(out.tag).font(.note.weight(.semibold)).fixedSize()
+                                    .foregroundStyle(out.isInterruption ? Design.ink : Design.ink2)
+                            }
                         }
                         .font(.body).frame(height: 22)
                     }

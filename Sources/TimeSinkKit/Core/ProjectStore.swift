@@ -15,6 +15,8 @@ public struct UserProject: Codable, Equatable, Sendable, Identifiable, Fetchable
     public var source: String
     public var archived: Bool
     public var createdAt: Date
+    /// Its colour: a slot 0..<8 of the project palette. nil only for a row made before v20 (read as the name's proposal).
+    public var colorIndex: Int?
 }
 
 public final class ProjectStore: Sendable {
@@ -52,15 +54,33 @@ public final class ProjectStore: Sendable {
                 old.name = name
                 old.description = description
                 old.sortOrder = order
+                // Back from the archive: keep its colour unless a live project has taken it meanwhile.
+                let taken = try Self.liveColors(db)
+                if let color = old.colorIndex, !taken.contains(color) {} else { old.colorIndex = ProjectPalette.slot(for: name, taken: taken) }
                 try old.update(db)
                 return old
             }
             let live = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM project WHERE archived = 0") ?? 0
             guard live < Self.maxProjects else { throw ProjectError.limitReached }
             let project = UserProject(id: "p-" + UUID().uuidString.lowercased().prefix(8), name: name, description: description,
-                                      sortOrder: order, source: source, archived: false, createdAt: Date())
+                                      sortOrder: order, source: source, archived: false, createdAt: Date(),
+                                      colorIndex: ProjectPalette.slot(for: name, taken: try Self.liveColors(db)))
             try project.insert(db)
             return project
+        }
+    }
+
+    /// The colours the live (not archived) projects wear.
+    static func liveColors(_ db: Database) throws -> Set<Int> {
+        Set(try Int.fetchAll(db, sql: "SELECT colorIndex FROM project WHERE archived = 0 AND colorIndex IS NOT NULL"))
+    }
+
+    /// Gives the project one of the palette's colours. Two projects may share one: that is the person's choice.
+    public func setColor(id: String, index: Int) throws {
+        guard (0..<ProjectPalette.slots).contains(index) else { return }
+        try writer.write { db in
+            guard try UserProject.exists(db, key: id) else { throw ProjectError.notFound }
+            try db.execute(sql: "UPDATE project SET colorIndex = ? WHERE id = ?", arguments: [index, id])
         }
     }
 

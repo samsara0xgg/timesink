@@ -51,7 +51,7 @@ struct AccountSettingsPane: View {
                         }
                         Text(syncLine(sync))
                             .font(.note)
-                            .foregroundStyle(sync.lastError == nil ? Color.secondary : Color.red)
+                            .foregroundStyle(sync.lastError == nil ? Color.secondary : Design.alert)
                     }
                 }
                 Section {

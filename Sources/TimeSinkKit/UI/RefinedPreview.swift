@@ -307,7 +307,7 @@ public enum RefinedPreview {
     /// `days`: how much history the sample day has. `projects`: three sample
     /// projects with Jev's project answers on the sample windows (`judged`: the
     /// other windows answered 'none', else still waiting).
-    @MainActor static func fixture(days: Int = 30, projects withProjects: Bool = false, judged: Bool = true, repos: Bool = true) throws -> AppModel {
+    @MainActor static func fixture(days: Int = 30, projects withProjects: Bool = false, judged: Bool = true, repos: Bool = true, ownerNames: Bool = false) throws -> AppModel {
         let db = try AppDatabase.openInMemory()
         let categories = CategoryStore(db), spans = SpanStore(db), settings = SettingsStore(db)
         SeedImporter.importIfNeeded(categoryStore: categories, settings: settings)
@@ -345,15 +345,44 @@ public enum RefinedPreview {
             let session = try sessions.start(at: start, plannedSeconds: 2700)
             try sessions.finish(id: session.id!, end: start.addingTimeInterval(2700), appBlocks: offset % 2, siteBlocks: 1, completed: true)
         }
-        if withProjects { try addSampleProjects(to: model, db: db, judged: judged) }
+        if withProjects { try addSampleProjects(to: model, db: db, judged: judged, ownerNames: ownerNames) }
         model.dataChanged()
         return model
+    }
+
+    /// The same day with five project names (names only; every title and window stays synthetic), to see how
+    /// a real set of names lands on the palette. `TIMESINK_PREVIEW_PROJECT_NAMES=1`.
+    @MainActor private static func addOwnerNamedProjects(to model: AppModel, judged: Bool) throws {
+        let store = model.categoryStore.projects
+        let jarvis = try store.add(name: "Jarvis", description: "Voice assistant daemon")
+        let coop = try store.add(name: "Co-op 求职申请", description: "Applications, notes and mail for the co-op search") // l10n: data
+        let timesink = try store.add(name: "TimeSink", description: "The timeline app")
+        let yana = try store.add(name: "Yana", description: "Dictation and translation tool")
+        let drum = try store.add(name: "Drum Machine Pro", description: "Sequencer design and sketches")
+        let version = JevPrompt.projectVersion(try store.list())
+        var seen = Set<VerdictKey>()
+        for span in try model.spanStore.spans(overlapping: DateInterval(start: .distantPast, end: .distantFuture)) {
+            let key = VerdictKey(span), domain = span.domain ?? ""
+            guard seen.insert(key).inserted else { continue }
+            let id: String?
+            if span.appBundleID == "com.apple.dt.Xcode" { id = timesink.id }
+            else if span.appBundleID == "com.apple.Terminal" || domain == "github.com" { id = jarvis.id }
+            else if ["developer.apple.com", "linear.app", "stackoverflow.com"].contains(domain) { id = yana.id }
+            else if span.appBundleID == "app.sketchpad.mac" || ["www.figma.com", "figma.com"].contains(domain) { id = drum.id }
+            else if ["us.zoom.xos", "com.apple.Notes", "com.apple.mail", "com.apple.MobileSMS"].contains(span.appBundleID) || domain == "docs.google.com" { id = coop.id }
+            else { id = judged ? JevPrompt.noProject : nil }
+            guard let id else { continue }
+            try model.categoryStore.saveProjectVerdict(key, projectID: id, prob: 0.88, runnerUp: "", promptVersion: version)
+        }
+        model.resolver.jevEnabled = true
+        model.reloadProjects()
     }
 
     /// Three projects and a project answer for every sample window, as Jev would
     /// have given: the sample developer's app and its design and team work.
     /// Each window keeps the category the rules give it.
-    @MainActor private static func addSampleProjects(to model: AppModel, db: DatabaseQueue, judged: Bool) throws {
+    @MainActor private static func addSampleProjects(to model: AppModel, db: DatabaseQueue, judged: Bool, ownerNames: Bool) throws {
+        if ownerNames { return try addOwnerNamedProjects(to: model, judged: judged) }
         let store = model.categoryStore.projects
         let aurora = try store.add(name: "Aurora", description: "The timeline app")
         let design = try store.add(name: "Design system", description: "Figma boards and design docs")

@@ -299,7 +299,7 @@ struct ActivitiesView: View {
             .padding(.bottom, Design.Space.sm)
             HStack(spacing: Design.Space.md) {
                 legend("相关的切换") { RoundedRectangle(cornerRadius: 1).fill(Design.ink.opacity(0.75)).frame(width: 9, height: 2) }
-                legend("打断") { RoundedRectangle(cornerRadius: 1).fill(Design.alert).frame(width: 9, height: 2) }
+                legend("打断") { RoundedRectangle(cornerRadius: 1).fill(Design.interruption).frame(width: 9, height: 2) }
                 legend("被拦下") { Circle().strokeBorder(Design.ink, lineWidth: 1.5).frame(width: 7, height: 7) }
                 legend("专注") {
                     RoundedRectangle(cornerRadius: 3).strokeBorder(Design.accent, style: StrokeStyle(lineWidth: 1.5, dash: [2, 2]))
@@ -361,7 +361,7 @@ struct ActivitiesView: View {
             return SessionMark(id: session.start, start: session.start, end: session.end,
                                title: title ?? apps, named: title != nil,
                                detail: [Format.duration(session.recorded), project].compactMap { $0 }.joined(separator: " · "),
-                               color: Color(hex: model.resolver.categoriesByID[session.categoryID]?.colorHex ?? "#8E8E93"))
+                               color: RefinedStyle.category(session.categoryID, hex: model.resolver.categoriesByID[session.categoryID]?.colorHex ?? "#8E8E93"))
         }
     }
 
@@ -1255,7 +1255,8 @@ final class ActivitiesModel {
                                      color: RefinedStyle.category(categoryID, hex: categories[categoryID]?.colorHex ?? "#98989D"),
                                      label: segment.dominant.label, tooltip: tooltip(segment),
                                      activity: segment.dominant.selection, matchesFilter: live,
-                                     segment: segment, mix: mix, ticks: ticks, isHighlight: highlight)
+                                     segment: segment, mix: mix, ticks: ticks, isHighlight: highlight,
+                                     ink: RefinedStyle.categoryLabel(categoryID, hex: categories[categoryID]?.colorHex ?? "#98989D"))
             }
         }
         let base = blocks(TimelineSegmenter.segments(items, resolution: resolution, forDrawing: true),
@@ -1346,7 +1347,7 @@ final class ActivitiesModel {
             let pulse = Aggregator.pulse(durationByCategory: byCategory, categories: categories)
             let distractions = session.appBlocks + session.siteBlocks
             let tooltip = String(localized: "专注 \(Format.duration(elapsed)) · 拦下 \(distractions) 次分心 · 期间分 \(pulse.map(String.init) ?? "--")")
-            return TimelineBlock(start: clip.start, end: clip.end, color: .accentColor,
+            return TimelineBlock(start: clip.start, end: clip.end, color: Design.accent,
                                   label: String(localized: "专注"), tooltip: tooltip)
         }
     }

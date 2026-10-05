@@ -34,8 +34,12 @@ public struct TimeSinkApp: App {
         }
 
         NSApplication.shared.setActivationPolicy(.accessory)
-        // Light only: every window, the popover and its panels.
-        NSApplication.shared.appearance = NSAppearance(named: .aqua)
+        // Every window, the popover and its panels follow the system appearance.
+        #if DEBUG
+        if let name = ProcessInfo.processInfo.environment["TIMESINK_APPEARANCE"] {
+            NSApplication.shared.appearance = NSAppearance(named: name == "dark" ? .darkAqua : .aqua)
+        }
+        #endif
         try? Tips.configure()
 
         let db: any DatabaseWriter

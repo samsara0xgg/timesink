@@ -167,8 +167,8 @@ struct TitleRuleEditor: View {
                                             Image(systemName: "xmark").font(.note.weight(.semibold))
                                         }.buttonStyle(.plain).accessibilityLabel("移除关键词 \(chip)")
                                     }.font(.body).padding(.horizontal, 6).padding(.vertical, 3)
-                                        .foregroundStyle(Color.accentColor)
-                                        .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 5))
+                                        .foregroundStyle(Design.accent)
+                                        .background(Design.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 5))
                                 }
                             }
                         }.fixedSize(horizontal: false, vertical: true)
@@ -185,7 +185,7 @@ struct TitleRuleEditor: View {
                     .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(.quaternary, lineWidth: 1))
                 Text("每个词至少 2 个字。以 re: 开头按正则匹配。")
                     .font(.note)
-                    .foregroundStyle(rejected ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
+                    .foregroundStyle(rejected ? AnyShapeStyle(Design.alert) : AnyShapeStyle(.secondary))
             }
             Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 10) {
                 GridRow {

@@ -71,7 +71,7 @@ struct FourWeekCard: View {
         }
     }
 
-    /// Four bars on the row's own scale; the newest one in full colour.
+    /// Four bars on the row's own scale, one indigo ramp from the oldest to the newest.
     private struct WeekBars: View {
         let row: FourWeekComparison.Row
         private static let height: CGFloat = 20
@@ -80,7 +80,7 @@ struct FourWeekCard: View {
             HStack(alignment: .bottom, spacing: 3) {
                 ForEach(0..<4, id: \.self) { index in
                     RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(RefinedStyle.category(row.id, hex: row.colorHex).opacity(index == 3 ? 1 : 0.4))
+                        .fill(ColorSystem.ramp([0.2, 0.4, 0.62, 1][index]))
                         .frame(width: 10, height: row.weeks[index] > 0 ? max(2, Self.height * row.weeks[index] / peak) : 1)
                 }
             }
@@ -127,7 +127,7 @@ struct InterruptionTrendCard: View {
         return Chart {
             ForEach(days) { day in
                 BarMark(x: .value("日期", day.day, unit: .day), y: .value("次数", day.count))
-                    .foregroundStyle(hovered == day.day ? Design.ink : Design.ink2.opacity(hovered == nil ? 0.55 : 0.35))
+                    .foregroundStyle(hovered == day.day ? Design.interruptionActive : Design.interruption.opacity(hovered == nil ? 1 : 0.45))
                     .accessibilityLabel(day.day.formatted(.dateTime.month().day()))
                     .accessibilityValue("\(day.count)")
             }

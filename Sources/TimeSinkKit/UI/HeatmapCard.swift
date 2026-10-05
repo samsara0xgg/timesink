@@ -62,7 +62,7 @@ struct HeatmapCard: View {
                     HStack(spacing: 6) {
                         GeometryReader { bar in
                             Capsule().fill(Color.secondary.opacity(0.12))
-                            Capsule().fill(Color.secondary.opacity(0.55)).frame(width: bar.size.width * rows[weekday] / max(1, rows.max() ?? 1))
+                            Capsule().fill(ColorSystem.ramp(0.6)).frame(width: bar.size.width * rows[weekday] / max(1, rows.max() ?? 1))
                         }.frame(height: 6)
                         Text(Format.duration(rows[weekday])).font(.note).foregroundStyle(Design.ink2).monospacedDigit().frame(width: 72, alignment: .trailing)
                     }.frame(width: 96).help("每个\(HeatmapData.Key(weekday: weekday, hour: 0).weekdayLabel)平均记录时长")
@@ -72,7 +72,7 @@ struct HeatmapCard: View {
                 Color.clear.frame(width: 34, height: 36)
                 ForEach(hours, id: \.self) { hour in
                     VStack(spacing: 3) {
-                        RoundedRectangle(cornerRadius: 2).fill(Color.secondary.opacity(0.55))
+                        RoundedRectangle(cornerRadius: 2).fill(ColorSystem.ramp(0.6))
                             .frame(width: max(2, cellWidth - 6), height: max(2, 22 * columns[hour] / max(1, columns.max() ?? 1)))
                             .frame(height: 22, alignment: .bottom)
                         Text(hour % 3 == 0 ? HeatmapData.Key.hourLabel(hour, locale: locale) : " ")
@@ -90,7 +90,7 @@ struct HeatmapCard: View {
         .focusEffectDisabled()
         .overlay {
             RoundedRectangle(cornerRadius: 5)
-                .strokeBorder(gridFocused ? Color.accentColor : .clear, lineWidth: 2)
+                .strokeBorder(gridFocused ? Design.accent : .clear, lineWidth: 2)
                 .padding(-4).allowsHitTesting(false)
         }
         .onKeyPress(.leftArrow) { move(horizontal: -1); return .handled }
@@ -124,7 +124,7 @@ struct HeatmapCard: View {
             HStack(spacing: 5) {
                 Text(showsScore ? "评分" : "平均分钟")
                 ForEach([0, 40, 70], id: \.self) { score in
-                    RoundedRectangle(cornerRadius: 2).fill((showsScore ? scoreColor(score) : RefinedStyle.heat.opacity(0.08 + 0.8 * min(1, Double(score) / 70)))).frame(width: 12, height: 8)
+                    RoundedRectangle(cornerRadius: 2).fill((showsScore ? scoreColor(score) : ColorSystem.ramp(score == 0 ? 0 : score == 40 ? 0.5 : 1))).frame(width: 12, height: 8)
                     Text(showsScore ? (score == 0 ? "0–39" : score == 40 ? "40–69" : "70–100") : (score == 0 ? "少" : score == 40 ? "30" : "60"))
                 }
                 Spacer(minLength: 0)
@@ -156,7 +156,7 @@ struct HeatmapCard: View {
             }
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text(showsScore ? preview.scoreLabel : Format.duration(preview.averageSeconds)).font(.title3.weight(.semibold))
-                    .foregroundStyle(showsScore && !preview.isLowSample ? scoreColor(preview.pulse) : Color.primary)
+                    .foregroundStyle(Color.primary)
                 Text("累计 \(Format.duration(preview.seconds))").font(.note).monospacedDigit()
                 Spacer(minLength: 0)
             }
@@ -246,7 +246,7 @@ private struct HeatmapCellView: View, Equatable {
         Button(action: select) {
             RoundedRectangle(cornerRadius: 3)
                 .fill(cell.seconds == 0 || (!showsScore && intensity < 0.04) ? Color.secondary.opacity(0.06)
-                      : !showsScore ? RefinedStyle.heat.opacity(0.08 + 0.8 * intensity)
+                      : !showsScore ? ColorSystem.ramp(intensity)
                       : cell.isLowSample ? Color.secondary.opacity(0.25) : scoreColor(cell.pulse))
                 .overlay {
                     RoundedRectangle(cornerRadius: 3)
