@@ -49,4 +49,9 @@ public final class FocusSessionStore: Sendable {
             )
         }
     }
+
+    /// When the first focus session started, to know how far back the history goes.
+    public func earliestStart() throws -> Date? {
+        try writer.read { db in try Date.fetchOne(db, sql: "SELECT MIN(start) FROM focusSession") }
+    }
 }

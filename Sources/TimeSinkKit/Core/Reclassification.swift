@@ -60,6 +60,16 @@ extension CategoryStore {
         }
     }
 
+    /// Undoes a run of edits, the last one first. One that can no longer be
+    /// undone (changed again since) is left alone and the first such error is rethrown.
+    func undoReclassifications(_ edits: [ReclassificationEdit]) throws {
+        var failure: Error?
+        for edit in edits.reversed() {
+            do { try undoReclassification(edit, activityKey: edit.key) } catch { failure = failure ?? error }
+        }
+        if let failure { throw failure }
+    }
+
     func undoReclassification(_ edit: ReclassificationEdit, activityKey: String) throws {
         try writer.write { db in
             switch edit.scope {

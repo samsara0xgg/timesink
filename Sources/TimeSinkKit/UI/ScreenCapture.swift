@@ -314,7 +314,19 @@ import WebKit
         try await main("act-day-empty", .activities, anchor: quiet)
         try await main("act-day-toast", .activities, anchor: yesterday) { activities in
             await longestSession(activities)
-            activities.joinToast = activities.selectedSession
+            activities.showUndo(String(localized: "已并入上一段")) {}
+        }
+        try await main("act-day-toast-split", .activities, anchor: yesterday, sizes: [wide, small]) { activities in
+            await longestSession(activities)
+            activities.showUndo(String(localized: "已拆开")) {}
+        }
+        try await main("act-day-toast-project", .activities, anchor: yesterday, sizes: [wide, small]) { activities in
+            await longestSession(activities)
+            activities.showUndo(String(localized: "已把这段归到「\("Atlas")」")) {}
+        }
+        try await main("act-day-toast-recat", .activities, anchor: yesterday, sizes: [wide, small]) { activities in
+            await longestSession(activities)
+            activities.showUndo(String(localized: "已改分类")) {}
         }
 
         // Seven days: the grouped list.
@@ -384,6 +396,25 @@ import WebKit
         try model.focus?.start(minutes: 25)
         try await main("focus-running", .focus)
         model.focus?.finish(completed: false)
+        // Earlier weeks: the sample only has the last four days, so give two older weeks a few sessions.
+        if let store = model.focusStore {
+            let displayCalendar = model.displayCalendar
+            for (weeksBack, days) in [(1, [0, 1, 1, 3, 4]), (3, [2])] {
+                let weekStart = FocusWeek.interval(weeksBack: weeksBack, now: Date(), calendar: displayCalendar).start
+                for (index, day) in days.enumerated() {
+                    let start = displayCalendar.date(byAdding: .day, value: day, to: weekStart)!.addingTimeInterval(Double(9 + index * 3) * 3600)
+                    let session = try store.start(at: start, plannedSeconds: 2700)
+                    try store.finish(id: session.id!, end: start.addingTimeInterval(Double(25 + index * 7) * 60), appBlocks: index % 2, siteBlocks: 0, completed: index != 2)
+                }
+            }
+            // Taller than the usual window, so the history card at the foot of the page is in the frame.
+            let tall = [NSSize(width: wide.width, height: 1150), NSSize(width: small.width, height: 1500)]
+            for (name, weeksBack) in [("focus-week", 0), ("focus-prev-week", 1), ("focus-empty-week", 2)] {
+                FocusWorkspaceView.previewWeeksBack = weeksBack
+                try await main(name, .focus, sizes: tall)
+            }
+            FocusWorkspaceView.previewWeeksBack = 0
+        }
         // Its queue reads 30 days before it draws.
         try await main("org", .organization, sizes: [wide, standard, small], settle: 4000)
         do {

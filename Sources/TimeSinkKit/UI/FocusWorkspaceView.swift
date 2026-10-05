@@ -17,6 +17,12 @@ struct FocusWorkspaceView: View {
     @State private var warn = 20
     @State private var error: String?
     @State private var last: FocusSession?
+    /// Which week the history shows: 0 is this one, 1 the one before.
+    @State private var weeksBack = FocusWorkspaceView.previewWeeksBack
+    @State private var browsed: [FocusSession] = []
+    @State private var earliestBack = 0
+    /// Screen captures open the page on an earlier week.
+    @MainActor static var previewWeeksBack = 0
     @State private var interruptions: (count: Int, recorded: TimeInterval)?
     @State private var suggestions: [LimitSuggestion] = []
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -51,6 +57,7 @@ struct FocusWorkspaceView: View {
         .onPageVisibilityChange { shown in
             if shown { loadSettings() } else { editingBudget = nil; editCategories = false }
         }
+        .onChange(of: weeksBack) { _, _ in loadBrowsed() }
         .onPageChange(of: LoadKey(version: model.dataVersion, running: model.focus?.running?.id)) { load() }
         .pageTask(id: model.dataVersion) { await loadInterruptions() }
         .sheet(isPresented: $editApps) { FocusBlockedAppsEditor(model: model, blockedApps: $blockedApps) }
@@ -220,48 +227,72 @@ struct FocusWorkspaceView: View {
         }
     }
 
-    /// Minutes of focus per weekday this week, today's bar solid.
+    /// Minutes of focus per weekday for the chosen week, with its numbers and sessions;
+    /// the arrows walk back to the first week with a focus in it.
     private var weekChart: some View {
-        let calendar = { var c = Calendar.current; c.firstWeekday = model.firstWeekday; return c }()
-        let week = calendar.dateInterval(of: .weekOfYear, for: Date())?.start ?? calendar.startOfDay(for: Date())
-        let days = (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: week) }
-        let perDay = days.map { day in
-            Int(sessions.filter { calendar.isDate($0.start, inSameDayAs: day) }.reduce(0) { $0 + $1.end.timeIntervalSince($1.start) } / 60)
-        }
-        let top = max(perDay.max() ?? 0, 1)
+        let calendar = model.displayCalendar
+        let week = FocusWeek.make(weeksBack == 0 ? sessions : browsed, in: FocusWeek.interval(weeksBack: weeksBack, now: Date(), calendar: calendar), calendar: calendar)
+        let top = max(week.perDay.max().map { Int($0 / 60) } ?? 0, 1)
+        let listed = weeksBack == 0 && week.sessions.isEmpty ? last.map { [$0] } ?? [] : Array(week.sessions.prefix(5))
         return VStack(alignment: .leading, spacing: Design.Space.md) {
-            CardHeading(title: "本周每天", caption: Text("分钟"))
+            HStack(alignment: .firstTextBaseline, spacing: Design.Space.sm) {
+                Text(verbatim: rangeLabel(week.interval, calendar: calendar)).cardTitle()
+                Text("分钟").font(.note).foregroundStyle(Design.ink2)
+                Spacer(minLength: Design.Space.sm)
+                HStack(spacing: 0) {
+                    StepperButton(symbol: "chevron.left", label: "上一周") { weeksBack += 1 }.disabled(weeksBack >= earliestBack)
+                    StepperButton(symbol: "chevron.right", label: "下一周") { weeksBack -= 1 }.disabled(weeksBack == 0)
+                }
+                .padding(.vertical, -Design.Space.xs)
+            }
+            if !week.sessions.isEmpty {
+                Text("专注 \(TodayFmt.long(week.total)) · \(String(localized: "\(week.sessions.count) 次")) · 最长 \(TodayFmt.clock(week.longest))")
+                    .monospacedDigit().lineLimit(1).minimumScaleFactor(0.8)
+            }
             HStack(alignment: .bottom, spacing: Design.Space.sm) {
-                ForEach(days.indices, id: \.self) { index in
-                    let value = perDay[index], today = calendar.isDateInToday(days[index])
+                ForEach(week.days.indices, id: \.self) { index in
+                    let value = Int(week.perDay[index] / 60), today = calendar.isDateInToday(week.days[index])
                     VStack(spacing: Design.Space.xs) {
                         Text(value > 0 ? "\(value)" : " ").font(.note).monospacedDigit().foregroundStyle(Design.ink2)
                         RoundedRectangle(cornerRadius: Design.Radius.mark, style: .continuous)
-                            .fill(value == 0 ? AnyShapeStyle(Design.track) : today ? AnyShapeStyle(Design.accent) : AnyShapeStyle(Design.accent.opacity(0.4)))
+                            .fill(value == 0 ? AnyShapeStyle(Design.track) : today || weeksBack > 0 ? AnyShapeStyle(Design.accent) : AnyShapeStyle(Design.accent.opacity(0.4)))
                             .frame(height: value == 0 ? 4 : max(4, 56 * CGFloat(value) / CGFloat(top)))
-                        Text(days[index].formatted(.dateTime.weekday(.narrow).locale(model.textLocale))).font(.note)
+                        Text(week.days[index].formatted(.dateTime.weekday(.narrow).locale(model.textLocale))).font(.note)
                             .fontWeight(today ? .semibold : .regular).foregroundStyle(today ? Design.ink : Design.ink2)
                     }.frame(maxWidth: .infinity)
                 }
             }.frame(height: 90, alignment: .bottom)
-            if sessions.isEmpty {
-                Text("开一次专注，这里会按天记下时长。").foregroundStyle(Design.ink2)
+            if week.sessions.isEmpty {
+                Text(weeksBack == 0 ? "开一次专注，这里会按天记下时长。" : "这一周没有专注记录。").foregroundStyle(Design.ink2)
             }
-            if let last {
-                let planned = last.plannedSeconds / 60
+            ForEach(Array(listed.enumerated()), id: \.offset) { index, session in
+                let planned = session.plannedSeconds / 60
                 Divider()
                 HStack(spacing: Design.Space.md) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("上一次：\(last.start.formatted(.dateTime.month().day().locale(model.textLocale))) \(model.time(last.start))").fontWeight(.semibold)
-                        Text(lastNote(last)).font(.note).foregroundStyle(Design.ink2)
+                        Text("\(session.start.formatted(.dateTime.month().day().locale(model.textLocale))) \(model.time(session.start))").fontWeight(.semibold)
+                        Text(lastNote(session)).font(.note).foregroundStyle(Design.ink2)
                     }
                     Spacer(minLength: Design.Space.sm)
-                    Button("再来一次 \(planned) 分钟") { minutes = planned; start() }
-                        .buttonStyle(PillButtonStyle()).disabled(model.focus == nil || model.focus?.running != nil)
+                    if weeksBack == 0 && index == 0 {
+                        Button("再来一次 \(planned) 分钟") { minutes = planned; start() }
+                            .buttonStyle(PillButtonStyle()).disabled(model.focus == nil || model.focus?.running != nil)
+                    }
                 }
+            }
+            if week.sessions.count > listed.count {
+                Text("另有 \(week.sessions.count - listed.count) 次").font(.note).foregroundStyle(Design.ink2)
             }
         }
         .cardBox()
+    }
+
+    /// "10月 5日 – 10月 11日": the week's first and last day.
+    private func rangeLabel(_ interval: DateInterval, calendar: Calendar) -> String {
+        var style = Date.FormatStyle.dateTime.month().day().locale(model.textLocale)
+        style.calendar = calendar
+        let last = calendar.date(byAdding: .day, value: 6, to: interval.start) ?? interval.start
+        return "\(interval.start.formatted(style)) – \(last.formatted(style))"
     }
 
     private func budgetRow(_ budget: Budget) -> some View {
@@ -374,9 +405,17 @@ struct FocusWorkspaceView: View {
         appBlock = model.settings.focusAppBlockEnabled; siteBlock = model.settings.focusSiteBlockEnabled
         warn = model.settings.budgetWarnPercent
     }
+    /// The chosen week's sessions, when it is not this week.
+    private func loadBrowsed() {
+        guard weeksBack > 0 else { browsed = []; return }
+        let interval = FocusWeek.interval(weeksBack: weeksBack, now: Date(), calendar: model.displayCalendar)
+        browsed = (try? model.focusStore?.sessions(overlapping: interval)) ?? []
+    }
     private func load() {
         do {
             sessions = try model.focusStore?.sessions(overlapping: DateRangeSelection(kind: .week, anchor: Date(), firstWeekday: model.firstWeekday).interval) ?? []
+            earliestBack = FocusWeek.weeksBack(of: try model.focusStore?.earliestStart(), now: Date(), calendar: model.displayCalendar)
+            loadBrowsed()
             budgets = try model.budgetStore?.budgets() ?? []
             loadSuggestions()
             last = try model.focusStore?.sessions(overlapping: DateInterval(start: Date().addingTimeInterval(-90 * 86400), end: Date().addingTimeInterval(86400)))

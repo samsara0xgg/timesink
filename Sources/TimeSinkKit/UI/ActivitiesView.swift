@@ -112,17 +112,17 @@ struct ActivitiesView: View {
             }
             .pagePadding()
             .overlay(alignment: .bottom) {
-                if activities.joinToast != nil {
+                if let toast = activities.undoToast {
                     HStack(spacing: Design.Space.md) {
-                        Text("已并入上一段").font(.body.weight(.semibold))
-                        Button("撤销") { withAnimation(Design.motion(Design.layout, reduced: reduceMotion)) { activities.undoJoin(model: model) } }
+                        Text(verbatim: toast.message).font(.body.weight(.semibold)).lineLimit(1)
+                        Button("撤销") { withAnimation(Design.motion(Design.layout, reduced: reduceMotion)) { activities.performUndo() } }
                             .buttonStyle(PillButtonStyle(height: 24))
                     }
                     .padding(.horizontal, Design.Space.lg).frame(height: 40).floatingCard().padding(.bottom, Design.Space.page)
                     .transition(.opacity)
                 }
             }
-            .animation(Design.motion(Design.page, reduced: reduceMotion), value: activities.joinToast)
+            .animation(Design.motion(Design.page, reduced: reduceMotion), value: activities.undoToast)
         }
         .background(WorkspaceBackground())
         .background {
@@ -575,30 +575,45 @@ final class ActivitiesModel {
     var sessionsLoaded = false
     /// The session the inspector shows, by start; exclusive with a block.
     var selectedSession: Date?
-    /// The session whose join just happened, while the undo toast is up.
-    var joinToast: Date?
+    /// What the last session edit was and how to take it back, while the toast is up.
+    struct UndoToast: Equatable {
+        let id = UUID()
+        let message: String
+        let undo: @MainActor () -> Void
+        static func == (a: Self, b: Self) -> Bool { a.id == b.id }
+    }
+    var undoToast: UndoToast?
     @ObservationIgnored private var toastTask: Task<Void, Never>?
+
+    /// Shows `message` with 撤销 for a while; a newer edit replaces it.
+    func showUndo(_ message: String, undo: @escaping @MainActor () -> Void) {
+        let toast = UndoToast(message: message, undo: undo)
+        undoToast = toast
+        toastTask?.cancel()
+        toastTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled, self?.undoToast == toast else { return }
+            self?.undoToast = nil
+        }
+    }
+
+    func performUndo() {
+        guard let toast = undoToast else { return }
+        toastTask?.cancel()
+        undoToast = nil
+        toast.undo()
+    }
 
     /// Joins `session` onto the one before it; the toast offers 撤销 for a while.
     func join(_ session: WorkSession, model: AppModel) {
         let previous = sessions.last { $0.start < session.start }
+        let date = session.start
         model.joinSession(session)
         selectedSession = previous?.start
-        joinToast = session.start
-        toastTask?.cancel()
-        toastTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(5))
-            guard !Task.isCancelled else { return }
-            self?.joinToast = nil
+        showUndo(String(localized: "已并入上一段")) { [weak self] in
+            model.unjoinSession(startingAt: date)
+            self?.selectedSession = date
         }
-    }
-
-    func undoJoin(model: AppModel) {
-        guard let date = joinToast else { return }
-        toastTask?.cancel()
-        model.unjoinSession(startingAt: date)
-        joinToast = nil
-        selectedSession = date
     }
 
     /// A session another page asked to open (Today's 在活动里打开): selected
