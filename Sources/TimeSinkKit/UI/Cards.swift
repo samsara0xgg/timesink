@@ -39,7 +39,7 @@ struct DurationHero: View {
 /// a magnitude like minutes, not good or bad).
 func scoreColor(_ pulse: Int?) -> Color {
     guard let pulse else { return Design.ink2 }
-    return ColorSystem.ramp(pulse >= 70 ? 0.95 : pulse >= 40 ? 0.55 : 0.2)
+    return ColorSystem.score(pulse)
 }
 
 /// 生产力趋势: 30-day daily-pulse line -- untracked days are gapped (each
@@ -107,10 +107,10 @@ struct ScoreTrendCard: View {
                         .interpolationMethod(.monotone)
                         .accessibilityLabel(day(forIndex: point.index).formatted(date: .abbreviated, time: .omitted))
                         .accessibilityValue("\(point.pulse) 分")
-                        .foregroundStyle(ColorSystem.ramp(0.8))
+                        .foregroundStyle(ColorSystem.emphasis)
                         PointMark(x: .value("日", point.index), y: .value("分数", point.pulse))
                             .symbolSize(hoverIndex == point.index ? 50 : 14)
-                            .foregroundStyle(ColorSystem.ramp(0.8))
+                            .foregroundStyle(ColorSystem.emphasis)
                     }
                 }
                 RuleMark(y: .value("阈值", StatsModel.streakThreshold))

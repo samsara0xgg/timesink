@@ -517,12 +517,12 @@ private struct NowLine: View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
             let y = context.date.timeIntervalSince(dayStart) / 3600 * hourHeight
             ZStack(alignment: .topLeading) {
-                Capsule().fill(Design.ink).frame(width: width + 8, height: 2)
+                Capsule().fill(ColorSystem.nowMarker).frame(width: width + 8, height: 2)
                     .offset(x: x - 4, y: y - 1)
                 Text(context.date, format: .dateTime.hour(.twoDigits(amPM: .omitted)).minute())
-                    .font(.note.weight(.bold)).monospacedDigit().foregroundStyle(Design.surface)
+                    .font(.note.weight(.bold)).monospacedDigit().foregroundStyle(ColorSystem.nowMarkerLabel)
                     .padding(.horizontal, 5).padding(.vertical, 1)
-                    .background(Design.ink, in: RoundedRectangle(cornerRadius: 5))
+                    .background(ColorSystem.nowMarker, in: RoundedRectangle(cornerRadius: 5))
                     .fixedSize()
                     .offset(x: max(0, x - 46), y: y - 8)
             }

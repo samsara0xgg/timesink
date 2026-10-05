@@ -10,30 +10,64 @@ import SwiftUI
 /// - everything else: two inks, two greys, white cards, and the system
 ///   accent for what you can press. Red is for a limit passed or an error.
 ///
-/// Three schemes are kept side by side until the owner chooses:
+/// Five schemes are kept side by side and the person switches freely in
+/// Settings (`ColorSettings`):
+/// - Original: the look before this colour system (grey heat, red
+///   interruptions, the first project set), with dark values from A;
 /// - A "conservative": the shipped category and project colours, nudged only
 ///   where a label could not be read;
 /// - B "harmonised": the same hues re-cut in OKLCH (even lightness and
-///   chroma, warm and green fills lifted), projects in a deeper, duller family.
-/// - C "vivid": A for everything, but projects redone in clean,
-///   lifted hues that stay clear of every category colour.
-/// - D "cold" (the default): C with the loud warm and lime projects replaced by
-///   cooler ones (periwinkle, lavender, orchid, pink, mint, teal, aqua) and a single soft coral.
+///   chroma, warm and green fills lifted), projects in a deeper, duller family;
+/// - C "vivid": A for everything, but projects redone in clean, lifted hues
+///   that stay clear of every category colour;
+/// - C Cool (the default, "recommended"): C with the loud warm and lime
+///   projects replaced by cooler ones and a single soft coral.
 /// `scripts/color_check.py` reads the tables below and checks them (label
 /// contrast, colour-blind separation, ramp steps); `ColorSystemTests` repeats
 /// the label rule.
+///
+/// Switching: `use(_:)` builds the new `Palette` once and every lookup below
+/// reads it; `ColorSettings` then bumps a revision that the scene roots
+/// observe (`colorRefresh()`), which redraws them.
 enum ColorSystem {
-    enum Scheme: String { case conservative = "A", harmonised = "B", vivid = "C", cold = "D" }
-
-    /// The scheme in use. DEBUG builds read `TIMESINK_COLOR_SCHEME=A|B|C|D`.
-    static let scheme: Scheme = {
-        #if DEBUG
-        if let name = ProcessInfo.processInfo.environment["TIMESINK_COLOR_SCHEME"], let scheme = Scheme(rawValue: name.uppercased()) {
-            return scheme
+    enum Scheme: String, CaseIterable {
+        case original, conservative = "a", harmonised = "b", vivid = "c", cool = "ccool"
+        /// The scheme people get until they choose one.
+        static let standard = Scheme.cool
+        /// The names `TIMESINK_COLOR_SCHEME` accepts (the earlier A|B|C|D, and O for Original).
+        init?(environment name: String) {
+            switch name.lowercased() {
+            case "o", "original": self = .original
+            case "a": self = .conservative
+            case "b": self = .harmonised
+            case "c": self = .vivid
+            case "d", "ccool", "cool": self = .cool
+            default: return nil
+            }
         }
+    }
+
+    /// UserDefaults key of the chosen scheme.
+    static let defaultsKey = "colorScheme"
+
+    /// The scheme to start with: the DEBUG override, else the stored choice, else the default.
+    static func initialScheme() -> Scheme {
+        #if DEBUG
+        if let name = ProcessInfo.processInfo.environment["TIMESINK_COLOR_SCHEME"], let scheme = Scheme(environment: name) { return scheme }
         #endif
-        return .cold
-    }()
+        return UserDefaults.standard.string(forKey: defaultsKey).flatMap(Scheme.init(rawValue:)) ?? .standard
+    }
+
+    // ponytail: written on the main actor only (at launch and by `use`), read from drawing code; a class
+    // reference swap is the whole update, so the unsynchronised read is safe in practice.
+    nonisolated(unsafe) private(set) static var palette = Palette(initialScheme())
+    static var scheme: Scheme { palette.scheme }
+
+    /// Makes `scheme` the one every lookup reads. Views redraw through `ColorSettings`.
+    static func use(_ scheme: Scheme) {
+        guard scheme != palette.scheme else { return }
+        palette = Palette(scheme)
+    }
 
     typealias Pair = (light: UInt32, dark: UInt32)
 
@@ -99,9 +133,25 @@ enum ColorSystem {
         "uncategorized": (0xC9CBCE, 0x4B4D50)
     ]
 
-    static var categories: [String: Pair] { scheme == .harmonised ? categoriesB : categoriesA }
+    /// The look before the colour system: Apple's system colours as the dashboard design named them.
+    static let categoriesOriginal: [String: Pair] = [
+        "softwareDev": (0x3478F6, 0x0A84FF), "learning": (0x34C759, 0x30D158),
+        "writing": (0x30B0C7, 0x40C8E0), "business": (0xAF52DE, 0xBF5AF2),
+        "utilities": (0x8E8E93, 0xA1A1A6), "communication": (0xFF9F0A, 0xFF9F0A),
+        "news": (0x5856D6, 0x5E5CE6), "jobSearch": (0xA2845E, 0xAC8E68),
+        "research": (0x64D2FF, 0x70D7FF), "socialMedia": (0xFF3B30, 0xFF453A),
+        "entertainment": (0xFFD60A, 0xFFD60A), "misc": (0x98989D, 0x7C7C82),
+        "uncategorized": (0xC7C7CC, 0x55575E)
+    ]
 
-    // MARK: Projects (index 8: time that belongs to no project)
+    // MARK: Projects (slot 8: time that belongs to no project)
+
+    /// The first eight of the old set, then its slate.
+    static let projectsOriginal: [Pair] = [
+        (0x2F6BEA, 0x4C8DFF), (0x7C5CE0, 0x9B82FF), (0x0F9488, 0x22C3AE), (0xC27A0E, 0xE3A23A),
+        (0xD6457A, 0xFF6B9E), (0x5E9A2E, 0x7CC24A), (0xD6532E, 0xFF7A5C), (0x0E8CB5, 0x35B6E0),
+        (0x7A8494, 0x8D95A5)
+    ]
 
     static let projectsA: [Pair] = [
         (0x2F6BEA, 0x4C8DFF), (0x7C5CE0, 0x9B82FF), (0x14968A, 0x22C3AE), (0xC27A0E, 0xE3A23A),
@@ -129,65 +179,133 @@ enum ColorSystem {
         (0x7D8797, 0x8D95A5)
     ]
 
-    /// Scheme D: cool and calm, one soft coral for warmth. Slot 7 is the coral (the hash puts about an eighth of
-    /// the names there), slot 8 is the slate of "no project".
+    /// Scheme C Cool: cool and calm, one soft coral for warmth. Slot 7 is the coral, slot 8 the slate of "no project".
     static let projectsD: [Pair] = [
         (0x59A0F9, 0x60A7FF), (0xBCB2FF, 0xBCB2FF), (0xBA71CB, 0xD381D8), (0xFE8DC5, 0xFFA5C8),
         (0x94E282, 0xA6E599), (0x04C097, 0x25BF98), (0x7DEFDA, 0x92EBDA), (0xE66E68, 0xF47B74),
         (0x7D8797, 0x8D95A5)
     ]
 
-    static var projects: [Pair] {
-        switch scheme {
-        case .conservative: projectsA
-        case .harmonised: projectsB
-        case .vivid: projectsC
-        case .cold: projectsD
-        }
-    }
-
     // MARK: Magnitude ramp (indigo): little -> much
 
     static let rampLight: [UInt32] = [0xEAEEFC, 0xC4CCEF, 0x8E9AD7, 0x5C68AE, 0x343C77]
     static let rampDark: [UInt32] = [0x2B2F42, 0x4A5388, 0x6E7AC2, 0x96A3EA, 0xC5CFFF]
+    /// The old heat: a dark slate (light) / pale slate (dark) laid over a card at 8% to 88%.
+    static let rampOriginalLight: [UInt32] = [0xEEEFF0, 0xC3C5CA, 0x999CA3, 0x6E737D, 0x444A57]
+    static let rampOriginalDark: [UInt32] = [0x3A3B3E, 0x5E5F65, 0x81848C, 0xA4A8B2, 0xC8CDD9]
 
-    // MARK: Interruptions (one soft amber)
+    // MARK: Interruptions (one soft amber; red in Original)
 
-    static let interruption = Design.color(light: 0xE8AF4F, dark: 0xE6B55D)
+    static let interruptionPair: Pair = (0xE8AF4F, 0xE6B55D)
     /// Under the pointer, chosen: one step stronger.
-    static let interruptionActive = Design.color(light: 0xD28A0E, dark: 0xF8CE78)
+    static let interruptionActivePair: Pair = (0xD28A0E, 0xF8CE78)
+    static let interruptionOriginalPair: Pair = (0xD70015, 0xFF6961)
+    static let interruptionActiveOriginalPair: Pair = (0x9E0010, 0xFFA39B)
     /// The radar's five leading apps (the first interrupts most), then the rest.
     static let radarLight: [UInt32] = [0x935A03, 0xB47819, 0xD39837, 0xE9B860, 0xF6D795, 0xA6ABB3]
     static let radarDark: [UInt32] = [0xF4CF7D, 0xE4B65C, 0xD39D40, 0xC2882D, 0xB2782C, 0x5A5E65]
-    static let radar: [Color] = zip(radarLight, radarDark).map { Design.color(light: $0, dark: $1) }
+
+    // MARK: The palette in use
+
+    /// Everything a scheme decides, resolved once when the scheme is chosen. Lookups index into it.
+    final class Palette: @unchecked Sendable {
+        let scheme: Scheme
+        let categories: [String: Pair]
+        let projects: [Pair]
+        let rampLight: [UInt32], rampDark: [UInt32]
+        let interruption: Color, interruptionActive: Color
+        let radar: [Color]
+        let categoryColors: [String: Color], categoryLabels: [String: Color]
+        let projectColors: [Color], projectLabels: [Color]
+        let rampColors: [Color]
+        /// The look before the colour system: red marks, old label inks, green/amber/red scores.
+        var isOriginal: Bool { scheme == .original }
+
+        init(_ scheme: Scheme) {
+            self.scheme = scheme
+            switch scheme {
+            case .original: (categories, projects) = (categoriesOriginal, projectsOriginal)
+            case .conservative: (categories, projects) = (categoriesA, projectsA)
+            case .harmonised: (categories, projects) = (categoriesB, projectsB)
+            case .vivid: (categories, projects) = (categoriesA, projectsC)
+            case .cool: (categories, projects) = (categoriesA, projectsD)
+            }
+            (rampLight, rampDark) = scheme == .original ? (rampOriginalLight, rampOriginalDark) : (ColorSystem.rampLight, ColorSystem.rampDark)
+            let hot = scheme == .original
+            let (i, ia) = hot ? (interruptionOriginalPair, interruptionActiveOriginalPair) : (interruptionPair, interruptionActivePair)
+            interruption = Design.color(light: i.light, dark: i.dark)
+            interruptionActive = Design.color(light: ia.light, dark: ia.dark)
+            if hot {
+                // Old radar: the first projects' colours, then the slate.
+                radar = (projectsOriginal.prefix(5) + [projectsOriginal[8]]).map { Design.color(light: $0.light, dark: $0.dark) }
+            } else {
+                radar = zip(radarLight, radarDark).map { Design.color(light: $0, dark: $1) }
+            }
+            let legacyDark: Set<String> = ["entertainment", "uncategorized", "misc", "utilities", "research"]
+            categoryColors = categories.mapValues { Design.color(light: $0.light, dark: $0.dark) }
+            categoryLabels = Dictionary(uniqueKeysWithValues: categories.map { id, pair in
+                // Original kept the old rule: dark ink on the light categories, white on the rest.
+                (id, hot ? (legacyDark.contains(id) ? Color.black.opacity(0.82) : Color.white) : ColorSystem.label(on: pair))
+            })
+            projectColors = projects.map { Design.color(light: $0.light, dark: $0.dark) }
+            projectLabels = projects.map { hot ? Color.white : ColorSystem.label(on: $0) }
+            let steps = ColorSystem.rampSteps
+            let (rl, rd) = (rampLight, rampDark)
+            rampColors = (0..<steps).map { step in
+                let t = Double(step) / Double(steps - 1)
+                return Design.color(light: ColorSystem.lerp(rl, t), dark: ColorSystem.lerp(rd, t))
+            }
+        }
+    }
 
     // MARK: Lookups
 
-    private static let categoryColors: [String: Color] = categories.mapValues { Design.color(light: $0.light, dark: $0.dark) }
-    private static let categoryLabels: [String: Color] = categories.mapValues { label(on: $0) }
-    private static let projectColors: [Color] = projects.map { Design.color(light: $0.light, dark: $0.dark) }
-    private static let projectLabels: [Color] = projects.map { label(on: $0) }
+    /// The in-use scheme's tables, as hex pairs (tests, scripts).
+    static var categories: [String: Pair] { palette.categories }
+    static var projects: [Pair] { palette.projects }
+    static func categories(of scheme: Scheme) -> [String: Pair] { Palette(scheme).categories }
+    static func projects(of scheme: Scheme) -> [Pair] { Palette(scheme).projects }
+
+    static var interruption: Color { palette.interruption }
+    static var interruptionActive: Color { palette.interruptionActive }
+    static var radar: [Color] { palette.radar }
+    static var isOriginal: Bool { palette.isOriginal }
 
     /// A shipped category's colour, by id.
-    static func category(_ id: String) -> Color? { categoryColors[id] }
+    static func category(_ id: String) -> Color? { palette.categoryColors[id] }
     /// The ink for text on a shipped category's fill.
-    static func categoryLabel(_ id: String) -> Color? { categoryLabels[id] }
+    static func categoryLabel(_ id: String) -> Color? { palette.categoryLabels[id] }
 
     static func project(_ index: Int?) -> Color {
-        guard let index else { return projectColors[projectColors.count - 1] }
-        return projectColors[index % (projectColors.count - 1)]
+        let colors = palette.projectColors
+        guard let index else { return colors[colors.count - 1] }
+        return colors[index % (colors.count - 1)]
     }
     static func projectLabel(_ index: Int?) -> Color {
-        guard let index else { return projectLabels[projectLabels.count - 1] }
-        return projectLabels[index % (projectLabels.count - 1)]
+        let labels = palette.projectLabels
+        guard let index else { return labels[labels.count - 1] }
+        return labels[index % (labels.count - 1)]
     }
+
+    /// A score as a colour: three bands on the ramp; Original keeps green, amber and red.
+    static func score(_ pulse: Int) -> Color {
+        if isOriginal { return pulse >= 70 ? live : pulse >= 40 ? warning : alert }
+        return ramp(pulse >= 70 ? 0.95 : pulse >= 40 ? 0.55 : 0.2)
+    }
+
+    /// The emphasised mark on a page: the ramp's strong end; the plain ink in Original.
+    static var emphasis: Color { isOriginal ? ink : ramp(0.8) }
+
+    /// The "now" line and its chip: the ink; red in Original.
+    static var nowMarker: Color { isOriginal ? .red : ink }
+    static var nowMarkerLabel: Color { isOriginal ? .white : surface }
 
     /// The label ink for a custom colour the person picked (the same in both appearances).
     static func label(onHex hex: String) -> Color {
         label(on: (light: hexValue(hex), dark: hexValue(hex)))
     }
 
-    private static func label(on pair: Pair) -> Color {
+    fileprivate static func label(on pair: Pair) -> Color {
         Design.color(light: labelInk(on: pair.light), dark: labelInk(on: pair.dark))
     }
 
@@ -200,15 +318,11 @@ enum ColorSystem {
 
     // MARK: Ramp
 
-    private static let rampSteps = 16
-    private static let rampColors: [Color] = (0..<rampSteps).map { step in
-        let t = Double(step) / Double(rampSteps - 1)
-        return Design.color(light: lerp(rampLight, t), dark: lerp(rampDark, t))
-    }
+    fileprivate static let rampSteps = 16
 
-    /// 0 (little) ... 1 (much) on the indigo ramp, in 16 steps.
+    /// 0 (little) ... 1 (much) on the ramp, in 16 steps.
     static func ramp(_ t: Double) -> Color {
-        rampColors[Int((min(1, max(0, t)) * Double(rampSteps - 1)).rounded())]
+        palette.rampColors[Int((min(1, max(0, t)) * Double(rampSteps - 1)).rounded())]
     }
 
     // MARK: Maths
@@ -217,7 +331,7 @@ enum ColorSystem {
         [Double((hex >> 16) & 0xFF), Double((hex >> 8) & 0xFF), Double(hex & 0xFF)]
     }
 
-    private static func lerp(_ stops: [UInt32], _ t: Double) -> UInt32 {
+    fileprivate static func lerp(_ stops: [UInt32], _ t: Double) -> UInt32 {
         let position = t * Double(stops.count - 1)
         let index = min(stops.count - 2, Int(position))
         let f = position - Double(index)

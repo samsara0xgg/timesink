@@ -79,7 +79,7 @@ struct ScoreFlyoutView: View {
     @ViewBuilder private func square(_ pulse: Int?) -> some View {
         let shape = RoundedRectangle(cornerRadius: 5, style: .continuous)
         if let pulse {
-            shape.fill(pulse >= threshold ? ColorSystem.ramp(0.8) : Color.secondary.opacity(0.25))
+            shape.fill(pulse >= threshold ? (ColorSystem.isOriginal ? Color.green.opacity(0.85) : ColorSystem.ramp(0.8)) : Color.secondary.opacity(0.25))
         } else {
             HatchFill().clipShape(shape).overlay(shape.strokeBorder(Color.secondary.opacity(0.2)))
         }

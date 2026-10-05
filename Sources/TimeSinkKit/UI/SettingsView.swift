@@ -83,6 +83,7 @@ struct RefinedGeneralPane: View {
                 }
             }
             Section("显示") {
+                AppearanceChoices()
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle("显示评分", isOn: $model.showScore)
                 Text("关闭后只在「趋势」里显示。")
@@ -516,4 +517,43 @@ struct TextExportDocument: FileDocument {
     init(text: String) { self.text = text }
     init(configuration: ReadConfiguration) throws { text = String(data: configuration.file.regularFileContents ?? Data(), encoding: .utf8) ?? "" }
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper { FileWrapper(regularFileWithContents: Data(text.utf8)) }
+}
+
+/// 外观 and 配色: the appearance and the colour scheme, applied as soon as they are picked.
+private struct AppearanceChoices: View {
+    @Bindable private var colors = ColorSettings.shared
+
+    var body: some View {
+        Picker("外观", selection: $colors.appearance) {
+            Text("跟随系统").tag(ColorSettings.Appearance.system)
+            Text("浅色").tag(ColorSettings.Appearance.light)
+            Text("深色").tag(ColorSettings.Appearance.dark)
+        }
+        VStack(alignment: .leading, spacing: 6) {
+            Picker("配色", selection: $colors.scheme) {
+                ForEach(ColorSystem.Scheme.allCases, id: \.self) { scheme in Text(scheme.title).tag(scheme) }
+            }
+            HStack(spacing: 5) {
+                ForEach(0..<ProjectPalette.slots, id: \.self) { slot in
+                    Circle().fill(Design.projectColor(slot)).frame(width: 10, height: 10)
+                }
+                Circle().fill(Design.projectColor(nil)).frame(width: 10, height: 10)
+            }
+            .accessibilityHidden(true)
+            Text("换配色不会改变每个项目的颜色编号，立即生效。").font(.note).foregroundStyle(Design.ink2)
+        }
+    }
+}
+
+extension ColorSystem.Scheme {
+    /// What the picker calls it.
+    var title: LocalizedStringKey {
+        switch self {
+        case .original: "原版"
+        case .conservative: "A 保守"
+        case .harmonised: "B 协调"
+        case .vivid: "C 鲜明"
+        case .cool: "C 冷调（推荐）"
+        }
+    }
 }

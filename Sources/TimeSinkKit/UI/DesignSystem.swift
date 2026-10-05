@@ -74,8 +74,8 @@ enum Design {
     /// Recording right now.
     static let live = ColorSystem.live
     /// An interruption, and the same one a step stronger under the pointer.
-    static let interruption = ColorSystem.interruption
-    static let interruptionActive = ColorSystem.interruptionActive
+    static var interruption: Color { ColorSystem.interruption }
+    static var interruptionActive: Color { ColorSystem.interruptionActive }
 
     // Hatch (away or unrecorded time)
     static let hatchBase = ColorSystem.hatchBase

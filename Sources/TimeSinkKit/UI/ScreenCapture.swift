@@ -43,13 +43,15 @@ import WebKit
 
     /// Renders off screen: the window is built but never ordered in, so no
     /// display ever shows it, and its frame view is drawn into a bitmap.
-    static func shoot<V: View>(_ name: String, _ view: V, size: NSSize, dark: Bool = false, host: Host = .window, settle: Int = 900) async throws {
+    static func shoot<V: View>(_ name: String, _ view: V, size: NSSize, dark: Bool = false, host: Host = .window, settle: Int = 900,
+                                  switchTo: [ColorSystem.Scheme] = []) async throws {
         let file = output.appendingPathComponent("\(name)-\(language)\(Self.darkEnvironment ? "-dark" : "").png")
         if let only, !file.lastPathComponent.contains(only) { return }
         let dark = dark || Self.darkEnvironment
         NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         let resizable = shrink && name.hasPrefix("main-")
         let root = view
+            .colorRefresh()
             .environment(\.locale, RefinedPreview.locale)
             .environment(\.colorScheme, dark ? .dark : .light)
             // Off screen no display drives an animation: everything lands at once.
@@ -91,6 +93,12 @@ import WebKit
         defer { window.close() }
         try await Task.sleep(for: .milliseconds(settle))
         try render(window, to: file, frame: host.isWindow)
+        // The same window after the scheme is switched at run time (what Settings does).
+        for scheme in switchTo {
+            ColorSettings.shared.scheme = scheme
+            try await Task.sleep(for: .milliseconds(settle))
+            try render(window, to: output.appendingPathComponent("\(name)-switched-\(scheme.rawValue)-\(language)\(Self.darkEnvironment ? "-dark" : "").png"), frame: host.isWindow)
+        }
         if resizable {
             window.setContentSize(Design.windowMinSize)
             try await Task.sleep(for: .milliseconds(settle))
@@ -261,6 +269,19 @@ import WebKit
             for size in sizes {
                 try await shoot("main-\(name)-\(Int(size.width))", MainWindowView(model: sample), size: size, settle: page == .today ? 4000 : 6000)
             }
+        }
+        // `TIMESINK_PREVIEW_ONLY=switch`: one Today window, re-drawn after each scheme is switched on the fly.
+        if only?.contains("switch") ?? false {
+            let sample = try RefinedPreview.fixture(projects: true, ownerNames: true)
+            sample.timeFormat = "24"
+            sample.sidebarSelection = .today
+            sample.todayDayOffset = 0
+            sample.range = DateRangeSelection(kind: .day, anchor: Date())
+            UserDefaults.standard.set("project", forKey: "todayTimelineColors")
+            try await shoot("switch-today-start", MainWindowView(model: sample), size: wide, settle: 4000,
+                            switchTo: [.original, .conservative, .harmonised, .vivid, .cool])
+            UserDefaults.standard.removeObject(forKey: "todayTimelineColors")
+            return
         }
         if only?.contains("proj") ?? true {
             try await projectsPage("projects-empty", model, .organization, sizes: [wide, small])

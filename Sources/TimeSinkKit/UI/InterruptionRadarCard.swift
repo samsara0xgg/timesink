@@ -19,7 +19,7 @@ struct InterruptionRadarCard: View {
     enum Period: Hashable, CaseIterable { case today, week }
 
     /// Amber in steps for the leading apps (darkest first), grey for the rest.
-    private static let palette: [Color] = ColorSystem.radar
+    private static var palette: [Color] { ColorSystem.radar }
 
     private struct Loaded: Equatable {
         var data: DayInterruptions

@@ -80,7 +80,7 @@ struct FourWeekCard: View {
             HStack(alignment: .bottom, spacing: 3) {
                 ForEach(0..<4, id: \.self) { index in
                     RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(ColorSystem.ramp([0.2, 0.4, 0.62, 1][index]))
+                        .fill(ColorSystem.isOriginal ? RefinedStyle.category(row.id, hex: row.colorHex).opacity(index == 3 ? 1 : 0.4) : ColorSystem.ramp([0.2, 0.4, 0.62, 1][index]))
                         .frame(width: 10, height: row.weeks[index] > 0 ? max(2, Self.height * row.weeks[index] / peak) : 1)
                 }
             }

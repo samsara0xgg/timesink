@@ -255,7 +255,7 @@ struct FocusWorkspaceView: View {
                     VStack(spacing: Design.Space.xs) {
                         Text(value > 0 ? "\(value)" : " ").font(.note).monospacedDigit().foregroundStyle(Design.ink2)
                         RoundedRectangle(cornerRadius: Design.Radius.mark, style: .continuous)
-                            .fill(value == 0 ? AnyShapeStyle(Design.track) : today || weeksBack > 0 ? AnyShapeStyle(ColorSystem.ramp(0.85)) : AnyShapeStyle(ColorSystem.ramp(0.4)))
+                            .fill(value == 0 ? AnyShapeStyle(Design.track) : today || weeksBack > 0 ? AnyShapeStyle(ColorSystem.isOriginal ? Design.accent : ColorSystem.ramp(0.85)) : AnyShapeStyle(ColorSystem.isOriginal ? Design.accent.opacity(0.4) : ColorSystem.ramp(0.4)))
                             .frame(height: value == 0 ? 4 : max(4, 56 * CGFloat(value) / CGFloat(top)))
                         Text(week.days[index].formatted(.dateTime.weekday(.narrow).locale(model.textLocale))).font(.note)
                             .fontWeight(today ? .semibold : .regular).foregroundStyle(today ? Design.ink : Design.ink2)

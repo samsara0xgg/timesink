@@ -34,12 +34,8 @@ public struct TimeSinkApp: App {
         }
 
         NSApplication.shared.setActivationPolicy(.accessory)
-        // Every window, the popover and its panels follow the system appearance.
-        #if DEBUG
-        if let name = ProcessInfo.processInfo.environment["TIMESINK_APPEARANCE"] {
-            NSApplication.shared.appearance = NSAppearance(named: name == "dark" ? .darkAqua : .aqua)
-        }
-        #endif
+        // Every window, the popover and its panels follow the chosen appearance (system by default).
+        ColorSettings.shared.applyAppearance(launch: true)
         try? Tips.configure()
 
         let db: any DatabaseWriter
@@ -212,6 +208,7 @@ public struct TimeSinkApp: App {
     public var body: some Scene {
         MenuBarExtra {
             MenuBarDashboardView(model: model)
+                .colorRefresh()
                 // Text grows with the system size up to about 1.3x; the popover widens with it.
                 .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         } label: {
@@ -244,6 +241,7 @@ public struct TimeSinkApp: App {
 
         Window("TimeSink", id: "main") {
             MainWindowView(model: model)
+                .colorRefresh()
                 .appWindow(.main)
                 .onAppear {
                     NSApp.setActivationPolicy(.regular)
@@ -272,6 +270,7 @@ public struct TimeSinkApp: App {
 
         Settings {
             SettingsView(model: model)
+                .colorRefresh()
                 .environment(\.locale, model.displayLocale)
                 .appWindow(.settings)
         }
