@@ -106,12 +106,12 @@ struct TodayTimelineCard: View {
     private var chart: some View {
         GeometryReader { proxy in
             let width = proxy.size.width
-            let labelsOn = BlockLabel.fitsAll(plan.rows.map { ($0.session.recorded, blockWidth($0, width)) }, width: { BlockLabel.noteWidth($0) })
+            let labelFrom = BlockLabel.minutes(pointsPerSecond: width / axisSeconds, width: { BlockLabel.noteWidth($0) })
             ZStack(alignment: .topLeading) {
                 if plan.isToday { future(width) }
                 grid(width)
                 ForEach(plan.gaps) { gap in away(gap, width) }
-                ForEach(Array(plan.rows.enumerated()), id: \.element.id) { index, row in block(row, index: index, width, labelsOn: labelsOn) }
+                ForEach(Array(plan.rows.enumerated()), id: \.element.id) { index, row in block(row, index: index, width, labelFrom: labelFrom) }
                 ticks(width)
                 if plan.isToday { nowMark(width) }
                 if let row = plan.rows.first(where: { $0.id == selected }) { card(row, width) }
@@ -200,10 +200,10 @@ struct TodayTimelineCard: View {
 
     /// A block's width: its span on the axis, less the seam to its neighbour.
     private func blockWidth(_ row: TodayPlan.Row, _ width: CGFloat) -> CGFloat {
-        max(x(row.session.end, width) - x(row.session.start, width) - 2, 3)
+        max(x(row.session.end, width) - x(row.session.start, width) - BlockLabel.seam, 3)
     }
 
-    private func block(_ row: TodayPlan.Row, index: Int, _ width: CGFloat, labelsOn: Bool) -> some View {
+    private func block(_ row: TodayPlan.Row, index: Int, _ width: CGFloat, labelFrom: Int?) -> some View {
         let left = x(row.session.start, width)
         let w = blockWidth(row, width)
         let color = color(of: row)
@@ -219,16 +219,16 @@ struct TodayTimelineCard: View {
                     shape.fill(color)
                 }
                 if row.guessed { StripeOverlay().clipShape(shape) }
-                // One rule for every block (`BlockLabel`): a duration from 30 minutes up, in the longest form that fits.
-                if labelsOn, let text = BlockLabel.text(row.session.recorded, available: w - 2 * BlockLabel.padding, width: { BlockLabel.noteWidth($0) }) {
+                // One rule for every block (`BlockLabel`): a duration from the timeline's threshold up, in the longest form that fits.
+                if let text = BlockLabel.text(row.session.recorded, threshold: labelFrom, available: w - 2 * BlockLabel.padding, width: { BlockLabel.noteWidth($0) }) {
                     // A guessed block's stripes would lower the ink's contrast: its label sits on a flat patch of the fill.
                     let patch = row.guessed && !pending(row)
                     Text(text).font(.note.weight(.semibold)).monospacedDigit()
                         .foregroundStyle(pending(row) ? Design.ink2 : labelColor(of: row))
                         .lineLimit(1).fixedSize()
-                        .padding(.horizontal, patch ? 4 : BlockLabel.padding).padding(.vertical, patch ? 1 : 0)
+                        .padding(.horizontal, patch ? 3 : BlockLabel.padding).padding(.vertical, patch ? 1 : 0)
                         .background { if patch { RoundedRectangle(cornerRadius: 4, style: .continuous).fill(color) } }
-                        .padding(.horizontal, patch ? BlockLabel.padding - 4 : 0)
+                        .padding(.horizontal, patch ? BlockLabel.padding - 3 : 0)
                 }
             }
             .frame(width: w, height: Self.blockHeight)

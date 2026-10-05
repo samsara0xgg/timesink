@@ -290,7 +290,7 @@ import WebKit
             sample.sidebarSelection = .today
             sample.todayDayOffset = 0
             sample.range = DateRangeSelection(kind: .day, anchor: Date())
-            let sizes = [("wide", wide), ("narrow", NSSize(width: 1000, height: 700)), ("min", small)]
+            let sizes = [("wide", wide), ("w1200", NSSize(width: 1200, height: 800)), ("narrow", NSSize(width: 1000, height: 700)), ("min", small)]
             for colors in ["category", "project"] {
                 UserDefaults.standard.set(colors, forKey: "todayTimelineColors")
                 for (tag, size) in sizes { try await shoot("lbl-\(tag)-\(colors)", MainWindowView(model: sample), size: size, settle: 4000) }

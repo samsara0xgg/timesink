@@ -1,24 +1,26 @@
 import AppKit
 
-/// The duration written inside a Today timeline block, decided by one rule so
-/// that similar blocks never look different by chance:
+/// The duration written inside a Today timeline block, decided by one rule per
+/// timeline so that similar blocks never look different by chance:
 ///
-/// - recorded >= 30 minutes: always a duration; recorded < 30 minutes: never.
-/// - When the full form does not fit it degrades in a fixed order, taking the
-///   first form that fits: "1h 17m", "1h17", "77m", "1h" (hours cut down to
-///   whole hours, so 60...119 minutes read "1h"). Under an hour there is only
-///   "47m".
-/// - Only when some block of 30 minutes or more cannot hold even its shortest
-///   form does the whole timeline hide every label at once (`fitsAll`), so
-///   blocks never differ by chance: all of them have a label or none do.
+/// - The timeline's scale (points per second) fixes one threshold N, the
+///   smallest of 30, 45, 60, 90, 120 minutes whose block can hold its shortest
+///   form ("30m", "45m", "1h", "1h", "2h") inside the padding (`minutes(...)`).
+///   Blocks recorded for N minutes or more show a label, shorter blocks never
+///   do. If even 120 minutes does not fit, no block has a label.
+/// - A block shows the longest form that fits: "1h 17m", "1h17", "77m", "1h"
+///   (hours cut down to whole hours, so 60...119 minutes read "1h"). Under an
+///   hour there is only "47m". Every block of N minutes or more is at least as
+///   wide as the N-minute block, so it always has its shortest form.
 ///
-/// The same rule runs on every day and window width; what changes is only the
-/// scale (points per hour) it is applied to.
+/// The same rule runs on every day and window width; only the scale changes N.
 enum BlockLabel {
-    /// Shortest recorded time that gets a label.
-    static let threshold: TimeInterval = 1800
+    /// The candidate thresholds, in minutes, smallest first. Nothing under 30 minutes ever has a label.
+    static let candidates = [30, 45, 60, 90, 120]
     /// Space inside a block either side of the text.
-    static let padding: CGFloat = 6
+    static let padding: CGFloat = 4
+    /// The seam between abutting blocks, taken off each block's width.
+    static let seam: CGFloat = 2
 
     /// The forms of the label, longest first.
     static func forms(_ seconds: TimeInterval, locale: Locale = AppLanguage.locale) -> [String] {
@@ -31,18 +33,20 @@ enum BlockLabel {
         return result
     }
 
-    /// The text for a block `available` points wide inside its padding, or nil.
-    static func text(_ seconds: TimeInterval, available: CGFloat, locale: Locale = AppLanguage.locale,
-                     width: (String) -> CGFloat) -> String? {
-        guard seconds >= threshold else { return nil }
-        return forms(seconds, locale: locale).first { width($0) <= available }
+    /// The timeline's threshold N in minutes at `pointsPerSecond`, or nil when no label fits anywhere.
+    static func minutes(pointsPerSecond: CGFloat, locale: Locale = AppLanguage.locale, width: (String) -> CGFloat) -> Int? {
+        candidates.first { n in
+            let seconds = TimeInterval(n * 60)
+            let shortest = forms(seconds, locale: locale).last ?? ""
+            return width(shortest) + 2 * padding <= seconds * pointsPerSecond - seam
+        }
     }
 
-    /// Whether the timeline shows labels at all: every block of 30 minutes or more must have some form that fits.
-    /// If one cannot, no block gets a label, so the blocks never differ by chance.
-    static func fitsAll(_ blocks: [(recorded: TimeInterval, width: CGFloat)], locale: Locale = AppLanguage.locale,
-                        width: (String) -> CGFloat) -> Bool {
-        blocks.allSatisfy { $0.recorded < threshold || text($0.recorded, available: $0.width - 2 * padding, locale: locale, width: width) != nil }
+    /// The text for a block `available` points wide inside its padding, or nil below the threshold.
+    static func text(_ seconds: TimeInterval, threshold: Int?, available: CGFloat, locale: Locale = AppLanguage.locale,
+                     width: (String) -> CGFloat) -> String? {
+        guard let threshold, Format.minutes(seconds) >= threshold else { return nil }
+        return forms(seconds, locale: locale).first { width($0) <= available }
     }
 
     /// The width of `text` in the font the block draws it in: the note size, semibold, figures of one width.
