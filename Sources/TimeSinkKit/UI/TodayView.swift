@@ -20,6 +20,11 @@ struct TodayView: View {
     /// Whether the last plan had a project: the loading frame keeps its cards.
     @AppStorage("todayHadProjects") private var hadProjects = true
 
+    #if DEBUG
+    /// Captures: which block (by its place in the day, -1 the last) has its card open.
+    @MainActor static var previewSelect: Int?
+    #endif
+
     private struct RefreshKey: Equatable { let version: Int; let offset: Int }
     private var offset: Int { model.todayDayOffset }
 
@@ -56,6 +61,12 @@ struct TodayView: View {
             }
         }
         .onChange(of: offset) { _, _ in selected = nil; filter = nil }
+        #if DEBUG
+        .onChange(of: today.plan != nil) { _, _ in
+            guard let index = Self.previewSelect, let rows = today.plan?.rows, !rows.isEmpty else { return }
+            selected = rows[index < 0 ? rows.count + index : min(index, rows.count - 1)].id
+        }
+        #endif
         .onChange(of: today.plan.map(hasProjects)) { _, value in if let value { hadProjects = value } }
     }
 

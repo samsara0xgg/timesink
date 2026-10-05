@@ -280,6 +280,15 @@ import WebKit
         }
 
         try await main("today", .today, sizes: [wide, standard, small])
+        // A block's card, in the middle of the day and at the right-hand end, in both colourings.
+        for (name, index) in [("mid", 4), ("end", -1)] {
+            TodayView.previewSelect = index
+            try await main("today-card-\(name)", .today, sizes: [wide, small])
+            UserDefaults.standard.set("project", forKey: "todayTimelineColors")
+            try await main("today-card-\(name)-project", .today, sizes: [wide])
+            UserDefaults.standard.removeObject(forKey: "todayTimelineColors")
+        }
+        TodayView.previewSelect = nil
         // "By project" on a day with no project: the empty state, not a quiet fall back to categories.
         UserDefaults.standard.set("project", forKey: "todayTimelineColors")
         try await main("today-by-project", .today, sizes: [wide, small])
