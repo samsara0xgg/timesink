@@ -644,16 +644,75 @@ public final class AppModel {
                 return s
             }
             let result = resolver.categorized(clipped)
-            rangeCache[key] = result
-            cacheOrder.append(key)
-            while cacheOrder.count > Self.rangeCacheCap {
-                rangeCache.removeValue(forKey: cacheOrder.removeFirst())
-            }
+            remember(result, for: key)
             return result
         } catch {
             logger.error("rangedSpans failed: \(String(describing: error))")
             return []
         }
+    }
+
+    private func remember(_ result: [CategorizedSpan], for key: DateInterval) {
+        rangeCache[key] = result
+        cacheOrder.append(key)
+        while cacheOrder.count > Self.rangeCacheCap {
+            rangeCache.removeValue(forKey: cacheOrder.removeFirst())
+        }
+    }
+
+    /// `rangedSpans(for:)` with the read and the classification off the main
+    /// actor: the same rows, clipped and classified the same way, and cached
+    /// the same way. A month is ~56k rows, 0.5-2 s that a page would
+    /// otherwise spend frozen.
+    ///
+    /// nil when the caller was cancelled, or when a write since the call began
+    /// could have changed `interval` (the rows read may be older than the
+    /// store, and the result is not cached): `dataVersion` has moved by then,
+    /// so whoever watches it is already asking again.
+    func rangedSpansOffMain(for interval: DateInterval) async -> [CategorizedSpan]? {
+        if let cached = rangeCache[interval] {
+            touchCacheKey(interval)
+            return cached
+        }
+        let (store, version, seed) = (spanStore, dataVersion, resolver.snapshot())
+        let job = Task.detached(priority: .userInitiated) { () throws -> (spans: [CategorizedSpan], classification: CategoryResolver.Snapshot) in
+            var classification = seed
+            try Task.checkCancellation()
+            let spans = try store.spans(overlapping: interval)
+            try Task.checkCancellation()
+            var result: [CategorizedSpan] = []
+            result.reserveCapacity(spans.count)
+            for (index, span) in spans.enumerated() {
+                if index.isMultiple(of: 2048) { try Task.checkCancellation() }
+                var clipped = span
+                clipped.start = max(clipped.start, interval.start)
+                clipped.end = min(clipped.end, interval.end)
+                result.append(CategorizedSpan(span: clipped, categoryID: classification.categoryID(for: clipped)))
+            }
+            return (result, classification)
+        }
+        do {
+            let loaded = try await withTaskCancellationHandler { try await job.value } onCancel: { job.cancel() }
+            guard !Task.isCancelled, spansUnchanged(since: version, in: interval) else { return nil }
+            if let cached = rangeCache[interval] { return cached }
+            resolver.adopt(loaded.classification)
+            remember(loaded.spans, for: interval)
+            return loaded.spans
+        } catch is CancellationError {
+            return nil
+        } catch {
+            logger.error("rangedSpans failed: \(String(describing: error))")
+            return Task.isCancelled ? nil : []
+        }
+    }
+
+    /// Nothing written since `version` reaches `interval`: a tracking write
+    /// only touches spans from where it started (see `engineDataChanged`),
+    /// anything else, or a version missing from the log, could have.
+    private func spansUnchanged(since version: Int, in interval: DateInterval) -> Bool {
+        guard dataVersion != version else { return true }
+        let seen = writeLog.filter { $0.version > version }
+        return seen.count == dataVersion - version && seen.allSatisfy { $0.from >= interval.end }
     }
 
     /// Per-day pulse over the trailing `days` days (last element = the day

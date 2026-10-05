@@ -69,11 +69,13 @@ struct ActivitiesView: View {
     }
 
     var body: some View {
-        let range = activities.shownRange ?? model.range
+        // Until the range asked for has been read, the page draws a placeholder of it.
+        let loading = activities.shownRange == nil || activities.showsPlaceholder
+        let range = (loading ? nil : activities.shownRange) ?? model.range
         GeometryReader { geometry in
             let width = geometry.size.width - 2 * Design.Space.page
             VStack(alignment: .leading, spacing: Design.Space.lg) {
-                header(range, width: width)
+                header(range, width: width, loading: loading)
                 let daily = ActivitiesModel.showsTimeline(range)
                 // Always there on a day, so the list never moves when the sessions arrive.
                 if daily {
@@ -85,14 +87,20 @@ struct ActivitiesView: View {
                         if daily {
                             if activities.mode == .sessions {
                                 SessionListCard(model: model, activities: activities, onSelect: { activities.showsInspector = true }) { modeSwitch }
+                            } else if loading {
+                                timelineSkeleton
                             } else {
-                                timelineCard(range)
+                                timelineCard(range).transition(.opacity)
                             }
+                        } else if loading {
+                            listSkeleton
                         } else {
                             ActivityListView(model: model, activities: activities, groups: activities.groups,
                                               matchCount: activities.matchCount)
+                                .transition(.opacity)
                         }
                     }
+                    .animation(Design.motion(Design.page, reduced: reduceMotion), value: loading)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     // Only with something to inspect: nothing chosen, the list takes the width.
                     if activities.showsInspector, inspecting {
@@ -144,11 +152,11 @@ struct ActivitiesView: View {
         .pageSearchable(text: searchBinding, prompt: "搜索应用、网址、标题")
         .task {
             await Task.yield()
-            activities.recompute(model: model, events: calendarEvents)
+            activities.reload(model: model, events: calendarEvents)
         }
         .onPageChange(of: RecomputeKey(version: model.dataVersion, range: model.range.window,
                                        timeInterval: model.activityTimeInterval, filter: model.activityFilter)) {
-            activities.recompute(model: model, events: calendarEvents)
+            activities.reload(model: model, events: calendarEvents)
         }
         .onChange(of: activities.selectedActivity) { _, value in if value != nil { activities.showsInspector = true } }
         .onChange(of: activities.selectedSession) { _, value in if value != nil { activities.showsInspector = true } }
@@ -204,8 +212,8 @@ struct ActivitiesView: View {
 
     /// The range, the filter and the inspector; then one sentence about what
     /// the list below shows: everything, or the part a filter keeps.
-    private func header(_ range: DateRangeSelection, width: CGFloat) -> some View {
-        let loaded = activities.rangeCount != nil
+    private func header(_ range: DateRangeSelection, width: CGFloat, loading: Bool) -> some View {
+        let loaded = activities.rangeCount != nil && !loading
         let count = activities.rangeCount ?? 0
         let query = ActivitiesModel.normalizedQuery(model.activitySearch)
         let filtered = model.activityFilter != nil || activities.matchCount != nil
@@ -427,7 +435,7 @@ struct ActivitiesView: View {
         // Unchanged events leave the list as the other triggers built it.
         guard !Task.isCancelled, fetched != calendarEvents else { return }
         calendarEvents = fetched
-        activities.recompute(model: model, events: calendarEvents)
+        activities.reload(model: model, events: calendarEvents)
     }
 
     /// Search is a read-path filter over already-cached spans — it must
@@ -444,8 +452,90 @@ struct ActivitiesView: View {
         pendingSearch = Task { @MainActor in
             try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { return }
-            activities.recompute(model: model, events: calendarEvents)
+            activities.reload(model: model, events: calendarEvents)
         }
+    }
+
+    // MARK: Placeholders
+
+    private func greyBar(_ width: CGFloat, _ height: CGFloat = 10) -> some View {
+        Capsule().fill(Design.track).frame(width: width, height: height)
+    }
+
+    /// The list card before its rows: heading, grouping switch and a run of
+    /// category and activity rows, grey where the text goes. The content
+    /// fades in over it.
+    private var listSkeleton: some View {
+        VStack(alignment: .leading, spacing: Design.Space.md) {
+            HStack {
+                CardHeading(title: "明细")
+                Spacer(minLength: Design.Space.md)
+                Capsule().fill(Design.track).frame(width: 150, height: 24)
+            }
+            VStack(spacing: 0) {
+                ForEach(0..<14, id: \.self) { index in
+                    let isCategory = index % 4 == 0
+                    HStack(spacing: Design.Space.sm) {
+                        Color.clear.frame(width: 12)
+                        if isCategory { Circle().fill(Design.track).frame(width: 8, height: 8) }
+                        greyBar(CGFloat(90 + (index * 37) % 110), isCategory ? 12 : 10)
+                        Spacer(minLength: Design.Space.sm)
+                        greyBar(40)
+                        greyBar(Design.durationWidth - 14)
+                    }
+                    .padding(.leading, isCategory ? 0 : 20)
+                    .padding(.horizontal, Design.Space.sm)
+                    .frame(height: Design.rowHeight)
+                }
+            }
+            .padding(.horizontal, -Design.Space.sm)
+            Spacer(minLength: 0)
+        }
+        .padding([.horizontal, .top], Design.Space.lg)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .designCard()
+        .transition(.opacity)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("正在读取活动")
+    }
+
+    /// The timeline card before its blocks: its title, the hour rules and a
+    /// day of grey stretches.
+    private var timelineSkeleton: some View {
+        let hour: CGFloat = 64
+        return VStack(alignment: .leading, spacing: Design.Space.md) {
+            HStack(spacing: Design.Space.sm) {
+                Text("时间线").cardTitle().fixedSize()
+                Spacer(minLength: 0)
+                Capsule().fill(Design.track).frame(width: 120, height: 24)
+                Capsule().fill(Design.track).frame(width: 150, height: 24)
+            }
+            ZStack(alignment: .topLeading) {
+                VStack(spacing: 0) {
+                    ForEach(0..<12, id: \.self) { _ in
+                        HStack(alignment: .top, spacing: 4) {
+                            greyBar(36, 8).frame(width: 44, alignment: .leading)
+                            Rectangle().fill(Design.track).frame(height: 1)
+                        }
+                        .frame(height: hour, alignment: .top)
+                    }
+                }
+                ForEach(Array([(0.3, 1.1), (1.5, 0.5), (2.2, 1.6), (4.1, 0.9), (5.3, 1.4), (7.2, 0.7), (8.4, 1.8), (10.5, 0.8)].enumerated()), id: \.offset) { _, block in
+                    RoundedRectangle(cornerRadius: Design.Radius.mark, style: .continuous).fill(Design.track)
+                        .frame(maxWidth: 440).frame(height: block.1 * hour - 2)
+                        .padding(.leading, 48)
+                        .offset(y: block.0 * hour)
+                }
+            }
+            .frame(maxHeight: .infinity, alignment: .top)
+            .clipped()
+        }
+        .padding(.horizontal, Design.Space.lg).padding(.top, Design.Space.lg)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .designCard()
+        .transition(.opacity)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("正在读取活动")
     }
 }
 
@@ -657,7 +747,7 @@ final class ActivitiesModel {
     @ObservationIgnored private var selectionTimeInterval: DateInterval?
     @ObservationIgnored private var timelineItems: [CategorizedSpan] = []
     @ObservationIgnored private var timelineCategories: [String: Category] = [:]
-    @ObservationIgnored private var timelineMatching: ((CategorizedSpan) -> Bool)?
+    @ObservationIgnored private var timelineMatching: (@Sendable (CategorizedSpan) -> Bool)?
 
     /// The folded block holding the inspected span.
     var selectedBlock: TimelineBlock? {
@@ -730,12 +820,56 @@ final class ActivitiesModel {
         rebuildTimeline()
     }
 
-    /// `events` (C3): the current range's calendar events, fetched
-    /// asynchronously by `ActivitiesView` via `CalendarStore.events(on:)`
-    /// and handed in here -- `recompute` itself stays synchronous (existing
-    /// `onChange` call sites are unaffected), so `events` defaults to `[]`
-    /// for every call site that predates the calendar overlay.
-    func recompute(model: AppModel, events: [CalendarEvent] = []) {
+    /// Everything `derive` reads besides the spans, captured on the main
+    /// actor so the pass itself can run anywhere.
+    struct Inputs: Sendable {
+        let range: DateRangeSelection
+        let timeInterval: DateInterval?
+        let query: String?
+        let filterCategory: String?
+        let events: [CalendarEvent]
+        let categories: [String: Category]
+        let resolution: TimeInterval
+        let interruptions: DayInterruptions?
+        let rule: InterruptionRule
+        let focusSessions: [FocusSession]
+        let awayNotes: [AwayNote]
+    }
+
+    /// What `recompute` publishes, built off the main actor and assigned in one go.
+    struct Output: Sendable {
+        let rangeSeconds: TimeInterval
+        let rangeCount: Int
+        let displayedItems: [CategorizedSpan]
+        let shownSeconds: TimeInterval
+        let matchCount: Int?
+        let matchSeconds: TimeInterval?
+        let meetingSpanIDs: Set<Int64>
+        let meetingSeconds: TimeInterval
+        let groups: [CategoryGroup]
+        let segmentCounts: [ActivitySelection: Int]
+        let visibleSelections: Set<ActivitySelection>
+        let timelineItems: [CategorizedSpan]
+        let timelineMatching: (@Sendable (CategorizedSpan) -> Bool)?
+        let timelineBlocks: [TimelineBlock]
+        let calendarBlocks: [TimelineEventBlock]
+        let allDayTitles: [String]
+        let focusBlocks: [TimelineBlock]
+    }
+
+    /// The page is waiting for a range it is not showing yet, and has been
+    /// for long enough to notice: it draws a placeholder of its content.
+    var showsPlaceholder = false
+    /// The latest `reload`, for a test to wait on.
+    @ObservationIgnored private(set) var loadTask: Task<Void, Never>?
+    @ObservationIgnored private var placeholderTask: Task<Void, Never>?
+    /// Bumped by every `recompute`/`reload`: only the latest may publish.
+    @ObservationIgnored private var loadGeneration = 0
+
+    /// The inputs for `model`'s current range, after dropping what belonged to the last one.
+    private func prepare(model: AppModel, events: [CalendarEvent]) -> Inputs {
+        loadTask?.cancel()
+        loadGeneration += 1
         if selectionRange != model.range.interval || selectionTimeInterval != model.activityTimeInterval {
             selectedActivity = nil
             selectedStart = nil
@@ -745,15 +879,104 @@ final class ActivitiesModel {
             expandedRows.removeAll()
             collapsedCategories.removeAll()
         }
-        let all = model.rangedSpans()
-        shownRange = model.range
         if interruptionsDay != model.range.interval { dayInterruptions = nil }
-        rangeSeconds = all.reduce(0) { $0 + $1.span.duration }
-        rangeCount = all.count
-        let categories = model.resolver.categoriesByID
+        let daily = Self.showsTimeline(model.range)
+        return Inputs(range: model.range, timeInterval: model.activityTimeInterval,
+                      query: Self.normalizedQuery(model.activitySearch), filterCategory: model.activityFilter,
+                      events: events, categories: model.resolver.categoriesByID,
+                      resolution: TimelineZoom.resolution(for: timelineHourHeight),
+                      interruptions: dayInterruptions, rule: interruptionRule,
+                      focusSessions: daily ? model.focusStore.flatMap { try? $0.sessions(overlapping: model.range.interval) } ?? [] : [],
+                      awayNotes: daily ? (try? model.observationStore?.awayNotes(overlapping: model.range.interval)) ?? [] : [])
+    }
 
-        let query = Self.normalizedQuery(model.activitySearch)
-        let scoped = model.activityTimeInterval.map {
+    /// `events` (C3): the current range's calendar events, fetched
+    /// asynchronously by `ActivitiesView` via `CalendarStore.events(on:)`
+    /// and handed in here -- `events` defaults to `[]` for every call site
+    /// that predates the calendar overlay.
+    ///
+    /// Synchronous, on the main actor: for the callers that need the result
+    /// on return (a click that clears the filter and selects). The page
+    /// itself uses `reload`, which does the same pass off the main actor.
+    func recompute(model: AppModel, events: [CalendarEvent] = []) {
+        let inputs = prepare(model: model, events: events)
+        placeholderTask?.cancel()
+        showsPlaceholder = false
+        apply(Self.derive(all: model.rangedSpans(), inputs), inputs, model: model)
+    }
+
+    /// `recompute` with the database read, the classification and the
+    /// grouping done off the main actor. A newer `reload` or `recompute`
+    /// cancels this one, and a result that is no longer the latest is
+    /// dropped, so a slow month never lands over the day chosen after it.
+    func reload(model: AppModel, events: [CalendarEvent] = []) {
+        let inputs = prepare(model: model, events: events)
+        let generation = loadGeneration
+        placeholderTask?.cancel()
+        if shownRange == nil {
+            showsPlaceholder = true
+        } else if shownRange?.window != inputs.range.window {
+            // Another range's content is up. A load that is over in a blink
+            // (a cached day) should not flash the placeholder over it.
+            placeholderTask = Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(150))
+                if !Task.isCancelled { self?.showsPlaceholder = true }
+            }
+        }
+        loadTask = Task { [weak self] in
+            guard let all = await model.rangedSpansOffMain(for: inputs.range.interval) else { return }
+            let output = await Task.detached(priority: .userInitiated) { Self.derive(all: all, inputs) }.value
+            guard !Task.isCancelled, let self, generation == self.loadGeneration else { return }
+            self.placeholderTask?.cancel()
+            self.showsPlaceholder = false
+            self.apply(output, inputs, model: model)
+        }
+    }
+
+    private func apply(_ output: Output, _ inputs: Inputs, model: AppModel) {
+        shownRange = inputs.range
+        rangeSeconds = output.rangeSeconds
+        rangeCount = output.rangeCount
+        displayedItems = output.displayedItems
+        shownSeconds = output.shownSeconds
+        matchCount = output.matchCount
+        matchSeconds = output.matchSeconds
+        meetingSpanIDs = output.meetingSpanIDs
+        meetingSeconds = output.meetingSeconds
+        groups = output.groups
+        segmentCounts = output.segmentCounts
+        timelineItems = output.timelineItems
+        timelineCategories = inputs.categories
+        timelineMatching = output.timelineMatching
+        // The blocks were folded for the zoom and the switch-outs of the
+        // moment the pass began; if either moved since, fold again.
+        if TimelineZoom.resolution(for: timelineHourHeight) == inputs.resolution, dayInterruptions == inputs.interruptions,
+           interruptionRule == inputs.rule {
+            timelineBlocks = output.timelineBlocks
+        } else {
+            rebuildTimeline()
+        }
+        if let selectedActivity {
+            if !output.visibleSelections.contains(where: selectedActivity.matches) {
+                self.selectedActivity = nil
+                selectedStart = nil
+            } else if !timelineBlocks.contains(where: { $0.matchesFilter && $0.covers(selectedStart) && $0.contains(selectedActivity) }) {
+                selectedStart = timelineBlocks.first { $0.matchesFilter && $0.contains(selectedActivity) }?.start(of: selectedActivity)
+            }
+        }
+        if selectedActivity == nil, inputs.timeInterval != nil,
+           let first = timelineBlocks.first(where: \.matchesFilter), let activity = first.activity {
+            select(activity, start: first.start)
+        }
+        calendarBlocks = output.calendarBlocks
+        allDayTitles = output.allDayTitles
+        focusBlocks = output.focusBlocks
+        awayNotes = inputs.awayNotes
+    }
+
+    nonisolated static func derive(all: [CategorizedSpan], _ inputs: Inputs) -> Output {
+        let (query, categories, events) = (inputs.query, inputs.categories, inputs.events)
+        let scoped = inputs.timeInterval.map {
             Aggregator.clippedToElapsed(all, windowStart: $0.start, elapsed: $0.duration)
         } ?? all
         let items = Self.filter(scoped, query: query)
@@ -768,16 +991,12 @@ final class ActivitiesModel {
         // tell "no matches anywhere" apart from "matches exist, just not in
         // this category" for its empty-state text.
         let matchedItems: [CategorizedSpan]
-        if let filterCategoryID = model.activityFilter {
+        if let filterCategoryID = inputs.filterCategory {
             matchedItems = items.filter { $0.categoryID == filterCategoryID }
         } else {
             matchedItems = items
         }
-        displayedItems = matchedItems
-        shownSeconds = Aggregator.totalDuration(matchedItems.map(\.span))
-        let hasFilter = query != nil || model.activityTimeInterval != nil
-        matchCount = hasFilter ? matchedItems.count : nil
-        matchSeconds = hasFilter ? Aggregator.totalDuration(matchedItems.map(\.span)) : nil
+        let hasFilter = query != nil || inputs.timeInterval != nil
 
         // R-T10a: `meetingSpanIDs` badges live on `groups`' rows, and `groups`
         // (like `matchCount`'s underlying `items`) stays category-UNFILTERED
@@ -795,7 +1014,8 @@ final class ActivitiesModel {
         // (`model.range.interval.start`), so tagging it against a multi-day
         // range's spans (e.g. `last30`, whose spans span 29 other days) would
         // silently score every span against the wrong day's calendar.
-        let showsTimeline = Self.showsTimeline(model.range)
+        let showsTimeline = Self.showsTimeline(inputs.range)
+        let meetingSpanIDs: Set<Int64>, meetingSeconds: TimeInterval
         if showsTimeline {
             meetingSpanIDs = MeetingTagger.tagged(items: items, events: events).spanIDs
             meetingSeconds = MeetingTagger.tagged(items: matchedItems, events: events).seconds
@@ -809,7 +1029,7 @@ final class ActivitiesModel {
             byCategory[item.categoryID, default: []].append(item)
         }
 
-        groups = byCategory
+        let groups = byCategory
             .compactMap { categoryID, spans -> CategoryGroup? in
                 guard let category = categories[categoryID] else { return nil }
                 return CategoryGroup(
@@ -826,7 +1046,6 @@ final class ActivitiesModel {
         // the full day's context (spec §7) rather than collapsing around
         // just the search hits.
         let matchedSelections = matchedItems.map(Self.selection)
-        let visibleSelections = Set(matchedSelections)
         var visits: [ActivitySelection: Int] = [:]
         var previous: (row: ActivitySelection, end: Date)?
         for (item, selection) in zip(matchedItems, matchedSelections) {
@@ -838,40 +1057,36 @@ final class ActivitiesModel {
                 previous = (row, item.span.end)
             }
         }
-        segmentCounts = visits
-        let filterCategory = model.activityFilter
-        let timeInterval = model.activityTimeInterval
-        timelineItems = showsTimeline ? Self.splitAtTimeFilter(all, interval: timeInterval) : []
-        timelineCategories = categories
-        timelineMatching = filterCategory == nil && query == nil && timeInterval == nil ? nil : { item in
+        let (filterCategory, timeInterval) = (inputs.filterCategory, inputs.timeInterval)
+        let timelineItems = showsTimeline ? Self.splitAtTimeFilter(all, interval: timeInterval) : []
+        let filtered: @Sendable (CategorizedSpan) -> Bool = { item in
             (filterCategory == nil || item.categoryID == filterCategory)
                 && (query.map { Self.matches(item, query: $0) } ?? true)
                 && (timeInterval.map { item.span.start < $0.end && item.span.end > $0.start } ?? true)
         }
-        rebuildTimeline()
-        if let selectedActivity {
-            if !visibleSelections.contains(where: selectedActivity.matches) {
-                self.selectedActivity = nil
-                selectedStart = nil
-            } else if !timelineBlocks.contains(where: { $0.matchesFilter && $0.covers(selectedStart) && $0.contains(selectedActivity) }) {
-                selectedStart = timelineBlocks.first { $0.matchesFilter && $0.contains(selectedActivity) }?.start(of: selectedActivity)
-            }
-        }
-        if selectedActivity == nil, timeInterval != nil,
-           let first = timelineBlocks.first(where: \.matchesFilter), let activity = first.activity {
-            select(activity, start: first.start)
-        }
-        calendarBlocks = showsTimeline ? Self.eventBlocks(events, dayInterval: model.range.interval) : []
-        allDayTitles = showsTimeline ? events.filter { $0.isAllDay && !$0.isDeclined }.map(\.title) : []
-
-        if showsTimeline, let focusStore = model.focusStore {
-            let sessions = (try? focusStore.sessions(overlapping: model.range.interval)) ?? []
-            focusBlocks = Self.focusTimelineBlocks(sessions, items: all, categories: categories,
-                                                   dayInterval: model.range.interval)
-        } else {
-            focusBlocks = []
-        }
-        awayNotes = showsTimeline ? (try? model.observationStore?.awayNotes(overlapping: model.range.interval)) ?? [] : []
+        let matching = filterCategory == nil && query == nil && timeInterval == nil ? nil : filtered
+        let dayInterval = inputs.range.interval
+        let seconds = Aggregator.totalDuration(matchedItems.map(\.span))
+        return Output(
+            rangeSeconds: all.reduce(0) { $0 + $1.span.duration },
+            rangeCount: all.count,
+            displayedItems: matchedItems,
+            shownSeconds: seconds,
+            matchCount: hasFilter ? matchedItems.count : nil,
+            matchSeconds: hasFilter ? seconds : nil,
+            meetingSpanIDs: meetingSpanIDs,
+            meetingSeconds: meetingSeconds,
+            groups: groups,
+            segmentCounts: visits,
+            visibleSelections: Set(matchedSelections),
+            timelineItems: timelineItems,
+            timelineMatching: matching,
+            timelineBlocks: Self.timelineBlocks(timelineItems, categories: categories, resolution: inputs.resolution,
+                                                matching: matching, interruptions: inputs.interruptions, rule: inputs.rule),
+            calendarBlocks: showsTimeline ? Self.eventBlocks(events, dayInterval: dayInterval) : [],
+            allDayTitles: showsTimeline ? events.filter { $0.isAllDay && !$0.isDeclined }.map(\.title) : [],
+            focusBlocks: showsTimeline && !inputs.focusSessions.isEmpty
+                ? Self.focusTimelineBlocks(inputs.focusSessions, items: all, categories: categories, dayInterval: dayInterval) : [])
     }
 
     /// Split at the filter's exact edges so the timeline never highlights

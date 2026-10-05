@@ -231,12 +231,12 @@ import WebKit
         let dark = false
         /// One state of one page at each size; `setup` runs on the built list.
         func main(_ name: String, _ page: SidebarItem, kind: DateRangeSelection.Kind = .day, anchor: Date = Date(),
-                  sizes: [NSSize] = [wide], settle: Int = 1200,
+                  sizes: [NSSize] = [wide], settle: Int = 1200, loaded: Bool = true,
                   setup: (ActivitiesModel) async -> Void = { _ in }) async throws {
             model.sidebarSelection = page
             model.range = DateRangeSelection(kind: kind, anchor: anchor)
             let activities = ActivitiesModel()
-            activities.recompute(model: model, events: [])
+            if loaded { activities.recompute(model: model, events: []) }
             await setup(activities)
             for size in sizes {
                 try await shoot("main-\(name)-\(Int(size.width))", MainWindowView(model: model, activities: activities), size: size, settle: settle)
@@ -362,6 +362,15 @@ import WebKit
             }
         }
         try await main("act-week-closed", .activities, kind: .last7) { $0.showsInspector = false }
+        // A month, and the list and the timeline before their rows are read (shot almost at once).
+        try await main("act-month", .activities, kind: .last30, sizes: [wide, small])
+        try await main("act-month-loading", .activities, kind: .last30, sizes: [wide, small], settle: 30, loaded: false)
+        try await main("act-day-timeline-loading", .activities, anchor: yesterday, sizes: [wide], settle: 0, loaded: false) { $0.mode = .timeline }
+        // The top zoom stop, which draws only the blocks in view.
+        try await main("act-day-timeline-zoom", .activities, anchor: yesterday, sizes: [wide]) { activities in
+            longestBlock(activities)
+            activities.timelineHourHeight = TimelineZoom.stops.last ?? 720
+        }
 
         try await main("trends", .stats, kind: .last7, sizes: [wide, standard, small], settle: 3500)
         // The whole page at both ends of the width, then with a day pointed at in the daily bars and in the interruptions.

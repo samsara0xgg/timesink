@@ -83,6 +83,8 @@ public final class CategoryResolver {
     /// `testRefreshCategoriesKeepsMemoAndClassification`.
     private var memo: [MemoKey: String] = [:]
     private var overrides: [Int64: String] = [:]
+    /// Bumped by `refresh()`: a snapshot's memo is only good for the rules it was taken under.
+    private var generation = 0
 
     /// Bounds memory: on reaching the cap the memo is cleared wholesale and
     /// starts refilling.
@@ -167,6 +169,7 @@ public final class CategoryResolver {
                                              titleRules: titleRules, userVerdicts: user, jevVerdicts: jev, captureVerdicts: shots,
                                              categoryIDs: Set(categories.map(\.id)))
             memo.removeAll(keepingCapacity: true)
+            generation += 1
             refreshProjectVerdicts()
         } catch {
             logger.error("CategoryResolver.refresh failed, keeping previous context: \(String(describing: error), privacy: .public)")
@@ -233,6 +236,7 @@ public final class CategoryResolver {
         fileprivate let context: ClassificationContext
         fileprivate var memo: [MemoKey: String]
         fileprivate let overrides: [Int64: String]
+        fileprivate let generation: Int
 
         mutating func categoryID(for span: Span) -> String {
             if let id = span.id, let override = overrides[id] { return override }
@@ -245,7 +249,14 @@ public final class CategoryResolver {
         }
     }
 
-    func snapshot() -> Snapshot { Snapshot(context: context, memo: memo, overrides: overrides) }
+    func snapshot() -> Snapshot { Snapshot(context: context, memo: memo, overrides: overrides, generation: generation) }
+
+    /// Takes back what a worker learned, so the next pass on either side
+    /// starts warm. Only while the rules are the ones the snapshot was taken
+    /// under; the memo is a cache, so this never changes an answer.
+    func adopt(_ worked: Snapshot) {
+        if worked.generation == generation, worked.memo.count > memo.count { memo = worked.memo }
+    }
 
     nonisolated private static func categoryID(for span: Span, context: ClassificationContext,
                                                memo: inout [MemoKey: String]) -> String {

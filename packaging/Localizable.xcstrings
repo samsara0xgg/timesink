@@ -10920,6 +10920,16 @@
           }
         }
       }
+    },
+    "正在读取活动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading activities"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

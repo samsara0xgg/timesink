@@ -81,19 +81,22 @@ final class ActivitiesLoadPerfTests: XCTestCase {
         /// From the change until the page shows the new range: main-thread
         /// passes (a pass longer than 16.7 ms is a dropped frame) and the wait.
         @discardableResult
-        func measure(_ label: String, timeout: Double = 30, _ change: () -> Void) async -> Double {
+        func measure(_ label: String, timeout: Double = 30, until: (() -> Bool)? = nil, _ change: () -> Void) async -> Double {
             monitor.passes.removeAll()
             let t0 = CACurrentMediaTime()
             change()
             var toContent = -1.0
             while CACurrentMediaTime() - t0 < timeout {
                 try? await Task.sleep(for: .milliseconds(4))
-                if isLoaded { toContent = (CACurrentMediaTime() - t0) * 1000; break }
+                if until?() ?? isLoaded { toContent = (CACurrentMediaTime() - t0) * 1000; break }
             }
             await settle(0.5)
             let passes = monitor.passes.filter { $0.end >= t0 }.map(\.ms)
+            let (longest, drops, total) = (passes.max() ?? 0, passes.filter { $0 > 16.7 }.count, passes.reduce(0, +))
             print(String(format: "PERF load %@ toContent=%.0f longestPass=%.1f drops=%d totalPassMs=%.0f digest=%@", label, toContent,
-                         passes.max() ?? 0, passes.filter { $0 > 16.7 }.count, passes.reduce(0, +), ActivitiesFingerprint.digest(activities)))
+                         longest, drops, total, ActivitiesFingerprint.digest(activities)))
+            // The digest is a long pass of its own; let it end before the next measurement starts.
+            await settle(0.3)
             return toContent
         }
     }
@@ -121,15 +124,56 @@ final class ActivitiesLoadPerfTests: XCTestCase {
             host.model.range = DateRangeSelection(kind: .custom, anchor: now, customStart: now.addingTimeInterval(-60 * 86400), customEnd: now)
         }
         await host.measure("range_last30_third") { host.model.range = DateRangeSelection(kind: .last30, anchor: Date()) }
-        if let id = host.activities.groups.first?.id {
-            await host.measure("filter_first_category") { host.model.activityFilter = id }
-            await host.measure("filter_clear") { host.model.activityFilter = nil }
+        // The shown range stays; the content is replaced when the new rows are ready.
+        let a = host.activities
+        if let id = a.groups.first?.id {
+            var before = a.displayedItems.count
+            await host.measure("filter_first_category", until: { a.displayedItems.count != before }) { host.model.activityFilter = id }
+            before = a.displayedItems.count
+            await host.measure("filter_clear", until: { a.displayedItems.count != before }) { host.model.activityFilter = nil }
         }
-        host.model.activitySearch = "safari"
-        await host.measure("search_safari") { host.model.dataChanged() }
-        host.model.activitySearch = ""
-        // A data change on the shown range: the content stays while it reloads.
-        await host.measure("data_changed_same_range") { host.model.dataChanged() }
+        let before = a.displayedItems.count
+        await host.measure("search_safari", until: { a.displayedItems.count != before }) { host.model.activitySearch = "safari" }
+        await host.measure("search_clear", until: { a.displayedItems.count == before }) { host.model.activitySearch = "" }
+        // A tracker write or an edit: the range is read again.
+        await host.measure("data_changed_same_range", timeout: 3, until: { false }) { host.model.dataChanged() }
+    }
+
+    /// The off-main load against the synchronous recompute, on a month of real
+    /// data (two separate models, so both start from cold caches).
+    func testOffMainMatchesSynchronousOnRealData() async throws {
+        let path = try perfDB()
+        let monitor = PerfReview.Monitor()
+        for (label, search, filtered) in [("plain", "", false), ("search", "safari", false), ("category", "", true)] {
+            let (syncModel, offModel) = (try PerfReview.realModel(path: path), try PerfReview.realModel(path: path))
+            for model in [syncModel, offModel] {
+                model.range = DateRangeSelection(kind: .last30, anchor: Date())
+                model.activitySearch = search
+            }
+            if filtered {
+                let probe = ActivitiesModel()
+                let unfiltered = try PerfReview.realModel(path: path)
+                unfiltered.range = syncModel.range
+                probe.recompute(model: unfiltered)
+                for model in [syncModel, offModel] { model.activityFilter = probe.groups.first?.id }
+            }
+            let sync = ActivitiesModel(), off = ActivitiesModel()
+            var t = CFAbsoluteTimeGetCurrent()
+            sync.recompute(model: syncModel)
+            let syncMs = (CFAbsoluteTimeGetCurrent() - t) * 1000
+            try? await Task.sleep(for: .milliseconds(200))  // let that long pass end before measuring
+            monitor.passes.removeAll()
+            t = CACurrentMediaTime()
+            off.reload(model: offModel)
+            await off.loadTask?.value
+            let offMs = (CACurrentMediaTime() - t) * 1000
+            let blocked = monitor.passes.filter { $0.end >= t }.map(\.ms).max() ?? 0
+            let identical = ActivitiesFingerprint.text(off) == ActivitiesFingerprint.text(sync)
+            XCTAssertTrue(identical)
+            print(String(format: "PERF parity %@ spans=%d shown=%d groups=%d identical=%d syncColdMs=%.0f offMainTotalMs=%.0f offMainLongestPass=%.1f digest=%@", label,
+                         sync.rangeCount ?? 0, sync.displayedItems.count, sync.groups.count, identical ? 1 : 0, syncMs, offMs, blocked,
+                         ActivitiesFingerprint.digest(sync)))
+        }
     }
 
     /// The busiest recent day as the detailed timeline, at every zoom stop.
