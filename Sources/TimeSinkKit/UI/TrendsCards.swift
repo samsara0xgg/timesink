@@ -127,7 +127,7 @@ struct InterruptionTrendCard: View {
         return Chart {
             ForEach(days) { day in
                 BarMark(x: .value("日期", day.day, unit: .day), y: .value("次数", day.count))
-                    .foregroundStyle(Design.alert.opacity(hovered == nil || hovered == day.day ? 1 : 0.4))
+                    .foregroundStyle(hovered == day.day ? Design.ink : Design.ink2.opacity(hovered == nil ? 0.55 : 0.35))
                     .accessibilityLabel(day.day.formatted(.dateTime.month().day()))
                     .accessibilityValue("\(day.count)")
             }

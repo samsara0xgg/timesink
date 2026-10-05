@@ -285,7 +285,7 @@ struct ActivityInspector: View {
                                 .lineLimit(1).truncationMode(.middle)
                             Spacer(minLength: 4)
                             Text(out.tag).font(.note.weight(.semibold)).fixedSize()
-                                .foregroundStyle(out.isInterruption ? Color.red : Color.secondary)
+                                .foregroundStyle(out.isInterruption ? Design.ink : Design.ink2)
                         }
                         .font(.body).frame(height: 22)
                     }
