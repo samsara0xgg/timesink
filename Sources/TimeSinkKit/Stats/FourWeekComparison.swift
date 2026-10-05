@@ -44,11 +44,11 @@ struct FourWeekComparison: Sendable, Equatable {
             if ago < 14 { recent += entry.seconds } else { before += entry.seconds }
         }
         func name(_ id: String) -> String { categories[id]?.name ?? String(localized: "未分类") }
-        rows = weeks.map { id, seconds in
+        let unsorted: [Row] = weeks.map { id, seconds in
             Row(id: id, name: name(id), colorHex: categories[id]?.colorHex ?? "#98989D", weeks: seconds)
         }
-        .sorted { $0.total == $1.total ? $0.id < $1.id : $0.total > $1.total }
-        .prefix(Self.leading).map { $0 }
+        let sorted = unsorted.sorted { (a: Row, b: Row) -> Bool in a.total == b.total ? a.id < b.id : a.total > b.total }
+        rows = Array(sorted.prefix(Self.leading))
 
         guard before >= 60 else { headline = nil; return }
         let delta = Format.minuteDelta(recent, before)
