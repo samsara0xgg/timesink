@@ -45,7 +45,10 @@ final class BlockLabelTests: XCTestCase {
     }
 
     private func blend(_ fill: UInt32) -> UInt32 {
-        let c = [16, 8, 0].map { Double((fill >> UInt32($0)) & 0xFF) }.map { UInt32(($0 * 0.8 + 255 * 0.2).rounded()) }
+        let c: [UInt32] = [16, 8, 0].map { (shift: UInt32) -> UInt32 in
+            let channel = Double((fill >> shift) & 0xFF)
+            return UInt32((channel * 0.8 + 255 * 0.2).rounded())
+        }
         return c[0] << 16 | c[1] << 8 | c[2]
     }
 
