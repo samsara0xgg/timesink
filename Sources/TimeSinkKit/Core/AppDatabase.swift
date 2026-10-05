@@ -469,6 +469,21 @@ public enum AppDatabase {
                 FROM jevVerdict WHERE projectID <> '' AND source <> 'seed'
                 """)
         }
+        migrator.registerMigration("v20") { db in
+            // A project's colour is stored, not worked out from its name on each page. Additive: one
+            // nullable column. Existing projects get their name's slot if free, else the next free one;
+            // live projects first, so no two of them share a colour while there are eight or fewer.
+            if try !db.columns(in: "project").contains(where: { $0.name == "colorIndex" }) {
+                try db.alter(table: "project") { t in t.add(column: "colorIndex", .integer) }
+            }
+            var taken = Set<Int>()
+            let rows = try Row.fetchAll(db, sql: "SELECT id, name, archived FROM project WHERE colorIndex IS NULL ORDER BY archived, sortOrder, createdAt, id")
+            for row in rows {
+                let slot = ProjectPalette.slot(for: row["name"], taken: taken)
+                if (row["archived"] as Bool) == false { taken.insert(slot) }
+                try db.execute(sql: "UPDATE project SET colorIndex = ? WHERE id = ?", arguments: [slot, row["id"] as String])
+            }
+        }
         return migrator
     }
 }

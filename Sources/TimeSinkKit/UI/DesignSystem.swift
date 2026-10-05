@@ -83,8 +83,7 @@ enum Design {
 
     // MARK: Project colours
 
-    /// Projects are named by the person, so their colour is picked by the
-    /// name (`ProjectPalette`). The last slot is for time that belongs to no project.
+    /// A project's colour is stored with it (`UserProject.colorIndex`). The last slot is for time that belongs to no project.
     static func projectColor(_ index: Int?) -> Color { ColorSystem.project(index) }
     /// The ink for text on a project's colour.
     static func projectLabel(_ index: Int?) -> Color { ColorSystem.projectLabel(index) }

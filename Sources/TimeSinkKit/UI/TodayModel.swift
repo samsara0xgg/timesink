@@ -59,7 +59,8 @@ final class TodayModel {
         plan = TodayPlan.build(overview: overview, sessions: sessions, explicit: sessions.map { model.sessionProject($0) },
                                episodes: episodes, notes: notes, categories: model.resolver.categoriesByID,
                                lastFocus: lastFocus, hasFocusToday: !overview.sessions.isEmpty, isToday: isToday,
-                               newProject: isToday ? model.cachedProjectSuggestion?.todoCandidate?.name : nil)
+                               newProject: isToday ? model.cachedProjectSuggestion?.todoCandidate?.name : nil,
+                               colors: ProjectPalette.lookup(model.projects))
         loadError = nil
         // The 14-day read for the "new project" todo never holds the page: it joins the plan when it arrives.
         suggestionTask?.cancel()

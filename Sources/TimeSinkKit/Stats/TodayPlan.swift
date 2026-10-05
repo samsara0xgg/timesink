@@ -1,8 +1,9 @@
 import Foundation
 
-/// Which colour a project wears. Projects are named by whoever uses the app,
-/// so the colour comes from the name: the same project keeps its colour from
-/// day to day, and two projects on one day never share one while slots last.
+/// Which colour a project wears. A project's colour is stored with it
+/// (`UserProject.colorIndex`); the hash of its name only proposes the first
+/// colour when the project is made, so the same project keeps its colour
+/// everywhere and from day to day.
 enum ProjectPalette {
     /// Colour slots; the design reserves one more for time with no project.
     static let slots = 8
@@ -15,17 +16,19 @@ enum ProjectPalette {
         return Int(hash % UInt64(slots))
     }
 
-    /// A slot for each name, in priority order: the preferred one, or the
-    /// next free one when it is taken. More names than slots share.
-    static func assign(_ names: [String]) -> [String: Int] {
-        var used = Set<Int>(), result: [String: Int] = [:]
-        for name in names where result[name] == nil {
-            var slot = preferredSlot(name)
-            if used.count < slots { while used.contains(slot) { slot = (slot + 1) % slots } }
-            used.insert(slot)
-            result[name] = slot
-        }
-        return result
+    /// The colour for a new project: its preferred slot if no live project
+    /// uses it, else the first free one; all taken, the preferred slot.
+    static func slot(for name: String, taken: Set<Int>) -> Int {
+        let preferred = preferredSlot(name)
+        if !taken.contains(preferred) { return preferred }
+        return (0..<slots).first { !taken.contains($0) } ?? preferred
+    }
+
+    /// Stored colours by `SessionProjectResolver.normalized` name, for the views that colour by project.
+    static func lookup(_ projects: [UserProject]) -> [String: Int] {
+        Dictionary(projects.compactMap { project in
+            (SessionProjectResolver.normalized(project.name), project.colorIndex ?? preferredSlot(project.name))
+        }, uniquingKeysWith: { first, _ in first })
     }
 }
 
@@ -214,18 +217,16 @@ struct TodayPlan {
     static func build(overview: DayOverview, sessions: [WorkSession], explicit: [String?],
                       episodes: [SwitchEpisode], notes: [AwayNote], categories categoryByID: [String: Category],
                       lastFocus: (day: Date, minutes: Int)?, hasFocusToday: Bool,
-                      isToday: Bool, newProject: String? = nil, calendar: Calendar = .current) -> TodayPlan {
+                      isToday: Bool, newProject: String? = nil, colors: [String: Int] = [:], calendar: Calendar = .current) -> TodayPlan {
         let resolved = ProjectGuess.resolve(sessions, explicit: explicit)
         let interruptions = episodes.filter { $0.kind == .interruption }
-        // Biggest projects get the first pick of colours.
-        var seconds: [String: TimeInterval] = [:]
-        for (session, project) in zip(sessions, resolved) { if let name = project.project { seconds[name, default: 0] += session.recorded } }
-        let order = seconds.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }.map(\.key)
-        let slots = ProjectPalette.assign(order)
+        // A project's colour is the one stored with it; a name that is not one of the projects (a session you
+        // named by hand) falls back to the colour its name proposes.
+        func slot(_ name: String) -> Int { colors[SessionProjectResolver.normalized(name)] ?? ProjectPalette.preferredSlot(name) }
 
         let rows = zip(sessions, resolved).map { session, project in
             Row(session: session, project: project.project, guessed: project.guessed,
-                slot: project.project.flatMap { slots[$0] },
+                slot: project.project.map(slot),
                 projectPending: project.project == nil && session.projectPending,
                 interruptions: interruptions.filter { $0.start >= session.start && $0.start < session.end }.count,
                 switches: switches(in: DateInterval(start: session.start, end: max(session.end, session.start.addingTimeInterval(1))), items: overview.items),

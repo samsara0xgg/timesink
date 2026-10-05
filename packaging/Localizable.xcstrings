@@ -10920,6 +10920,46 @@
           }
         }
       }
+    },
+    "项目颜色": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Project colour"
+          }
+        }
+      }
+    },
+    "颜色 %lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Colour %lld"
+          }
+        }
+      }
+    },
+    "没有其他项目用这个颜色": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No other project uses this colour"
+          }
+        }
+      }
+    },
+    "也用于：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Also used by: %@"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
