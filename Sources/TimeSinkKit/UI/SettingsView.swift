@@ -124,7 +124,7 @@ struct RefinedGeneralPane: View {
 struct RefinedRecordingPane: View {
     let model: AppModel
     @State private var idleMinutes: Double = 3
-    @State private var retention = 7
+    @State private var retention = 30
     @State private var summary = ObservationStore.Summary(count: 0, latestAt: nil)
     @State private var confirmingDelete = false
     @State private var status: String?

@@ -1,6 +1,6 @@
 # Every push and pull request: the Swift package builds, its tests pass and
 # every UI string has English on macOS; the Lambda's tests pass against
-# moto; the CDK app synthesizes.
+# moto; the CDK app's assertion tests pass and it synthesizes.
 # None of the three needs AWS credentials.
 name: CI
 
@@ -51,4 +51,5 @@ jobs:
           cache: npm
           cache-dependency-path: cloud/infra/package-lock.json
       - run: npm ci
+      - run: npm test
       - run: npx cdk synth --quiet

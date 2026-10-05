@@ -53,7 +53,7 @@ public actor ScreenCollector {
     private var frameProvider: FrameProvider?
     private var permissionLogged = false
     private var lastPrune = Date.distantPast
-    private var retentionDays = 7
+    private var retentionDays = 30
     public func setRetentionDays(_ days: Int) { retentionDays = max(1, min(30, days)); lastPrune = .distantPast }
     public private(set) var paused: Bool
     /// Counters for the current health window; flushed as one `captureHealth`

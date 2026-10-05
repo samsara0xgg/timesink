@@ -142,7 +142,7 @@ public enum ScreenSignature {
 /// Image retention: day folders are named by local date, so pruning is a
 /// string comparison against the cutoff day.
 public enum CaptureRetention {
-    public static let days = 7
+    public static let days = 30
 
     public static func dayStamp(_ date: Date, calendar: Calendar = .current) -> String {
         let c = calendar.dateComponents([.year, .month, .day], from: date)

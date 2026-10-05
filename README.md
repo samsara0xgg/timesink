@@ -4,7 +4,15 @@
 
 **Know where your day goes.** A native macOS menu bar app that automatically tracks apps and websites, helps you understand your habits, and protects time for focused work.
 
-[Download for macOS](https://d2e75eb005kjod.cloudfront.net/TimeSink.dmg) · [Features](#from-activity-to-understanding) · [Engineering](#engineering-highlights) · [Privacy](#your-data-your-choice) · [Build from source](#build-from-source)
+[Download for macOS](https://d2e75eb005kjod.cloudfront.net/TimeSink.dmg) · [Coming soon](#coming-soon-automatic-categories-with-jev) · [Features](#from-activity-to-understanding) · [Engineering](#engineering-highlights) · [Privacy](#your-data-your-choice) · [Build from source](#build-from-source)
+
+> ### Coming soon: automatic categories with Jev
+>
+> The next release hands most categorization to Jev, TypeSafe's decision model, called through OpenRouter. Each distinct activity (app, site, window title) is judged once and cached, and your own rules always take priority. If Jev isn't sure, it asks again with examples you've already confirmed. Anything still uncertain goes to a To confirm list instead of being guessed.
+>
+> - On 30 days of real usage, 98% of tracked time landed in the right category, up from 73% with the old rule-based classifier. This was measured on 262 activities that two independent labelers agreed on.
+> - Classifying the full 30 days cost about $0.25. Ongoing use stays under a monthly cap you set (default $1).
+> - It's optional, off by default, and uses your own OpenRouter key. It sends the app name, domain, window title and document name. Optionally, it also sends text read from screenshots, with emails and long numbers removed.
 
 ![TimeSink — automatic activity tracking, time analysis, and focus tools for macOS](docs/assets/readme/timesink-poster.png)
 
@@ -39,7 +47,7 @@ Foreground app + Chrome + system state          (sampled once a second)
 - **Data capture.** The tracker samples the frontmost app once a second and starts a new span whenever the app, window title, URL or document changes. Spans are stored locally in SQLite through GRDB.
 - **Categorization.** Every span resolves to a category through built-in app rules, URL rules, about 8,100 seeded domains and user rules. Results are cached by span content and URL rules are precompiled, so classifying 30 days of history does not block the UI.
 - **Cloud sync.** One Python Lambda behind an HTTP API with a Cognito JWT authorizer ([`cloud/api`](cloud/api)). Items are keyed by user and `device#originId`, so a retried upload overwrites instead of duplicating. Devices pull each other's records through a time-ordered index, page by page, with a 60-second overlap so concurrent writers are never missed. Infrastructure is TypeScript CDK ([`cloud/infra`](cloud/infra)).
-- **Tests and CI/CD.** Every push runs GitHub Actions: the Swift package builds and its test suite runs on macOS, the Lambda tests run against moto (mocked DynamoDB and Cognito), and the CDK app synthesizes. Changes under `cloud/` that reach `main` deploy to AWS through GitHub OIDC, with no AWS keys stored anywhere.
+- **Tests and CI/CD.** Every push runs GitHub Actions: the Swift package builds and its test suite runs on macOS, the Lambda tests run against moto (mocked DynamoDB and Cognito), and assertion tests hold the CDK app to its guarantees (retained user data, every route behind auth, throttling, deploy trust limited to `main`) before it synthesizes. The API is rate-limited, Lambda logs expire after 30 days, and errors or 5xx responses raise an email alarm. Changes under `cloud/` that reach `main` deploy to AWS through GitHub OIDC, with no AWS keys stored anywhere.
 
 ### Measured performance
 

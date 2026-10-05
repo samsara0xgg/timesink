@@ -4,6 +4,7 @@
   "private": true,
   "description": "TimeSink cloud: Cognito user pool, HTTP API + Lambda, DynamoDB (AWS CDK)",
   "scripts": {
+    "test": "node --require ts-node/register --test test/*.test.ts",
     "synth": "cdk synth",
     "diff": "cdk diff",
     "deploy": "cdk deploy --outputs-file outputs.json"
