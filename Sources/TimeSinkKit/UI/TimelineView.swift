@@ -576,7 +576,19 @@ private struct TimelineBlocksCanvas: View, Animatable {
                 resolved[color] = flat
                 return flat
             }
-            for block in blocks { draw(block, in: context, resolve: resolve) }
+            // The canvas is as tall as the whole day (17 280 pt at the top zoom
+            // stop) and redraws on every scroll step; its clip is the part in
+            // view, so blocks outside it (plus room for a ring or a tick) cost nothing.
+            let visible = context.clipBoundingRect.insetBy(dx: 0, dy: -12)
+            let whole = visible.isNull || visible.isEmpty || visible.isInfinite
+            for block in blocks {
+                if !whole {
+                    let top = max(0, block.start.timeIntervalSince(dayStart) / 3600 * hourHeight)
+                    let bottom = top + max(2, block.duration / 3600 * hourHeight)
+                    if bottom < visible.minY || top > visible.maxY { continue }
+                }
+                draw(block, in: context, resolve: resolve)
+            }
         }
         .allowsHitTesting(false)
     }
