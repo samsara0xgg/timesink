@@ -205,11 +205,18 @@ struct TodayTimelineCard: View {
         let shape = RoundedRectangle(cornerRadius: Design.Radius.mark, style: .continuous)
         return Button { select(row) } label: {
             ZStack(alignment: .leading) {
-                shape.fill(color)
+                if pending(row) {
+                    // Waiting for Jev's project answer: a light hatch, as against a known "no project".
+                    shape.fill(Design.hoverFill)
+                    HatchFill(away: true).clipShape(shape)
+                } else {
+                    shape.fill(color)
+                }
                 if row.guessed { StripeOverlay().clipShape(shape) }
                 // The label shows only if it fits whole; never an ellipsis.
                 ViewThatFits(in: .horizontal) {
-                    Text(TodayFmt.clock(row.session.recorded)).font(.note.weight(.semibold)).monospacedDigit().foregroundStyle(.white)
+                    Text(TodayFmt.clock(row.session.recorded)).font(.note.weight(.semibold)).monospacedDigit()
+                        .foregroundStyle(pending(row) ? Design.ink2 : .white)
                         .lineLimit(1).fixedSize().padding(.horizontal, 6)
                     Color.clear.frame(width: 0, height: 0)
                 }
@@ -226,25 +233,32 @@ struct TodayTimelineCard: View {
         .accessibilityLabel(Text(verbatim: "\(title(row)) \(model.time(row.session.start))–\(model.time(row.session.end))"))
     }
 
-    /// The colour a block, and its card's dot, are drawn in.
+    /// The colour a block, and its card's dot, are drawn in. "By project" never falls back to the
+    /// category: a project has its colour, anything else is the neutral "no project" slate.
     private func color(of row: TodayPlan.Row) -> Color {
-        if colors == .project, row.slot != nil || noProjectsYet { return Design.projectColor(row.slot) }
+        if colors == .project { return Design.projectColor(row.slot) }
         let category = model.resolver.categoriesByID[row.session.categoryID]
         return RefinedStyle.category(row.session.categoryID, hex: category?.colorHex ?? "#C7C7CC")
     }
 
-    /// "By project" with no project anywhere on this day and none created: the
-    /// blocks stay neutral and the legend says how to make one. With projects
-    /// but none on this day, the blocks take their category colours.
+    /// A block in "By project" mode that waits for Jev.
+    private func pending(_ row: TodayPlan.Row) -> Bool { colors == .project && row.projectPending }
+
+    /// "By project" with no project created at all: the legend says how to make one.
     private var noProjectsYet: Bool { colors == .project && model.projects.isEmpty && !plan.rows.contains { $0.slot != nil } }
+
+    /// Some block in "By project" mode is still waiting for Jev.
+    private var anyPending: Bool { colors == .project && plan.rows.contains { $0.projectPending } }
 
     /// What the colours stand for, biggest first: the project or the main
     /// category of each block, once.
     private var colorKey: [(name: String, color: Color)] {
         var seconds: [String: TimeInterval] = [:], swatch: [String: Color] = [:]
         for row in plan.rows {
-            let byProject = colors == .project && row.slot != nil
-            let name = byProject ? (row.project ?? "") : (model.resolver.categoriesByID[row.session.categoryID]?.name ?? String(localized: "未分类"))
+            // "By project": each project by name, and the rest as one "no project" entry.
+            let name = colors == .project ? (row.slot != nil ? (row.project ?? "") : String(localized: "没有项目"))
+                : (model.resolver.categoriesByID[row.session.categoryID]?.name ?? String(localized: "未分类"))
+            if colors == .project, row.projectPending { continue }
             seconds[name, default: 0] += row.session.recorded
             swatch[name] = color(of: row)
         }
@@ -327,6 +341,16 @@ struct TodayTimelineCard: View {
                     keyRow(colorKey.prefix(3))
                     Color.clear.frame(width: 0, height: 0)
                 }
+                if anyPending {
+                    HStack(spacing: 6) {
+                        HatchFill(away: true).frame(width: 14, height: 10).clipShape(RoundedRectangle(cornerRadius: 2))
+                        Text("Jev 正在判定项目…")
+                    }.fixedSize()
+                }
+            }
+            if colors == .project, !noProjectsYet {
+                Button("管理项目 ›") { model.organizationTab = .projects; model.sidebarSelection = .organization }
+                    .buttonStyle(LinkButtonStyle()).fixedSize()
             }
             HStack(spacing: 6) {
                 HatchFill(away: true).frame(width: 14, height: 10).clipShape(RoundedRectangle(cornerRadius: 2))

@@ -305,8 +305,9 @@ public enum RefinedPreview {
         }
     }
     /// `days`: how much history the sample day has. `projects`: three sample
-    /// projects with Jev's project answers on the sample windows.
-    @MainActor static func fixture(days: Int = 30, projects withProjects: Bool = false, repos: Bool = true) throws -> AppModel {
+    /// projects with Jev's project answers on the sample windows (`judged`: the
+    /// other windows answered 'none', else still waiting).
+    @MainActor static func fixture(days: Int = 30, projects withProjects: Bool = false, judged: Bool = true, repos: Bool = true) throws -> AppModel {
         let db = try AppDatabase.openInMemory()
         let categories = CategoryStore(db), spans = SpanStore(db), settings = SettingsStore(db)
         SeedImporter.importIfNeeded(categoryStore: categories, settings: settings)
@@ -344,7 +345,7 @@ public enum RefinedPreview {
             let session = try sessions.start(at: start, plannedSeconds: 2700)
             try sessions.finish(id: session.id!, end: start.addingTimeInterval(2700), appBlocks: offset % 2, siteBlocks: 1, completed: true)
         }
-        if withProjects { try addSampleProjects(to: model, db: db) }
+        if withProjects { try addSampleProjects(to: model, db: db, judged: judged) }
         model.dataChanged()
         return model
     }
@@ -352,7 +353,7 @@ public enum RefinedPreview {
     /// Three projects and a project answer for every sample window, as Jev would
     /// have given: the sample developer's app and its design and team work.
     /// Each window keeps the category the rules give it.
-    @MainActor private static func addSampleProjects(to model: AppModel, db: DatabaseQueue) throws {
+    @MainActor private static func addSampleProjects(to model: AppModel, db: DatabaseQueue, judged: Bool) throws {
         let store = model.categoryStore.projects
         let aurora = try store.add(name: "Aurora", description: "The timeline app")
         let design = try store.add(name: "Design system", description: "Figma boards and design docs")
@@ -368,16 +369,10 @@ public enum RefinedPreview {
             if designApps.contains(span.appBundleID) || designDomains.contains(span.domain ?? "") { id = design.id }
             else if teamApps.contains(span.appBundleID) { id = team.id }
             else if ["com.apple.dt.Xcode", "com.apple.Terminal"].contains(span.appBundleID) || ["github.com", "linear.app", "developer.apple.com", "stackoverflow.com"].contains(span.domain ?? "") { id = aurora.id }
-            else { id = nil }
+            // `judged: false` leaves every other window without an answer, as while Jev is still working.
+            else { id = judged ? JevPrompt.noProject : nil }
             guard let id else { continue }
-            let category = model.resolver.categoryID(for: span)
-            try db.write { db in
-                try db.execute(sql: """
-                    INSERT OR IGNORE INTO jevVerdict (appBundleID, domain, title, document, categoryID, prob, promptVersion, at, source,
-                                                      projectID, projectProb, projectPromptVersion)
-                    VALUES (?, ?, ?, ?, ?, 0.9, 'sample', ?, 'jev', ?, 0.88, ?)
-                    """, arguments: [key.appBundleID, key.domain, key.title, key.document, category, Date(), id, version])
-            }
+            try model.categoryStore.saveProjectVerdict(key, projectID: id, prob: 0.88, runnerUp: "", promptVersion: version)
         }
         model.resolver.jevEnabled = true
         model.reloadProjects()

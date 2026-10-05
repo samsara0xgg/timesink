@@ -10687,16 +10687,6 @@
         }
       }
     },
-    "近 14 天": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Last 14 days"
-          }
-        }
-      }
-    },
     "均 %@": {
       "localizations": {
         "en": {
@@ -10794,7 +10784,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "the week before"
+            "value": "Previous week"
           }
         }
       }
@@ -10825,16 +10815,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Category changed"
-          }
-        }
-      }
-    },
-    "上一周": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Previous week"
           }
         }
       }
@@ -10887,6 +10867,36 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "没有项目": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No project"
+          }
+        }
+      }
+    },
+    "管理项目 ›": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manage projects ›"
+          }
+        }
+      }
+    },
+    "Jev 正在判定项目…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jev is still sorting projects…"
           }
         }
       }

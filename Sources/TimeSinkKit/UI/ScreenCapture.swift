@@ -270,6 +270,12 @@ import WebKit
             // No project anywhere: the legend points at the Projects tab.
             let bare = try RefinedPreview.fixture(repos: false)
             try await projectsPage("today-projects-none", bare, .today, sizes: [wide, small])
+            // The three states of "By project": every window judged (a project, or slate for none), some still waiting
+            // for Jev (hatch, with a note in the legend), and no project at all (the empty state).
+            try await projectsPage("today-by-project-states-judged", sample, .today, sizes: [wide, small])
+            let waiting = try RefinedPreview.fixture(projects: true, judged: false)
+            try await projectsPage("today-by-project-states-pending", waiting, .today, sizes: [wide, small])
+            try await projectsPage("today-by-project-states-none", bare, .today, sizes: [wide, small])
             UserDefaults.standard.removeObject(forKey: "todayTimelineColors")
         }
 
