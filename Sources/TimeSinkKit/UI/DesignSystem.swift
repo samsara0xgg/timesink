@@ -243,12 +243,11 @@ struct AccentButtonStyle: ButtonStyle {
 
         var body: some View {
             configuration.label
-                .font(.body.weight(.semibold)).foregroundStyle(.white)
+                .font(.body.weight(.semibold)).foregroundStyle(enabled ? Color.white : Design.ink2)
                 .padding(.horizontal, 14).frame(height: height)
-                .background(Design.accent, in: RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous))
+                .background(enabled ? Design.accent : Design.selectedFill, in: RoundedRectangle(cornerRadius: Design.Radius.control, style: .continuous))
                 .brightness(configuration.isPressed ? -0.08 : hovered ? 0.04 : 0)
                 .animation(reduceMotion ? nil : Design.quick, value: hovered)
-                .opacity(enabled ? 1 : 0.5)
                 .onHover { hovered = $0 }
                 .contentShape(Rectangle())
         }

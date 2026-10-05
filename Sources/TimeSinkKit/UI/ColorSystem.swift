@@ -15,22 +15,24 @@ import SwiftUI
 ///   where a label could not be read;
 /// - B "harmonised": the same hues re-cut in OKLCH (even lightness and
 ///   chroma, warm and green fills lifted), projects in a deeper, duller family.
-/// - C "vivid" (the default): A for everything, but projects redone in clean,
+/// - C "vivid": A for everything, but projects redone in clean,
 ///   lifted hues that stay clear of every category colour.
+/// - D "cold" (the default): C with the loud warm and lime projects replaced by
+///   cooler ones (periwinkle, lavender, orchid, pink, mint, teal, aqua) and a single soft coral.
 /// `scripts/color_check.py` reads the tables below and checks them (label
 /// contrast, colour-blind separation, ramp steps); `ColorSystemTests` repeats
 /// the label rule.
 enum ColorSystem {
-    enum Scheme: String { case conservative = "A", harmonised = "B", vivid = "C" }
+    enum Scheme: String { case conservative = "A", harmonised = "B", vivid = "C", cold = "D" }
 
-    /// The scheme in use. DEBUG builds read `TIMESINK_COLOR_SCHEME=A|B|C`.
+    /// The scheme in use. DEBUG builds read `TIMESINK_COLOR_SCHEME=A|B|C|D`.
     static let scheme: Scheme = {
         #if DEBUG
         if let name = ProcessInfo.processInfo.environment["TIMESINK_COLOR_SCHEME"], let scheme = Scheme(rawValue: name.uppercased()) {
             return scheme
         }
         #endif
-        return .vivid
+        return .cold
     }()
 
     typealias Pair = (light: UInt32, dark: UInt32)
@@ -127,11 +129,20 @@ enum ColorSystem {
         (0x7D8797, 0x8D95A5)
     ]
 
+    /// Scheme D: cool and calm, one soft coral for warmth. Slot 7 is the coral (the hash puts about an eighth of
+    /// the names there), slot 8 is the slate of "no project".
+    static let projectsD: [Pair] = [
+        (0x59A0F9, 0x60A7FF), (0xBCB2FF, 0xBCB2FF), (0xBA71CB, 0xD381D8), (0xFE8DC5, 0xFFA5C8),
+        (0x94E282, 0xA6E599), (0x04C097, 0x25BF98), (0x7DEFDA, 0x92EBDA), (0xE66E68, 0xF47B74),
+        (0x7D8797, 0x8D95A5)
+    ]
+
     static var projects: [Pair] {
         switch scheme {
         case .conservative: projectsA
         case .harmonised: projectsB
         case .vivid: projectsC
+        case .cold: projectsD
         }
     }
 

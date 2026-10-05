@@ -266,7 +266,7 @@ import WebKit
             try await projectsPage("projects-empty", model, .organization, sizes: [wide, small])
             let young = try RefinedPreview.fixture(days: 2)
             try await projectsPage("projects-gate", young, .organization, sizes: [wide, small])
-            let sample = try RefinedPreview.fixture(projects: true)
+            let sample = try RefinedPreview.fixture(projects: true, ownerNames: ProcessInfo.processInfo.environment["TIMESINK_PREVIEW_PROJECT_NAMES"] != nil)
             try await projectsPage("projects", sample, .organization, sizes: [wide, small])
             UserDefaults.standard.set("project", forKey: "todayTimelineColors")
             try await projectsPage("today-projects", sample, .today, sizes: [wide, small])

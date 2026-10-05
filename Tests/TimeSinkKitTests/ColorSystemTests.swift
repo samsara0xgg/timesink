@@ -6,7 +6,8 @@ final class ColorSystemTests: XCTestCase {
     private let schemes: [(name: String, categories: [String: Pair], projects: [Pair])] = [
         ("A", ColorSystem.categoriesA, ColorSystem.projectsA),
         ("B", ColorSystem.categoriesB, ColorSystem.projectsB),
-        ("C", ColorSystem.categoriesA, ColorSystem.projectsC)
+        ("C", ColorSystem.categoriesA, ColorSystem.projectsC),
+        ("D", ColorSystem.categoriesA, ColorSystem.projectsD)
     ]
 
     /// The label on a category or project fill (white, or the dark ink where white fails) reaches 4.5:1, light and dark.
