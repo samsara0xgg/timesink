@@ -2,28 +2,48 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleDevelopmentRegion</key><string>en</string>
-	<key>CFBundleExecutable</key><string>TimeSink</string>
-	<key>CFBundleIdentifier</key><string>com.alllllenshi.TimeSink</string>
-	<key>CFBundleName</key><string>TimeSink</string>
-	<key>CFBundleDisplayName</key><string>TimeSink</string>
-	<key>CFBundlePackageType</key><string>APPL</string>
-	<key>CFBundleShortVersionString</key><string>0.2.1</string>
-	<key>CFBundleVersion</key><string>3</string>
-	<key>LSMinimumSystemVersion</key><string>14.0</string>
-	<key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
-	<key>NSPrincipalClass</key><string>NSApplication</string>
-	<key>SUFeedURL</key><string>https://d2e75eb005kjod.cloudfront.net/appcast.xml</string>
-	<key>SUPublicEDKey</key><string>TGZyzRKvBTpDceg8mCYDizUC9hajG0eBMdqzVvWw/sM=</string>
-	<key>SUEnableAutomaticChecks</key><true/>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>TimeSink</string>
+	<key>CFBundleExecutable</key>
+	<string>TimeSink</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.alllllenshi.TimeSink</string>
+	<key>CFBundleName</key>
+	<string>TimeSink</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.3.0</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.alllllenshi.TimeSink</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>timesink</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleVersion</key>
+	<string>4</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>TimeSink 需要读取 Chrome 当前标签页的网址，以便按网站分类你的时间。</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>TimeSink 读取本机日历以在时间轴上叠加日程并自动标注会议时间，数据不出本机。</string>
-	<key>CFBundleURLTypes</key>
-	<array><dict>
-	    <key>CFBundleURLName</key><string>com.alllllenshi.TimeSink</string>
-	    <key>CFBundleURLSchemes</key><array><string>timesink</string></array>
-	</dict></array>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://d2e75eb005kjod.cloudfront.net/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>TGZyzRKvBTpDceg8mCYDizUC9hajG0eBMdqzVvWw/sM=</string>
 </dict>
 </plist>
