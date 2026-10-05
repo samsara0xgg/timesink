@@ -20,7 +20,8 @@ public final class SystemMonitor {
 
     public var onSuspend: ((Date, SuspendSource) -> Void)?
     public var onResume: ((Date, ResumeSource) -> Void)?
-    private var lastLockEvent = Date.distantPast
+    private var lastLock = Date.distantPast
+    private var lastUnlock = Date.distantPast
     public init() {}
 
     public func start() {
@@ -40,10 +41,18 @@ public final class SystemMonitor {
         }
     }
 
-    private func debouncedLock(suspend: Bool) {
-        let now = Date()
-        guard now.timeIntervalSince(lastLockEvent) > 1 else { return }
-        lastLockEvent = now
-        if suspend { onSuspend?(now, .lock) } else { onResume?(now, .unlock) }
+    /// Debounced per direction: a Touch ID unlock can land under a second
+    /// after the lock, and dropping it left tracking suspended until the
+    /// next lock/unlock pair. Internal so a test can drive it.
+    func debouncedLock(suspend: Bool, at now: Date = Date()) {
+        if suspend {
+            guard now.timeIntervalSince(lastLock) > 1 else { return }
+            lastLock = now
+            onSuspend?(now, .lock)
+        } else {
+            guard now.timeIntervalSince(lastUnlock) > 1 else { return }
+            lastUnlock = now
+            onResume?(now, .unlock)
+        }
     }
 }
