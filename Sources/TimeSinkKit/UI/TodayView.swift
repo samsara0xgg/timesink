@@ -17,6 +17,8 @@ struct TodayView: View {
     @State private var filter: ProjectFilter = nil
     /// What the person chose for the timeline's colours; empty until they do.
     @AppStorage("todayTimelineColors") private var chosenColors = ""
+    /// Sessions as blocks, or what each five minutes were made of.
+    @AppStorage("todayTimelineStyle") private var timelineStyle = TimelineStyle.sessions
     /// Whether the last plan had a project: the loading frame keeps its cards.
     @AppStorage("todayHadProjects") private var hadProjects = true
 
@@ -88,7 +90,7 @@ struct TodayView: View {
         Group {
             if let plan {
                 TodayTimelineCard(plan: plan, model: model, filter: filter, colors: colors(for: plan),
-                                  choose: { chosenColors = $0.rawValue }, selected: $selected, open: open)
+                                  choose: { chosenColors = $0.rawValue }, style: $timelineStyle, selected: $selected, open: open)
             } else { placeholder }
         }
         .frame(height: TodayTimelineCard.height)

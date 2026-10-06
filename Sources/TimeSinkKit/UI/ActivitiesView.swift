@@ -49,6 +49,8 @@ struct ActivitiesView: View {
         let range: DateRangeSelection.Window
         let threshold: TimeInterval
         let splits: Int
+        /// Which projects you gave which sessions: they decide the composition.
+        let assigned: [String: String?]
     }
 
     private struct InterruptionKey: Equatable {
@@ -146,7 +148,8 @@ struct ActivitiesView: View {
             await activities.loadInterruptions(model: model)
         }
         .pageTask(id: SessionKey(version: model.dataVersion, range: model.range.window,
-                                 threshold: model.sessionThreshold, splits: model.sessionSplitsVersion)) {
+                                 threshold: model.sessionThreshold, splits: model.sessionSplitsVersion,
+                                 assigned: model.sessionOverrides.mapValues(\.project))) {
             await activities.loadSessions(model: model)
         }
         .pageSearchable(text: searchBinding, prompt: "搜索应用、网址、标题")
@@ -661,6 +664,8 @@ final class ActivitiesModel {
     var awayNotes: [AwayNote] = []
     /// F1: the shown day's sessions, cut off the main actor.
     var sessions: [WorkSession] = []
+    /// What every five minutes of the shown day were made of, binned off the main actor.
+    var composition: DayComposition?
     /// The first cut has landed: an empty `sessions` now means none.
     var sessionsLoaded = false
     /// The session the inspector shows, by start; exclusive with a block.
@@ -793,7 +798,7 @@ final class ActivitiesModel {
     /// asks for the names still missing.
     func loadSessions(model: AppModel) async {
         let range = model.range
-        guard Self.showsTimeline(range) else { if !sessions.isEmpty { sessions = [] }; return }
+        guard Self.showsTimeline(range) else { if !sessions.isEmpty { sessions = [] }; composition = nil; return }
         let value = await model.sessions(for: range.interval)
         guard !Task.isCancelled, model.range.interval == range.interval else { return }
         if value != sessions { sessions = value }
@@ -804,6 +809,11 @@ final class ActivitiesModel {
             pendingSession = nil
         }
         model.requestNames(for: value)
+        // The bars follow the sessions, off the main actor like them.
+        guard let spans = await model.rangedSpansOffMain(for: range.interval) else { return }
+        let binned = await model.composition(of: spans, day: range.interval, sessions: value)
+        guard !Task.isCancelled, model.range.interval == range.interval else { return }
+        composition = binned
     }
 
     /// Classifies the shown day (cached per day in `AppModel`) and redraws

@@ -4898,7 +4898,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Made of"
+            "value": "Mix"
           }
         }
       }
@@ -11167,6 +11167,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Yesterday's full record is here"
+          }
+        }
+      }
+    },
+    "泳道": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lanes"
+          }
+        }
+      }
+    },
+    "时间轴样式": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Timeline style"
+          }
+        }
+      }
+    },
+    "时间带样式": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Day band style"
           }
         }
       }

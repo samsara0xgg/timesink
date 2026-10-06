@@ -18,6 +18,12 @@ enum TimelineColors: String, CaseIterable {
     case project, category
 }
 
+/// What the timeline draws: the day's sessions as blocks, or what every five minutes were made of
+/// (parallel work shows as a mix of projects, which a block can only grey out).
+enum TimelineStyle: String, CaseIterable {
+    case sessions, composition
+}
+
 /// 今天的时间轴: the day's sessions as blocks, coloured by project, on an hour
 /// axis. Gaps are hatched, interruptions are ticks under the block where they
 /// happened, and now is a line. The heading says what is going on now; a
@@ -28,19 +34,35 @@ struct TodayTimelineCard: View {
     let filter: ProjectFilter
     let colors: TimelineColors
     let choose: (TimelineColors) -> Void
+    @Binding var style: TimelineStyle
     @Binding var selected: Date?
     let open: (TodayPlan.Row) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var filling: Date?
+    /// The project or category the composition is narrowed to by a click, and the one pointed at in the legend.
+    @State private var focus: String?
+    @State private var hover: String?
+
+    #if DEBUG
+    /// Captures: the legend item that starts out focused.
+    @MainActor static var previewFocus: String?
+    #endif
 
     private static let headerHeight: CGFloat = 24
     private static let chartHeight: CGFloat = 140
-    private static let legendHeight: CGFloat = 16
+    private static let legendHeight: CGFloat = 20
     /// The card's whole height, so the page can hold its place while loading.
     static let height = headerHeight + Design.Space.md + chartHeight + Design.Space.sm + legendHeight + 2 * Design.Space.card
     private static let top: CGFloat = 24
     private static let blockHeight: CGFloat = 44
+    /// The composition's bars sit under a row of session lines.
+    private static let barsTop: CGFloat = 48
+    private static let barsHeight: CGFloat = 48
+
+    private var composing: Bool { style == .composition }
+    private var bandTop: CGFloat { composing ? Self.barsTop : Self.top }
+    private var bandHeight: CGFloat { composing ? Self.barsHeight : Self.blockHeight }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -49,6 +71,10 @@ struct TodayTimelineCard: View {
             legend.frame(height: Self.legendHeight).padding(.top, Design.Space.sm)
         }
         .cardBox()
+        .onChange(of: colors) { _, _ in focus = nil }
+        #if DEBUG
+        .onAppear { focus = Self.previewFocus }
+        #endif
     }
 
     private var header: some View {
@@ -63,6 +89,10 @@ struct TodayTimelineCard: View {
                 .buttonStyle(LinkButtonStyle()).font(.note).lineLimit(1)
             }
             if let row = plan.current { now(row) }
+            Segmented(options: TimelineStyle.allCases, selection: $style, height: 24) { option in
+                option == .sessions ? Text("会话") : Text("构成")
+            }
+            .accessibilityLabel("时间轴样式")
             Segmented(options: TimelineColors.allCases, selection: Binding(get: { colors }, set: choose), height: 24) { option in
                 option == .project ? Text("按项目") : Text("按分类")
             }
@@ -111,7 +141,11 @@ struct TodayTimelineCard: View {
                 if plan.isToday { future(width) }
                 grid(width)
                 ForEach(plan.gaps) { gap in away(gap, width) }
-                ForEach(Array(plan.rows.enumerated()), id: \.element.id) { index, row in block(row, index: index, width, labelFrom: labelFrom) }
+                if composing {
+                    compositionLayers(width)
+                } else {
+                    ForEach(Array(plan.rows.enumerated()), id: \.element.id) { index, row in block(row, index: index, width, labelFrom: labelFrom) }
+                }
                 ticks(width)
                 if plan.isToday { nowMark(width) }
                 if let row = plan.rows.first(where: { $0.id == selected }) { card(row, width) }
@@ -125,8 +159,8 @@ struct TodayTimelineCard: View {
         return RoundedRectangle(cornerRadius: Design.Radius.mark, style: .continuous)
             .strokeBorder(Design.line, style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
             .overlay(Text("还没到").font(.note).foregroundStyle(Design.ink2))
-            .frame(width: max(0, width - nowX), height: Self.blockHeight + 12)
-            .offset(x: nowX, y: Self.top - 6)
+            .frame(width: max(0, width - nowX), height: bandHeight + 12)
+            .offset(x: nowX, y: bandTop - 6)
             .opacity(width - nowX > 56 ? 1 : 0)
     }
 
@@ -186,9 +220,31 @@ struct TodayTimelineCard: View {
                 }
             }
         }
-        .frame(width: w, height: Self.blockHeight)
-        .offset(x: left, y: Self.top)
+        .frame(width: w, height: bandHeight)
+        .offset(x: left, y: bandTop)
         .help(Text("离开 \(TodayFmt.long(gap.interval.duration))"))
+    }
+
+    // MARK: Composition
+
+    private var compositionSeries: [CompositionSeries] {
+        plan.composition.map { model.compositionSeries($0, colors) } ?? []
+    }
+
+    /// The session lines over one 100% column per five minutes.
+    private func compositionLayers(_ width: CGFloat) -> some View {
+        ZStack(alignment: .topLeading) {
+            CompositionSessionLines(lines: plan.rows.map { row in
+                .init(id: row.id, start: row.session.start, end: row.session.end, name: title(row), selected: selected == row.id, faded: dimmed(row))
+            }, axis: plan.axis) { id in
+                if let row = plan.rows.first(where: { $0.id == id }) { select(row) }
+            }
+            .frame(width: width, height: CompositionSessionLines.height).offset(y: 20)
+            if let composition = plan.composition {
+                CompositionBars(composition: composition, colors: colors, series: compositionSeries, axis: plan.axis, focus: hover ?? focus)
+                    .frame(width: width, height: Self.barsHeight).offset(y: Self.barsTop)
+            }
+        }
     }
 
     // MARK: Blocks
@@ -294,7 +350,7 @@ struct TodayTimelineCard: View {
             for episode in plan.interruptions {
                 let row = plan.rows.first { episode.start >= $0.session.start && episode.start < $0.session.end }
                 let faded = row.map(dimmed) ?? false
-                let origin = CGPoint(x: x(episode.start, width) - 1, y: Self.top + Self.blockHeight + 6)
+                let origin = CGPoint(x: x(episode.start, width) - 1, y: bandTop + bandHeight + 6)
                 context.fill(Path(roundedRect: CGRect(origin: origin, size: CGSize(width: 2, height: 9)), cornerRadius: 1),
                              with: .color(color.opacity(faded ? 0.25 : 1)))
             }
@@ -308,7 +364,7 @@ struct TodayTimelineCard: View {
         return ZStack(alignment: .topLeading) {
             Text(model.time(plan.now)).font(.note.weight(.semibold)).monospacedDigit().foregroundStyle(Design.ink).fixedSize()
                 .position(x: min(max(nowX, 24), width - 24), y: 6)
-            RoundedRectangle(cornerRadius: 1).fill(Design.ink).frame(width: 2, height: Self.blockHeight + 30)
+            RoundedRectangle(cornerRadius: 1).fill(Design.ink).frame(width: 2, height: bandHeight + (composing ? 54 : 30))
                 .offset(x: nowX - 1, y: Self.top - 10)
         }.allowsHitTesting(false)
     }
@@ -349,7 +405,7 @@ struct TodayTimelineCard: View {
         }
         .padding(Design.Space.md).frame(width: cardWidth, alignment: .leading)
         .floatingCard()
-        .offset(x: left, y: Self.top + Self.blockHeight + 6)
+        .offset(x: left, y: bandTop + bandHeight + 6)
         .zIndex(6)
         .transition(.opacity)
     }
@@ -362,6 +418,13 @@ struct TodayTimelineCard: View {
                 HStack(spacing: Design.Space.sm) {
                     Text("还没有项目。去创建一个，或看看 TimeSink 的推荐。").lineLimit(1)
                     Button("去项目 ›") { model.organizationTab = .projects; model.sidebarSelection = .organization }.buttonStyle(LinkButtonStyle())
+                }
+            } else if composing {
+                let series = compositionSeries
+                ViewThatFits(in: .horizontal) {
+                    CompositionLegend(series: Array(series.prefix(6)), focus: $focus, hover: $hover)
+                    CompositionLegend(series: Array(series.prefix(4)), focus: $focus, hover: $hover)
+                    CompositionLegend(series: Array(series.prefix(2)), focus: $focus, hover: $hover)
                 }
             } else {
                 ViewThatFits(in: .horizontal) {

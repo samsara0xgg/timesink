@@ -56,11 +56,17 @@ final class TodayModel {
             streakDays = 0
             yesterdayTotal = nil
         }
-        plan = TodayPlan.build(overview: overview, sessions: sessions, explicit: sessions.map { model.sessionProject($0) },
+        // Not `overview.items`: those leave out titles, which Jev's verdicts are keyed on.
+        var composition: DayComposition?
+        if let spans = await model.rangedSpansOffMain(for: interval) { composition = await model.composition(of: spans, day: interval, sessions: sessions) }
+        guard request == generation, !Task.isCancelled else { return }
+        var built = TodayPlan.build(overview: overview, sessions: sessions, explicit: sessions.map { model.sessionProject($0) },
                                episodes: episodes, notes: notes, categories: model.resolver.categoriesByID,
                                lastFocus: lastFocus, hasFocusToday: !overview.sessions.isEmpty, isToday: isToday,
                                newProject: isToday ? model.cachedProjectSuggestion?.todoCandidate?.name : nil,
                                colors: ProjectPalette.lookup(model.projects))
+        built.composition = composition
+        plan = built
         loadError = nil
         // The 14-day read for the "new project" todo never holds the page: it joins the plan when it arrives.
         suggestionTask?.cancel()
