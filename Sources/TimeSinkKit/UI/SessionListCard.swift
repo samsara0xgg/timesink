@@ -222,6 +222,9 @@ struct SessionRibbon: View {
                     }
                 }
                 .frame(height: Self.bodyHeight)
+                if !activities.callSpans.isEmpty {
+                    CompositionCallLane(lines: model.callLines(activities.callSpans), axis: axis).padding(.top, 3)
+                }
                 hourLabels(axis)
             }
         }

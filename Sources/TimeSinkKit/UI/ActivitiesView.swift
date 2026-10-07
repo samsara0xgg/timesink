@@ -241,7 +241,7 @@ struct ActivitiesView: View {
         var stats = [StripStat(id: 0, label: "记录数", value: loaded ? shownCount.formatted() : "—",
                                note: filtered ? String(localized: "共 \(count.formatted())") : "")]
         if activities.meetingSeconds > 0 {
-            stats.append(StripStat(id: 1, label: "会议", value: TodayFmt.clock(activities.meetingSeconds), note: String(localized: "来自日历")))
+            stats.append(StripStat(id: 1, label: "会议", value: TodayFmt.clock(activities.meetingSeconds), note: String(localized: "来自日历和通话")))
         }
         return PageHeader(sentence: sentence, stats: stats, width: width) {
             RangeControls(model: model)
@@ -666,6 +666,8 @@ final class ActivitiesModel {
     var sessions: [WorkSession] = []
     /// What every five minutes of the shown day were made of, binned off the main actor.
     var composition: DayComposition?
+    /// The shown day's calls, for the lane under the composition band.
+    var callSpans: [CallSpan] = []
     /// The first cut has landed: an empty `sessions` now means none.
     var sessionsLoaded = false
     /// The session the inspector shows, by start; exclusive with a block.
@@ -844,6 +846,7 @@ final class ActivitiesModel {
         let rule: InterruptionRule
         let focusSessions: [FocusSession]
         let awayNotes: [AwayNote]
+        let calls: [CallSpan]
     }
 
     /// What `recompute` publishes, built off the main actor and assigned in one go.
@@ -897,7 +900,8 @@ final class ActivitiesModel {
                       resolution: TimelineZoom.resolution(for: timelineHourHeight),
                       interruptions: dayInterruptions, rule: interruptionRule,
                       focusSessions: daily ? model.focusStore.flatMap { try? $0.sessions(overlapping: model.range.interval) } ?? [] : [],
-                      awayNotes: daily ? (try? model.observationStore?.awayNotes(overlapping: model.range.interval)) ?? [] : [])
+                      awayNotes: daily ? (try? model.observationStore?.awayNotes(overlapping: model.range.interval)) ?? [] : [],
+                      calls: daily ? (try? model.callStore?.spans(overlapping: model.range.interval)) ?? [] : [])
     }
 
     /// `events` (C3): the current range's calendar events, fetched
@@ -982,6 +986,7 @@ final class ActivitiesModel {
         allDayTitles = output.allDayTitles
         focusBlocks = output.focusBlocks
         awayNotes = inputs.awayNotes
+        callSpans = inputs.calls
     }
 
     nonisolated static func derive(all: [CategorizedSpan], _ inputs: Inputs) -> Output {
@@ -1027,8 +1032,10 @@ final class ActivitiesModel {
         let showsTimeline = Self.showsTimeline(inputs.range)
         let meetingSpanIDs: Set<Int64>, meetingSeconds: TimeInterval
         if showsTimeline {
-            meetingSpanIDs = MeetingTagger.tagged(items: items, events: events).spanIDs
-            meetingSeconds = MeetingTagger.tagged(items: matchedItems, events: events).seconds
+            // A call counts as a meeting alongside the calendar's.
+            let meetings = events + inputs.calls.map(\.asMeetingEvent)
+            meetingSpanIDs = MeetingTagger.tagged(items: items, events: meetings).spanIDs
+            meetingSeconds = MeetingTagger.tagged(items: matchedItems, events: meetings).seconds
         } else {
             meetingSpanIDs = []
             meetingSeconds = 0

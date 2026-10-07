@@ -148,6 +148,8 @@ struct TodayPlan {
     var notes: [AwayNote]
     /// What every five minutes were made of; set once it is binned, after the plan itself.
     var composition: DayComposition?
+    /// Calls in the day, drawn as a thin lane under the band.
+    var calls: [CallSpan] = []
 
     var hasRecords: Bool { total > 0 }
     var guessedRows: [Row] { rows.filter(\.guessed) }

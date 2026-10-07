@@ -7973,16 +7973,6 @@
         }
       }
     },
-    "来自日历": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "From the calendar"
-          }
-        }
-      }
-    },
     "%lld 段 · 按时间": {
       "localizations": {
         "en": {
@@ -11197,6 +11187,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Day band style"
+          }
+        }
+      }
+    },
+    "来自日历和通话": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "From the calendar and calls"
+          }
+        }
+      }
+    },
+    "通话 · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Call · %@"
           }
         }
       }

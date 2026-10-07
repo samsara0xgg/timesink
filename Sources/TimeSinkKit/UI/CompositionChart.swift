@@ -24,6 +24,50 @@ extension AppModel {
     }
 }
 
+extension AppModel {
+    /// The day's calls as lane lines, each in its app's category colour.
+    func callLines(_ calls: [CallSpan]) -> [CompositionCallLane.Line] {
+        calls.map { call in
+            let probe = Span(start: call.start, end: call.end, appBundleID: call.appBundleID, appName: call.appName,
+                             title: nil, url: nil, domain: nil)
+            let id = resolver.categoryID(for: probe)
+            let hex = resolver.categoriesByID[id]?.colorHex ?? "#C7C7CC"
+            return .init(id: call.id ?? 0, start: call.start, end: call.end, name: call.appName, color: RefinedStyle.category(id, hex: hex))
+        }
+    }
+}
+
+/// 通话: a thin line under the main band for the stretches a call app held the microphone.
+struct CompositionCallLane: View {
+    struct Line: Identifiable {
+        let id: Int64
+        let start: Date
+        let end: Date
+        let name: String
+        let color: Color
+    }
+
+    let lines: [Line]
+    let axis: DateInterval
+
+    static let height: CGFloat = 4
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .topLeading) {
+                ForEach(lines) { line in
+                    let left = proxy.size.width * axis.fraction(of: line.start)
+                    let width = max(proxy.size.width * (axis.fraction(of: line.end) - axis.fraction(of: line.start)), 3)
+                    Capsule().fill(line.color).frame(width: width, height: Self.height).offset(x: left)
+                        .help(String(localized: "通话 · \(line.name)"))
+                        .accessibilityLabel(Text("通话 · \(line.name)"))
+                }
+            }
+        }
+        .frame(height: Self.height)
+    }
+}
+
 extension DateInterval {
     /// Where `date` falls along the interval, 0...1.
     func fraction(of date: Date) -> CGFloat { CGFloat(max(0, min(1, date.timeIntervalSince(start) / max(1, duration)))) }

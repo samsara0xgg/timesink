@@ -16,6 +16,12 @@ func processUsage() -> (cpu: Double, peakMiB: Double) {
     return (cpu, Double(usage.ru_maxrss) / 1_048_576)
 }
 
+/// `tsprobe presence`: the call or video the Mac is in right now, read once. Read-only.
+if CommandLine.arguments.dropFirst().first == "presence" {
+    print(PresenceMonitor().current().map { "\($0.kind.rawValue) \($0.appName) (\($0.bundleID))" } ?? "none")
+    exit(0)
+}
+
 if CommandLine.arguments.dropFirst().first == "jev-live" {
     Task { @MainActor in
         await runJevLive(Array(CommandLine.arguments.dropFirst(2)))

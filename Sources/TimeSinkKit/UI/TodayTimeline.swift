@@ -146,6 +146,10 @@ struct TodayTimelineCard: View {
                 } else {
                     ForEach(Array(plan.rows.enumerated()), id: \.element.id) { index, row in block(row, index: index, width, labelFrom: labelFrom) }
                 }
+                if !plan.calls.isEmpty {
+                    CompositionCallLane(lines: model.callLines(plan.calls), axis: plan.axis)
+                        .frame(width: width, height: CompositionCallLane.height).offset(y: bandTop + bandHeight + 3)
+                }
                 ticks(width)
                 if plan.isToday { nowMark(width) }
                 if let row = plan.rows.first(where: { $0.id == selected }) { card(row, width) }

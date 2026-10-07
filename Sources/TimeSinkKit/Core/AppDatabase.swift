@@ -484,6 +484,16 @@ public enum AppDatabase {
                 try db.execute(sql: "UPDATE project SET colorIndex = ? WHERE id = ?", arguments: [slot, row["id"] as String])
             }
         }
+        migrator.registerMigration("v21") { db in
+            // Calls the user was on (a call app held the microphone). Local only, never synced.
+            try db.create(table: "callSpan") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("start", .datetime).notNull().indexed()
+                t.column("end", .datetime).notNull()
+                t.column("appBundleID", .text).notNull()
+                t.column("appName", .text).notNull()
+            }
+        }
         return migrator
     }
 }

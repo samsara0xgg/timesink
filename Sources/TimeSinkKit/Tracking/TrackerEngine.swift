@@ -171,6 +171,7 @@ public final class TrackerEngine {
     public func setPermissionGranted(_ granted: Bool, at date: Date = Date()) {
         guard granted != permissionGranted else { return }
         permissionGranted = granted; suspensionEpoch += 1
+        if !granted { closeCall(at: date) }
         if !granted, let closed = builder.close(at: date) { persist(closed) }
         interruptCollector()
     }
@@ -181,6 +182,7 @@ public final class TrackerEngine {
         guard userPaused != paused else { return }
         userPaused = paused
         suspensionEpoch += 1
+        if paused { closeCall(at: date) }
         if paused, let closed = builder.close(at: date) { persist(closed) }
         throttle = ChromeThrottle()
         chromeTabState = .none
@@ -248,6 +250,16 @@ public final class TrackerEngine {
     /// by this -- it only ever affects the idle branch of
     /// `SuspensionState.tick`.
     var isInMeetingProvider: (() -> Bool)?
+    /// The app the user is on a call in or watching a video in. Treated like a
+    /// calendar meeting for idle (exemption), and, once hands have been off
+    /// for `handsOffSeconds`, it is also who the tick's sample is attributed to.
+    var presenceProvider: (() -> Presence?)?
+    /// Where call intervals are persisted; nil keeps tests store-free.
+    public var callStore: CallSpanStore?
+    /// Raw idle at or above this counts as hands-off. ponytail: the first 60 s
+    /// of a hands-off stretch still go to the frontmost app; a retroactive
+    /// swap would need span rewriting.
+    static let handsOffSeconds: TimeInterval = 60
 
     /// C4 focus session seam: consulted once per tick, after the sample
     /// guard and Chrome tab-URL enrichment, right before the sample is
@@ -338,6 +350,11 @@ public final class TrackerEngine {
     /// Previous tick's `isInMeetingProvider` reading -- used only to detect
     /// the true->false transition below.
     private var wasInMeeting = false
+    /// This tick's presence and raw idle, read by `tickAsync` for attribution.
+    private var tickPresence: Presence?
+    private var rawIdle: TimeInterval = 0
+    /// The open call row and when it was last written.
+    private var openCall: (id: Int64, bundleID: String, wrote: Date)?
     /// Set on the tick where the meeting idle-exemption transitions
     /// true->false (the moment it stops zeroing `idleSeconds`). CRITICAL
     /// fix: without this, un-exempting mid-idle-stretch backdates
@@ -396,6 +413,7 @@ public final class TrackerEngine {
         // Both callers quit the app, but `NSApp.terminate` still spins the run
         // loop, so that continuation can land.
         suspensionEpoch += 1
+        closeCall(at: Date())
         if let closed = builder.close(at: Date()) {
             persist(closed)
         }
@@ -467,6 +485,11 @@ public final class TrackerEngine {
                 chatSession = (sample.appBundleID, fetched)
             }
             sample.document = chatSession?.title
+        }
+
+        if let presence = tickPresence, rawIdle >= Self.handsOffSeconds, sample.appBundleID != presence.bundleID {
+            sample = Sample(timestamp: sample.timestamp, appBundleID: presence.bundleID, appName: presence.appName,
+                            windowTitle: nil, url: nil)
         }
 
         let privateChrome: Bool
@@ -549,7 +572,9 @@ public final class TrackerEngine {
         let sinceKey = keyDownSecondsProvider?() ?? idleMonitor.secondsSinceKeyDown()
         keyDownThisTick = now.addingTimeInterval(-sinceKey) > lastTickAt
         lastTickAt = now
-        let isInMeetingNow = isInMeetingProvider?() == true
+        tickPresence = presenceProvider?()
+        self.rawIdle = rawIdle
+        let isInMeetingNow = isInMeetingProvider?() == true || tickPresence != nil
         if wasInMeeting, !isInMeetingNow {
             exemptionEndedAt = now
         }
@@ -558,7 +583,9 @@ public final class TrackerEngine {
         self.idleSeconds = idleSeconds
 
         let wasIdle = suspensionState.idleSuspended
-        switch suspensionState.tick(idleSeconds: idleSeconds, threshold: settings.idleThreshold) {
+        let outcome = suspensionState.tick(idleSeconds: idleSeconds, threshold: settings.idleThreshold)
+        if outcome != .systemSuspended { trackCall(now: now) }
+        switch outcome {
         case .systemSuspended:
             return .suspended
         case .stillIdle:
@@ -575,6 +602,33 @@ public final class TrackerEngine {
         case .active:
             if wasIdle { observations?.logState("active", at: now) }
             return .active
+        }
+    }
+
+    /// Opens, extends (at the heartbeat cadence) or closes the call row for this tick's presence.
+    private func trackCall(now: Date) {
+        guard let callStore else { return }
+        let call = tickPresence?.kind == .call ? tickPresence : nil
+        if let open = openCall, open.bundleID != call?.bundleID { closeCall(at: now) }
+        guard let call else { return }
+        do {
+            if let open = openCall {
+                guard now.timeIntervalSince(open.wrote) >= Self.heartbeatInterval else { return }
+                try callStore.extend(id: open.id, end: now)
+                openCall = (open.id, open.bundleID, now)
+            } else {
+                openCall = (try callStore.open(at: now, bundleID: call.bundleID, appName: call.appName).id ?? 0, call.bundleID, now)
+            }
+        } catch {
+            logger.error("call span write failed: \(String(describing: error))")
+        }
+    }
+
+    private func closeCall(at date: Date) {
+        guard let open = openCall else { return }
+        openCall = nil
+        do { try callStore?.extend(id: open.id, end: date) } catch {
+            logger.error("call span close failed: \(String(describing: error))")
         }
     }
 
@@ -697,6 +751,7 @@ public final class TrackerEngine {
         // superset of "the suspension context moved", and a redundant signal
         // costs at most one dropped 1s sample.
         suspensionEpoch += 1
+        closeCall(at: date)
         guard suspensionState.suspendSystem() else { return }
         if let closed = builder.close(at: date) {
             persist(closed)

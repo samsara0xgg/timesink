@@ -66,6 +66,7 @@ final class TodayModel {
                                newProject: isToday ? model.cachedProjectSuggestion?.todoCandidate?.name : nil,
                                colors: ProjectPalette.lookup(model.projects))
         built.composition = composition
+        built.calls = (try? model.callStore?.spans(overlapping: interval)) ?? []
         plan = built
         loadError = nil
         // The 14-day read for the "new project" todo never holds the page: it joins the plan when it arrives.

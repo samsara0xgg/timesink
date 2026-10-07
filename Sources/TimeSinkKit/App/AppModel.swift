@@ -334,6 +334,7 @@ public final class AppModel {
     /// view that reads `model.focus?.running` treats `nil` as "no session in
     /// progress", which is also the correct steady state pre-assembly.
     public var focusStore: FocusSessionStore?
+    public var callStore: CallSpanStore?
     public var focus: FocusSessionController?
     /// Jev: the cached category verdicts and the worker that keeps them current.
     public var jev: JevService?
