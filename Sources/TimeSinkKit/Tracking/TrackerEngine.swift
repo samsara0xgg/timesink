@@ -487,7 +487,7 @@ public final class TrackerEngine {
             sample.document = chatSession?.title
         }
 
-        if let presence = tickPresence, rawIdle >= Self.handsOffSeconds, sample.appBundleID != presence.bundleID {
+        if let presence = tickPresence, presence.onScreen, rawIdle >= Self.handsOffSeconds, sample.appBundleID != presence.bundleID {
             sample = Sample(timestamp: sample.timestamp, appBundleID: presence.bundleID, appName: presence.appName,
                             windowTitle: nil, url: nil)
         }
@@ -574,7 +574,7 @@ public final class TrackerEngine {
         lastTickAt = now
         tickPresence = presenceProvider?()
         self.rawIdle = rawIdle
-        let isInMeetingNow = isInMeetingProvider?() == true || tickPresence != nil
+        let isInMeetingNow = isInMeetingProvider?() == true || tickPresence?.onScreen == true
         if wasInMeeting, !isInMeetingNow {
             exemptionEndedAt = now
         }

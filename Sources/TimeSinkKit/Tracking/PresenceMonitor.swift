@@ -10,9 +10,12 @@ public struct Presence: Equatable, Sendable {
     public var kind: Kind
     public var bundleID: String
     public var appName: String
+    /// Something is playing on screen (the app keeps the display awake): only
+    /// then does presence count as screen time. A voice-only call is just a lane.
+    public var onScreen: Bool
 
-    public init(kind: Kind, bundleID: String, appName: String) {
-        self.kind = kind; self.bundleID = bundleID; self.appName = appName
+    public init(kind: Kind, bundleID: String, appName: String, onScreen: Bool = true) {
+        self.kind = kind; self.bundleID = bundleID; self.appName = appName; self.onScreen = onScreen
     }
 }
 
@@ -47,27 +50,30 @@ public final class PresenceMonitor: @unchecked Sendable {
             .max { $0.bundleID.count < $1.bundleID.count }
     }
 
-    private static func presence(_ kind: Presence.Kind, bundleID: String, apps: [App]) -> Presence {
+    private static func presence(_ kind: Presence.Kind, bundleID: String, apps: [App], onScreen: Set<String>) -> Presence {
         let owner = root(of: bundleID, apps: apps)
-        return Presence(kind: kind, bundleID: owner?.bundleID ?? bundleID, appName: owner?.name ?? bundleID)
+        let id = owner?.bundleID ?? bundleID
+        return Presence(kind: kind, bundleID: id, appName: owner?.name ?? bundleID, onScreen: onScreen.contains(id))
     }
 
     /// Call wins over video. Video needs a display-sleep assertion AND audio output from the same
     /// app: music players only hold system-sleep assertions, caffeinate-style tools hold display
     /// assertions without audio.
     static func decide(audio: [AudioProcess], displayAssertionPIDs: [pid_t], apps: [App], ownPID: pid_t) -> Presence? {
+        let displayOwners = displayAssertionPIDs.filter { $0 != ownPID }.compactMap { pid -> String? in
+            guard let bundleID = apps.first(where: { $0.pid == pid })?.bundleID ?? audio.first(where: { $0.pid == pid })?.bundleID else { return nil }
+            return root(of: bundleID, apps: apps)?.bundleID ?? bundleID
+        }
         for process in audio where process.input {
             if let prefix = callPrefixes.first(where: { process.bundleID.hasPrefix($0) }) {
                 // The running regular app carrying the prefix is the call's app (Zoom's audio comes from a helper).
                 let main = apps.first { $0.regular && $0.bundleID.hasPrefix(prefix) }
-                return presence(.call, bundleID: main?.bundleID ?? process.bundleID, apps: apps)
+                return presence(.call, bundleID: main?.bundleID ?? process.bundleID, apps: apps, onScreen: Set(displayOwners))
             }
         }
         let playing = Set(audio.filter(\.output).compactMap { root(of: $0.bundleID, apps: apps)?.bundleID ?? $0.bundleID })
-        for pid in displayAssertionPIDs where pid != ownPID {
-            guard let bundleID = apps.first(where: { $0.pid == pid })?.bundleID ?? audio.first(where: { $0.pid == pid })?.bundleID else { continue }
-            let owner = root(of: bundleID, apps: apps)?.bundleID ?? bundleID
-            if playing.contains(owner) { return presence(.video, bundleID: owner, apps: apps) }
+        for owner in displayOwners where playing.contains(owner) {
+            return presence(.video, bundleID: owner, apps: apps, onScreen: Set(displayOwners))
         }
         return nil
     }

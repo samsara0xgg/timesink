@@ -19,7 +19,14 @@ final class PresenceDecisionTests: XCTestCase {
 
     func testZoomHelperInputIsCallReportedAsMainApp() {
         XCTAssertEqual(decide([proc(11, "us.zoom.CptHost", input: true)]),
-                       Presence(kind: .call, bundleID: "us.zoom.xos", appName: "zoom.us"))
+                       Presence(kind: .call, bundleID: "us.zoom.xos", appName: "zoom.us", onScreen: false))
+    }
+
+    func testCallIsOnScreenOnlyWhileItsAppKeepsTheDisplayAwake() {
+        let input = proc(11, "us.zoom.CptHost", input: true)
+        XCTAssertEqual(decide([input])?.onScreen, false, "voice only")
+        XCTAssertEqual(decide([input], assertions: [10])?.onScreen, true, "video meeting")
+        XCTAssertEqual(decide([input], assertions: [20])?.onScreen, false, "another app's assertion")
     }
 
     func testAlwaysOnAssistantMicIsNotACall() {
@@ -53,6 +60,19 @@ final class PresenceDecisionTests: XCTestCase {
 final class TrackerEnginePresenceTests: XCTestCase {
     private let zoom = Presence(kind: .call, bundleID: "us.zoom.xos", appName: "zoom.us")
     private let chromeVideo = Presence(kind: .video, bundleID: "com.google.Chrome", appName: "Google Chrome")
+    private let voiceCall = Presence(kind: .call, bundleID: "com.hnc.Discord", appName: "Discord", onScreen: false)
+
+    func testVoiceOnlyCallIsALaneNotScreenTime() async throws {
+        let (engine, _, calls) = try makeEngine()
+        engine.presenceProvider = { self.voiceCall }
+        engine.idleSecondsProvider = { 120 }
+        await engine.tickAsync(now: ts(0))
+        XCTAssertEqual(engine.latestSample?.appBundleID, "com.apple.finder", "no hands-off swap")
+        engine.idleSecondsProvider = { 600 }
+        await engine.tickAsync(now: ts(1))
+        XCTAssertTrue(engine.isSuspended, "idle as usual")
+        XCTAssertEqual(try calls.spans(overlapping: all).count, 1, "still drawn on the call lane")
+    }
 
     private func makeEngine() throws -> (TrackerEngine, SpanStore, CallSpanStore) {
         let db = try AppDatabase.openInMemory()
