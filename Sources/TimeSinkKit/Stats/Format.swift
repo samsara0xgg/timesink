@@ -20,6 +20,13 @@ public enum Format {
         return zh ? "\(hours) 小时 \(minutes) 分" : "\(hours)h \(minutes)m" // l10n: data
     }
 
+    /// The menu bar's compact clock form, "1:20" / "0:45": the label has to
+    /// fit beside the notch, and the popover still shows `duration`.
+    public static func clock(_ t: TimeInterval) -> String {
+        let minutes = Int(max(t, 0) / 60)
+        return String(format: "%d:%02d", minutes / 60, minutes % 60)
+    }
+
     /// Formats a signed duration delta, e.g. "+42m" / "-1h 3m".
     public static func durationDelta(_ t: TimeInterval, locale: Locale = AppLanguage.locale) -> String {
         (t >= 0 ? "+" : "-") + Format.duration(abs(t), locale: locale)

@@ -37,12 +37,19 @@ final class MenuProductiveTests: XCTestCase {
         let focus = Aggregator.focusTime(durationByCategory: Aggregator.durationByCategory(items),
                                          categories: resolver.categoriesByID)
         XCTAssertGreaterThan(focus, 0)
-        XCTAssertEqual(model.menuProductiveTitle, "投入 " + Format.duration(focus))
-        XCTAssertNotEqual(model.menuProductiveTitle, "投入 " + model.todayTotalTitle)
+        XCTAssertEqual(model.menuProductiveTitle, "投入 " + Format.clock(focus))
+        XCTAssertNotEqual(model.menuProductiveTitle, "投入 " + model.menuTitle)
     }
 
     func testFreshModelDefaultsToProductive() throws {
         let (model, _, _, _) = try makeModel()
         XCTAssertEqual(model.menuDisplayMode, "productive")
+    }
+
+    func testMenuClockIsCompact() {
+        XCTAssertEqual(Format.clock(0), "0:00")
+        XCTAssertEqual(Format.clock(45 * 60 + 59), "0:45")
+        XCTAssertEqual(Format.clock(80 * 60), "1:20")
+        XCTAssertEqual(Format.clock(10 * 3600 + 5 * 60), "10:05")
     }
 }

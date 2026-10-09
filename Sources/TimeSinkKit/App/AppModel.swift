@@ -118,7 +118,7 @@ public final class AppModel {
         guard let span = engine.currentActivity else { return trackingPaused ? String(localized: "已暂停") : String(localized: "空闲") }
         let category = resolver.categoryID(for: span)
         let total = rangedSpans(for: .today()).filter { $0.categoryID == category }.reduce(0) { $0 + $1.span.duration }
-        return (resolver.categoriesByID[category]?.name ?? String(localized: "未分类")) + " " + Format.duration(total)
+        return (resolver.categoriesByID[category]?.name ?? String(localized: "未分类")) + " " + Format.clock(total)
     }
     /// Today's total tracked duration, for the menu bar dropdown.
     public var todayTotalTitle: String = "0m"
@@ -500,8 +500,8 @@ public final class AppModel {
         let items = rangedSpans(for: .today())
         let byCategory = Aggregator.durationByCategory(items)
         todayTotalTitle = Format.duration(Aggregator.totalDuration(items.map(\.span)))
-        menuTitle = todayTotalTitle
-        menuProductiveTitle = String(localized: "投入 \(Format.duration(Aggregator.focusTime(durationByCategory: byCategory, categories: resolver.categoriesByID)))")
+        menuTitle = Format.clock(Aggregator.totalDuration(items.map(\.span)))
+        menuProductiveTitle = String(localized: "投入 \(Format.clock(Aggregator.focusTime(durationByCategory: byCategory, categories: resolver.categoriesByID)))")
         if let pulse = Aggregator.pulse(durationByCategory: byCategory, categories: resolver.categoriesByID) {
             todayPulseTitle = "\(pulse)"
         } else {
