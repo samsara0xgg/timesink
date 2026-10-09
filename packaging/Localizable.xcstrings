@@ -879,6 +879,16 @@
         }
       }
     },
+    "TimeSink · 已分心 5 分钟以上": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TimeSink · distracted for 5+ minutes"
+          }
+        }
+      }
+    },
     "TimeSink · 示例数据验收": {
       "localizations": {
         "en": {

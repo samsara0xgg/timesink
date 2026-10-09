@@ -60,6 +60,10 @@ public final class AppModel {
     @ObservationIgnored var awayAsked: (day: Date, count: Int) = (.distantPast, 0)
     @ObservationIgnored var returnTracker = ReturnTracker()
     @ObservationIgnored var returnCategory: (start: Date, bundleID: String, categoryID: String)?
+    /// The menu bar hourglass turns orange: see `DistractionHint.swift`.
+    public var distracted = false
+    @ObservationIgnored var distractionStreak = DistractionStreak()
+    @ObservationIgnored var distractionCategory: (start: Date, bundleID: String, distracting: Bool)?
     public var popoverShortcutAvailable = false
     public var accessibilityGranted = true { didSet { engine.setPermissionGranted(accessibilityGranted) } }
     public var settingsTab: SettingsTab = .general
@@ -414,7 +418,9 @@ public final class AppModel {
         // rather than serving that bootstrap-time snapshot indefinitely.
         rangeCache.removeAll()
         cacheOrder.removeAll()
-        engine.onTick = { [weak self] span, now in self?.observeForReturn(span, now: now); self?.observeForAway(now: now) }
+        engine.onTick = { [weak self] span, now in
+            self?.observeForReturn(span, now: now); self?.observeForAway(now: now); self?.observeForDistraction(span, now: now)
+        }
         engine.onChange = { [weak self] in
             guard let self else { return }
             let start = engine.lastWriteStart ?? .distantPast

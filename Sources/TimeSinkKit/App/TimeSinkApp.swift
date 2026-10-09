@@ -313,9 +313,15 @@ struct MenuBarLabel: View {
                 Image(nsImage: FocusCapsule.image(symbol: "arrow.uturn.backward", text: String(localized: "回到 \(offer.appName)")))
                     .accessibilityLabel(String(localized: "回到 \(offer.appName)"))
             } else {
+            if model.distracted, model.accessibilityGranted, !model.trackingPaused, !model.chromeDegraded {
+                // 5 minutes straight in a distracting category (DistractionHint.swift).
+                Image(nsImage: FocusCapsule.distractedHourglass)
+                    .accessibilityLabel(String(localized: "TimeSink · 已分心 5 分钟以上"))
+            } else {
             Image(systemName: !model.accessibilityGranted ? "exclamationmark.triangle" : model.trackingPaused ? "pause.circle" : model.chromeDegraded
                   ? "hourglass.badge.exclamationmark" : "hourglass")
                 .accessibilityLabel(model.chromeDegraded ? "Chrome 采集降级" : "TimeSink")
+            }
             // C4 (R-T12h, stands as reviewed): while a focus session is
             // running, the label swaps to a live mm:ss countdown regardless
             // of `menuTextEnabled` -- an explicit, user-INITIATED session is
@@ -535,6 +541,15 @@ final class TimeSinkAppDelegate: NSObject, NSApplicationDelegate, @unchecked Sen
         cache = (key, image)
         return image
     }
+
+    /// Not a template image, so the menu bar keeps the orange.
+    static let distractedHourglass: NSImage = {
+        let renderer = ImageRenderer(content: Image(systemName: "hourglass").font(.system(size: 14)).foregroundStyle(.orange))
+        renderer.scale = NSScreen.main?.backingScaleFactor ?? 2
+        let image = renderer.nsImage ?? NSImage()
+        image.isTemplate = false
+        return image
+    }()
 
     private static func render(_ content: some View) -> NSImage {
         let content = content
