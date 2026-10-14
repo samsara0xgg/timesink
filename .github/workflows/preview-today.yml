@@ -1,0 +1,45 @@
+# Temporary: renders the Today timeline from sample data so the lanes can be
+# reviewed without a Mac. Removed before the branch merges.
+name: Today preview
+
+on:
+  push:
+    branches: ['claude/project-thread-8p0rxx']
+
+jobs:
+  shots:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+      # The sample day runs to about 18:15 and stops at "now", so pick a
+      # time zone where it is 19:00 to show the whole day.
+      - name: Pick a time zone where it is evening
+        run: |
+          h=$((10#$(date -u +%H)))
+          off=$(( (19 - h + 36) % 24 - 12 ))
+          if [ "$off" -lt 0 ]; then tz="Etc/GMT+$((-off))"; elif [ "$off" -gt 0 ]; then tz="Etc/GMT-$off"; else tz="Etc/GMT"; fi
+          echo "TZ=$tz" >> "$GITHUB_ENV"
+          TZ=$tz date
+      - run: swift build
+      - name: Light
+        env:
+          TIMESINK_PREVIEW_ONLY: lbl
+          TIMESINK_PREVIEW_PROJECT_NAMES: '1'
+        run: swift run TimeSink --design-preview --screen-capture "$PWD/shots" -AppleLanguages "(zh-Hans)"
+      - name: Dark
+        env:
+          TIMESINK_PREVIEW_ONLY: lbl
+          TIMESINK_PREVIEW_PROJECT_NAMES: '1'
+          TIMESINK_PREVIEW_DARK: '1'
+        run: swift run TimeSink --design-preview --screen-capture "$PWD/shots" -AppleLanguages "(zh-Hans)"
+      - run: ls -la shots
+      - uses: actions/upload-artifact@v4
+        with:
+          name: today-lanes
+          path: shots
