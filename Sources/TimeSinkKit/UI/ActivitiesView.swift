@@ -123,8 +123,10 @@ struct ActivitiesView: View {
                 if let toast = activities.undoToast {
                     HStack(spacing: Design.Space.md) {
                         Text(verbatim: toast.message).font(.body.weight(.semibold)).lineLimit(1)
-                        Button("撤销") { withAnimation(Design.motion(Design.layout, reduced: reduceMotion)) { activities.performUndo() } }
-                            .buttonStyle(PillButtonStyle(height: 24))
+                        if toast.undo != nil {
+                            Button("撤销") { withAnimation(Design.motion(Design.layout, reduced: reduceMotion)) { activities.performUndo() } }
+                                .buttonStyle(PillButtonStyle(height: 24))
+                        }
                     }
                     .padding(.horizontal, Design.Space.lg).frame(height: 40).floatingCard().padding(.bottom, Design.Space.page)
                     .transition(.opacity)
@@ -134,13 +136,14 @@ struct ActivitiesView: View {
         }
         .background(WorkspaceBackground())
         .background {
-            // ⌘E opens the inspector's form for the selected block.
+            // ⌘E opens the inspector's form for the selected block, while
+            // the page is on screen.
             Button("修改分类…") {
                 guard activities.selectedActivity != nil else { return }
                 activities.showsInspector = true
                 withAnimation(RefinedStyle.motion(reduced: reduceMotion)) { activities.isEditingCategory = true }
             }
-            .keyboardShortcut("e").hidden()
+            .pageShortcut("e").hidden()
         }
         .pageTask(id: InterruptionKey(version: model.dataVersion, range: model.range.window, rule: model.interruptionRule)) {
             await activities.loadInterruptions(model: model)
@@ -388,19 +391,17 @@ struct ActivitiesView: View {
     }
 
     /// The context menu's 以后都归为: the block's site or app, from now on.
-    /// ⌘Z undoes it through the window's undo stack.
+    /// ⌘Z undoes it through the window's undo stack, ⇧⌘Z redoes it; a step
+    /// that fails says why on the toast.
     private func assign(_ block: TimelineBlock, to categoryID: String) {
-        guard let span = block.segment?.dominant.longest.span,
-              let edit = try? model.categoryStore.reclassify(span: span, scope: .activity, categoryID: categoryID) else { return }
-        let key = span.domain ?? span.appBundleID
-        undoManager?.registerUndo(withTarget: model) { model in
-            MainActor.assumeIsolated {
-                try? model.categoryStore.undoReclassification(edit, activityKey: key)
-                model.resolver.refresh(); model.dataChanged()
-            }
+        guard let span = block.segment?.dominant.longest.span else { return }
+        do {
+            let edit = try model.categoryStore.reclassify(span: span, scope: .activity, categoryID: categoryID)
+            model.registerReclassificationUndo([edit], on: undoManager) { [activities] message in activities.showNotice(message) }
+            model.resolver.refresh(); model.dataChanged()
+        } catch {
+            activities.showNotice(error.localizedDescription)
         }
-        undoManager?.setActionName(String(localized: "更改分类"))
-        model.resolver.refresh(); model.dataChanged()
     }
 
     private func selectTimelineBlock(_ block: TimelineBlock) {
@@ -613,6 +614,9 @@ final class ActivitiesModel {
     var displayedItems: [CategorizedSpan] = [] {
         didSet { foldedRows = nil; appGroupRows = nil }
     }
+    /// Bumped each time a recompute lands: the inspector re-reads its record
+    /// from `displayedItems` on this instead of from the database.
+    private(set) var itemsVersion = 0
     /// Visits per row (`ActivitySelection.row`): consecutive records of one
     /// row count once, so a row reads "来回 12 次", not "412 条记录". Built
     /// once in `recompute`, not per body evaluation.
@@ -665,11 +669,12 @@ final class ActivitiesModel {
     var sessionsLoaded = false
     /// The session the inspector shows, by start; exclusive with a block.
     var selectedSession: Date?
-    /// What the last session edit was and how to take it back, while the toast is up.
+    /// What the last session edit was and how to take it back, while the
+    /// toast is up; or, with no `undo`, why a step could not be taken.
     struct UndoToast: Equatable {
         let id = UUID()
         let message: String
-        let undo: @MainActor () -> Void
+        let undo: (@MainActor () -> Void)?
         static func == (a: Self, b: Self) -> Bool { a.id == b.id }
     }
     var undoToast: UndoToast?
@@ -677,7 +682,27 @@ final class ActivitiesModel {
 
     /// Shows `message` with 撤销 for a while; a newer edit replaces it.
     func showUndo(_ message: String, undo: @escaping @MainActor () -> Void) {
-        let toast = UndoToast(message: message, undo: undo)
+        show(UndoToast(message: message, undo: undo))
+    }
+
+    /// Shows `message` alone: an edit or an undo that did not go through.
+    func showNotice(_ message: String) {
+        show(UndoToast(message: message, undo: nil))
+    }
+
+    /// `showUndo`, with ⌘Z and ⇧⌘Z on the window for the same edit. The
+    /// toast's 撤销 takes the step back itself and drops what the window
+    /// holds for it.
+    func offerUndo(_ message: String, name: String, model: AppModel, undoManager: UndoManager?,
+                   undo: @escaping @MainActor @Sendable () -> Void, redo: @escaping @MainActor @Sendable () -> Void) {
+        model.registerUndo(on: undoManager, name: name, undo: undo, redo: redo)
+        showUndo(message) { [weak undoManager] in
+            undoManager?.removeAllActions(withTarget: model)
+            undo()
+        }
+    }
+
+    private func show(_ toast: UndoToast) {
         undoToast = toast
         toastTask?.cancel()
         toastTask = Task { @MainActor [weak self] in
@@ -688,27 +713,52 @@ final class ActivitiesModel {
     }
 
     func performUndo() {
-        guard let toast = undoToast else { return }
+        guard let toast = undoToast, let undo = toast.undo else { return }
         toastTask?.cancel()
         undoToast = nil
-        toast.undo()
+        undo()
     }
 
-    /// Joins `session` onto the one before it; the toast offers 撤销 for a while.
-    func join(_ session: WorkSession, model: AppModel) {
+    /// Joins `session` onto the one before it; the toast offers 撤销 for a
+    /// while, and ⌘Z/⇧⌘Z on the window undo and redo it.
+    func join(_ session: WorkSession, model: AppModel, undoManager: UndoManager? = nil) {
         let previous = sessions.last { $0.start < session.start }
         let date = session.start
         model.joinSession(session)
         selectedSession = previous?.start
-        showUndo(String(localized: "已并入上一段")) { [weak self] in
-            model.unjoinSession(startingAt: date)
-            self?.selectedSession = date
-        }
+        let back = previous?.start
+        offerUndo(String(localized: "已并入上一段"), name: String(localized: "并入上一段"), model: model, undoManager: undoManager,
+                  undo: { [weak self] in
+                      model.unjoinSession(startingAt: date)
+                      self?.selectedSession = date
+                  },
+                  redo: { [weak self] in
+                      model.joinSession(session)
+                      self?.selectedSession = back
+                  })
     }
 
     /// A session another page asked to open (Today's 在活动里打开): selected
-    /// as soon as the day's sessions have been cut.
-    var pendingSession: Date?
+    /// at once when this day's sessions are already showing, else as soon as
+    /// they have been cut.
+    var pendingSession: Date? {
+        didSet { consumePendingSession() }
+    }
+    /// The day `sessions` were cut for.
+    @ObservationIgnored private var sessionsDay: DateInterval?
+
+    /// Selects `pendingSession` once the sessions on show are its day's and
+    /// no reload is about to clear the selection again.
+    private func consumePendingSession() {
+        guard let pending = pendingSession, let day = sessionsDay, day.start <= pending, pending < day.end,
+              selectionRange == day, selectionTimeInterval == nil,
+              sessions.contains(where: { $0.start == pending }) else { return }
+        pendingSession = nil
+        selectedActivity = nil
+        selectedStart = nil
+        selectedSession = pending
+        showsInspector = true
+    }
 
     /// C3 calendar overlay -- populated only for single-day-ish ranges (see
     /// `showsTimeline`), from the `events` the caller fetched via
@@ -793,16 +843,14 @@ final class ActivitiesModel {
     /// asks for the names still missing.
     func loadSessions(model: AppModel) async {
         let range = model.range
-        guard Self.showsTimeline(range) else { if !sessions.isEmpty { sessions = [] }; return }
+        guard Self.showsTimeline(range) else { if !sessions.isEmpty { sessions = [] }; sessionsDay = nil; return }
         let value = await model.sessions(for: range.interval)
         guard !Task.isCancelled, model.range.interval == range.interval else { return }
         if value != sessions { sessions = value }
+        sessionsDay = range.interval
         sessionsLoaded = true
         if let selectedSession, !value.contains(where: { $0.start == selectedSession }) { self.selectedSession = nil }
-        if let pending = pendingSession, value.contains(where: { $0.start == pending }) {
-            selectedSession = pending
-            pendingSession = nil
-        }
+        consumePendingSession()
         model.requestNames(for: value)
     }
 
@@ -972,6 +1020,8 @@ final class ActivitiesModel {
         allDayTitles = output.allDayTitles
         focusBlocks = output.focusBlocks
         awayNotes = inputs.awayNotes
+        itemsVersion &+= 1
+        consumePendingSession()
     }
 
     nonisolated static func derive(all: [CategorizedSpan], _ inputs: Inputs) -> Output {

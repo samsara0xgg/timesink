@@ -89,6 +89,8 @@ struct TitleRuleEditor: View {
     /// keystroke.
     @State private var affectedPreview: (count: Int, seconds: TimeInterval) = (0, 0)
     @State private var pendingPreview: Task<Void, Never>?
+    /// The last 30 days, read off the main actor once per sheet.
+    @State private var history: [CategorizedSpan]?
 
     /// Long enough to swallow a burst of typing, short enough that the count
     /// still feels attached to the field. Same trailing-debounce shape as
@@ -131,22 +133,27 @@ struct TitleRuleEditor: View {
     /// Restarts the trailing debounce; the scan itself runs once the user
     /// stops. Cancelling first means a burst of keystrokes costs one pass,
     /// not one per character.
-    private func schedulePreview() {
+    private func schedulePreview(after delay: Duration = TitleRuleEditor.previewDebounce) {
         pendingPreview?.cancel()
         pendingPreview = Task { @MainActor in
-            try? await Task.sleep(for: Self.previewDebounce)
+            if delay > .zero { try? await Task.sleep(for: delay) }
             guard !Task.isCancelled else { return }
-            recomputePreview()
+            await recomputePreview()
         }
     }
 
-    private func recomputePreview() {
+    private func recomputePreview() async {
         guard let pattern = normalizedPattern else {
             affectedPreview = (0, 0)
             matchingRows = []
             return
         }
-        let items = model.rangedSpans(for: DateRangeSelection(kind: .last30, anchor: Date()))
+        if history == nil {
+            guard let loaded = await model.spansOffMain(for: DateRangeSelection(kind: .last30, anchor: Date()).interval),
+                  !Task.isCancelled else { return }
+            history = loaded
+        }
+        let items = history ?? []
         matchingRows = items.first.map { model.resolver.previewEdit(span: $0.span, scope: .title, categoryID: categoryID, pattern: pattern, items: items, titleScope: scopeKey) } ?? []
         affectedPreview = (matchingRows.count, matchingRows.reduce(0) { $0 + $1.span.duration })
     }
@@ -231,9 +238,9 @@ struct TitleRuleEditor: View {
         .background(WorkspaceBackground())
         .onChange(of: keywordText) { _, _ in duplicateMessage = nil; schedulePreview() }
         .onChange(of: keywordDraft) { _, _ in duplicateMessage = nil; rejected = false; schedulePreview() }
-        .onChange(of: scopeKey) { _, _ in duplicateMessage = nil; pendingPreview?.cancel(); recomputePreview() }
-        .onChange(of: categoryID) { _, _ in duplicateMessage = nil; recomputePreview() }
-        .onAppear { recomputePreview() }
+        .onChange(of: scopeKey) { _, _ in duplicateMessage = nil; schedulePreview(after: .zero) }
+        .onChange(of: categoryID) { _, _ in duplicateMessage = nil; schedulePreview(after: .zero) }
+        .onAppear { schedulePreview(after: .zero) }
         .onDisappear { pendingPreview?.cancel() }
     }
 

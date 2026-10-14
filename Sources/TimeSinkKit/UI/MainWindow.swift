@@ -58,6 +58,10 @@ struct MainWindowView: View {
         .onChange(of: model.dataEditVersion) { _, _ in
             Task(priority: .utility) { await stats.recompute(model: model, range: DateRangeSelection(kind: .last7, anchor: Date())) }
         }
+        // Settings' 重新显示引导, or a first run the app quit in the middle of.
+        .sheet(isPresented: Binding(get: { model.onboardingRequested }, set: { model.onboardingRequested = $0 })) {
+            OnboardingView(model: model)
+        }
     }
 
     private var detailContent: some View {

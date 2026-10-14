@@ -48,31 +48,33 @@ extension AppModel {
 
     /// Activates the app and, with Accessibility (already granted for
     /// recording), raises the window by its title; in Chrome, the tab by its
-    /// page. No scroll position.
+    /// page. No scroll position. The Apple Event and the Accessibility calls
+    /// run off the main actor: a busy app can hold either for seconds.
     func goBack() {
         guard let offer = returnOffer,
               let app = NSRunningApplication.runningApplications(withBundleIdentifier: offer.bundleID).first else { return }
         app.activate()
-        if offer.bundleID == "com.google.Chrome", let url = offer.url, ChromeBlocker().activateTab(url: url) {
-            returnTracker.clearOffer()
-            setReturnOffer(nil)
-            return
-        }
-        if let title = offer.title, !title.isEmpty, AXIsProcessTrusted() {
-            let element = AXUIElementCreateApplication(app.processIdentifier)
-            var windows: CFTypeRef?
-            if AXUIElementCopyAttributeValue(element, kAXWindowsAttribute as CFString, &windows) == .success {
-                for window in windows as? [AXUIElement] ?? [] {
-                    var value: CFTypeRef?
-                    AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &value)
-                    if value as? String == title {
-                        AXUIElementPerformAction(window, kAXRaiseAction as CFString)
-                        break
-                    }
-                }
-            }
-        }
         returnTracker.clearOffer()
         setReturnOffer(nil)
+        let pid = app.processIdentifier
+        Task.detached(priority: .userInitiated) {
+            if offer.bundleID == "com.google.Chrome", let url = offer.url, await ChromeBlocker().activateTabOffActor(url: url) { return }
+            if let title = offer.title, !title.isEmpty, AXIsProcessTrusted() { raiseWindow(pid: pid, title: title) }
+        }
+    }
+}
+
+/// Raises the app's window called `title`, through Accessibility.
+private func raiseWindow(pid: pid_t, title: String) {
+    let element = AXUIElementCreateApplication(pid)
+    var windows: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, kAXWindowsAttribute as CFString, &windows) == .success else { return }
+    for window in windows as? [AXUIElement] ?? [] {
+        var value: CFTypeRef?
+        AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &value)
+        if value as? String == title {
+            AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+            break
+        }
     }
 }
