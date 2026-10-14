@@ -111,6 +111,37 @@ struct TodayPlan {
         var engaged: Bool
     }
 
+    /// 分轨: one row of the timeline. A lane holds one category (or project),
+    /// or, last, everything past the biggest few; its runs are where that
+    /// time sits in the day.
+    struct Lane: Identifiable {
+        struct Run: Identifiable {
+            var start: Date
+            var end: Date
+            /// Recorded time inside the run; the bridged gaps don't count.
+            var seconds: TimeInterval
+            /// The category holding most of the run: the lane's own, except in the "other" lane.
+            var categoryID: String
+            /// Project colour slot, for a project lane's run; nil is "no project".
+            var slot: Int?
+            /// No project yet, and Jev is still judging it.
+            var pending = false
+            /// The project was guessed from a neighbour.
+            var guessed = false
+            var id: Date { start }
+        }
+        /// A category id, the project's name, or `Lane.otherID`.
+        var id: String
+        var name: String
+        var colorHex: String
+        var seconds: TimeInterval
+        var slot: Int?
+        var runs: [Run]
+        static let otherID = "\u{1F}other"
+        static let noProjectID = "\u{1F}none"
+        var isOther: Bool { id == Self.otherID }
+    }
+
     enum Todo: Identifiable {
         case fill(DateInterval)
         case confirm(count: Int, projects: [String])
@@ -142,6 +173,8 @@ struct TodayPlan {
     /// Interruptions only, not peeks or pass-throughs.
     var interruptions: [SwitchEpisode]
     var categories: [CategoryRow]
+    /// One lane per category, the biggest first (`lanes(items:categories:)`).
+    var lanes: [Lane] = []
     var todos: [Todo]
     var firstRecord: Date?
     /// What the person said about stretches away.
@@ -164,6 +197,96 @@ struct TodayPlan {
     var carriedOver: Row? { rows.first(where: \.carriesOver) }
 
     // MARK: Helpers (pure)
+
+    /// Lanes the timeline shows, besides the "other" lane.
+    static let laneLimit = 4
+    /// Records of one lane this close together are one run: a glance at
+    /// another window, not a change of what you were doing.
+    static let laneBridge: TimeInterval = 60
+
+    /// The biggest `laneLimit` categories each get a lane, the rest share an
+    /// "other" lane; with only one more category than that, it gets its own.
+    /// A run is cut wherever another category held the window for longer than
+    /// `laneBridge`, so an interruption leaves a gap in one lane and a mark in
+    /// another. `items` sorted by start, as `DayOverview` keeps them.
+    static func lanes(items: [CategorizedSpan], categories: [CategoryRow],
+                      limit: Int = laneLimit, bridge: TimeInterval = laneBridge) -> [Lane] {
+        let ordered = categories.filter { $0.seconds > 0 }
+            .sorted { $0.seconds == $1.seconds ? $0.id < $1.id : $0.seconds > $1.seconds }
+        guard !ordered.isEmpty else { return [] }
+        let own = ordered.count <= limit + 1 ? ordered : Array(ordered.prefix(limit))
+        let rest = ordered.dropFirst(own.count)
+        var lanes = own.map { Lane(id: $0.id, name: $0.name, colorHex: $0.colorHex, seconds: $0.seconds, runs: []) }
+        if !rest.isEmpty {
+            lanes.append(Lane(id: Lane.otherID, name: String(localized: "其他"), colorHex: "",
+                              seconds: rest.reduce(0) { $0 + $1.seconds }, runs: []))
+        }
+        var index: [String: Int] = [:]
+        for (i, category) in own.enumerated() { index[category.id] = i }
+        for category in rest { index[category.id] = lanes.count - 1 }
+
+        var pieces = Array(repeating: [Lane.Run](), count: lanes.count)
+        for item in items {
+            guard let lane = index[item.categoryID] else { continue }
+            pieces[lane].append(Lane.Run(start: item.span.start, end: item.span.end, seconds: item.span.duration, categoryID: item.categoryID))
+        }
+        for i in lanes.indices { lanes[i].runs = fold(pieces[i], gap: bridge) }
+        return lanes
+    }
+
+    /// Joins runs less than `gap` apart. A joined run keeps the category that
+    /// holds most of its time. At a timeline's scale, `gap` is the time one
+    /// legible mark covers, so marks closer than that are drawn as one.
+    static func fold(_ runs: [Lane.Run], gap: TimeInterval) -> [Lane.Run] {
+        var result: [Lane.Run] = []
+        var shares: [String: TimeInterval] = [:]
+        func settle() {
+            guard !result.isEmpty else { return }
+            result[result.count - 1].categoryID = shares.max { $0.value == $1.value ? $0.key > $1.key : $0.value < $1.value }?.key
+                ?? result[result.count - 1].categoryID
+        }
+        for run in runs.sorted(by: { $0.start < $1.start }) {
+            if var last = result.last, run.start.timeIntervalSince(last.end) < gap,
+               last.slot == run.slot, last.pending == run.pending {
+                last.end = max(last.end, run.end)
+                last.seconds += run.seconds
+                last.guessed = last.guessed || run.guessed
+                result[result.count - 1] = last
+            } else {
+                settle()
+                shares = [:]
+                result.append(run)
+            }
+            shares[run.categoryID, default: 0] += run.seconds
+        }
+        settle()
+        return result
+    }
+
+    /// The lanes by project: each project's sessions, the biggest projects
+    /// first, then one lane for the rest and for time with no project.
+    var projectLanes: [Lane] {
+        let named = projects.filter { $0.name != nil && $0.seconds > 0 }
+        let own = Array(named.prefix(Self.laneLimit))
+        let ownNames = Set(own.compactMap(\.name))
+        var lanes = own.map { Lane(id: $0.name ?? "", name: $0.name ?? "", colorHex: "", seconds: $0.seconds, slot: $0.slot, runs: []) }
+        let restRows = rows.filter { $0.project.map { !ownNames.contains($0) } ?? true }
+        if !restRows.isEmpty {
+            let onlyUnassigned = restRows.allSatisfy { $0.project == nil }
+            lanes.append(Lane(id: onlyUnassigned ? Lane.noProjectID : Lane.otherID,
+                              name: onlyUnassigned ? String(localized: "没有项目") : String(localized: "其他"), colorHex: "",
+                              seconds: restRows.reduce(0) { $0 + $1.session.recorded }, runs: []))
+        }
+        var index: [String: Int] = [:]
+        for (i, lane) in lanes.enumerated() where i < own.count { index[lane.id] = i }
+        for row in rows {
+            guard let lane = row.project.flatMap({ index[$0] }) ?? (restRows.isEmpty ? nil : lanes.count - 1) else { continue }
+            lanes[lane].runs.append(Lane.Run(start: row.session.start, end: row.session.end, seconds: row.session.recorded,
+                                             categoryID: row.session.categoryID, slot: row.slot,
+                                             pending: row.projectPending, guessed: row.guessed))
+        }
+        return lanes
+    }
 
     /// Gaps between sessions, and, today, the stretch since the last one.
     static func gaps(_ sessions: [WorkSession], now: Date, isToday: Bool,
@@ -278,7 +401,9 @@ struct TodayPlan {
         var plan = TodayPlan(day: overview.day, now: overview.now, isToday: isToday, total: overview.total, engaged: overview.engaged,
                          pulse: Aggregator.pulse(durationByCategory: byCategory, categories: categoryByID),
                          rows: rows, projects: projects, gaps: gaps, axis: axis(sessions, day: overview.day, calendar: calendar),
-                         interruptions: interruptions, categories: categories, todos: todos, firstRecord: overview.firstRecord, notes: notes)
+                         interruptions: interruptions, categories: categories,
+                         lanes: lanes(items: overview.items, categories: categories),
+                         todos: todos, firstRecord: overview.firstRecord, notes: notes)
         if isToday { plan.setNewProject(newProject) }
         return plan
     }

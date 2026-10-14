@@ -9949,24 +9949,22 @@
         }
       }
     },
-    "%lld 段会话，按项目或分类上色": {
+    "每类一条轨，左边是总时长": {
       "localizations": {
         "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld session, colored by project or category"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld sessions, colored by project or category"
-                }
-              }
-            }
+          "stringUnit": {
+            "state": "translated",
+            "value": "One lane per category; totals on the left"
+          }
+        }
+      }
+    },
+    "每个项目一条轨，左边是总时长": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "One lane per project; totals on the left"
           }
         }
       }
