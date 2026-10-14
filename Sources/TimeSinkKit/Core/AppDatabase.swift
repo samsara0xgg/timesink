@@ -1,12 +1,64 @@
 import Foundation
 import GRDB
+import os
 
 public enum AppDatabase {
-    /// Opens (creating if needed) a WAL-mode database pool at `url` and runs migrations.
+    /// Opens (creating if needed) a WAL-mode database pool at `url` and runs
+    /// migrations. An existing file with migrations still to run is copied
+    /// first (`backUp`): a migration changes it in place.
     public static func open(at url: URL) throws -> DatabasePool {
-        let pool = try DatabasePool(path: url.path)
+        var configuration = Configuration()
+        // Another process (Jarvis) reads this file: wait out its lock for a
+        // few seconds instead of failing at once with SQLITE_BUSY.
+        configuration.busyMode = .timeout(5)
+        let pool = try DatabasePool(path: url.path, configuration: configuration)
+        let migrator = self.migrator
+        let pending = try pool.read { db -> Bool in
+            let applied = try migrator.appliedIdentifiers(db)
+            let complete = try migrator.hasCompletedMigrations(db)
+            return !applied.isEmpty && !complete
+        }
+        if pending {
+            do {
+                try backUp(pool, beside: url)
+            } catch {
+                // The copy is a safety net: without it the app still opens.
+                Logger(subsystem: "com.alllllenshi.TimeSink", category: "database")
+                    .error("backup before migrating failed: \(String(describing: error), privacy: .public)")
+            }
+        }
         try migrator.migrate(pool)
         return pool
+    }
+
+    /// How many dated copies `backUp` keeps beside the database.
+    static let keptBackups = 2
+
+    /// Copies the database to `<name>-backup-<yyyyMMdd-HHmmss>.sqlite` in its
+    /// folder with SQLite's backup API (consistent while other connections
+    /// read), then deletes all but the newest `keptBackups` copies.
+    @discardableResult
+    static func backUp(_ pool: DatabasePool, beside url: URL, now: Date = Date()) throws -> URL {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        let folder = url.deletingLastPathComponent()
+        let prefix = url.deletingPathExtension().lastPathComponent + "-backup-"
+        let destination = folder.appendingPathComponent(prefix + formatter.string(from: now) + ".sqlite")
+        let copy = try DatabaseQueue(path: destination.path)
+        try pool.backup(to: copy)
+        try copy.close()
+
+        let fileManager = FileManager.default
+        let names: [String] = try fileManager.contentsOfDirectory(atPath: folder.path)
+            .filter { $0.hasPrefix(prefix) && $0.hasSuffix(".sqlite") }
+            .sorted()
+        for name in names.dropLast(keptBackups) {
+            for suffix in ["", "-wal", "-shm", "-journal"] {
+                try? fileManager.removeItem(at: folder.appendingPathComponent(name + suffix))
+            }
+        }
+        return destination
     }
 
     /// Opens an in-memory database queue and runs migrations. Useful for tests.
@@ -381,6 +433,10 @@ public enum AppDatabase {
                 t.column("source", .text).notNull().defaults(to: "jev")
                 t.primaryKey(["appBundleID", "domain", "title", "document"])
             }
+            // Raw SQL over the columns the table has at this point, not
+            // `Category.insert` / `CategoryStore.moveReferences`: those follow
+            // the current model and schema, and a column or table added later
+            // would make this migration fail for every database older than it.
             let old = Dictionary(uniqueKeysWithValues: Taxonomy.legacyCategories.map { ($0.id, $0) })
             for c in Taxonomy.categories {
                 if let was = old[c.id] {
@@ -392,11 +448,27 @@ public enum AppDatabase {
                         WHERE id = ?
                         """, arguments: [was.name, c.name, was.productivity, c.productivity, c.sortOrder, c.description, c.distracting, c.id])
                 } else {
-                    try c.insert(db)
+                    try db.execute(sql: """
+                        INSERT INTO category (id, name, colorHex, productivity, sortOrder, description, distracting, isBuiltin)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """, arguments: [c.id, c.name, c.colorHex, c.productivity, c.sortOrder, c.description, c.distracting, c.isBuiltin])
                 }
             }
             for (retired, into) in Taxonomy.retiredIDs {
-                try CategoryStore.moveReferences(db, from: retired, to: into)
+                // `moveReferences` as it was at v15, over the tables that existed then.
+                for table in ["domainCategory", "urlRule", "appCategory", "titleRule", "spanCategoryOverride",
+                              "classificationSuggestion"] where try db.tableExists(table) {
+                    try db.execute(sql: "UPDATE \(table) SET categoryID = ? WHERE categoryID = ?", arguments: [into, retired])
+                }
+                try db.execute(sql: "UPDATE OR IGNORE budget SET categoryID = ? WHERE categoryID = ?", arguments: [into, retired])
+                try db.execute(sql: "DELETE FROM budget WHERE categoryID = ?", arguments: [retired])
+                try db.execute(sql: "UPDATE OR IGNORE budgetAlert SET categoryID = ? WHERE categoryID = ?", arguments: [into, retired])
+                try db.execute(sql: "DELETE FROM budgetAlert WHERE categoryID = ?", arguments: [retired])
+                if let blocked = try String.fetchOne(db, sql: "SELECT value FROM setting WHERE key = 'focusBlockedCategories'") {
+                    var seen = Set<String>()
+                    let moved: [String] = blocked.split(separator: ",").map { $0 == Substring(retired) ? into : String($0) }.filter { seen.insert($0).inserted }
+                    try db.execute(sql: "UPDATE setting SET value = ? WHERE key = 'focusBlockedCategories'", arguments: [moved.joined(separator: ",")])
+                }
                 try db.execute(sql: "DELETE FROM category WHERE id = ?", arguments: [retired])
             }
             // Asking for a sentence about a domain is a different consent from
@@ -483,6 +555,30 @@ public enum AppDatabase {
                 if (row["archived"] as Bool) == false { taken.insert(slot) }
                 try db.execute(sql: "UPDATE project SET colorIndex = ? WHERE id = ?", arguments: [slot, row["id"] as String])
             }
+        }
+        migrator.registerMigration("v21") { db in
+            // Screenshot rows are joined on their span (Jev's screen-text retries, per-span verdicts);
+            // without an index every join scans the whole table.
+            try db.execute(sql: "CREATE INDEX IF NOT EXISTS capture_on_spanID ON capture(spanID)")
+            // One row per Jev question that came back unusable (an unknown category, a malformed
+            // answer, a timeout): how often it was asked and when, so it backs off instead of being
+            // asked on every run. `kind` is "category", "project" or "capture"; `key` is
+            // `JevAttemptKey`'s encoding of the question.
+            try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS jevAttempt (
+                    kind TEXT NOT NULL,
+                    key TEXT NOT NULL,
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    lastTried DATETIME NOT NULL,
+                    PRIMARY KEY (kind, key)
+                )
+                """)
+        }
+        migrator.registerMigration("v22") { db in
+            // The daily limit a budget alert went out under, so raising a
+            // limit re-arms that day's alerts (`BudgetMonitor`). NULL: sent
+            // before this column, read as covering any limit.
+            try db.alter(table: "budgetAlert") { t in t.add(column: "limitSeconds", .integer) }
         }
         return migrator
     }

@@ -41,7 +41,8 @@ public final class ProjectStore: Sendable {
     }
 
     /// Adds a project after the last one. A name an archived project had
-    /// brings that one back, with the new description.
+    /// brings that one back, with the new description -- within the limit
+    /// like any other.
     @discardableResult
     public func add(name: String, description: String = "", source: String = "user") throws -> UserProject {
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -50,6 +51,7 @@ public final class ProjectStore: Sendable {
             let order = (try Int.fetchOne(db, sql: "SELECT MAX(sortOrder) FROM project") ?? -1) + 1
             if var old = try UserProject.fetchOne(db, sql: "SELECT * FROM project WHERE name = ?", arguments: [name]) {
                 guard old.archived else { throw ProjectError.duplicate }
+                guard try Self.liveCount(db) < Self.maxProjects else { throw ProjectError.limitReached }
                 old.archived = false
                 old.name = name
                 old.description = description
@@ -60,14 +62,18 @@ public final class ProjectStore: Sendable {
                 try old.update(db)
                 return old
             }
-            let live = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM project WHERE archived = 0") ?? 0
-            guard live < Self.maxProjects else { throw ProjectError.limitReached }
+            guard try Self.liveCount(db) < Self.maxProjects else { throw ProjectError.limitReached }
             let project = UserProject(id: "p-" + UUID().uuidString.lowercased().prefix(8), name: name, description: description,
                                       sortOrder: order, source: source, archived: false, createdAt: Date(),
                                       colorIndex: ProjectPalette.slot(for: name, taken: try Self.liveColors(db)))
             try project.insert(db)
             return project
         }
+    }
+
+    /// How many projects are not archived: what `maxProjects` limits.
+    static func liveCount(_ db: Database) throws -> Int {
+        try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM project WHERE archived = 0") ?? 0
     }
 
     /// The colours the live (not archived) projects wear.
@@ -85,13 +91,16 @@ public final class ProjectStore: Sendable {
     }
 
     /// Renames and/or re-describes. Your own assignments of sessions follow the new name.
+    /// An archived project (one "deleted" before deleting removed it for good)
+    /// does not hold on to its name: taking the name deletes it.
     public func update(id: String, name: String, description: String) throws {
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { throw ProjectError.emptyName }
         try writer.write { db in
             guard var project = try UserProject.fetchOne(db, key: id) else { throw ProjectError.notFound }
             if let other = try UserProject.fetchOne(db, sql: "SELECT * FROM project WHERE name = ?", arguments: [name]), other.id != id {
-                throw ProjectError.duplicate
+                guard other.archived else { throw ProjectError.duplicate }
+                try Self.remove(other, db)
             }
             let old = project.name
             project.name = name
@@ -101,8 +110,30 @@ public final class ProjectStore: Sendable {
         }
     }
 
+    /// Deletes the project for good: sessions you assigned to it go back to
+    /// none, and Jev's verdicts naming it go (the project list changed, so
+    /// Jev asks again anyway).
+    public func delete(_ id: String) throws {
+        try writer.write { db in
+            guard let project = try UserProject.fetchOne(db, key: id) else { throw ProjectError.notFound }
+            try Self.remove(project, db)
+        }
+    }
+
+    /// Everything that names `project`: your session assignments (by name;
+    /// a row left with neither a name nor a project goes, as
+    /// `setSessionName` does), Jev's project verdicts (by id), the row.
+    static func remove(_ project: UserProject, _ db: Database) throws {
+        try db.execute(sql: "UPDATE sessionName SET project = NULL WHERE project = ? COLLATE NOCASE", arguments: [project.name])
+        try db.execute(sql: "DELETE FROM sessionName WHERE name IS NULL AND project IS NULL")
+        try db.execute(sql: "DELETE FROM jevProjectVerdict WHERE projectID = ?", arguments: [project.id])
+        try db.execute(sql: "UPDATE jevProjectVerdict SET runnerUp = '' WHERE runnerUp = ?", arguments: [project.id])
+        try db.execute(sql: "DELETE FROM project WHERE id = ?", arguments: [project.id])
+    }
+
     /// Takes the project out of the list and out of Jev's questions. Its
-    /// verdicts and your assignments stay in the database.
+    /// verdicts and your assignments stay in the database. Not offered in
+    /// the app any more (删除 deletes); projects archived before stay so.
     public func archive(_ id: String) throws {
         try writer.write { db in
             guard try UserProject.exists(db, key: id) else { throw ProjectError.notFound }

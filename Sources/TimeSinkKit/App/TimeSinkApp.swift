@@ -39,12 +39,15 @@ public struct TimeSinkApp: App {
         try? Tips.configure()
 
         let db: any DatabaseWriter
+        var databaseURL: URL?
         do {
-            db = try AppDatabase.open(at: try AppDatabase.defaultURL())
+            let url = try AppDatabase.defaultURL()
+            databaseURL = url
+            db = try AppDatabase.open(at: url)
         } catch {
             Logger(subsystem: "com.alllllenshi.TimeSink", category: "app")
                 .fault("failed to open database: \(String(describing: error))")
-            fatalError("cannot open TimeSink database: \(error)")
+            TimeSinkApp.databaseOpenFailed(error, at: databaseURL)
         }
 
         let spanStore = SpanStore(db)
@@ -132,9 +135,11 @@ public struct TimeSinkApp: App {
         // real redirect -- never from `FocusSessionController.blockPageURL`
         // (which uses the pure `FocusBlockPage.location` instead), so no
         // pure/test path ever touches disk for this.
-        focusController.redirectChrome = { [weak chromeBlocker] urlString in
+        // Off the main actor: the redirect is a synchronous Apple Event
+        // that a hung Chrome holds for up to its 1 s timeout.
+        focusController.redirectChromeOffActor = { [chromeBlocker] urlString in
             FocusBlockPage.ensureWritten()
-            return chromeBlocker?.setActiveTabURL(urlString) ?? false
+            return await chromeBlocker.setActiveTabURLOffActor(urlString)
         }
         focusController.showHUD = { [weak focusController, focusHUD] appName, hideCount in
             guard let focusController else { return }
@@ -168,6 +173,9 @@ public struct TimeSinkApp: App {
         }
         model.focusStore = focusStore
         model.focus = focusController
+        // A session the app was quit or crashed in the middle of resumes if
+        // its planned end is still ahead.
+        focusController.restoreUnfinished()
         ProjectSeed.applyIfNeeded(store: categoryStore.projects, settings: settingsStore)
         model.reloadProjects()
         let jev = JevService(categoryStore: categoryStore, settings: settingsStore, resolver: resolver)
@@ -184,6 +192,8 @@ public struct TimeSinkApp: App {
         self.needsOnboarding = needsOnboarding
         model.accessibilityGranted = !needsOnboarding
         _showOnboarding = State(initialValue: needsOnboarding)
+        // A first run the app quit (or relaunched for Screen Recording) in the middle of: the card again.
+        if !needsOnboarding, model.onboardingInterrupted { model.onboardingRequested = true }
 
         // Cloud account + sync -- post-init injection like the above. The
         // loop only does work while the account pane's switch is on, and
@@ -231,7 +241,7 @@ public struct TimeSinkApp: App {
                     appDelegate.blocker = chromeBlocker
                     // The popover's first open shows these numbers at once.
                     Task { await model.dashboard.recompute(model: model, forceStreak: false) }
-                    if needsOnboarding {
+                    if needsOnboarding || model.onboardingRequested {
                         openWindow(id: "main")
                         AppWindow.main.bringForward()
                     }
@@ -249,7 +259,7 @@ public struct TimeSinkApp: App {
                     model.noteMainWindowOpened()
                 }
                 .onDisappear {
-                    NSApp.setActivationPolicy(.accessory)
+                    Self.dropDockIconUnlessAWindowIsOpen()
                 }
                 .sheet(isPresented: $showOnboarding) {
                     OnboardingView(model: model)
@@ -274,7 +284,46 @@ public struct TimeSinkApp: App {
                 .colorRefresh()
                 .environment(\.locale, model.displayLocale)
                 .appWindow(.settings)
+                .onDisappear {
+                    Self.dropDockIconUnlessAWindowIsOpen()
+                }
         }
+    }
+
+    /// The Dock icon comes with the main window and goes with the last
+    /// ordinary window: closing the main window while Settings is open keeps
+    /// it, and closing Settings afterwards drops it. Looked at a turn later,
+    /// once the closing window is gone; panels (the menu bar popover, the
+    /// focus HUD) don't count.
+    static func dropDockIconUnlessAWindowIsOpen() {
+        DispatchQueue.main.async {
+            let open = NSApp.windows.contains { (window: NSWindow) -> Bool in
+                !(window is NSPanel) && window.styleMask.contains(.titled) && (window.isVisible || window.isMiniaturized)
+            }
+            if !open { NSApp.setActivationPolicy(.accessory) }
+        }
+    }
+
+    /// The database could not be opened (a damaged file, a full disk, no
+    /// permission): say so and quit, instead of crashing, with the way to the
+    /// file -- and the copies taken before each migration, in the same folder.
+    private static func databaseOpenFailed(_ error: Error, at url: URL?) -> Never {
+        NSApplication.shared.setActivationPolicy(.regular)
+        NSApplication.shared.activate()
+        let alert = NSAlert()
+        alert.alertStyle = .critical
+        alert.messageText = String(localized: "无法打开 TimeSink 的数据库")
+        alert.informativeText = String(localized: "没有它就无法记录，TimeSink 将退出。文件可能已损坏，或磁盘空间不足；升级前的备份（如有）在同一个文件夹里。\n\n\(error.localizedDescription)")
+        alert.addButton(withTitle: String(localized: "退出 TimeSink"))
+        if url != nil { alert.addButton(withTitle: String(localized: "在访达中显示")) }
+        if alert.runModal() == .alertSecondButtonReturn, let url {
+            if FileManager.default.fileExists(atPath: url.path) {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            } else {
+                NSWorkspace.shared.open(url.deletingLastPathComponent())
+            }
+        }
+        exit(1)
     }
 }
 
@@ -467,8 +516,10 @@ final class TimeSinkAppDelegate: NSObject, NSApplicationDelegate, @unchecked Sen
             // Idempotent -- the popover's 退出 button already stops the
             // engine above; a running focus session still needs its row
             // closed out as "manually ended" regardless of which quit path
-            // got here first.
-            focus?.finish(completed: false)
+            // got here first. Not when Sparkle relaunches to install an
+            // update: the session then resumes after the relaunch
+            // (`FocusSessionController.restoreUnfinished`).
+            if !Updates.relaunchingForUpdate { focus?.finish(completed: false) }
         }
         return .terminateNow
     }
@@ -488,13 +539,13 @@ final class TimeSinkAppDelegate: NSObject, NSApplicationDelegate, @unchecked Sen
                 guard url.scheme == "timesink", url.host == "focus" else { continue }
                 switch url.path {
                 case "/back":
-                    blocker?.setActiveTabURL("chrome://newtab")
+                    if let blocker { Task { _ = await blocker.setActiveTabURLOffActor("chrome://newtab") } }
                 case "/allow":
                     guard let domain = URLComponents(url: url, resolvingAgainstBaseURL: false)?
                         .queryItems?.first(where: { $0.name == "domain" })?.value,
                         !domain.isEmpty else { continue }
                     if let destination = focus?.allowedDestination(for: domain) {
-                        blocker?.setActiveTabURL(destination)
+                        if let blocker { Task { _ = await blocker.setActiveTabURLOffActor(destination) } }
                     }
                 default:
                     break

@@ -124,7 +124,7 @@ struct ProjectsView: View {
             Text(verbatim: time).font(.body.monospacedDigit()).foregroundStyle(Design.ink2).refinedNumberMotion(time)
                 .frame(width: 84, alignment: .trailing)
             Button { editing = project } label: { Image(systemName: "pencil").font(.note).foregroundStyle(Design.ink2) }
-                .buttonStyle(.plain).help("编辑项目").accessibilityLabel("编辑项目")
+                .buttonStyle(.plain).help("编辑项目").accessibilityLabel("编辑项目「\(project.name)」")
         }
         .padding(.horizontal, Design.Space.sm).frame(height: 44)
     }
@@ -223,6 +223,7 @@ struct ProjectEditSheet: View {
     @State private var name = ""
     @State private var details = ""
     @State private var error: String?
+    @State private var confirmingDelete = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -238,7 +239,7 @@ struct ProjectEditSheet: View {
                         Button(other.name) { run { try model.categoryStore.projects.merge(project.id, into: other.id) } }
                     }
                 }.menuStyle(.button).buttonStyle(PillButtonStyle()).fixedSize().disabled(model.projects.count < 2)
-                Button("删除") { run { try model.categoryStore.projects.archive(project.id) } }
+                Button("删除") { confirmingDelete = true }
                     .buttonStyle(PillButtonStyle(tint: Design.alert))
                 Spacer()
             }
@@ -253,6 +254,10 @@ struct ProjectEditSheet: View {
         }
         .padding(24).frame(width: 440)
         .onAppear { name = project.name; details = project.description }
+        .confirmationDialog("删除项目“\(project.name)”？", isPresented: $confirmingDelete, titleVisibility: .visible) {
+            Button("删除项目", role: .destructive) { run { try model.categoryStore.projects.delete(project.id) } }
+            Button("取消", role: .cancel) {}
+        } message: { Text("分到这个项目的会话会变回没有项目，Jev 对它的判断也会删除。删除后无法恢复。") }
     }
 
     private func run(_ change: () throws -> Void) {
@@ -290,7 +295,7 @@ struct ProjectColorDot: View {
                 .padding(8).contentShape(Rectangle())
         }
         .buttonStyle(.plain).padding(-8)
-        .help("项目颜色").accessibilityLabel("项目颜色")
+        .help("项目颜色").accessibilityLabel("「\(project.name)」的颜色")
         .popover(isPresented: $open, arrowEdge: .bottom) { palette }
         #if DEBUG
         .overlay(alignment: .topLeading) {
