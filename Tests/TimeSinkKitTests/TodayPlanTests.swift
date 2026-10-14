@@ -159,7 +159,9 @@ final class TodayPlanTests: XCTestCase {
         XCTAssertEqual(lanes.map(\.id), ["dev", "chat"])
         XCTAssertEqual(lanes[0].runs.map(\.start), [date(9), date(9, 47)])
         XCTAssertEqual(lanes[0].runs.last?.end, date(11))
-        XCTAssertEqual(lanes[0].runs.map(\.seconds).reduce(0, +), (40 + 43 + 29) * 60 + 40)
+        let devSeconds: TimeInterval = lanes[0].runs.map(\.seconds).reduce(0, +)
+        let expected: TimeInterval = 112 * 60 + 40  // 40 + 43 + 29 minutes, and 40 seconds
+        XCTAssertEqual(devSeconds, expected)
         XCTAssertEqual(lanes[1].runs.count, 2)
     }
 
@@ -175,7 +177,8 @@ final class TodayPlanTests: XCTestCase {
         }
         let lanes = TodayPlan.lanes(items: items, categories: Array(rows.reversed()))
         XCTAssertEqual(lanes.map(\.id), ["a", "b", "c", "d", TodayPlan.Lane.otherID])
-        XCTAssertEqual(lanes.last?.seconds, TimeInterval((35 + 30) * 60))
+        let otherSeconds: TimeInterval = 65 * 60  // e 35 minutes, f 30
+        XCTAssertEqual(lanes.last?.seconds, otherSeconds)
         XCTAssertEqual(lanes.last?.runs.map(\.categoryID), ["e", "f"])
 
         // One category more than the limit gets a lane of its own instead.
