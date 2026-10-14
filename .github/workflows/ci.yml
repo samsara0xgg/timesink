@@ -1,7 +1,9 @@
 # Every push and pull request: the Swift package builds, its tests pass and
 # every UI string has English on macOS; the Lambda's tests pass against
 # moto; the CDK app's assertion tests pass and it synthesizes.
-# None of the three needs AWS credentials.
+# None of the three needs AWS credentials, and the token GitHub hands the
+# jobs can only read. Third-party actions are pinned to commits (the tag is
+# in the comment) so a moved tag cannot change what runs here.
 name: CI
 
 on:
@@ -9,12 +11,17 @@ on:
     branches: ['**']
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   swift:
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: .build
           key: spm-${{ runner.os }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
@@ -30,11 +37,13 @@ jobs:
       run:
         working-directory: cloud/api
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
       - run: uv pip install --system boto3 'moto[dynamodb,cognitoidp]' pytest
       - run: python -m pytest -q
 
@@ -44,12 +53,15 @@ jobs:
       run:
         working-directory: cloud/infra
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: cloud/infra/package-lock.json
-      - run: npm ci
+      # As in deploy.yml: no dependency runs code at install time.
+      - run: npm ci --ignore-scripts
       - run: npm test
       - run: npx cdk synth --quiet

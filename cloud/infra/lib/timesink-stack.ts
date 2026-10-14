@@ -10,6 +10,7 @@ import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
@@ -23,13 +24,45 @@ import { Construct } from 'constructs';
  *
  * The user pool and the table are RETAINed: a `cdk destroy` must never take
  * users' accounts or their history with it.
+ *
+ * Two opt-ins, both off by default because each needs something in the
+ * account first. Pass them as CDK context (`-c key=value`, or in cdk.json);
+ * deploy.yml passes them from repository variables (SES_FROM_EMAIL, ...,
+ * API_RESERVED_CONCURRENCY), and an unset or empty one means off.
+ *
+ * - `sesFromEmail` (and optionally `sesFromName`, `sesReplyTo`, `sesRegion`,
+ *   `sesVerifiedDomain`): Cognito sends sign-up and password-reset mail
+ *   through SES instead of its built-in sender, which stops at 50 messages a
+ *   day. First verify the address (or its domain) in SES, in `sesRegion`
+ *   (default: this stack's region), and move SES out of the sandbox, which
+ *   otherwise only delivers to verified recipients.
+ * - `apiReservedConcurrency` (e.g. 10): caps how many copies of the API
+ *   Lambda run at once. AWS refuses it unless the account keeps 10
+ *   unreserved, so first check that `aws lambda get-account-settings` shows
+ *   a ConcurrentExecutions limit of at least the value plus 10 (new accounts
+ *   can start at 10).
  */
 export class TimeSinkStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
+    const ctx = (key: string): string | undefined => {
+      const v = this.node.tryGetContext(key);
+      return v === undefined || v === null || `${v}`.trim() === '' ? undefined : `${v}`.trim();
+    };
+
+    const sesFromEmail = ctx('sesFromEmail');
     const userPool = new cognito.UserPool(this, 'Users', {
       selfSignUpEnabled: true,
+      email: sesFromEmail
+        ? cognito.UserPoolEmail.withSES({
+            fromEmail: sesFromEmail,
+            fromName: ctx('sesFromName'),
+            replyTo: ctx('sesReplyTo'),
+            sesRegion: ctx('sesRegion') ?? this.region,
+            sesVerifiedDomain: ctx('sesVerifiedDomain'),
+          })
+        : undefined,
       signInAliases: { email: true },
       autoVerify: { email: true },
       standardAttributes: { email: { required: true, mutable: false } },
@@ -59,6 +92,9 @@ export class TimeSinkStack extends cdk.Stack {
       sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
+      // The API's per-user rate and daily counters and the deleted-account
+      // marker expire on their own; span items never carry the attribute.
+      timeToLiveAttribute: 'expiresAt',
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
     table.addGlobalSecondaryIndex({
@@ -67,6 +103,10 @@ export class TimeSinkStack extends cdk.Stack {
       sortKey: { name: 'seq', type: dynamodb.AttributeType.STRING },
     });
 
+    const reserved = ctx('apiReservedConcurrency');
+    if (reserved !== undefined && !/^[1-9][0-9]*$/.test(reserved)) {
+      throw new Error(`apiReservedConcurrency must be a positive integer, got ${reserved}`);
+    }
     const api = new lambda.Function(this, 'Api', {
       runtime: lambda.Runtime.PYTHON_3_12,
       handler: 'handler.handler',
@@ -76,6 +116,7 @@ export class TimeSinkStack extends cdk.Stack {
       environment: { TABLE_NAME: table.tableName, USER_POOL_ID: userPool.userPoolId },
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
+      reservedConcurrentExecutions: reserved === undefined ? undefined : Number(reserved),
       // Errors can echo synced titles and URLs, so logs do not outlive a month.
       logGroup: new logs.LogGroup(this, 'ApiLogs', {
         retention: logs.RetentionDays.ONE_MONTH,
@@ -83,7 +124,16 @@ export class TimeSinkStack extends cdk.Stack {
       }),
     });
     table.grantReadWriteData(api);
-    userPool.grant(api, 'cognito-idp:AdminDeleteUser');
+    // DELETE /account signs the user out everywhere and disables them; the
+    // delete job it starts removes the user once the table is empty.
+    userPool.grant(api, 'cognito-idp:AdminUserGlobalSignOut', 'cognito-idp:AdminDisableUser', 'cognito-idp:AdminDeleteUser');
+    // The delete job is the function invoking itself asynchronously. A
+    // policy of its own: in the role's default policy the function's ARN
+    // would make the function depend on itself.
+    new iam.Policy(this, 'ApiSelfInvoke', {
+      roles: [api.role!],
+      statements: [new iam.PolicyStatement({ actions: ['lambda:InvokeFunction'], resources: [api.functionArn] })],
+    });
 
     const httpApi = new apigw.HttpApi(this, 'Http', {
       defaultAuthorizer: new HttpUserPoolAuthorizer('Jwt', userPool, { userPoolClients: [client] }),
@@ -94,8 +144,12 @@ export class TimeSinkStack extends cdk.Stack {
 
     // Sign-up is open, so the stage caps the whole API: far above what a
     // few Macs syncing need, far below a bill. Over it, clients get 429 and
-    // retry on their next sync. HttpApi takes no throttle for its default
-    // stage, hence the escape hatch.
+    // back off. Each user is also held to a request rate and a daily row
+    // count inside the Lambda (cloud/api/handler.py), so no one account can
+    // run up the bill; this cap is shared, and only per-client throttling in
+    // front of the API (WAF, which an HTTP API cannot take) would stop one
+    // account crowding out the rest. HttpApi takes no throttle for its
+    // default stage, hence the escape hatch.
     const stage = httpApi.defaultStage!.node.defaultChild as apigw.CfnStage;
     stage.defaultRouteSettings = { throttlingRateLimit: 20, throttlingBurstLimit: 40 };
 
