@@ -150,10 +150,10 @@ struct RefinedRecordingPane: View {
                     caption(String(localized: "空闲的时间不计入，回来自动继续。"))
                 }
                 VStack(alignment: .leading, spacing: 4) {
-                    Toggle("按网站记录 Chrome", isOn: $chromeEnabled)
+                    Toggle("按网站记录浏览器", isOn: $chromeEnabled)
                         .onChange(of: chromeEnabled) { _, value in model.settings.set("chromeTrackingEnabled", value ? "true" : "false") }
                     HStack {
-                        caption(chromeEnabled ? String(localized: "按网站分类需 Chrome 自动化权限。") : String(localized: "已关闭；Chrome 只记录应用时长。"))
+                        caption(chromeEnabled ? String(localized: "按网站分类需要浏览器的自动化权限；第一次用 Arc、Edge 等浏览器时系统会询问。") : String(localized: "已关闭；浏览器只记录应用时长。"))
                         Spacer(minLength: 4)
                         Button("查看权限…") { model.settingsTab = .privacy }.buttonStyle(.link)
                     }
@@ -367,7 +367,7 @@ struct PermissionsSection: View {
         } header: {
             Text("权限")
         } footer: {
-            Text("回到 TimeSink 时自动重新检查。其他浏览器目前只按应用记录。")
+            Text("回到 TimeSink 时自动重新检查。Safari 和 Firefox 目前只按应用记录。")
                 .font(.note).foregroundStyle(Design.ink2)
         }
         .task { await refresh() }

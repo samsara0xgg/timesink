@@ -18,10 +18,12 @@ enum TimelineColors: String, CaseIterable {
     case project, category
 }
 
-/// 今天的时间轴: the day's sessions as blocks, coloured by project, on an hour
-/// axis. Gaps are hatched, interruptions are ticks under the block where they
-/// happened, and now is a line. The heading says what is going on now; a
-/// block opens a small card.
+/// 今天的时间轴, 分轨: one lane per category (or project), its total on the
+/// left and where its time sits on an hour axis to the right, so the card
+/// answers where the day went and when in one look. A run is cut wherever
+/// something else held the window, so an interruption shows as a mark in
+/// another lane. Gaps are hatched across every lane, interruptions are ticks
+/// under the lanes, and now is a line. A mark opens its session's card.
 struct TodayTimelineCard: View {
     let plan: TodayPlan
     let model: AppModel
@@ -33,19 +35,33 @@ struct TodayTimelineCard: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var filling: Date?
+    /// The lane of the mark that opened the card, so the card hangs under it.
+    @State private var selectedLane: Int?
 
     private static let headerHeight: CGFloat = 24
-    private static let chartHeight: CGFloat = 140
+    /// Room above the lanes for the time now.
+    private static let top: CGFloat = 22
+    private static let laneHeight: CGFloat = 26
+    private static let markHeight: CGFloat = 18
+    /// The narrowest mark drawn; runs closer than this on screen are drawn as one.
+    private static let minMark: CGFloat = 2
+    /// Always room for every lane, so the page doesn't jump with the day's mix.
+    private static let lanesHeight = CGFloat(TodayPlan.laneLimit + 1) * laneHeight
+    private static let chartHeight: CGFloat = top + lanesHeight + 26
     private static let legendHeight: CGFloat = 16
+    private static let labelWidth: CGFloat = 164
     /// The card's whole height, so the page can hold its place while loading.
     static let height = headerHeight + Design.Space.md + chartHeight + Design.Space.sm + legendHeight + 2 * Design.Space.card
-    private static let top: CGFloat = 24
-    private static let blockHeight: CGFloat = 44
 
     var body: some View {
+        let lanes = colors == .project ? plan.projectLanes : plan.lanes
         VStack(alignment: .leading, spacing: 0) {
             header.frame(height: Self.headerHeight).padding(.bottom, Design.Space.md)
-            chart.frame(height: Self.chartHeight).zIndex(1)
+            HStack(alignment: .top, spacing: Design.Space.md) {
+                laneLabels(lanes).frame(width: Self.labelWidth)
+                chart(lanes)
+            }
+            .frame(height: Self.chartHeight).zIndex(1)
             legend.frame(height: Self.legendHeight).padding(.top, Design.Space.sm)
         }
         .cardBox()
@@ -53,7 +69,8 @@ struct TodayTimelineCard: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: Design.Space.sm) {
-            CardHeading(title: plan.isToday ? "今天的时间轴" : "这一天的时间轴", caption: Text("\(plan.rows.count) 段会话，按项目或分类上色"))
+            CardHeading(title: plan.isToday ? "今天的时间轴" : "这一天的时间轴",
+                        caption: colors == .project ? Text("每个项目一条轨，左边是总时长") : Text("每类一条轨，左边是总时长"))
             Spacer(minLength: Design.Space.sm)
             if let carried = plan.carriedOver {
                 Button { select(carried) } label: {
@@ -91,8 +108,47 @@ struct TodayTimelineCard: View {
               : String(localized: "这一段没有被打断，切换 \(row.switches) 次。"))
     }
 
-    private func select(_ row: TodayPlan.Row) {
-        withAnimation(Design.motion(Design.quick, reduced: reduceMotion)) { selected = selected == row.id ? nil : row.id }
+    private func select(_ row: TodayPlan.Row, lane: Int? = nil) {
+        withAnimation(Design.motion(Design.quick, reduced: reduceMotion)) {
+            if selected == row.id, lane == nil || lane == selectedLane {
+                selected = nil
+            } else {
+                selected = row.id
+                selectedLane = lane
+            }
+        }
+    }
+
+    // MARK: Lane names
+
+    /// Each lane's name and total. A category's name opens its records of the day.
+    private func laneLabels(_ lanes: [TodayPlan.Lane]) -> some View {
+        VStack(spacing: 0) {
+            ForEach(lanes) { lane in
+                let content = HStack(spacing: Design.Space.sm) {
+                    Circle().fill(swatch(lane)).frame(width: 8, height: 8)
+                    Text(verbatim: lane.name).lineLimit(1).truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(verbatim: lane.seconds < 60 ? String(localized: "<1 分") : TodayFmt.clock(lane.seconds))
+                        .monospacedDigit().fontWeight(.semibold)
+                }
+                .font(.body).foregroundStyle(Design.ink)
+                .padding(.horizontal, Design.Space.sm)
+                .frame(height: Self.laneHeight)
+                .contentShape(Rectangle())
+                .accessibilityElement(children: .combine)
+                if colors == .category, !lane.isOther {
+                    Button {
+                        model.openActivities(category: lane.id, range: DateRangeSelection(kind: .day, anchor: plan.day.start))
+                    } label: { content }
+                    .buttonStyle(HoverRowStyle())
+                } else {
+                    content
+                }
+            }
+        }
+        .padding(.top, Self.top)
+        .padding(.horizontal, -Design.Space.sm)
     }
 
     // MARK: Chart
@@ -103,30 +159,45 @@ struct TodayTimelineCard: View {
         width * CGFloat(max(0, min(1, date.timeIntervalSince(plan.axis.start) / axisSeconds)))
     }
 
-    private var chart: some View {
+    private func laneY(_ index: Int) -> CGFloat { Self.top + CGFloat(index) * Self.laneHeight }
+
+    private func chart(_ lanes: [TodayPlan.Lane]) -> some View {
         GeometryReader { proxy in
             let width = proxy.size.width
-            let labelFrom = BlockLabel.minutes(pointsPerSecond: width / axisSeconds, width: { BlockLabel.noteWidth($0) })
+            let pointsPerSecond = width / axisSeconds
+            let labelFrom = BlockLabel.minutes(pointsPerSecond: pointsPerSecond, width: { BlockLabel.noteWidth($0) })
+            let bottom = laneY(max(1, lanes.count))
+            let row = plan.rows.first { $0.id == selected }
             ZStack(alignment: .topLeading) {
-                if plan.isToday { future(width) }
-                grid(width)
-                ForEach(plan.gaps) { gap in away(gap, width) }
-                ForEach(Array(plan.rows.enumerated()), id: \.element.id) { index, row in block(row, index: index, width, labelFrom: labelFrom) }
-                ticks(width)
-                if plan.isToday { nowMark(width) }
-                if let row = plan.rows.first(where: { $0.id == selected }) { card(row, width) }
+                if plan.isToday { future(width, bottom: bottom) }
+                grid(width, bottom: bottom)
+                ForEach(Array(lanes.indices), id: \.self) { index in
+                    RoundedRectangle(cornerRadius: Design.Radius.mark, style: .continuous).fill(Design.track.opacity(0.6))
+                        .frame(width: width, height: Self.markHeight)
+                        .offset(y: laneY(index) + (Self.laneHeight - Self.markHeight) / 2)
+                }
+                ForEach(plan.gaps) { gap in away(gap, width, bottom: bottom) }
+                ForEach(Array(lanes.enumerated()), id: \.element.id) { index, lane in
+                    ForEach(TodayPlan.fold(lane.runs, gap: Double(Self.minMark / pointsPerSecond))) { run in
+                        mark(run, lane: index, width, labelFrom: labelFrom)
+                    }
+                }
+                if let row { selection(row, width, bottom: bottom) }
+                ticks(width, bottom: bottom)
+                if plan.isToday { nowMark(width, bottom: bottom) }
+                if let row { card(row, width, y: (selectedLane.map { laneY($0 + 1) } ?? bottom) + 4) }
             }
             .frame(width: width, height: Self.chartHeight, alignment: .topLeading)
         }
     }
 
-    private func future(_ width: CGFloat) -> some View {
+    private func future(_ width: CGFloat, bottom: CGFloat) -> some View {
         let nowX = x(plan.now, width) + 6
         return RoundedRectangle(cornerRadius: Design.Radius.mark, style: .continuous)
             .strokeBorder(Design.line, style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
             .overlay(Text("还没到").font(.note).foregroundStyle(Design.ink2))
-            .frame(width: max(0, width - nowX), height: Self.blockHeight + 12)
-            .offset(x: nowX, y: Self.top - 6)
+            .frame(width: max(0, width - nowX), height: bottom - Self.top + 8)
+            .offset(x: nowX, y: Self.top - 4)
             .opacity(width - nowX > 56 ? 1 : 0)
     }
 
@@ -148,20 +219,21 @@ struct TodayTimelineCard: View {
         return result
     }
 
-    private func grid(_ width: CGFloat) -> some View {
+    private func grid(_ width: CGFloat, bottom: CGFloat) -> some View {
         let ticks = hourTicks(width)
         return ZStack(alignment: .topLeading) {
             ForEach(ticks) { tick in
-                Rectangle().fill(Design.line2).frame(width: 1, height: 102).offset(x: tick.x)
+                Rectangle().fill(Design.line2).frame(width: 1, height: bottom - Self.top + 8).offset(x: tick.x, y: Self.top - 4)
                 Text(verbatim: tick.text).font(.note).monospacedDigit().foregroundStyle(Design.ink2).fixedSize()
-                    .position(x: min(max(tick.x, 22), width - 22), y: 120)
+                    .position(x: min(max(tick.x, 22), width - 22), y: bottom + 16)
             }
         }
     }
 
     // MARK: Gaps
 
-    private func away(_ gap: DayGap, _ width: CGFloat) -> some View {
+    /// Time away: hatched across every lane, with what the person said about it or a way to say it.
+    private func away(_ gap: DayGap, _ width: CGFloat, bottom: CGFloat) -> some View {
         let left = x(gap.interval.start, width), right = x(gap.interval.end, width)
         let w = max(0, right - left)
         let note = plan.notes.first { TodayPlan.isNoted(gap.interval, by: [$0]) }
@@ -186,116 +258,111 @@ struct TodayTimelineCard: View {
                 }
             }
         }
-        .frame(width: w, height: Self.blockHeight)
+        .frame(width: w, height: bottom - Self.top)
         .offset(x: left, y: Self.top)
         .help(Text("离开 \(TodayFmt.long(gap.interval.duration))"))
     }
 
-    // MARK: Blocks
+    // MARK: Marks
 
-    private func dimmed(_ row: TodayPlan.Row) -> Bool {
+    /// The session a run belongs to: the one holding its middle, else any it overlaps.
+    private func row(at run: TodayPlan.Lane.Run) -> TodayPlan.Row? {
+        let middle = run.start.addingTimeInterval(run.end.timeIntervalSince(run.start) / 2)
+        return plan.rows.first { $0.session.start <= middle && middle < $0.session.end }
+            ?? plan.rows.first { $0.session.start < run.end && run.start < $0.session.end }
+    }
+
+    private func dimmed(_ row: TodayPlan.Row?) -> Bool {
         guard let filter else { return false }
+        guard let row else { return true }
         return filter != row.project
     }
 
-    /// A block's width: its span on the axis, less the seam to its neighbour.
-    private func blockWidth(_ row: TodayPlan.Row, _ width: CGFloat) -> CGFloat {
-        max(x(row.session.end, width) - x(row.session.start, width) - BlockLabel.seam, 3)
-    }
-
-    private func block(_ row: TodayPlan.Row, index: Int, _ width: CGFloat, labelFrom: Int?) -> some View {
-        let left = x(row.session.start, width)
-        let w = blockWidth(row, width)
-        let color = color(of: row)
-        let isSelected = selected == row.id
+    private func mark(_ run: TodayPlan.Lane.Run, lane: Int, _ width: CGFloat, labelFrom: Int?) -> some View {
+        let left = x(run.start, width)
+        let w = max(x(run.end, width) - left - 1, Self.minMark)
+        let color = color(of: run)
+        let session = self.row(at: run)
         let shape = RoundedRectangle(cornerRadius: Design.Radius.mark, style: .continuous)
-        return Button { select(row) } label: {
+        return Button { if let session { select(session, lane: lane) } } label: {
             ZStack(alignment: .leading) {
-                if pending(row) {
-                    // Waiting for Jev's project answer: a light hatch, as against a known "no project".
+                if run.pending {
+                    // Waiting for Jev's project answer: an outline, unlike the hatch of time away.
                     shape.fill(Design.hoverFill)
-                    HatchFill(away: true).clipShape(shape)
+                    shape.strokeBorder(Design.ink2.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
                 } else {
                     shape.fill(color)
                 }
-                if row.guessed { StripeOverlay().clipShape(shape) }
-                // One rule for every block (`BlockLabel`): a duration from the timeline's threshold up, in the longest form that fits.
-                if let text = BlockLabel.text(row.session.recorded, threshold: labelFrom, available: w - 2 * BlockLabel.padding, width: { BlockLabel.noteWidth($0) }) {
-                    // A guessed block's stripes would lower the ink's contrast: its label sits on a flat patch of the fill.
-                    let patch = row.guessed && !pending(row)
+                if run.guessed, !run.pending { StripeOverlay().clipShape(shape) }
+                // One rule for every mark (`BlockLabel`): a duration from the timeline's threshold up, in the longest form that fits.
+                if let text = BlockLabel.text(run.seconds, threshold: labelFrom, available: w - 2 * BlockLabel.padding, width: { BlockLabel.noteWidth($0) }) {
+                    // A guessed run's stripes would lower the ink's contrast: its label sits on a flat patch of the fill.
+                    let patch = run.guessed && !run.pending
                     Text(text).font(.note.weight(.semibold)).monospacedDigit()
-                        .foregroundStyle(pending(row) ? Design.ink2 : labelColor(of: row))
+                        .foregroundStyle(run.pending ? Design.ink2 : labelColor(of: run))
                         .lineLimit(1).fixedSize()
-                        .padding(.horizontal, patch ? 3 : BlockLabel.padding).padding(.vertical, patch ? 1 : 0)
+                        .padding(.horizontal, patch ? 3 : BlockLabel.padding)
                         .background { if patch { RoundedRectangle(cornerRadius: 4, style: .continuous).fill(color) } }
                         .padding(.horizontal, patch ? BlockLabel.padding - 3 : 0)
                 }
             }
-            .frame(width: w, height: Self.blockHeight)
-            .overlay {
-                // A thin ring a few points off the block: the ink at reduced strength, the same in light and dark.
-                if isSelected {
-                    RoundedRectangle(cornerRadius: Design.Radius.mark + 3, style: .continuous)
-                        .strokeBorder(Design.ink.opacity(0.6), lineWidth: 1.5).padding(-4.5)
-                }
-            }
+            .frame(width: w, height: Self.markHeight)
             .contentShape(shape)
         }
         .buttonStyle(.plain)
-        .opacity(dimmed(row) ? 0.2 : 1)
-        .animation(Design.motion(Design.quick, reduced: reduceMotion), value: dimmed(row))
-        .zIndex(isSelected ? 3 : 1)
-        .offset(x: left, y: Self.top)
-        .accessibilityLabel(Text(verbatim: "\(title(row)) \(model.time(row.session.start))–\(model.time(row.session.end))"))
+        .opacity(dimmed(session) ? 0.2 : 1)
+        .animation(Design.motion(Design.quick, reduced: reduceMotion), value: dimmed(session))
+        .offset(x: left, y: laneY(lane) + (Self.laneHeight - Self.markHeight) / 2)
+        .help(Text(verbatim: "\(session.map(title) ?? "") \(model.time(run.start))–\(model.time(run.end)) · \(TodayFmt.long(run.seconds))"))
+        .accessibilityLabel(Text(verbatim: "\(session.map(title) ?? "") \(model.time(run.start))–\(model.time(run.end)) \(TodayFmt.long(run.seconds))"))
     }
 
-    /// The colour a block, and its card's dot, are drawn in. "By project" never falls back to the
-    /// category: a project has its colour, anything else is the neutral "no project" slate.
-    private func color(of row: TodayPlan.Row) -> Color {
-        if colors == .project { return Design.projectColor(row.slot) }
-        let category = model.resolver.categoriesByID[row.session.categoryID]
-        return RefinedStyle.category(row.session.categoryID, hex: category?.colorHex ?? "#C7C7CC")
+    /// The open session, outlined across every lane.
+    private func selection(_ row: TodayPlan.Row, _ width: CGFloat, bottom: CGFloat) -> some View {
+        let left = x(row.session.start, width), right = x(row.session.end, width)
+        return RoundedRectangle(cornerRadius: Design.Radius.mark + 3, style: .continuous)
+            .strokeBorder(Design.ink.opacity(0.6), lineWidth: 1.5)
+            .frame(width: max(right - left, Self.minMark) + 8, height: bottom - Self.top + 8)
+            .offset(x: left - 4, y: Self.top - 4)
+            .allowsHitTesting(false)
+            .zIndex(3)
     }
 
-    /// The ink of a block's label: white, or the dark ink where white would not reach 4.5:1.
-    private func labelColor(of row: TodayPlan.Row) -> Color {
-        if colors == .project { return Design.projectLabel(row.slot) }
-        let category = model.resolver.categoriesByID[row.session.categoryID]
-        return RefinedStyle.categoryLabel(row.session.categoryID, hex: category?.colorHex ?? "#C7C7CC")
+    /// A category's colour, or a project's in "By project"; "no project" is the neutral slate.
+    private func color(of run: TodayPlan.Lane.Run) -> Color {
+        if colors == .project { return Design.projectColor(run.slot) }
+        let category = model.resolver.categoriesByID[run.categoryID]
+        return RefinedStyle.category(run.categoryID, hex: category?.colorHex ?? "#C7C7CC")
     }
 
-    /// A block in "By project" mode that waits for Jev.
-    private func pending(_ row: TodayPlan.Row) -> Bool { colors == .project && row.projectPending }
+    /// The ink of a mark's label: white, or the dark ink where white would not reach 4.5:1.
+    private func labelColor(of run: TodayPlan.Lane.Run) -> Color {
+        if colors == .project { return Design.projectLabel(run.slot) }
+        let category = model.resolver.categoriesByID[run.categoryID]
+        return RefinedStyle.categoryLabel(run.categoryID, hex: category?.colorHex ?? "#C7C7CC")
+    }
+
+    /// The dot beside a lane's name; the shared lane has none of its own colours.
+    private func swatch(_ lane: TodayPlan.Lane) -> Color {
+        if lane.isOther { return Design.ink2.opacity(0.45) }
+        if colors == .project { return Design.projectColor(lane.slot) }
+        return RefinedStyle.category(lane.id, hex: lane.colorHex)
+    }
 
     /// "By project" with no project created at all: the legend says how to make one.
     private var noProjectsYet: Bool { colors == .project && model.projects.isEmpty && !plan.rows.contains { $0.slot != nil } }
 
-    /// Some block in "By project" mode is still waiting for Jev.
+    /// Some session in "By project" mode is still waiting for Jev.
     private var anyPending: Bool { colors == .project && plan.rows.contains { $0.projectPending } }
 
-    /// What the colours stand for, biggest first: the project or the main
-    /// category of each block, once.
-    private var colorKey: [(name: String, color: Color)] {
-        var seconds: [String: TimeInterval] = [:], swatch: [String: Color] = [:]
-        for row in plan.rows {
-            // "By project": each project by name, and the rest as one "no project" entry.
-            let name = colors == .project ? (row.slot != nil ? (row.project ?? "") : String(localized: "没有项目"))
-                : (model.resolver.categoriesByID[row.session.categoryID]?.name ?? String(localized: "未分类"))
-            if colors == .project, row.projectPending { continue }
-            seconds[name, default: 0] += row.session.recorded
-            swatch[name] = color(of: row)
-        }
-        return seconds.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }.map { ($0.key, swatch[$0.key] ?? Design.ink2) }
-    }
-
-    private func ticks(_ width: CGFloat) -> some View {
+    private func ticks(_ width: CGFloat, bottom: CGFloat) -> some View {
         Canvas { context, _ in
             let color = Design.interruption
             for episode in plan.interruptions {
                 let row = plan.rows.first { episode.start >= $0.session.start && episode.start < $0.session.end }
-                let faded = row.map(dimmed) ?? false
-                let origin = CGPoint(x: x(episode.start, width) - 1, y: Self.top + Self.blockHeight + 6)
-                context.fill(Path(roundedRect: CGRect(origin: origin, size: CGSize(width: 2, height: 9)), cornerRadius: 1),
+                let faded = dimmed(row)
+                let origin = CGPoint(x: x(episode.start, width) - 1, y: bottom + 1)
+                context.fill(Path(roundedRect: CGRect(origin: origin, size: CGSize(width: 2, height: 6)), cornerRadius: 1),
                              with: .color(color.opacity(faded ? 0.25 : 1)))
             }
         }
@@ -303,31 +370,33 @@ struct TodayTimelineCard: View {
         .accessibilityHidden(true)
     }
 
-    private func nowMark(_ width: CGFloat) -> some View {
+    private func nowMark(_ width: CGFloat, bottom: CGFloat) -> some View {
         let nowX = x(plan.now, width)
         return ZStack(alignment: .topLeading) {
             Text(model.time(plan.now)).font(.note.weight(.semibold)).monospacedDigit().foregroundStyle(Design.ink).fixedSize()
-                .position(x: min(max(nowX, 24), width - 24), y: 6)
-            RoundedRectangle(cornerRadius: 1).fill(Design.ink).frame(width: 2, height: Self.blockHeight + 30)
-                .offset(x: nowX - 1, y: Self.top - 10)
+                .position(x: min(max(nowX, 24), width - 24), y: 8)
+            RoundedRectangle(cornerRadius: 1).fill(Design.ink).frame(width: 2, height: bottom - Self.top + 10)
+                .offset(x: nowX - 1, y: Self.top - 6)
         }.allowsHitTesting(false)
     }
 
-    // MARK: The card a block opens
+    // MARK: The card a mark opens
 
     private func title(_ row: TodayPlan.Row) -> String {
         model.sessionTitle(row.session) ?? row.project
             ?? row.session.apps.prefix(2).map(\.name).joined(separator: String(localized: "、"))
     }
 
-    private func card(_ row: TodayPlan.Row, _ width: CGFloat) -> some View {
+    private func card(_ row: TodayPlan.Row, _ width: CGFloat, y: CGFloat) -> some View {
         let cardWidth: CGFloat = 244
         let center = x(row.session.start.addingTimeInterval(row.session.duration / 2), width)
         let left = min(max(center - cardWidth / 2, 0), max(0, width - cardWidth))
         let category = model.resolver.categoriesByID[row.session.categoryID]?.name ?? String(localized: "未分类")
         return VStack(alignment: .leading, spacing: Design.Space.xs) {
             HStack(spacing: Design.Space.sm) {
-                Circle().fill(color(of: row)).frame(width: 8, height: 8)
+                Circle().fill(colors == .project ? Design.projectColor(row.slot)
+                              : RefinedStyle.category(row.session.categoryID, hex: model.resolver.categoriesByID[row.session.categoryID]?.colorHex ?? "#C7C7CC"))
+                    .frame(width: 8, height: 8)
                 Text(row.guessed ? String(localized: "\(title(row))（推测）") : title(row))
                     .font(.body.weight(.semibold)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                 Button { select(row) } label: {
@@ -349,7 +418,7 @@ struct TodayTimelineCard: View {
         }
         .padding(Design.Space.md).frame(width: cardWidth, alignment: .leading)
         .floatingCard()
-        .offset(x: left, y: Self.top + Self.blockHeight + 6)
+        .offset(x: left, y: y)
         .zIndex(6)
         .transition(.opacity)
     }
@@ -363,18 +432,12 @@ struct TodayTimelineCard: View {
                     Text("还没有项目。去创建一个，或看看 TimeSink 的推荐。").lineLimit(1)
                     Button("去项目 ›") { model.organizationTab = .projects; model.sidebarSelection = .organization }.buttonStyle(LinkButtonStyle())
                 }
-            } else {
-                ViewThatFits(in: .horizontal) {
-                    keyRow(colorKey.prefix(5))
-                    keyRow(colorKey.prefix(3))
-                    Color.clear.frame(width: 0, height: 0)
-                }
-                if anyPending {
-                    HStack(spacing: 6) {
-                        HatchFill(away: true).frame(width: 14, height: 10).clipShape(RoundedRectangle(cornerRadius: 2))
-                        Text("Jev 正在判定项目…")
-                    }.fixedSize()
-                }
+            } else if anyPending {
+                HStack(spacing: 6) {
+                    RoundedRectangle(cornerRadius: 2).strokeBorder(Design.ink2.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+                        .frame(width: 14, height: 10)
+                    Text("Jev 正在判定项目…")
+                }.fixedSize()
             }
             if colors == .project, !noProjectsYet {
                 Button("管理项目 ›") { model.organizationTab = .projects; model.sidebarSelection = .organization }
@@ -396,17 +459,5 @@ struct TodayTimelineCard: View {
             }
         }
         .font(.note).foregroundStyle(Design.ink2)
-    }
-
-    private func keyRow(_ items: ArraySlice<(name: String, color: Color)>) -> some View {
-        HStack(spacing: Design.Space.md) {
-            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                HStack(spacing: 6) {
-                    Circle().fill(item.color).frame(width: 8, height: 8)
-                    Text(verbatim: item.name).lineLimit(1)
-                }
-            }
-        }
-        .fixedSize()
     }
 }

@@ -14,7 +14,12 @@ public enum Permissions {
 
     @MainActor
     public static func chromeAutomationStatus(ask: Bool) -> OSStatus {
-        let bundleID = "com.google.Chrome"
+        automationStatus(bundleID: "com.google.Chrome", ask: ask)
+    }
+
+    /// Automation permission for any app; `chromeAutomationStatus` is this for Chrome.
+    @MainActor
+    public static func automationStatus(bundleID: String, ask: Bool) -> OSStatus {
         var addr = AEAddressDesc()
         let data = bundleID.data(using: .utf8)!
         let err = data.withUnsafeBytes { ptr in

@@ -137,6 +137,8 @@ public struct SuspensionState: Equatable {
 @MainActor
 public final class TrackerEngine {
     private static let chromeBundleID = "com.google.Chrome"
+    /// Every browser whose tab is read; see `ChromeSampler.bundleIDs`.
+    static let browserBundleIDs = ChromeSampler.bundleIDs
     /// Apps whose window title is a constant and whose real identity is the
     /// conversation inside the web view -- see `ChatSessionSampler`.
     static let chatBundleIDs: Set<String> = [
@@ -194,6 +196,7 @@ public final class TrackerEngine {
         if paused, let closed = builder.close(at: date) { persist(closed) }
         throttle = ChromeThrottle()
         chromeTabState = .none
+        chromeTabBundleID = nil
         chatSession = nil
         lastChatFetch = .distantPast
         observations?.logState(paused ? "tracking_pause" : "tracking_resume", at: date)
@@ -216,7 +219,14 @@ public final class TrackerEngine {
         case incognito
     }
     private var chromeTabState: ChromeTabState = .none
-    private var chromeBackoff = ChromeFetchBackoff()
+    /// The browser `chromeTabState`, `throttle` and the cached authorization
+    /// describe. Switching browsers drops all three, so Chrome's page can
+    /// never be filed under Arc, nor Arc's private window outlive the switch
+    /// -- the same stale-value failure `chatSession` is keyed against.
+    private var chromeTabBundleID: String?
+    /// One per browser: a browser that was never granted Automation backs
+    /// off on its own, without delaying the others.
+    private var chromeBackoffs: [String: ChromeFetchBackoff] = [:]
 
     /// Last conversation read, and which app it was read from. Keyed by
     /// bundle ID so a switch between ChatGPT and Claude can never file one
@@ -227,7 +237,7 @@ public final class TrackerEngine {
     private var lastChatFetch = Date.distantPast
 
     /// Chrome Automation authorization, refreshed at most once per fetch
-    /// attempt -- inside the same `chromeBackoff.shouldAttempt` gate that
+    /// attempt -- inside the same `chromeBackoffs` gate that
     /// spaces out attempts -- rather than on every tick.
     /// `AEDeterminePermissionToAutomateTarget` is a slow IPC round-trip to
     /// tccd; the `.none` tab-state arm and `chromeCaptureDegraded` used to
@@ -296,7 +306,7 @@ public final class TrackerEngine {
     /// (two 0.25s AX reads + one 0.25s Apple Event) -- more with a hung app
     /// still inside its timeout. Without this guard a slow tick's
     /// continuation interleaves with the next tick and both mutate
-    /// `builder.current`, `chromeTabState`, `throttle`, `chromeBackoff`,
+    /// `builder.current`, `chromeTabState`, `throttle`, `chromeBackoffs`,
     /// `currentRowID` and `lastHeartbeat`: that double-inserts a span or
     /// corrupts the open one, which is a data-integrity bug, not a perf nit.
     ///
@@ -443,7 +453,7 @@ public final class TrackerEngine {
     ///
     /// Two hops rather than one because the Chrome fetch gate
     /// (`shouldFetchChromeTab`) depends on the AX window title AND on
-    /// `throttle`/`chromeBackoff`, which live here. Keeping the decision on
+    /// `throttle`/`chromeBackoffs`, which live here. Keeping the decision on
     /// the actor avoids shipping copies of that state across the boundary,
     /// and the second hop only happens when Chrome is frontmost and the 5s
     /// throttle allows -- at most once per 5s, not once per tick.
@@ -465,19 +475,26 @@ public final class TrackerEngine {
         ) else { return }
         guard suspensionEpoch == epochBeforeSample else { return }
 
-        if sample.appBundleID == Self.chromeBundleID {
+        if Self.browserBundleIDs.contains(sample.appBundleID) {
+            let browser = sample.appBundleID
+            if chromeTabBundleID != browser {
+                chromeTabBundleID = browser
+                chromeTabState = .none
+                throttle = ChromeThrottle()
+                cachedChromeAutomationAuthorized = false
+            }
             if settings.get("chromeTrackingEnabled") == "false" {
                 chromeTabState = .none
                 cachedChromeAutomationAuthorized = false
-            } else if shouldFetchChromeTab(title: sample.windowTitle, at: now) {
+            } else if shouldFetchChromeTab(browser: browser, title: sample.windowTitle, at: now) {
                 // Refresh the cached authorization answer once per attempt,
                 // regardless of whether the fetch itself succeeds -- this is
                 // the only place that ever calls the real TCC check.
-                cachedChromeAutomationAuthorized = chromeAutomationAuthorized()
+                cachedChromeAutomationAuthorized = chromeAutomationAuthorized(browser: browser)
                 let epochBeforeChrome = suspensionEpoch
-                let fetched = await offActorChromeTab(provider: chromeTabProvider)
+                let fetched = await offActorChromeTab(provider: chromeTabProvider, browser: browser)
                 guard suspensionEpoch == epochBeforeChrome else { return }
-                noteChromeFetch(fetched, title: sample.windowTitle, at: now)
+                noteChromeFetch(fetched, browser: browser, title: sample.windowTitle, at: now)
             }
             applyChromeTabState(to: &sample)
         } else if Self.chatBundleIDs.contains(sample.appBundleID) {
@@ -496,7 +513,7 @@ public final class TrackerEngine {
         }
 
         let privateChrome: Bool
-        if case .incognito = chromeTabState { privateChrome = sample.appBundleID == Self.chromeBundleID }
+        if case .incognito = chromeTabState { privateChrome = Self.browserBundleIDs.contains(sample.appBundleID) }
         else { privateChrome = false }
         if privateChrome || settings.excludes(sample) {
             if let closed = builder.close(at: now) { persist(closed) }
@@ -516,8 +533,10 @@ public final class TrackerEngine {
     /// must never wait on a screenshot or OCR.
     private func offerToCollector(_ sample: Sample, now: Date, spanID: Int64?) {
         guard let screenCollector, !settings.excludes(sample) else { return }
-        if sample.appBundleID == Self.chromeBundleID {
-            guard case .tab = chromeTabState else { return }
+        if Self.browserBundleIDs.contains(sample.appBundleID) {
+            // A tab without a URL is also how a browser that can't say
+            // whether the window is private comes back: no screenshot then.
+            guard case .tab(let url, _) = chromeTabState, url != nil else { return }
         }
         let idleSeconds = idleSeconds
         Task { await screenCollector.tick(now: now, sample: sample, spanID: spanID, idleSeconds: idleSeconds) }
@@ -559,9 +578,9 @@ public final class TrackerEngine {
     /// one cooperative-pool thread by `tickInFlight`. See
     /// `offActorWindowSample`.
     nonisolated private func offActorChromeTab(
-        provider: (@Sendable () -> ChromeSampler.TabInfo?)?
+        provider: (@Sendable () -> ChromeSampler.TabInfo?)?, browser: String
     ) async -> ChromeSampler.TabInfo? {
-        provider.map { $0() } ?? chromeSampler.activeTab()
+        provider.map { $0() } ?? chromeSampler.activeTab(bundleID: browser)
     }
 
     enum TickPhase { case suspended, idle, active }
@@ -611,36 +630,39 @@ public final class TrackerEngine {
 
     /// Chrome tab-fetch gate: the 5s/title-change throttle AND the failure
     /// backoff must both allow it. Pure read -- neither call mutates.
-    private func shouldFetchChromeTab(title: String?, at now: Date) -> Bool {
-        throttle.shouldFetch(title: title, at: now) && chromeBackoff.shouldAttempt(at: now)
+    private func shouldFetchChromeTab(browser: String, title: String?, at now: Date) -> Bool {
+        throttle.shouldFetch(title: title, at: now) && chromeBackoffs[browser, default: ChromeFetchBackoff()].shouldAttempt(at: now)
     }
 
-    /// Folds one Chrome tab fetch result into `throttle`, `chromeBackoff`,
+    /// Folds one browser tab fetch result into `throttle`, `chromeBackoffs`,
     /// `chromeTabState` and `chromeCaptureDegraded`. `title` is the AX window
     /// title of the sample that triggered the fetch (what the throttle keys
     /// on).
-    private func noteChromeFetch(_ fetched: ChromeSampler.TabInfo?, title: String?, at now: Date) {
+    private func noteChromeFetch(_ fetched: ChromeSampler.TabInfo?, browser: String, title: String?, at now: Date) {
         if let tab = fetched {
             throttle.noteFetched(title: title, at: now)
-            chromeBackoff.noteSuccess()
+            chromeBackoffs[browser, default: ChromeFetchBackoff()].noteSuccess()
             chromeTabState = tab.isIncognito
                 ? .incognito
                 : .tab(url: tab.url, title: tab.title)
         } else {
-            chromeBackoff.noteFailure(at: now)
+            chromeBackoffs[browser, default: ChromeFetchBackoff()].noteFailure(at: now)
             // A failed re-fetch must not un-suppress a window we
             // already confirmed is incognito -- only .tab/.none
             // collapse to .none; .incognito is sticky until the next
             // successful (non-incognito) fetch.
             if case .incognito = chromeTabState {} else { chromeTabState = .none }
-            if chromeBackoff.isDegraded, !cachedChromeAutomationAuthorized {
-                logger.error("Chrome capture degraded: automation likely revoked")
+            if chromeBackoffs[browser]?.isDegraded == true, !cachedChromeAutomationAuthorized {
+                logger.error("\(browser, privacy: .public) capture degraded: automation likely revoked")
             }
         }
         // 5+ failures while window-less (Chrome frontmost, zero
         // windows) is not a permissions problem -- only surface the
         // warning when authorization is actually the cause.
-        chromeCaptureDegraded = chromeBackoff.isDegraded && !cachedChromeAutomationAuthorized
+        // The menu bar warning names Chrome, so only Chrome's own attempts move it.
+        if browser == Self.chromeBundleID {
+            chromeCaptureDegraded = chromeBackoffs[browser]?.isDegraded == true && !cachedChromeAutomationAuthorized
+        }
     }
 
     /// Overlays the cached Chrome tab state onto a Chrome sample. Runs on
@@ -716,8 +738,8 @@ public final class TrackerEngine {
     /// directly elsewhere, or the whole point of caching is lost. Stays on the
     /// main actor because `Permissions.chromeAutomationStatus` is
     /// `@MainActor`; the gate already keeps it to at most once per 5s.
-    private func chromeAutomationAuthorized() -> Bool {
-        chromeAutomationAuthorizedProvider?() ?? (Permissions.chromeAutomationStatus(ask: false) == 0)
+    private func chromeAutomationAuthorized(browser: String) -> Bool {
+        chromeAutomationAuthorizedProvider?() ?? (Permissions.automationStatus(bundleID: browser, ask: false) == 0)
     }
 
     /// Internal rather than private so a test can simulate the screen
