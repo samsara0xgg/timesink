@@ -20,7 +20,10 @@ public final class JevService {
     private let resolver: CategoryResolver
     private let worker: JevWorker
     private var loop: Task<Void, Never>?
+    private var nudged: Task<Void, Never>?
     private var running = false
+    /// Runs in a row that a key, account, model or service problem stopped; each one waits longer.
+    private var troubledRuns = 0
     private let logger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "jev")
 
     /// Called after new verdicts changed what spans resolve to.
@@ -46,13 +49,14 @@ public final class JevService {
     /// The fields sent per window, for the screen that asks to enable it.
     public static var sentFields: [String] { JevPrompt.sentFields }
 
-    /// Turning it on starts the backfill; turning it off stops asking and
-    /// goes back to the rules and shipped lists (user verdicts stay).
+    /// Turning it on starts the backfill; turning it off stops asking at once
+    /// (the run in progress is cancelled) and goes back to the rules and
+    /// shipped lists (user verdicts stay).
     public func setEnabled(_ on: Bool) {
         settings.setJevEnabled(on)
         resolver.jevEnabled = on
         onChange?()
-        if on { start(); nudge() }
+        if on { start(); nudge() } else { stop() }
     }
 
     public var screenTextEnabled: Bool { settings.jevScreenText }
@@ -72,20 +76,35 @@ public final class JevService {
             while !Task.isCancelled {
                 await self?.runOnce()
                 // A failed request waits for the next pass, not a tight retry; a 429 waits as long as the server asked.
-                try? await Task.sleep(for: .seconds(await self?.lastRun?.retryAfter ?? 180))
+                try? await Task.sleep(for: .seconds(await self?.nextDelay ?? 180))
             }
         }
     }
 
+    /// Stops the loop and cancels a run in progress, requests in flight included.
     public func stop() {
         loop?.cancel()
         loop = nil
+        nudged?.cancel()
+        nudged = nil
     }
 
     /// Looks for unclassified window contents now, e.g. after a category edit
-    /// changed the prompt.
+    /// changed the prompt, or a new key or model was saved.
     public func nudge() {
-        Task { await runOnce() }
+        guard !running else { return }
+        nudged = Task { await runOnce() }
+    }
+
+    /// Seconds until the loop's next pass: what a 429 asked for; after runs a
+    /// key, account, model or service problem stopped, 3 minutes doubled per
+    /// such run in a row, at most an hour; else 3 minutes.
+    private var nextDelay: Int { Self.delay(retryAfter: lastRun?.retryAfter, troubledRuns: troubledRuns) }
+
+    nonisolated static func delay(retryAfter: Int?, troubledRuns: Int) -> Int {
+        if let retryAfter { return retryAfter }
+        guard troubledRuns > 0 else { return 180 }
+        return min(180 << min(troubledRuns, 5), 3_600)
     }
 
     private func runOnce() async {
@@ -94,9 +113,10 @@ public final class JevService {
         defer { running = false }
         let since = Calendar.current.date(byAdding: .day, value: -Self.lookbackDays, to: Date()) ?? Date()
         let staleSince = Calendar.current.date(byAdding: .day, value: -Self.staleLookbackDays, to: Date()) ?? since
-        let result = await worker.run(since: since, staleSince: staleSince)
+        let result = await worker.run(since: since, staleSince: staleSince, userRules: resolver.classificationContext)
         lastRun = result
         lastRunAt = Date()
+        troubledRuns = result.problem == nil ? 0 : troubledRuns + 1
         if let error = result.error { logger.error("jev run: \(error, privacy: .public)") }
         if result.saved > 0 {
             resolver.refresh()
@@ -115,7 +135,8 @@ public final class JevService {
         public var classified: Int
         public var queued: Int
         public var pausedAtCap: Bool
-        public var offline: Bool
+        /// What stopped the last run, if anything did: a bad key, no credits, a wrong model or address, the service down.
+        public var problem: JevProblem?
         /// Jev verdicts written this calendar month.
         public var verdictsThisMonth = 0
         /// Unsure verdicts waiting in 待确认 (the last `lookbackDays`).
@@ -128,10 +149,14 @@ public final class JevService {
         let categories = try categoryStore.rawCategories()
         let since = Calendar.current.date(byAdding: .day, value: -Self.lookbackDays, to: Date()) ?? Date()
         let staleSince = Calendar.current.date(byAdding: .day, value: -Self.staleLookbackDays, to: Date()) ?? since
-        let queued = try categoryStore.pendingCombos(since: since, staleSince: staleSince, promptVersion: JevPrompt.version(categories)).count
+        // Not counted: what the user's own rules decide, and questions given up on after repeated unusable answers.
+        let attempts = try categoryStore.jevAttempts()
+        let queued = try categoryStore.pendingCombos(since: since, staleSince: staleSince, promptVersion: JevPrompt.version(categories),
+                                                     userRules: resolver.classificationContext)
+            .filter { (attempts[JevAttemptKey.category($0.key)]?.attempts ?? 0) < JevAttempt.maxAttempts }.count
         let monthStart = Calendar.current.dateInterval(of: .month, for: Date())?.start ?? .distantPast
         let jev = try categoryStore.verdicts().filter { $0.source == "jev" }
-        return Status(classified: jev.count, queued: queued, pausedAtCap: monthSpend >= monthlyCap, offline: lastRun?.error != nil,
+        return Status(classified: jev.count, queued: queued, pausedAtCap: monthSpend >= monthlyCap, problem: lastRun?.problem,
                       verdictsThisMonth: jev.filter { $0.at >= monthStart }.count,
                       toConfirm: try lowConfidenceVerdicts(in: DateInterval(start: since, end: Date())).count, lastRunAt: lastRunAt)
     }

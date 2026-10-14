@@ -226,31 +226,38 @@ final class JevScreenTextTests: XCTestCase {
 
     // MARK: - Rule order
 
-    func testJobKeywordsBeatAUserAppRuleButNotAUserDomainRule() throws {
+    func testTheUsersOwnRulesBeatTheJobRule() throws {
         try store.setUserApp("com.openai.codex", categoryID: "softwareDev")
         let r0 = resolver()
         let plain = try insert("com.openai.codex", title: "Refactor the parser")
-        XCTAssertEqual(r0.categoryID(for: plain), "softwareDev", "the user's app rule still decides ordinary windows")
+        XCTAssertEqual(r0.categoryID(for: plain), "softwareDev", "the user's app rule decides ordinary windows")
         let job = try insert("com.openai.codex", title: "Cover letter for Acme", document: "resume v3")
-        XCTAssertEqual(r0.categoryID(for: job), "jobSearch")
-        XCTAssertEqual(r0.explanation(for: job), "内置求职规则 · Cover letter")
-        XCTAssertNil(r0.matchingRuleKey(for: job))
+        XCTAssertEqual(r0.categoryID(for: job), "softwareDev", "and job windows too: the user's rule outranks a built-in one")
+        XCTAssertEqual(r0.explanation(for: job), "你的应用分类 · App")
+        XCTAssertEqual(r0.matchingRuleKey(for: job), "app:com.openai.codex")
+        let unruled = try insert("com.apple.TextEdit", title: "Cover letter for Acme")
+        XCTAssertEqual(r0.categoryID(for: unruled), "jobSearch", "without a rule of the user's the job rule applies")
+        XCTAssertEqual(r0.explanation(for: unruled), "内置求职规则 · Cover letter")
+        XCTAssertNil(r0.matchingRuleKey(for: unruled))
 
-        let site = try insert(domain: "linkedin.com", title: "Jobs")
-        try store.setUserDomain("linkedin.com", categoryID: "learning")
+        let site = try insert(domain: "boards.greenhouse.io", title: "Jobs")
+        XCTAssertEqual(r0.categoryID(for: site), "jobSearch")
+        try store.setUserDomain("greenhouse.io", categoryID: "learning")
         r0.refresh()
         XCTAssertEqual(r0.categoryID(for: site), "learning")
-        try store.setUserVerdict(VerdictKey(job), categoryID: "writing")
+        try store.setUserVerdict(VerdictKey(unruled), categoryID: "writing")
         r0.refresh()
-        XCTAssertEqual(r0.categoryID(for: job), "writing", "a per-content user verdict still wins")
+        XCTAssertEqual(r0.categoryID(for: unruled), "writing", "a per-content user verdict wins")
     }
 
-    func testLocalhostAndVercelAreSoftwareDev() throws {
+    func testLocalhostIsSoftwareDevButNoOnesDeployedSiteIs() throws {
         let r = resolver()
-        for domain in ["localhost", "127.0.0.1", "myapp.vercel.app", "vercel.app"] {
+        for domain in ["localhost", "127.0.0.1"] {
             XCTAssertEqual(r.categoryID(for: try insert(domain: domain, title: "x")), "softwareDev", domain)
         }
-        XCTAssertNotEqual(r.categoryID(for: try insert(domain: "vercel.app.evil.example", title: "x")), "softwareDev")
+        for domain in ["myapp.vercel.app", "vercel.app"] {
+            XCTAssertNil(JevRules.match(appBundleID: "com.google.Chrome", domain: domain, url: nil, title: "x", document: nil), domain)
+        }
         XCTAssertEqual(r.categoryID(for: try insert(domain: "console.aws.amazon.com", title: "x")), "softwareDev")
     }
 }

@@ -189,10 +189,11 @@ struct CompiledTitleRule: Sendable {
 /// 3. `url` is non-nil: scan `context.urlRules` where `source == "user"` in
 ///    order, first `matches` wins (the array is expected to already be
 ///    sorted by the caller -- see `CategoryResolver.refresh()`).
-/// 3a. the job keyword hard rule (outranks the user's app mapping).
-/// 3a'. an AI app with no conversation open and a verdict for its screenshot.
+/// 3a. an AI app with no conversation open and a verdict for its screenshot.
 /// 3b. `domain == nil` and the user mapped the app.
-/// 3c. `JevRules`: the other local hard rules that need no model; an AI app
+/// 3c. `JevRules`: the job rule (only while Jev is on), then the other local
+///     hard rules that need no model. Every rule of the user's own ranks
+///     above them: a built-in guess never overrules what the user said.
 /// 3d. a cached Jev verdict for this window content.
 /// 4. `title` matches a non-user-sourced (builtin) `titleRule` in scope.
 /// 5. `url` is non-nil: scan `context.urlRules` where `source != "user"` in
@@ -258,13 +259,10 @@ public enum Classifier {
             }
         }
 
-        // 3b-3d. the job keyword rule, then what the user mapped for the app,
-        // then the other hard rules, then Jev.
-        if context.jevEnabled, let hit = JevRules.job(appBundleID: appBundleID, domain: domain, url: url, title: title, document: document),
-           exists(hit.categoryID) {
-            return hit.categoryID
-        }
-        // A screenshot verdict for an AI app with no conversation open also outranks the app mapping.
+        // 3a-3d. A screenshot verdict for an AI app with no conversation open
+        // (it outranks the app mapping: the app alone says nothing), what the
+        // user mapped for the app, then the hard rules (the job rule first),
+        // then Jev.
         if let spanID, let shot = context.captureVerdicts[spanID], exists(shot.categoryID),
            JevRules.match(appBundleID: appBundleID, domain: domain, url: url, title: title, document: document)?.reason == .assistantIdle {
             return shot.categoryID
@@ -317,6 +315,35 @@ public enum Classifier {
         }
 
         return "uncategorized"
+    }
+
+    /// What the user's own title, site, URL or app rule decides for these
+    /// fields (tiers 1-3 and 3b), or nil. Jev is not asked about a window
+    /// one of them decides: its answer could never be used.
+    public static func userRuleCategory(appBundleID: String, url: String?, domain: String?, title: String?,
+                                        context: ClassificationContext) -> String? {
+        let scopeKey = domain ?? appBundleID
+        if let title, !title.isEmpty {
+            let lowered = title.lowercased()
+            for r in context.compiledTitleRules where r.source == "user"
+                && scopeMatches(ruleScopeKey: r.scopeKey, scopeKey: scopeKey)
+                && r.matches(title: title, loweredTitle: lowered) {
+                return r.categoryID
+            }
+        }
+        if let domain, let categoryID = suffixMatch(domain: domain, source: "user", context: context) {
+            return categoryID
+        }
+        if let url {
+            let lowered = url.lowercased()
+            for rule in context.compiledURLRules where rule.source == "user" && rule.matches(url: url, loweredURL: lowered) {
+                return rule.categoryID
+            }
+        }
+        if domain == nil, let entry = context.appMap[appBundleID], entry.source == "user" {
+            return entry.categoryID
+        }
+        return nil
     }
 
     /// Exact match first (this is what lets single-label domains like

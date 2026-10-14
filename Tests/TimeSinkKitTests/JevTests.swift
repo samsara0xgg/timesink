@@ -150,16 +150,17 @@ final class JevTests: XCTestCase {
         func hit(_ app: String, domain: String? = nil, title: String? = nil, document: String? = nil) -> String? {
             JevRules.match(appBundleID: app, domain: domain, url: nil, title: title, document: document)?.categoryID
         }
-        XCTAssertEqual(hit("x", title: "CL v3 final"), "jobSearch")
+        XCTAssertNil(hit("x", title: "CL v3 final"), "an abbreviation is not a job word")
         XCTAssertNil(hit("x", title: "clean"))
-        XCTAssertEqual(hit("x", domain: "linkedin.com"), "jobSearch")
+        XCTAssertNil(hit("x", domain: "linkedin.com"), "the feed is not job hunting")
+        XCTAssertEqual(JevRules.match(appBundleID: "x", domain: "linkedin.com", url: "https://www.linkedin.com/jobs/view/1", title: nil, document: nil)?.categoryID,
+                       "jobSearch")
         XCTAssertEqual(hit("x", domain: "boards.greenhouse.io"), "jobSearch")
         XCTAssertEqual(hit("x", title: "Internship offer"), "jobSearch")
         XCTAssertNil(hit("x", title: "RBC Interview"), "no company names in the rule")
-        XCTAssertNil(JevRules.match(appBundleID: "x", domain: "linkedin.com", url: nil, title: nil, document: nil, job: false))
-        XCTAssertEqual(hit("com.alllllenshi.TimeSink"), "softwareDev")
-        XCTAssertEqual(hit("com.nousresearch.hermes"), "softwareDev")
-        XCTAssertEqual(hit("x", title: "Malibu Workshop"), "softwareDev")
+        XCTAssertNil(JevRules.match(appBundleID: "x", domain: "linkedin.com", url: "https://linkedin.com/jobs/", title: nil, document: nil, job: false))
+        XCTAssertNil(hit("com.alllllenshi.TimeSink"), "no one's own apps are built in")
+        XCTAssertNil(hit("x", title: "Malibu Workshop"))
         XCTAssertEqual(hit("com.openai.codex", title: "Codex"), "softwareDev")
         XCTAssertNil(hit("com.openai.codex", title: "Refactor the parser"))
         XCTAssertNil(hit("com.openai.chat", title: "ChatGPT", document: "Some conversation"))
@@ -271,7 +272,7 @@ final class JevTests: XCTestCase {
         let sentCriteria = try XCTUnwrap(q["criteria"] as? [String: String])
         XCTAssertEqual(sentCriteria.count, 12)
         XCTAssertNil(sentCriteria["uncategorized"])
-        XCTAssertEqual(sentCriteria["jobSearch"], "求职 Coop：找 coop/实习/工作：浏览职位、投递、写简历和求职信、测评、面试准备")
+        XCTAssertEqual(sentCriteria["jobSearch"], "求职：找 coop/实习/工作：浏览职位、投递、写简历和求职信、测评、面试准备")
         XCTAssertEqual(sentCriteria["misc"], "其他：以上都不像的；拿不准时也放这里")
         // keys keep the category order in the raw text
         let raw = String(decoding: JevClient.body(state: state, criteria: criteria), as: UTF8.self)
@@ -408,7 +409,7 @@ final class JevTests: XCTestCase {
 
     func testWorkerSkipsWhatHardRulesDecideAndUserVerdicts() async throws {
         try seedSpans(["alpha"])
-        _ = try SpanStore(db).insert(span("com.alllllenshi.TimeSink", title: "TimeSink"))
+        _ = try SpanStore(db).insert(span("com.bjango.istatmenus", title: "iStat Menus"))
         let mine = try SpanStore(db).insert(span(domain: "mine.example", title: "mine"))
         try store.setUserVerdict(VerdictKey(mine), categoryID: "writing")
         let transport = StubJevTransport { _ in ("misc", ["misc": 0.9], 0) }

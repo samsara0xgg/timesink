@@ -164,7 +164,9 @@ public final class CategoryResolver {
             for v in try categoryStore.verdicts() {
                 if v.isUser { user[v.key] = v.categoryID } else if jevEnabled && !v.isSeed { jev[v.key] = JevVerdictEntry(categoryID: v.categoryID, prob: v.prob, usedScreenText: v.screenText == 1) }
             }
-            let shots = jevEnabled && jevScreenText ? try categoryStore.captureVerdictsBySpan() : [:]
+            // Only screenshots of the window Jev looks back over: older spans keep their hard rule.
+            let shotsSince = Calendar.current.date(byAdding: .day, value: -JevService.staleLookbackDays, to: Date()) ?? .distantPast
+            let shots = jevEnabled && jevScreenText ? try categoryStore.captureVerdictsBySpan(since: shotsSince) : [:]
             context = ClassificationContext(domainMap: domainMap, appMap: appMap, urlRules: sortedRules,
                                              titleRules: titleRules, userVerdicts: user, jevVerdicts: jev, captureVerdicts: shots,
                                              categoryIDs: Set(categories.map(\.id)), jevEnabled: jevEnabled)
@@ -250,6 +252,9 @@ public final class CategoryResolver {
     }
 
     func snapshot() -> Snapshot { Snapshot(context: context, memo: memo, overrides: overrides, generation: generation) }
+
+    /// The tables classification reads, for Jev to leave alone what the user's own rules decide.
+    var classificationContext: ClassificationContext { context }
 
     /// Takes back what a worker learned, so the next pass on either side
     /// starts warm. Only while the rules are the ones the snapshot was taken
@@ -368,7 +373,7 @@ public final class CategoryResolver {
             return nil
         }
         if let key = title(true) ?? domain("user") ?? url(true) { return key }
-        if jobHit(for: span, context: context) != nil || shotVerdict(for: span, context: context) != nil { return nil }
+        if shotVerdict(for: span, context: context) != nil { return nil }
         if span.domain == nil, context.appMap[span.appBundleID]?.source == "user" { return "app:" + span.appBundleID }
         // A hard rule or a verdict decided it: no list rule gets the credit.
         if automaticReason(for: span, context: context) != nil { return nil }
@@ -382,12 +387,6 @@ public final class CategoryResolver {
     /// the user's own rules have passed.
     private enum Automatic { case rule(JevRules.Hit), jev(Double, screenText: Bool) }
 
-    /// The job keyword rule, which outranks the user's app mapping.
-    nonisolated private static func jobHit(for span: Span, context: ClassificationContext) -> JevRules.Hit? {
-        guard context.jevEnabled else { return nil }
-        return JevRules.job(appBundleID: span.appBundleID, domain: span.domain, url: span.url, title: span.title, document: span.document)
-            .flatMap { context.categoryIDs?.contains($0.categoryID) ?? true ? $0 : nil }
-    }
     /// The verdict of the span's screenshot, for an AI app with no conversation open.
     nonisolated private static func shotVerdict(for span: Span, context: ClassificationContext) -> JevVerdictEntry? {
         guard let id = span.id, let shot = context.captureVerdicts[id], context.categoryIDs?.contains(shot.categoryID) ?? true,
@@ -397,9 +396,6 @@ public final class CategoryResolver {
     }
     nonisolated private func shotVerdict(for span: Span, context: ClassificationContext) -> JevVerdictEntry? {
         Self.shotVerdict(for: span, context: context)
-    }
-    nonisolated private func jobHit(for span: Span, context: ClassificationContext) -> JevRules.Hit? {
-        Self.jobHit(for: span, context: context)
     }
 
     nonisolated private static func automaticReason(for span: Span, context: ClassificationContext) -> Automatic? {
@@ -446,7 +442,6 @@ public final class CategoryResolver {
             return String(localized: "\(user ? String(localized: "你的") : String(localized: "内置"))网址规则 · \(rule.pattern)")
         }
         if let reason = titleReason(user: true) ?? domainReason("user") ?? urlReason(user: true) { return reason }
-        if let hit = jobHit(for: span, context: context) { return Self.reason(hit) }
         if let shot = shotVerdict(for: span, context: context) { return String(localized: "Jev 判断（含截图文字）· 概率 \(String(format: "%.2f", shot.prob))") }
         if span.domain == nil, let entry = context.appMap[span.appBundleID], entry.source == "user" { return String(localized: "你的应用分类 · \(span.appName)") }
         switch Self.automaticReason(for: span, context: context) {
@@ -465,12 +460,11 @@ public final class CategoryResolver {
     private static func reason(_ hit: JevRules.Hit) -> String {
         switch hit.reason {
         case .job(let word): String(localized: "内置求职规则 · \(word)")
-        case .ownApp: String(localized: "内置规则 · 自己的项目")
         case .assistantIdle: String(localized: "内置规则 · 没有打开的对话")
         case .blankTab: String(localized: "内置规则 · 空白标签页")
         case .tool: String(localized: "内置规则 · 系统小工具")
         case .cloudConsole: String(localized: "内置规则 · 云控制台")
-        case .ownSite: String(localized: "内置规则 · 自己部署的项目")
+        case .ownSite: String(localized: "内置规则 · 本机开发页面")
         }
     }
 

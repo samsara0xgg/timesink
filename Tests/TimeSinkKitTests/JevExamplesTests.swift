@@ -42,15 +42,17 @@ final class JevExamplesTests: XCTestCase {
         JevExample(bundleID: bundle, app: bundle, domain: domain, title: "t\(i)", document: "", category: "c")
     }
 
-    func testSelectionPutsSameAppFirstUpToEightThenFillsToTwenty() {
-        let all = (0..<10).map { example($0, bundle: "a") } + (10..<40).map { example($0, bundle: "b") }
+    func testSelectionKeepsToTheSameAppOrSite() {
+        let all = (0..<30).map { example($0, bundle: "a") } + (30..<40).map { example($0, bundle: "b") }
         let picked = JevExample.select(from: all, bundleID: "a", domain: "")
-        XCTAssertEqual(picked.count, 20)
-        XCTAssertEqual(picked.prefix(8).map(\.title), (0..<8).map { "t\($0)" })
-        XCTAssertEqual(picked.dropFirst(8).map(\.title), ["t8", "t9"] + (10..<20).map { "t\($0)" }, "the rest keep the given order")
+        XCTAssertEqual(picked.map(\.title), (0..<20).map { "t\($0)" }, "the same app only, in the given order, up to 20")
+        XCTAssertTrue(JevExample.select(from: all, bundleID: "c", domain: "").isEmpty, "another app's titles never ride along")
 
-        let withDomain = [example(1, bundle: "a", domain: "x.com"), example(2, bundle: "a", domain: "y.com")]
-        XCTAssertEqual(JevExample.select(from: withDomain + [example(3, bundle: "b")], bundleID: "a", domain: "y.com").map(\.title), ["t2", "t1", "t3"])
+        // A website: the same site from any browser (a site rule has no app), never another site or the bare app.
+        let web = [example(1, bundle: "a", domain: "x.com"), example(2, bundle: "a", domain: "y.com"), example(3, bundle: "b", domain: "y.com"),
+                   example(4, bundle: "", domain: "y.com"), example(5, bundle: "a")]
+        XCTAssertEqual(JevExample.select(from: web, bundleID: "a", domain: "y.com").map(\.title), ["t2", "t3", "t4"])
+        XCTAssertEqual(JevExample.select(from: web, bundleID: "a", domain: "").map(\.title), ["t5"], "no site: the app's own windows only")
         XCTAssertEqual(JevExample.select(from: [], bundleID: "a", domain: "").count, 0)
     }
 
@@ -87,7 +89,8 @@ final class JevExamplesTests: XCTestCase {
 
     func testReaskCarriesExamplesEvenWithTheSwitchOff() async throws {
         let research = try XCTUnwrap(try store.rawCategories().first { $0.id == "research" }).name
-        try seed("app.s", title: "seeded", category: "research")
+        try seed("app.low", title: "seeded", category: "research")
+        try seed("app.other", title: "elsewhere", category: "research")
         _ = try insert("app.low", title: "unsure")
         let transport = StubJevTransport { state in
             state["window_title"] == "unsure" && state["examples"] == nil ? ("news", ["news": 0.4], 0.0001) : ("news", ["news": 0.8], 0.0001)
@@ -100,7 +103,8 @@ final class JevExamplesTests: XCTestCase {
         let second = try XCTUnwrap(sent[1]["state"] as? [String: Any])
         XCTAssertNil(second["screen_text"])
         let list = try XCTUnwrap(second["用户以前确认过的例子"] as? [[String: String]])
-        XCTAssertEqual(list, [["app": "app.s", "domain": "", "title": "seeded", "document": "", "用户定的分类": research]])
+        XCTAssertEqual(list, [["app": "App", "domain": "", "title": "seeded", "document": "", "用户定的分类": research]],
+                       "the same app's example only")
         let q = try XCTUnwrap((sent[1]["questions"] as? [String: Any])?["category"] as? [String: Any])
         XCTAssertEqual(q["instructions"] as? String, JevPrompt.instructions + "用户以前确认过的例子代表他的分类习惯，类似的内容按同样方式分。")
         XCTAssertEqual(try store.verdicts().first { $0.title == "unsure" }?.prob ?? 0, 0.8, accuracy: 1e-9, "the higher re-ask is kept")
