@@ -1182,8 +1182,9 @@ struct MenuBarDashboardView: View {
     private func hourlyBigContent(compact: Bool = false) -> HourlyBigView {
         let categories = model.resolver.categoriesByID
         let todayBars = Self.hourlyBars(items: dashboard.todayItems, categories: categories)
-        return HourlyBigView(categories: categories, todayBars: todayBars, loadLast7Bars: {
-            let items = model.rangedSpans(for: DateRangeSelection(kind: .last7, anchor: Date()))
+        return HourlyBigView(categories: categories, todayBars: todayBars, loadLast7Bars: { [model] in
+            // A week of rows is read and classified off the main actor.
+            let items = await model.spansOffMain(for: DateRangeSelection(kind: .last7, anchor: Date()).interval) ?? []
             return Self.hourlyBars(items: items, categories: categories)
         }, width: compact ? DrillWidths.compact : DrillWidths.hourly)
     }

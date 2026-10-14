@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import Observation
 import os
 
@@ -57,6 +58,9 @@ public final class AppModel {
     /// F4: a stretch away just ended and is waiting for a name.
     var awayOffer: DateInterval?
     @ObservationIgnored var lastTickAt: Date?
+    /// The day `dayChanged` last saw (launch, then each change): a range
+    /// anchored on it was showing "today".
+    @ObservationIgnored var lastSeenDay = Calendar.current.startOfDay(for: Date())
     @ObservationIgnored var awayAsked: (day: Date, count: Int) = (.distantPast, 0)
     @ObservationIgnored var returnTracker = ReturnTracker()
     @ObservationIgnored var returnCategory: (start: Date, bundleID: String, categoryID: String)?
@@ -73,6 +77,10 @@ public final class AppModel {
     @ObservationIgnored private var pendingTask: Task<Void, Never>?
     @ObservationIgnored private var pendingCountedAt = Date.distantPast
     @ObservationIgnored private var pendingEditVersion = -1
+
+    /// Settings' 重新显示引导 asked for the welcome card; the main window
+    /// shows it and clears this.
+    public var onboardingRequested = false
 
     /// A route decoded from a tapped notification, buffered here by
     /// `TimeSinkApp`'s `appDelegate.onRoute` assignment until `MenuBarLabel`
@@ -161,7 +169,10 @@ public final class AppModel {
     /// Names worked out off the main actor, by `WorkSession.nameKey`.
     public var sessionLabels: [String: SessionLabel] = [:]
     /// Your names and projects, by `WorkSession.signature`.
-    public var sessionOverrides: [String: SessionNameRow] = [:]
+    public var sessionOverrides: [String: SessionNameRow] = [:] { didSet { sessionOverridesVersion &+= 1 } }
+    /// Bumped whenever `sessionOverrides` changes (a name, a project): pages
+    /// built from them key their reloads on this.
+    public private(set) var sessionOverridesVersion = 0
     /// Bumped when you split a session.
     public var sessionSplitsVersion = 0
     /// The projects you named (and accepted), in your order. Jev is asked about these.
@@ -466,6 +477,8 @@ public final class AppModel {
         show(range)
         sidebarSelection = .activities
         activityFilter = category
+        // A search left over from the last visit would hide what was asked for.
+        activitySearch = ""
     }
 
     /// A heatmap cell aggregates several dates; navigation only happens after
@@ -676,6 +689,19 @@ public final class AppModel {
     /// store, and the result is not cached): `dataVersion` has moved by then,
     /// so whoever watches it is already asking again.
     func rangedSpansOffMain(for interval: DateInterval) async -> [CategorizedSpan]? {
+        await loadSpansOffMain(for: interval, acceptStale: false)
+    }
+
+    /// `rangedSpansOffMain` for a reader that can live with rows a few
+    /// seconds old (a preview, a drill-down, a suggestion): when a write
+    /// lands in `interval` during the read -- any window holding today, with
+    /// the tracker running -- it gets the rows as read, uncached, rather than
+    /// nil. nil only when the caller was cancelled.
+    func spansOffMain(for interval: DateInterval) async -> [CategorizedSpan]? {
+        await loadSpansOffMain(for: interval, acceptStale: true)
+    }
+
+    private func loadSpansOffMain(for interval: DateInterval, acceptStale: Bool) async -> [CategorizedSpan]? {
         if let cached = rangeCache[interval] {
             touchCacheKey(interval)
             return cached
@@ -699,7 +725,8 @@ public final class AppModel {
         }
         do {
             let loaded = try await withTaskCancellationHandler { try await job.value } onCancel: { job.cancel() }
-            guard !Task.isCancelled, spansUnchanged(since: version, in: interval) else { return nil }
+            guard !Task.isCancelled else { return nil }
+            guard spansUnchanged(since: version, in: interval) else { return acceptStale ? loaded.spans : nil }
             if let cached = rangeCache[interval] { return cached }
             resolver.adopt(loaded.classification)
             remember(loaded.spans, for: interval)
@@ -896,6 +923,9 @@ public final class AppModel {
 
     /// At midnight a window left on "today" would keep showing yesterday,
     /// and the menu total would wait for the next tracker write.
+    ///
+    /// Asleep over a weekend, the notification arrives once, on Monday:
+    /// ranges are moved by the days since the last day seen, not by one.
     public func observeDayChanges() {
         NotificationCenter.default.addObserver(forName: .NSCalendarDayChanged, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.dayChanged() }
@@ -904,10 +934,14 @@ public final class AppModel {
 
     func dayChanged(now: Date = Date()) {
         let calendar = Calendar.current
-        // Any range that ended on "today" rolls forward: the last 7 and 30
-        // days, this week and this month as well as the day itself.
-        if range.kind != .custom, let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
-           calendar.isDate(range.anchor, inSameDayAs: yesterday) {
+        let today = calendar.startOfDay(for: now)
+        let seen = lastSeenDay
+        lastSeenDay = today
+        // Any range that ended on the day last seen -- "today" when it was
+        // seen -- rolls forward to the new today: the last 7 and 30 days,
+        // this week and this month as well as the day itself. An older range
+        // was chosen and stays.
+        if range.kind != .custom, seen < today, calendar.isDate(range.anchor, inSameDayAs: seen) {
             range = DateRangeSelection(kind: range.kind, anchor: now)
         }
         invalidateAndBump()
@@ -965,5 +999,134 @@ public final class AppModel {
         settings.setScreenCapturePaused(paused)
         guard let screenCollector else { return }
         Task { await screenCollector.setPaused(paused) }
+    }
+}
+
+// MARK: - Undo and redo
+
+/// Lets an undo step reach its manager to register the opposite step,
+/// without the handler capturing the manager itself.
+private final class UndoManagerBox: @unchecked Sendable {
+    weak var manager: UndoManager?
+    init(_ manager: UndoManager) { self.manager = manager }
+}
+
+extension AppModel {
+    /// ⌘Z for category edits, on the window's stack: undoing registers the
+    /// redo (⇧⌘Z) and redoing the undo again. A step that can no longer
+    /// apply -- the category was changed again since -- reaches `failed`
+    /// instead of passing silently.
+    func registerReclassificationUndo(_ edits: [ReclassificationEdit], on manager: UndoManager?,
+                                      failed: @escaping @MainActor @Sendable (String) -> Void) {
+        guard let manager, !edits.isEmpty else { return }
+        let box = UndoManagerBox(manager)
+        let name = String(localized: "更改分类")
+        manager.registerUndo(withTarget: self) { model in
+            MainActor.assumeIsolated {
+                do {
+                    try model.categoryStore.undoReclassifications(edits)
+                } catch {
+                    model.resolver.refresh(); model.dataChanged()
+                    failed(error.localizedDescription)
+                    return
+                }
+                model.resolver.refresh(); model.dataChanged()
+                // Registered while undoing, so it lands on the redo stack.
+                box.manager?.registerUndo(withTarget: model) { model in
+                    MainActor.assumeIsolated {
+                        do {
+                            let again = try model.categoryStore.redoReclassifications(edits)
+                            model.resolver.refresh(); model.dataChanged()
+                            model.registerReclassificationUndo(again, on: box.manager, failed: failed)
+                        } catch {
+                            failed(error.localizedDescription)
+                        }
+                    }
+                }
+                box.manager?.setActionName(name)
+            }
+        }
+        manager.setActionName(name)
+    }
+
+    /// ⌘Z for an edit that knows its inverse (a split, a join, a project):
+    /// undoing registers `redo`, redoing registers `undo` again.
+    func registerUndo(on manager: UndoManager?, name: String,
+                      undo: @escaping @MainActor @Sendable () -> Void, redo: @escaping @MainActor @Sendable () -> Void) {
+        guard let manager else { return }
+        let box = UndoManagerBox(manager)
+        manager.registerUndo(withTarget: self) { model in
+            MainActor.assumeIsolated {
+                undo()
+                model.registerUndo(on: box.manager, name: name, undo: redo, redo: undo)
+            }
+        }
+        manager.setActionName(name)
+    }
+}
+
+// MARK: - 不记录, for what is already recorded
+
+extension AppModel {
+    /// Deletes every span of `apps` and of `domains` (their subdomains
+    /// too), the screenshots taken in them and those screenshots' image
+    /// files, and Jev's remembered answers for their windows, off the main
+    /// actor. Returns how many spans went. Copies already synced to another
+    /// Mac are not touched.
+    public func deleteRecords(apps: Set<String>, domains: Set<String>) async throws -> Int {
+        guard !apps.isEmpty || !domains.isEmpty else { return 0 }
+        let writer = spanStore.writer
+        let root = try? ScreenCollector.defaultImagesRoot()
+        let count = try await Task.detached(priority: .userInitiated) { () throws -> Int in
+            let deleted = try AppModel.purgeRecords(writer: writer, apps: apps, domains: domains)
+            if let root { AppModel.removeImages(deleted.imagePaths, root: root) }
+            return deleted.spans
+        }.value
+        dataChanged()
+        return count
+    }
+
+    /// The database half of `deleteRecords`, in one transaction.
+    nonisolated static func purgeRecords(writer: any DatabaseWriter, apps: Set<String>,
+                                         domains: Set<String>) throws -> (spans: Int, imagePaths: [String]) {
+        try writer.write { db -> (spans: Int, imagePaths: [String]) in
+            var spans = 0
+            var paths: [String] = []
+            for app in apps.sorted() {
+                let captures = "appBundleID = ? OR spanID IN (SELECT id FROM span WHERE appBundleID = ?)"
+                paths += try String.fetchAll(db, sql: "SELECT imagePath FROM capture WHERE imagePath IS NOT NULL AND (\(captures))",
+                                             arguments: [app, app])
+                for table in ["jevVerdict", "jevProjectVerdict"] {
+                    try db.execute(sql: "DELETE FROM \(table) WHERE appBundleID = ?", arguments: [app])
+                }
+                try db.execute(sql: "DELETE FROM capture WHERE \(captures)", arguments: [app, app])
+                try db.execute(sql: "DELETE FROM span WHERE appBundleID = ?", arguments: [app])
+                spans += db.changesCount
+            }
+            for domain in domains.sorted() {
+                // The site and its subdomains, as the exclusion matches them.
+                let matches = "domain = ? OR substr(domain, -length(?) - 1) = '.' || ?"
+                let captures = "spanID IN (SELECT id FROM span WHERE \(matches))"
+                paths += try String.fetchAll(db, sql: "SELECT imagePath FROM capture WHERE imagePath IS NOT NULL AND \(captures)",
+                                             arguments: [domain, domain, domain])
+                for table in ["jevVerdict", "jevProjectVerdict"] {
+                    try db.execute(sql: "DELETE FROM \(table) WHERE \(matches)", arguments: [domain, domain, domain])
+                }
+                try db.execute(sql: "DELETE FROM capture WHERE \(captures)", arguments: [domain, domain, domain])
+                try db.execute(sql: "DELETE FROM span WHERE \(matches)", arguments: [domain, domain, domain])
+                spans += db.changesCount
+            }
+            return (spans, paths)
+        }
+    }
+
+    /// Best effort: an image that is already gone is no failure.
+    nonisolated private static func removeImages(_ paths: [String], root: URL) {
+        let base = root.standardizedFileURL.path + "/"
+        for path in paths {
+            let url = root.appendingPathComponent(path).standardizedFileURL
+            guard url.path.hasPrefix(base) else { continue }
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 }

@@ -19,7 +19,6 @@ struct ActivityInspector: View {
     @State private var selectedCapture: Capture?
     @State private var error: String?
     @State private var undoEdit: ReclassificationEdit?
-    @State private var undoKey = ""
     @State private var toast: String?
     @State private var toastSeconds = 6
     @State private var toastHovered = false
@@ -32,6 +31,11 @@ struct ActivityInspector: View {
         let activity: ActivitySelection?
         let start: Date?
     }
+    private struct CaptureKey: Equatable {
+        let span: Int64?
+        let start: Date?
+        let end: Date?
+    }
     private struct PreviewKey: Equatable {
         let span: Int64?
         let spanCategory: String?
@@ -41,12 +45,17 @@ struct ActivityInspector: View {
         let edits: Int
     }
 
-    private func preview() {
+    /// The 30 days are read and classified off the main actor (a month is
+    /// 0.5-2 s of rows); only the entry being previewed is applied here.
+    private func preview() async {
         guard let selected else { affected = (0, 0); return }
         if scope == .segment { affected = selected.categoryID == categoryID ? (0, 0) : (1, selected.span.duration); return }
         if historyEdits != model.dataEditVersion {
-            history = model.rangedSpans(for: DateRangeSelection(kind: .last30, anchor: Date()))
-            historyEdits = model.dataEditVersion
+            let edits = model.dataEditVersion
+            guard let items = await model.spansOffMain(for: DateRangeSelection(kind: .last30, anchor: Date()).interval),
+                  !Task.isCancelled else { return }
+            history = items
+            historyEdits = edits
         }
         let matches = model.resolver.previewEdit(span: selected.span, scope: scope, categoryID: categoryID, pattern: pattern, items: history)
         affected = (matches.count, matches.reduce(0) { $0 + $1.span.duration })
@@ -73,9 +82,11 @@ struct ActivityInspector: View {
             }
         }
         .task(id: SelectionKey(activity: activities.selectedActivity, start: activities.selectedStart)) { load() }
-        .onPageChange(of: model.dataVersion) { load(keepForm: true) }
+        // The list's own reload re-reads the records; this follows it.
+        .onPageChange(of: activities.itemsVersion) { load(keepForm: true) }
+        .task(id: CaptureKey(span: selected?.span.id, start: selected?.span.start, end: selected?.span.end)) { await loadCaptures() }
         .task(id: PreviewKey(span: selected?.span.id, spanCategory: selected?.categoryID, scope: scope,
-                             categoryID: categoryID, pattern: pattern, edits: model.dataEditVersion)) { preview() }
+                             categoryID: categoryID, pattern: pattern, edits: model.dataEditVersion)) { await preview() }
         .task(id: toast) {
             guard toast != nil else { return }
             toastSeconds = 6
@@ -205,10 +216,12 @@ struct ActivityInspector: View {
             }
             Text(previewLine(item)).font(.note).foregroundStyle(Design.ink2)
             HStack(spacing: 8) {
+                // Return and Esc only while the page is on screen: hidden
+                // pages stay alive, and this form with them.
                 Button { cancelEdit(item) } label: { Text("取消").frame(maxWidth: .infinity) }
-                    .buttonStyle(PillButtonStyle()).keyboardShortcut(.cancelAction)
+                    .buttonStyle(PillButtonStyle()).pageShortcut(.cancelAction)
                 Button(action: save) { Text("重新归类").frame(maxWidth: .infinity) }
-                    .buttonStyle(AccentButtonStyle()).keyboardShortcut(.defaultAction)
+                    .buttonStyle(AccentButtonStyle()).pageShortcut(.defaultAction)
                     .disabled(scope == .title && TitleRuleInput.normalizedPattern(pattern) == nil || affected.count == 0)
             }
         }
@@ -340,8 +353,9 @@ struct ActivityInspector: View {
         return result.sorted { $0.start < $1.start }
     }
 
+    /// From the records the list already holds -- never a read of its own.
     private func load(keepForm: Bool = false) {
-        let all = model.rangedSpans()
+        let all = activities.displayedItems
         guard let selection = activities.selectedActivity else { selected = nil; return }
         // Time first: the identity check (a URL parse) then runs on a handful
         // of spans instead of the whole range.
@@ -358,25 +372,38 @@ struct ActivityInspector: View {
             : nil
         // Keep the saved row visible even when changing category moves its list group.
         if let item { selected = item }
-        else if keepForm, let previous = selected, let updated = all.first(where: { $0.span.id == previous.span.id }) { selected = updated }
+        else if keepForm, let previous = selected {
+            // A filter may hide it now: still shown, in its new category.
+            selected = all.first(where: { $0.span.id == previous.span.id })
+                ?? CategorizedSpan(span: previous.span, categoryID: model.resolver.categoryID(for: previous.span))
+        }
         else { selected = nil }
         guard let selected else { return }
         if !keepForm { categoryID = selected.categoryID; scope = .segment; pattern = ""; activities.isEditingCategory = false }
         reason = model.resolver.explanation(for: selected.span)
-        captures = (try? model.observationStore?.captures(overlapping: DateInterval(start: selected.span.start, end: selected.span.end))) ?? []
-        captures = captures.filter { $0.appBundleID == selected.span.appBundleID }
+    }
+
+    /// The screenshots of the record shown, read off the main actor.
+    private func loadCaptures() async {
+        guard let span = selected?.span, let store = model.observationStore else { captures = []; return }
+        let interval = DateInterval(start: span.start, end: max(span.start, span.end))
+        let found = await Task.detached(priority: .userInitiated) {
+            ((try? store.captures(overlapping: interval)) ?? []).filter { $0.appBundleID == span.appBundleID }
+        }.value
+        guard !Task.isCancelled else { return }
+        captures = found
     }
 
     private func save() {
         guard let selected else { return }
         do {
             let edit = try model.categoryStore.reclassify(span: selected.span, scope: scope, categoryID: categoryID, pattern: pattern)
-            let key = selected.span.domain ?? selected.span.appBundleID
-            undoEdit = edit; undoKey = key
+            let key = edit.activityKey
+            undoEdit = edit
             // ⌘Z reaches this through the window's undo stack (Edit ▸ Undo),
-            // so a focused text field keeps undoing its own typing first.
-            undoManager?.registerUndo(withTarget: model) { _ in MainActor.assumeIsolated { revert(edit, key: key) } }
-            undoManager?.setActionName(String(localized: "更改分类"))
+            // so a focused text field keeps undoing its own typing first;
+            // ⇧⌘Z redoes it.
+            model.registerReclassificationUndo([edit], on: undoManager) { [activities] message in activities.showNotice(message) }
             model.resolver.refresh(); model.dataChanged()
             error = nil
             let name = model.resolver.categoriesByID[categoryID]?.name ?? categoryID
@@ -392,11 +419,11 @@ struct ActivityInspector: View {
     private func undo() {
         guard let undoEdit else { return }
         undoManager?.removeAllActions(withTarget: model)
-        revert(undoEdit, key: undoKey)
+        revert(undoEdit)
     }
-    private func revert(_ edit: ReclassificationEdit, key: String) {
+    private func revert(_ edit: ReclassificationEdit) {
         do {
-            try model.categoryStore.undoReclassification(edit, activityKey: key)
+            try model.categoryStore.undoReclassification(edit)
             model.resolver.refresh(); model.dataChanged()
             undoEdit = nil; toast = nil; error = nil
         } catch { self.error = error.localizedDescription }
@@ -446,7 +473,7 @@ struct CaptureReviewSheet: View {
                 Button("完成") { dismiss() }.keyboardShortcut(.cancelAction)
             }
             CaptureThumbnail(capture: capture).frame(maxWidth: .infinity, maxHeight: .infinity)
-            if capture.imagePath == nil { Text("画面已到期删除，以下为当时识别的文字。").foregroundStyle(Design.ink2) }
+            if capture.imagePath == nil { Text("这张画面已删除，以下为当时识别的文字。").foregroundStyle(Design.ink2) }
             ScrollView { Text(capture.text).font(.body).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }.frame(maxHeight: 120)
         }.padding(20).frame(width: 800, height: 620)
     }

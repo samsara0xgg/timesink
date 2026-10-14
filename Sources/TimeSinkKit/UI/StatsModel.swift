@@ -113,7 +113,8 @@ final class StatsModel {
     /// page is showing. The same window is not worked out twice.
     func recompute(model: AppModel, range ahead: DateRangeSelection? = nil, forceHeavy: Bool = false) async {
         let now = Date()
-        let calendar = Calendar.current
+        // The week starts where Settings says: weekly bars bucket by it.
+        let calendar = model.displayCalendar
         let day = calendar.startOfDay(for: now)
         // Once the page is on screen it asks for its own range; getting ahead is for before.
         let prefetch = ahead != nil && model.sidebarSelection != .stats
@@ -165,27 +166,44 @@ final class StatsModel {
         }
     }
 
-    /// Interruptions per day for the last 14 days, from the same per-day
-    /// classification the radar reads. Only the counts are kept.
+    /// Interruptions per day for the last 14 days, by the same per-day
+    /// classification the radar reads. Only the counts are kept. The days
+    /// not already settled are read and classified in one go on the worker,
+    /// not one main-actor read per day.
     func loadInterruptionTrend(model: AppModel) async {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         let (version, edit, rule) = (model.dataVersion, model.dataEditVersion, model.interruptionRule)
         if let key = trendKey, key == (version, edit, rule, today), interruptionTrend != nil { return }
         var settled = settledCounts.flatMap { $0.edit == edit && $0.rule == rule && $0.today == today ? $0.counts : nil } ?? [:]
-        var days: [InterruptionDay] = []
+        var wanted: [(offset: Int, interval: DateInterval)] = []
         for offset in (0..<Self.interruptionTrendDays).reversed() {
             guard let start = calendar.date(byAdding: .day, value: -offset, to: today),
                   let interval = calendar.dateInterval(of: .day, for: start) else { continue }
-            let count: Int
-            if offset >= 2, let known = settled[start] {
-                count = known
-            } else {
-                count = await model.interruptions(for: interval).interruptions.count
-                if offset >= 2 { settled[start] = count }
+            wanted.append((offset: offset, interval: interval))
+        }
+        let missing = wanted.filter { $0.offset < 2 || settled[$0.interval.start] == nil }
+        var fresh: [Date: Int] = [:]
+        if !missing.isEmpty {
+            let counts: [Int]
+            do {
+                counts = try await worker.interruptionCounts(
+                    store: model.spanStore, classification: model.resolver.snapshot(),
+                    editVersion: edit, dataVersion: version, days: missing.map { $0.interval },
+                    productivity: model.resolver.categoriesByID.mapValues(\.productivity),
+                    distracting: model.resolver.distractingIDs, rule: rule, writes: model.writeLog)
+            } catch {
+                return
             }
             guard !Task.isCancelled else { return }
-            days.append(InterruptionDay(day: start, count: count))
+            for (day, count) in zip(missing, counts) {
+                fresh[day.interval.start] = count
+                if day.offset >= 2 { settled[day.interval.start] = count }
+            }
+        }
+        let days: [InterruptionDay] = wanted.map { day in
+            let start = day.interval.start
+            return InterruptionDay(day: start, count: fresh[start] ?? settled[start] ?? 0)
         }
         settledCounts = (edit, rule, today, settled)
         trendKey = (version, edit, rule, today)

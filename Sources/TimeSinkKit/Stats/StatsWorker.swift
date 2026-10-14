@@ -112,11 +112,46 @@ actor StatsWorker {
                      categories: [String: Category], editVersion: Int, dataVersion: Int,
                      now: Date, calendar: Calendar) throws -> DayOverview {
         try prepare(classification: seed, editVersion: editVersion, dataVersion: dataVersion)
-        let day = calendar.dateInterval(of: .day, for: now)!
+        let day = DayOverview.dayInterval(containing: now, calendar: calendar)
         let records = try items(store: store, in: day)
         let sessions = try focusStore?.sessions(overlapping: day) ?? []
         try Task.checkCancellation()
         return DayOverview(items: records, categories: categories, sessions: sessions, now: now, calendar: calendar)
+    }
+
+    /// Interruptions on each of `days`, counted as `AppModel.interruptions(for:)`
+    /// counts them (each day's spans clipped to it, then
+    /// `InterruptionClassifier`), from one read of the stretch they cover
+    /// instead of a read per day on the main actor. Titles are kept: an
+    /// episode's destination is told apart by them.
+    func interruptionCounts(store: SpanStore, classification seed: CategoryResolver.Snapshot,
+                            editVersion: Int, dataVersion: Int, days: [DateInterval],
+                            productivity: [String: Int], distracting: Set<String>, rule: InterruptionRule,
+                            writes: [(version: Int, from: Date)] = []) throws -> [Int] {
+        try prepare(classification: seed, editVersion: editVersion, dataVersion: dataVersion, writes: writes)
+        guard let first = days.map(\.start).min(), let last = days.map(\.end).max() else { return [] }
+        let spans = try store.spans(overlapping: DateInterval(start: first, end: last))
+        try Task.checkCancellation()
+        var classified: [CategorizedSpan] = []
+        classified.reserveCapacity(spans.count)
+        for span in spans {
+            classified.append(CategorizedSpan(span: span, categoryID: classification!.categoryID(for: span)))
+        }
+        var counts: [Int] = []
+        for day in days {
+            try Task.checkCancellation()
+            var items: [CategorizedSpan] = []
+            for item in classified where item.span.start < day.end && item.span.end > day.start {
+                var clipped = item
+                clipped.span.start = max(item.span.start, day.start)
+                clipped.span.end = min(item.span.end, day.end)
+                items.append(clipped)
+            }
+            let episodes = InterruptionClassifier.episodes(items, productivity: productivity,
+                                                           distracting: distracting, rule: rule)
+            counts.append(episodes.filter { $0.kind == .interruption }.count)
+        }
+        return counts
     }
 
     /// Distinct apps and sites still uncategorized in `interval`.

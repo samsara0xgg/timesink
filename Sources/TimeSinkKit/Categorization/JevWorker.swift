@@ -2,8 +2,10 @@ import Foundation
 
 /// Asks Jev about the window contents that have no current verdict, a few
 /// requests at a time, and stores each answer as it arrives. Stops at the
-/// monthly spend cap, at a key or balance error, and leaves a failed
-/// request for the next run.
+/// monthly spend cap, at a key, balance, model or address error, after a few
+/// service failures in a row, and as soon as Jev is turned off. A question
+/// that came back with nothing usable waits longer after each try
+/// (`JevAttempt`) instead of being asked on every run.
 public actor JevWorker {
     public struct RunResult: Equatable, Sendable {
         public var calls = 0
@@ -14,6 +16,11 @@ public actor JevWorker {
         public var latencies: [Double] = []
         public var stoppedByCap = false
         public var error: String?
+        /// What stopped the run early, when it was the key, the account, the
+        /// model or address, or the service being down.
+        public var problem: JevProblem?
+        /// The part of `costUSD` that was estimated: requests that timed out.
+        public var estimatedCostUSD = 0.0
         /// Seconds to wait after an HTTP 429; the pass stopped launching requests.
         public var retryAfter: Int?
         /// Requests in flight at most, this run.
@@ -30,6 +37,8 @@ public actor JevWorker {
     private let apiKey: @Sendable () -> String?
     /// The last run hit a 429: the next one asks fewer at a time.
     private var wasRateLimited = false
+    /// When verdicts of forgotten screens were last cleared; it reads every capture, so at most hourly.
+    private var lastForget = Date.distantPast
 
     public init(categoryStore: CategoryStore, settings: SettingsStore, transport: any JevTransport = URLSessionJevTransport(),
                 apiKey: @escaping @Sendable () -> String?) {
@@ -49,7 +58,23 @@ public actor JevWorker {
     private struct Job: Sendable {
         let state: JevState
         let target: Target
+
+        /// The `jevAttempt` row an unusable answer to this job counts against.
+        var attemptKey: JevAttemptKey {
+            switch target {
+            case .combo(let c): return c.projectOnly ? JevAttemptKey.project(c.key) : JevAttemptKey.category(c.key)
+            case .retry(let v): return JevAttemptKey.category(v.key)
+            case .capture(let c): return JevAttemptKey.capture(c.key)
+            }
+        }
     }
+
+    /// Service failures in a row (5xx, timeouts, no connection) after which a run stops.
+    static let unavailableLimit = 3
+    /// What a timed-out request counts as before any answer of the run said
+    /// what one costs: the service may have answered, and billed it, after
+    /// the app stopped waiting. Set high on purpose, so the cap holds.
+    static let timeoutCostEstimate = 0.001
 
     /// A combo's project is re-asked only when it was seen this recently.
     public static let projectLookbackDays = 14
@@ -57,13 +82,19 @@ public actor JevWorker {
     /// One pass over everything seen since `since` (and, for answers from an older prompt, since `staleSince`): window contents without a
     /// verdict, then unsure verdicts asked again with the user's examples (plus
     /// screen text when "send screenshot text" is on), then (that switch only)
-    /// bare-title AI-app screens.
-    public func run(since: Date, staleSince: Date? = nil, maxConcurrent: Int = 10) async -> RunResult {
+    /// bare-title AI-app screens. `userRules` (the resolver's context): a window
+    /// the user's own title, site, URL or app rule decides is not asked about.
+    public func run(since: Date, staleSince: Date? = nil, maxConcurrent: Int = 10, userRules: ClassificationContext? = nil) async -> RunResult {
         var result = RunResult()
         // Half the requests at a time after a 429 (at least 2); back to full after a clean run.
         let maxConcurrent = wasRateLimited ? min(maxConcurrent, max(2, maxConcurrent / 2)) : maxConcurrent
         result.concurrency = maxConcurrent
         guard settings.jevEnabled, let key = apiKey(), !key.isEmpty, let endpoint = URL(string: settings.jevEndpoint) else { return result }
+        // Screens screen review has forgotten take their OCR-keyed verdicts with them.
+        if Date().timeIntervalSince(lastForget) >= 3_600 {
+            lastForget = Date()
+            _ = try? categoryStore.forgetOrphanedCaptureVerdicts()
+        }
         do {
             let categories = try categoryStore.rawCategories()
             let criteria = JevPrompt.criteria(categories)
@@ -77,28 +108,35 @@ public actor JevWorker {
             let projectIDs = Set(projects.map(\.id))
             let projectSince = Calendar.current.date(byAdding: .day, value: -Self.projectLookbackDays, to: Date())
             let client = JevClient(endpoint: endpoint, apiKey: key, model: settings.jevModel, transport: transport)
-            let settings = settings, categoryStore = categoryStore
+            let settings = settings, categoryStore = categoryStore, apiKey = apiKey
+            // A question that came back unusable waits out its backoff, and is not asked after a few tries.
+            let attempts = try categoryStore.jevAttempts()
+            let now = Date()
+            func due(_ key: JevAttemptKey) -> Bool { JevAttempt.isDue(attempts[key], now: now) }
 
             func combo(_ c: JevCombo) -> Job {
                 Job(state: JevState(app: c.appName, bundleID: c.key.appBundleID, domain: c.key.domain, url: c.url,
                                     title: c.key.title, document: c.key.document), target: .combo(c))
             }
-            let pending = try categoryStore.pendingCombos(since: since, staleSince: staleSince, promptVersion: version)
+            let wanted = try categoryStore.pendingCombos(since: since, staleSince: staleSince, promptVersion: version, userRules: userRules)
+            let pending = wanted.filter { due(.category($0.key)) }
             // Every window content of the last 14 days gets a project answer, whoever decides its category: the
             // ones about to be asked for a category carry the question along; the rest are asked the project
             // question alone, except those that are never a project, which are settled here.
             var projectOnly: [JevCombo] = []
             if let projectVersion {
+                // A combo waiting to be asked its category again will carry the project question then.
                 let found = try categoryStore.pendingProjectCombos(since: projectSince ?? since, version: projectVersion,
-                                                                   excluding: Set(pending.map(\.key)))
-                projectOnly = found.ask
+                                                                   excluding: Set(wanted.map(\.key)))
+                projectOnly = found.ask.filter { due(.project($0.key)) }
                 for key in found.none where (try? categoryStore.saveProjectVerdict(key, projectID: JevPrompt.noProject, prob: 1, runnerUp: "",
                                                                                    promptVersion: projectVersion)) != nil {
                     result.saved += 1
                 }
             }
             var halted = await Self.pass((pending + projectOnly).map(combo), client: client, criteria: criteria, projects: projectCriteria,
-                                         settings: settings, maxConcurrent: maxConcurrent, into: &result) { job, answer in
+                                         settings: settings, categoryStore: categoryStore, apiKey: apiKey,
+                                         maxConcurrent: maxConcurrent, into: &result) { job, answer in
                 guard case .combo(let c) = job.target else { return false }
                 let project = projectVersion.map { Self.projectFields(answer, ids: projectIDs, version: $0) }
                 if let project, (try? categoryStore.saveProjectVerdict(c.key, projectID: project.id, prob: project.prob,
@@ -115,6 +153,13 @@ public actor JevWorker {
             let screenOn = settings.jevScreenText
             let examples = try categoryStore.jevExamples()
             let retries = try categoryStore.lowConfidenceRetries(since: since, promptVersion: version, below: JevService.lowConfidence).compactMap { r -> Job? in
+                guard due(.category(r.verdict.key)) else { return nil }
+                // Settled by a rule of the user's since: a better answer would never be used.
+                if let userRules, Classifier.userRuleCategory(appBundleID: r.verdict.appBundleID, url: nil,
+                                                              domain: r.verdict.domain.isEmpty ? nil : r.verdict.domain,
+                                                              title: r.verdict.title.isEmpty ? nil : r.verdict.title, context: userRules) != nil {
+                    return nil
+                }
                 let picked = JevExample.select(from: examples, bundleID: r.verdict.appBundleID, domain: r.verdict.domain)
                 let text = screenOn ? r.text : nil
                 guard text != nil || !picked.isEmpty else { return nil }   // nothing new to say: the same question again
@@ -122,7 +167,8 @@ public actor JevWorker {
                                            title: r.verdict.title, document: r.verdict.document, screenText: text,
                                            examples: picked.isEmpty ? nil : picked), target: .retry(r.verdict))
             }
-            halted = await Self.pass(retries, client: client, criteria: criteria, settings: settings, maxConcurrent: maxConcurrent, into: &result) { job, answer in
+            halted = await Self.pass(retries, client: client, criteria: criteria, settings: settings, categoryStore: categoryStore, apiKey: apiKey,
+                                     maxConcurrent: maxConcurrent, into: &result) { job, answer in
                 guard case .retry(let old) = job.target else { return false }
                 let combo = JevCombo(key: old.key, appName: "", url: "", seconds: 0)
                 if var v = Self.verdict(for: combo, answer: answer, ids: ids, version: version, model: model), v.prob > old.prob {
@@ -134,11 +180,13 @@ public actor JevWorker {
             }
             guard settings.jevScreenText, !halted else { wasRateLimited = result.retryAfter != nil; return result }
 
-            let captures = try categoryStore.pendingCaptures(since: since, staleSince: staleSince, promptVersion: version).map { c in
+            let captures = try categoryStore.pendingCaptures(since: since, staleSince: staleSince, promptVersion: version)
+                .filter { due(.capture($0.key)) }.map { c in
                 Job(state: JevState(app: c.appName, bundleID: c.bundleID, domain: "", url: "", title: c.title, document: "", screenText: c.text),
                     target: .capture(c))
             }
-            _ = await Self.pass(captures, client: client, criteria: criteria, settings: settings, maxConcurrent: maxConcurrent, into: &result) { job, answer in
+            _ = await Self.pass(captures, client: client, criteria: criteria, settings: settings, categoryStore: categoryStore, apiKey: apiKey,
+                                maxConcurrent: maxConcurrent, into: &result) { job, answer in
                 guard case .capture(let c) = job.target, ids.contains(answer.choice) else { return false }
                 let ranked = answer.probabilities.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }
                 let runnerUp = ranked.first { $0.key != answer.choice }
@@ -154,19 +202,32 @@ public actor JevWorker {
     }
 
     /// Runs `jobs` a few at a time, adding to `result`. True when the run
-    /// must stop altogether (monthly cap, or a key or balance error).
+    /// must stop altogether (monthly cap; a key, balance, model or address
+    /// error; the service down; Jev turned off or its key removed).
     private static func pass(_ jobs: [Job], client: JevClient, criteria: [(id: String, text: String)],
                              projects: [(id: String, text: String)] = [], settings: SettingsStore,
+                             categoryStore: CategoryStore, apiKey: @escaping @Sendable () -> String?,
                              maxConcurrent: Int, into result: inout RunResult,
                              apply: @escaping @Sendable (Job, JevAnswer) -> Bool) async -> Bool {
         typealias Outcome = (job: Job, answer: Result<JevAnswer, any Error>, seconds: Double)
         func capReached() -> Bool { settings.jevSpend() >= settings.jevMonthlyCap }
         var next = 0
         var stop = false
+        var unavailableInARow = 0
         var snapshot = result
         await withTaskGroup(of: Outcome.self) { group in
             func launch() {
                 guard !stop, next < jobs.count else { return }
+                // Read again before every request: turning Jev off or removing the key stops what
+                // this run still has queued (and what is in flight), not only the next run.
+                guard !Task.isCancelled, settings.jevEnabled, !(apiKey() ?? "").isEmpty else {
+                    stop = true
+                    group.cancelAll()
+                    return
+                }
+                // Screen text goes out only while its switch is still on.
+                while next < jobs.count, jobs[next].state.screenText != nil, !settings.jevScreenText { next += 1 }
+                guard next < jobs.count else { return }
                 if capReached() { stop = true; snapshot.stoppedByCap = true; return }
                 let job = jobs[next]
                 next += 1
@@ -188,11 +249,18 @@ public actor JevWorker {
             while let done = await group.next() {
                 switch done.answer {
                 case .success(let answer):
+                    unavailableInARow = 0
                     snapshot.latencies.append(done.seconds)
                     snapshot.inputTokens += answer.inputTokens
                     snapshot.costUSD += answer.cost
                     settings.addJevSpend(answer.cost)
-                    if apply(done.job, answer) { snapshot.saved += 1 } else { snapshot.failed += 1 }
+                    if apply(done.job, answer) {
+                        snapshot.saved += 1
+                    } else {
+                        // Paid for and not usable (a category that was not offered): asked again only after a wait.
+                        snapshot.failed += 1
+                        try? categoryStore.recordJevAttempt(done.job.attemptKey)
+                    }
                 case .failure(let error):
                     // A 429 leaves the combo queued: not failed, no spend; stop launching, let in-flight ones finish.
                     if case JevError.rateLimited(let secs) = error {
@@ -200,15 +268,50 @@ public actor JevWorker {
                         stop = true
                         break
                     }
+                    // Cancelled because Jev was turned off: not the question's fault, nothing to report.
+                    if error is CancellationError || (error as? URLError)?.code == .cancelled {
+                        stop = true
+                        break
+                    }
                     snapshot.failed += 1
                     snapshot.error = error.localizedDescription
-                    if (error as? JevError)?.stopsTheRun == true { stop = true }
+                    // A reply that did not parse was billed all the same; a timed-out one may have been.
+                    if let jevError = error as? JevError, case .badAnswer(let cost) = jevError {
+                        snapshot.costUSD += cost
+                        settings.addJevSpend(cost)
+                        try? categoryStore.recordJevAttempt(done.job.attemptKey)
+                    } else if (error as? URLError)?.code == .timedOut {
+                        let estimate = Self.timeoutCost(snapshot)
+                        snapshot.costUSD += estimate
+                        snapshot.estimatedCostUSD += estimate
+                        settings.addJevSpend(estimate)
+                        try? categoryStore.recordJevAttempt(done.job.attemptKey)
+                    }
+                    let problem = JevProblem(error)
+                    if (error as? JevError)?.stopsTheRun == true {
+                        stop = true
+                        snapshot.problem = problem
+                    } else if problem == .unavailable {
+                        unavailableInARow += 1
+                        if unavailableInARow >= Self.unavailableLimit {
+                            stop = true
+                            snapshot.problem = .unavailable
+                        }
+                    }
                 }
                 launch()
             }
         }
         result = snapshot
         return stop
+    }
+
+    /// What a timed-out request is counted as: the run's average cost per
+    /// answer so far, or `timeoutCostEstimate` before the first answer.
+    static func timeoutCost(_ run: RunResult) -> Double {
+        let answers = run.latencies.count
+        guard answers > 0 else { return timeoutCostEstimate }
+        return max(0, run.costUSD - run.estimatedCostUSD) / Double(answers)
     }
 
     private static func seconds(since start: ContinuousClock.Instant) -> Double {

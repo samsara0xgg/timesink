@@ -71,15 +71,15 @@ final class SyncEngineTests: XCTestCase {
     }
 
     /// The first live upload stalled on a 4.7k-character ad URL: the server
-    /// caps every field at 4096 scalars and rejected the whole batch, and
-    /// every retry hit the same row.
+    /// then refused the whole batch, and every retry hit the same row. It
+    /// now cuts too, to per-field caps the client cuts to first.
     func testWireCutsFieldsToTheServerLimit() {
         var long = span(0)
         long.id = 7
         long.url = String(repeating: "u", count: 5000)
         long.title = "短"
         let wire = HTTPCloud.wire(long)!
-        XCTAssertEqual(wire.url?.unicodeScalars.count, HTTPCloud.maxFieldLength)
+        XCTAssertEqual(wire.url?.unicodeScalars.count, HTTPCloud.FieldLimits.url)
         XCTAssertEqual(wire.title, "短")
         XCTAssertEqual(wire.originId, 7)
         XCTAssertNil(HTTPCloud.wire(span(1)))  // never inserted: no id, nothing to push

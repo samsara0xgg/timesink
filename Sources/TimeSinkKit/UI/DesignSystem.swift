@@ -318,6 +318,9 @@ struct Segmented<Value: Hashable, Label: View>: View {
         }
         .animation(reduceMotion ? nil : Design.quick, value: selection)
         .fixedSize()
+        // A container: a caller's accessibilityLabel names the group and
+        // VoiceOver still reads each segment, instead of the label covering them.
+        .accessibilityElement(children: .contain)
     }
 }
 

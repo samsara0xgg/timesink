@@ -101,9 +101,19 @@ enum OnboardingFlight {
 }
 
 extension AppModel {
-    /// 继续: the login item, the light trail to the menu bar icon, then the
-    /// popover opens once with its tour. Without a status button, none of it runs.
+    /// The welcome card was shown and never finished: the app quit (or was
+    /// relaunched for Screen Recording) before 继续. Shown again at launch.
+    public var onboardingInterrupted: Bool {
+        settings.get("onboardingStarted") == "true" && settings.get("onboardingFinished") != "true"
+    }
+
+    /// 继续, or the card going away any other way: the login item, the light
+    /// trail to the menu bar icon, then the popover opens once with its tour.
+    /// Once per showing of the card; without a status button only the login
+    /// item is set up.
     func finishOnboarding(from start: CGPoint?, launchAtLogin: Bool) {
+        guard settings.get("onboardingFinished") != "true" else { return }
+        settings.set("onboardingFinished", "true")
         // Same guard as Settings' toggle: only an installed app can be a login item.
         if launchAtLogin, Bundle.main.bundlePath.hasPrefix("/Applications") {
             do { try SMAppService.mainApp.register() }
@@ -115,5 +125,13 @@ extension AppModel {
             if settings.get("menuTourShown") != "true" { menuTour.armed = true }
             popoverShortcut.action?()
         }
+    }
+
+    /// Settings' 重新显示引导: the welcome card again in the main window, and
+    /// the popover tour after it.
+    func showOnboardingAgain() {
+        settings.set("onboardingFinished", "false")
+        settings.set("menuTourShown", "false")
+        onboardingRequested = true
     }
 }

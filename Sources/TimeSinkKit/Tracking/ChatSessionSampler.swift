@@ -24,6 +24,15 @@ public final class ChatSessionSampler: Sendable {
     /// Claude's inner one at 9) with headroom for a layout change, shallow
     /// enough that a miss costs a handful of reads rather than a tree walk.
     static let maxDepth = 14
+    /// Longest any one AX read may block. A messaging timeout belongs to the
+    /// element it is set on, so the app element's does not cover the window
+    /// or its children: each element gets its own before it is read, or a
+    /// hung web view holds a read for the system default of about 6 s.
+    static let readTimeout: TimeInterval = 0.25
+    /// The whole walk's budget. Measured walks take under 10 ms (see
+    /// `TrackerEngine.offActorChatSession`); one that is still going after
+    /// this is stuck behind a busy app and gives up with what it has.
+    static let walkBudget: TimeInterval = 0.3
 
     public init() {}
 
@@ -31,22 +40,34 @@ public final class ChatSessionSampler: Sendable {
     /// including when the web area's title is just the app's own name, which
     /// is what Claude reports while a modal (Settings) owns the route.
     public func session(pid: pid_t, appName: String) -> String? {
+        let deadline = Date().addingTimeInterval(Self.walkBudget)
         let appRef = AXUIElementCreateApplication(pid)
         // Same budget as `WindowSampler`: this runs on the 1s tick's thread.
-        AXUIElementSetMessagingTimeout(appRef, 0.25)
+        guard Self.limit(appRef, until: deadline) else { return nil }
         var window: CFTypeRef?
         guard AXUIElementCopyAttributeValue(appRef, kAXFocusedWindowAttribute as CFString, &window) == .success,
               let win = window else { return nil }
 
         var found: String?
-        webAreaTitles(win as! AXUIElement, depth: 0) { title in
+        webAreaTitles(win as! AXUIElement, depth: 0, until: deadline) { title in
             if !title.isEmpty, title != appName { found = title }
         }
         return found
     }
 
-    private func webAreaTitles(_ element: AXUIElement, depth: Int, onTitle: (String) -> Void) {
-        guard depth <= Self.maxDepth else { return }
+    /// Caps `element`'s reads at `readTimeout`, or at what is left of the
+    /// walk when that is less. False once the budget is spent: the caller
+    /// stops there. (A timeout of 0 would mean "the default", hence the
+    /// floor.)
+    private static func limit(_ element: AXUIElement, until deadline: Date) -> Bool {
+        let left = deadline.timeIntervalSinceNow
+        guard left > 0.01 else { return false }
+        AXUIElementSetMessagingTimeout(element, Float(min(readTimeout, left)))
+        return true
+    }
+
+    private func webAreaTitles(_ element: AXUIElement, depth: Int, until deadline: Date, onTitle: (String) -> Void) {
+        guard depth <= Self.maxDepth, Self.limit(element, until: deadline) else { return }
         var role: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role) == .success else { return }
         if role as? String == "AXWebArea" {
@@ -60,6 +81,6 @@ public final class ChatSessionSampler: Sendable {
         var children: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &children) == .success,
               let list = children as? [AXUIElement] else { return }
-        for child in list { webAreaTitles(child, depth: depth + 1, onTitle: onTitle) }
+        for child in list { webAreaTitles(child, depth: depth + 1, until: deadline, onTitle: onTitle) }
     }
 }

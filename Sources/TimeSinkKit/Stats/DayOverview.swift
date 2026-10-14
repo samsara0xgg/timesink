@@ -47,7 +47,7 @@ struct DayOverview: Sendable {
     init(items: [CategorizedSpan], categories: [String: Category], sessions: [FocusSession],
          now: Date = Date(), calendar: Calendar = .current) {
         self.now = now
-        let day = calendar.dateInterval(of: .day, for: now)!
+        let day = Self.dayInterval(containing: now, calendar: calendar)
         self.day = day
         let clipped = items.compactMap { entry -> CategorizedSpan? in
             var entry = entry
@@ -84,6 +84,15 @@ struct DayOverview: Sendable {
         let lastHour = calendar.dateInterval(of: .hour, for: last)
         let end = min(day.end, lastHour?.start == last ? last : lastHour?.end ?? day.end)
         displayInterval = DateInterval(start: max(day.start, start), end: max(start.addingTimeInterval(1), end))
+    }
+
+    /// The local day holding `date`. `Calendar` has no reason to fail here,
+    /// but a midnight-to-midnight fallback beats a crash if it ever does.
+    static func dayInterval(containing date: Date, calendar: Calendar) -> DateInterval {
+        if let day = calendar.dateInterval(of: .day, for: date) { return day }
+        let start = calendar.startOfDay(for: date)
+        let end = calendar.date(byAdding: .day, value: 1, to: start) ?? start.addingTimeInterval(86400)
+        return DateInterval(start: start, end: max(start, end))
     }
 
     /// Where the day's band starts: the first record, unless a few minutes

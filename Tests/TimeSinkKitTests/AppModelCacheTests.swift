@@ -133,15 +133,19 @@ final class AppModelCacheTests: XCTestCase {
         let (model, _) = try makeModel()
         let now = Date()
         let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: now)!
+        // The day the model last saw: midnight has just passed.
+        model.lastSeenDay = Calendar.current.startOfDay(for: yesterday)
         model.range = DateRangeSelection(kind: .day, anchor: yesterday)
         model.dayChanged(now: now)
         XCTAssertTrue(Calendar.current.isDate(model.range.anchor, inSameDayAs: now))
 
         let older = Calendar.current.date(byAdding: .day, value: -3, to: now)!
+        model.lastSeenDay = Calendar.current.startOfDay(for: yesterday)
         model.range = DateRangeSelection(kind: .day, anchor: older)
         model.dayChanged(now: now)
         XCTAssertTrue(Calendar.current.isDate(model.range.anchor, inSameDayAs: older))
 
+        model.lastSeenDay = Calendar.current.startOfDay(for: yesterday)
         model.range = DateRangeSelection(kind: .last7, anchor: yesterday)
         model.dayChanged(now: now)
         XCTAssertEqual(model.range.kind, .last7)

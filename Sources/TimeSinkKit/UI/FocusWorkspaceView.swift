@@ -59,7 +59,7 @@ struct FocusWorkspaceView: View {
         }
         .onChange(of: weeksBack) { _, _ in loadBrowsed() }
         .onPageChange(of: LoadKey(version: model.dataVersion, running: model.focus?.running?.id)) { load() }
-        .pageTask(id: model.dataVersion) { await loadInterruptions() }
+        .pageTask(id: model.dataVersion) { await loadSuggestions(); await loadInterruptions() }
         .sheet(isPresented: $editApps) { FocusBlockedAppsEditor(model: model, blockedApps: $blockedApps) }
         .popover(isPresented: $editCategories) { FocusCategoriesEditor(model: model) { editCategories = false } }
     }
@@ -359,12 +359,15 @@ struct FocusWorkspaceView: View {
         do { model.settings.setFocusDurationMinutes(minutes); try model.focus?.start(minutes: minutes); error = nil }
         catch { self.error = String(localized: "无法开始专注：\(error.localizedDescription)") }
     }
-    private func loadSuggestions() {
+    /// Seven whole days, read and classified off the main actor. The window
+    /// ends at midnight, not now, so it is one cache key all day.
+    private func loadSuggestions() async {
         let calendar = model.displayCalendar
-        let today = calendar.startOfDay(for: Date())
-        guard let start = calendar.date(byAdding: .day, value: -6, to: today) else { return }
+        let window = DateRangeSelection(kind: .last7, anchor: Date()).interval
+        let start = window.start
+        guard let items = await model.spansOffMain(for: window), !Task.isCancelled else { return }
         var perDay: [String: [TimeInterval]] = [:]
-        for item in model.rangedSpans(for: DateInterval(start: start, end: Date())) {
+        for item in items {
             let day = calendar.dateComponents([.day], from: start, to: calendar.startOfDay(for: item.span.start)).day ?? 0
             guard (0..<7).contains(day) else { continue }
             perDay[item.categoryID, default: Array(repeating: 0, count: 7)][day] += item.span.duration
@@ -394,7 +397,7 @@ struct FocusWorkspaceView: View {
                   let end = calendar.date(byAdding: .day, value: 1, to: start) else { continue }
             let day = DateInterval(start: start, end: end)
             count += await model.interruptions(for: day).episodes.count
-            recorded += model.rangedSpans(for: day).reduce(0) { $0 + $1.span.duration }
+            recorded += (await model.spansOffMain(for: day) ?? []).reduce(0) { $0 + $1.span.duration }
         }
         interruptions = (count, recorded)
     }
@@ -417,7 +420,6 @@ struct FocusWorkspaceView: View {
             earliestBack = FocusWeek.weeksBack(of: try model.focusStore?.earliestStart(), now: Date(), calendar: model.displayCalendar)
             loadBrowsed()
             budgets = try model.budgetStore?.budgets() ?? []
-            loadSuggestions()
             last = try model.focusStore?.sessions(overlapping: DateInterval(start: Date().addingTimeInterval(-90 * 86400), end: Date().addingTimeInterval(86400)))
                 .filter { $0.end <= Date() }.max { $0.end < $1.end }
             used = model.rangedSpans(for: .today()).reduce(into: [:]) { $0[$1.categoryID, default: 0] += $1.span.duration }

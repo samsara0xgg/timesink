@@ -141,17 +141,24 @@ struct StepperButton: View {
     }
 }
 
-/// ⌘[ and ⌘] for the page on screen only: hidden pages stay alive.
-private struct StepShortcut: ViewModifier {
-    let key: KeyEquivalent
+/// A keyboard shortcut for the page on screen only: hidden pages stay
+/// alive (and transparent), and must not answer ⌘[, ⌘E, Return or Esc meant
+/// for the one in front.
+private struct PageShortcut: ViewModifier {
+    let shortcut: KeyboardShortcut
     @Environment(\.pageActive) private var active
     func body(content: Content) -> some View {
-        content.keyboardShortcut(active ? KeyboardShortcut(key, modifiers: .command) : nil)
+        content.keyboardShortcut(active ? shortcut : nil)
     }
 }
 
 extension View {
-    fileprivate func stepShortcut(_ key: KeyEquivalent) -> some View { modifier(StepShortcut(key: key)) }
+    func pageShortcut(_ shortcut: KeyboardShortcut) -> some View { modifier(PageShortcut(shortcut: shortcut)) }
+    func pageShortcut(_ key: KeyEquivalent, modifiers: EventModifiers = .command) -> some View {
+        pageShortcut(KeyboardShortcut(key, modifiers: modifiers))
+    }
+    /// ⌘[ and ⌘].
+    fileprivate func stepShortcut(_ key: KeyEquivalent) -> some View { pageShortcut(key) }
 }
 
 /// 今天: previous day, the day, next day; and a way back to today.
@@ -254,7 +261,8 @@ struct RangeControls: View {
                     Button(label(for: kind)) {
                         let range = DateRangeSelection(kind: kind, anchor: Date())
                         customStart = range.interval.start
-                        customEnd = range.interval.end.addingTimeInterval(-1)
+                        // This week and this month end in the future; the range stops today.
+                        customEnd = min(range.interval.end.addingTimeInterval(-1), Date())
                     }.buttonStyle(.plain).frame(width: 76, height: Design.controlHeight, alignment: .leading)
                 }
                 Button("昨天") {

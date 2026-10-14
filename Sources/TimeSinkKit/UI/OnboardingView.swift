@@ -1,4 +1,5 @@
 import SwiftUI
+import ServiceManagement
 
 /// The first run: one welcome card. Accessibility is required; Chrome,
 /// screen recording and the calendar are optional and can wait.
@@ -34,6 +35,9 @@ struct OnboardingView: View {
     @State private var pulse = false
     @State private var demoStart = Date()
     @State private var launchAtLogin = true
+    /// Screen Recording was asked for once: the system will not ask again,
+    /// so the row opens System Settings instead.
+    @State private var screenAsked = false
     @State private var window: NSWindow?
 
     private var ax: PermissionState { preview.map { $0.live == nil ? .denied : .granted } ?? axState }
@@ -79,21 +83,35 @@ struct OnboardingView: View {
                     _ = Permissions.accessibilityGranted(prompt: true)
                     NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
                 }
-                permission("globe", String(localized: "Chrome 网址"), required: false, String(localized: "只读取当前标签页的网址"), chromeState) {
+                // As in Settings' 权限: a refused permission opens System
+                // Settings, and a row that cannot be used yet says why.
+                permission("globe", String(localized: "Chrome 网址"), required: false,
+                           chromeState.isUnavailable ? String(localized: "先打开 Chrome，再回来允许") : String(localized: "只读取当前标签页的网址"),
+                           chromeState, actionTitle: Self.actionTitle(chromeState)) {
                     if demo { chromeState = .granted; return }
                     model.settings.set("chromeTrackingEnabled", "true")
-                    if chromeState == .denied { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")!) }
+                    if chromeState == .denied { Self.openPrivacyPane("Privacy_Automation") }
                     else { chromeState = Permissions.chromeAutomationState(ask: true) }
                 }
+                // Screen Recording takes effect in a new process: once asked,
+                // the row offers to relaunch until it reads as allowed.
                 permission("viewfinder", String(localized: "屏幕录制"), required: false,
-                           String(localized: "屏幕回看，只存 \(model.settings.captureRetentionDays) 天"), screenState) {
+                           screenAsked && screenState != .granted ? String(localized: "允许后重新启动才生效")
+                               : String(localized: "屏幕回看，只存 \(model.settings.captureRetentionDays) 天"),
+                           screenState, actionTitle: screenAsked ? String(localized: "打开系统设置…") : String(localized: "允许…"),
+                           secondaryTitle: screenAsked && !demo ? String(localized: "重新启动") : nil, secondary: { Self.relaunch() }) {
                     if demo { screenState = .granted; return }
                     model.setScreenCapturePaused(false)
-                    CGRequestScreenCaptureAccess()
+                    if screenAsked { Self.openPrivacyPane("Privacy_ScreenCapture"); return }
+                    screenAsked = true
+                    model.settings.set("screenCaptureRequested", "true")
+                    if CGRequestScreenCaptureAccess() { screenState = .granted }
                 }
-                permission("calendar", String(localized: "日历"), required: false, String(localized: "补记离开时间时给出建议"), calendarState) {
+                permission("calendar", String(localized: "日历"), required: false, String(localized: "补记离开时间时给出建议"), calendarState,
+                           actionTitle: Self.actionTitle(calendarState)) {
                     if demo { calendarState = .granted; return }
                     model.calendarOverlayEnabled = true; model.settings.setCalendarOverlayEnabled(true)
+                    if calendarState == .denied { Self.openPrivacyPane("Privacy_Calendars"); return }
                     Task {
                         _ = await Permissions.requestCalendarAccess()
                         calendarState = await Permissions.calendarStateInBackground()
@@ -131,8 +149,9 @@ struct OnboardingView: View {
         .task {
             guard preview == nil, !demo else { return }
             guard checksPermissions else { axState = .granted; return }
-            calendarState = await Permissions.calendarStateInBackground()
             while !Task.isCancelled {
+                // The calendar too: one allowed in System Settings shows here.
+                calendarState = await Permissions.calendarStateInBackground()
                 axState = Permissions.accessibilityState(prompt: false)
                 model.accessibilityGranted = axState == .granted
                 chromeState = Permissions.chromeAutomationState(ask: false)
@@ -140,6 +159,41 @@ struct OnboardingView: View {
                 do { try await Task.sleep(for: .seconds(2)) } catch { return }
             }
         }
+        .onAppear {
+            guard preview == nil, !demo, checksPermissions else { return }
+            // Shown again from Settings: the login item as it is now.
+            if model.settings.get("onboardingFinished") != nil { launchAtLogin = SMAppService.mainApp.status == .enabled }
+            // Capture already on means the collector asked for it.
+            screenAsked = model.settings.get("screenCaptureRequested") == "true" || !model.screenCapturePaused
+            model.settings.set("onboardingStarted", "true")
+        }
+        // Closed any way but 继续 (its window closing): what 继续 sets up
+        // still happens, once Accessibility is on.
+        .onDisappear {
+            guard preview == nil, !demo, checksPermissions, onContinue == nil, ax == .granted else { return }
+            model.finishOnboarding(from: nil, launchAtLogin: launchAtLogin)
+        }
+    }
+
+    private static func actionTitle(_ state: PermissionState) -> String {
+        state == .denied ? String(localized: "打开系统设置…") : String(localized: "允许…")
+    }
+
+    private static func openPrivacyPane(_ pane: String) {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    /// Screen Recording only takes effect in a new process: a shell waits for
+    /// this one to quit, then opens the app again. The card shows again on
+    /// that launch, as the onboarding was not finished.
+    private static func relaunch() {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", "while /bin/kill -0 \"$0\" 2>/dev/null; do /bin/sleep 0.2; done; /usr/bin/open \"$1\"",
+                             String(ProcessInfo.processInfo.processIdentifier), Bundle.main.bundlePath]
+        do { try process.run() } catch { return }
+        NSApp.terminate(nil)
     }
 
     /// 继续: the card closes and the light trail leaves from its hourglass.
@@ -213,7 +267,9 @@ struct OnboardingView: View {
     }
 
     private func permission(_ icon: String, _ title: String, required: Bool, _ detail: String,
-                            _ state: PermissionState, action: @escaping () -> Void) -> some View {
+                            _ state: PermissionState, actionTitle: String? = nil,
+                            secondaryTitle: String? = nil, secondary: @escaping () -> Void = {},
+                            action: @escaping () -> Void) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon).font(.figure.weight(.regular)).foregroundStyle(.tint)
                 .frame(width: 34, height: 34).background(.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
@@ -229,7 +285,8 @@ struct OnboardingView: View {
             if state == .granted {
                 Label("已允许", systemImage: "checkmark").font(.body).foregroundStyle(Design.live)
             } else {
-                Button("允许…", action: action).controlSize(.small).disabled(state.isUnavailable)
+                if let secondaryTitle { Button(secondaryTitle, action: secondary).controlSize(.small) }
+                Button(actionTitle ?? String(localized: "允许…"), action: action).controlSize(.small).disabled(state.isUnavailable)
             }
         }
         .padding(.horizontal, 12).padding(.vertical, 10)

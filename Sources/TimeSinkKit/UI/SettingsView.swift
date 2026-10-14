@@ -52,6 +52,7 @@ struct SettingsView: View {
 
 struct RefinedGeneralPane: View {
     @Bindable var model: AppModel
+    @Environment(\.openWindow) private var openWindow
     @State private var loginEnabled = false
     @State private var language = ""
     @State private var error: String?
@@ -80,6 +81,12 @@ struct RefinedGeneralPane: View {
                 if !model.popoverShortcutAvailable {
                     Text("快捷键当前不可用，可点按上方重新设置。").font(.note).foregroundStyle(Design.ink2)
                 }
+                }
+                LabeledContent("欢迎引导") {
+                    Button("重新显示引导") {
+                        model.showOnboardingAgain()
+                        openWindow(id: "main"); AppWindow.main.bringForward()
+                    }
                 }
             }
             Section("显示") {
@@ -183,7 +190,7 @@ struct RefinedRecordingPane: View {
                             model.settings.set("captureRetentionDays", "\(days)")
                             Task { await model.screenCollector?.setRetentionDays(days) }
                         }
-                    caption(String(localized: "截图到期自动删除；识别文字保留。"))
+                    caption(String(localized: "截图和识别文字到期自动删除。"))
                 }
                 HStack {
                     Text("今天"); Spacer(); Text("\(summary.count) 次采集").foregroundStyle(Design.ink2).monospacedDigit()
@@ -235,6 +242,12 @@ struct RefinedPrivacyPane: View {
     @State private var newDomain = ""
     @State private var editApps = false
     @State private var editDomains = false
+    /// Excluded here just now: their past records can go too, once confirmed.
+    @State private var addedApps: Set<String> = []
+    @State private var addedDomains: Set<String> = []
+    @State private var confirmingPurge = false
+    @State private var purging = false
+    @State private var purgeResult: String?
     var body: some View {
         Form {
             Section {
@@ -248,6 +261,15 @@ struct RefinedPrivacyPane: View {
                 }
                 Text("已识别的无痕窗口不记录；无法识别时，只记录应用时长，不保存标题、网址或截图。")
                     .font(.note).foregroundStyle(Design.ink2).fixedSize(horizontal: false, vertical: true)
+                if !addedApps.isEmpty || !addedDomains.isEmpty {
+                    HStack {
+                        Text("以后不再记录\(addedNames)，以前的记录还在这台 Mac 上。")
+                            .font(.note).foregroundStyle(Design.ink2).fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 8)
+                        Button("也删除以前的记录…") { confirmingPurge = true }.disabled(purging)
+                    }
+                }
+                if let purgeResult { Text(purgeResult).font(.note).foregroundStyle(Design.ink2) }
             }
             PermissionsSection(model: model)
             DataSection(model: model)
@@ -256,8 +278,17 @@ struct RefinedPrivacyPane: View {
         }
         .sheet(isPresented: $editApps) {
             FocusBlockedAppsEditor(model: model, title: String(localized: "不记录这些应用"), onSave: { values in
-                model.settings.setExcludedApps(Set(values)); apps = model.settings.excludedApps.sorted()
+                let chosen = Set(values)
+                addedApps = addedApps.union(chosen.subtracting(model.settings.excludedApps)).intersection(chosen)
+                model.settings.setExcludedApps(chosen); apps = model.settings.excludedApps.sorted()
+                purgeResult = nil
             }, blockedApps: $apps)
+        }
+        .confirmationDialog("删除\(addedNames)以前的记录？", isPresented: $confirmingPurge) {
+            Button("删除", role: .destructive) { Task { await purge() } }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("这台 Mac 上它们的活动、标题和截图都会删除，不能撤销。已同步到其他 Mac 的不受影响。")
         }
         .popover(isPresented: $editDomains) {
             VStack(alignment: .leading, spacing: 14) {
@@ -280,9 +311,29 @@ struct RefinedPrivacyPane: View {
     }
     private func addDomain() {
         guard let domain = normalizedDomain else { return }
+        if !domains.contains(domain) { addedDomains.insert(domain); purgeResult = nil }
         domains = Set(domains + [domain]).sorted(); newDomain = ""; saveDomains()
     }
-    private func saveDomains() { model.settings.setExcludedDomains(Set(domains)) }
+    private func saveDomains() {
+        addedDomains = addedDomains.intersection(domains)
+        model.settings.setExcludedDomains(Set(domains))
+    }
+    private var addedNames: String {
+        let names: [String] = addedApps.sorted().map { AppIcon.name(for: $0) } + addedDomains.sorted()
+        return names.joined(separator: String(localized: "、"))
+    }
+    /// 也删除以前的记录: what was recorded of the newly excluded apps and sites.
+    private func purge() async {
+        purging = true
+        defer { purging = false }
+        do {
+            let count = try await model.deleteRecords(apps: addedApps, domains: addedDomains)
+            addedApps = []; addedDomains = []
+            purgeResult = String(localized: "已删除 \(count) 条以前的记录。")
+        } catch {
+            purgeResult = String(localized: "没能删除：\(error.localizedDescription)")
+        }
+    }
 }
 
 struct PermissionsSection: View {
@@ -500,9 +551,14 @@ struct DataSection: View {
     private func prepareExport(diagnostics: Bool) {
         preparing = true; error = nil
         let store = model.spanStore
+        // Each row's category as the app shows it, read here on the main actor.
+        let categories: CategoryResolver.Snapshot = model.resolver.snapshot()
+        let names: [String: String] = model.resolver.categoriesByID.mapValues { $0.name }
         Task {
             do {
-                let text = try await Task.detached(priority: .userInitiated) { diagnostics ? try store.diagnosticSummary() : try store.exportCSV() }.value
+                let text = try await Task.detached(priority: .userInitiated) { () throws -> String in
+                    diagnostics ? try store.diagnosticSummary() : try store.exportCSV(categories: categories, names: names)
+                }.value
                 if diagnostics { diagnostic = text }
                 else { document = TextExportDocument(text: text); exportType = .commaSeparatedText; exportName = "TimeSink-records"; exporting = true }
             } catch { self.error = String(localized: "未能准备导出：\(error.localizedDescription)") }
@@ -549,11 +605,11 @@ extension ColorSystem.Scheme {
     /// What the picker calls it.
     var title: LocalizedStringKey {
         switch self {
-        case .original: "原版"
-        case .conservative: "A 保守"
-        case .harmonised: "B 协调"
-        case .vivid: "C 鲜明"
-        case .cool: "C 冷调（推荐）"
+        case .original: "经典"
+        case .conservative: "标准"
+        case .harmonised: "柔和"
+        case .vivid: "鲜明"
+        case .cool: "冷色（推荐）"
         }
     }
 }
