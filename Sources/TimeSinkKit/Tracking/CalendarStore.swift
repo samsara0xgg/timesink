@@ -15,9 +15,13 @@ public struct CalendarEvent: Sendable, Equatable, Identifiable {
     public var isDeclined: Bool
     public var calendarTitle: String
     public var colorHex: String
+    /// Shown as "free" (EventKit availability): on the calendar, but not time
+    /// the user is held in -- a 30-person lunch talk, a reminder block.
+    public var isFree: Bool
 
     public init(id: String, title: String, start: Date, end: Date, isAllDay: Bool,
-                attendeeCount: Int, isDeclined: Bool, calendarTitle: String, colorHex: String) {
+                attendeeCount: Int, isDeclined: Bool, calendarTitle: String, colorHex: String,
+                isFree: Bool = false) {
         self.id = id
         self.title = title
         self.start = start
@@ -27,6 +31,7 @@ public struct CalendarEvent: Sendable, Equatable, Identifiable {
         self.isDeclined = isDeclined
         self.calendarTitle = calendarTitle
         self.colorHex = colorHex
+        self.isFree = isFree
     }
 
     /// Case-insensitive title keywords that count an event as a meeting even
@@ -35,9 +40,9 @@ public struct CalendarEvent: Sendable, Equatable, Identifiable {
     /// attendee list.
     static let meetingKeywords = ["sync", "1:1", "standup", "组会", "例会", "meeting"]  // l10n: data
 
-    /// 纯谓词：非全天 && 未拒绝 && (2 人以上 || 标题命中会议词)。
+    /// 纯谓词：非全天 && 未拒绝 && 非“空闲” && (2 人以上 || 标题命中会议词)。
     public var isMeeting: Bool {
-        guard !isAllDay, !isDeclined else { return false }
+        guard !isAllDay, !isDeclined, !isFree else { return false }
         if attendeeCount >= 2 { return true }
         let lowered = title.lowercased()
         return Self.meetingKeywords.contains { lowered.contains($0) }
@@ -205,7 +210,8 @@ public actor CalendarStore {
             attendeeCount: attendees.count,
             isDeclined: isDeclined,
             calendarTitle: calendarTitle ?? "",
-            colorHex: hexString(from: calendar.cgColor)
+            colorHex: hexString(from: calendar.cgColor),
+            isFree: event.availability == .free
         )
     }
 

@@ -24,6 +24,7 @@ final class FocusSessionControllerTests: XCTestCase {
         let store = FocusSessionStore(db)
         let settings = SettingsStore(db)
         let controller = FocusSessionController(store: store, settings: settings)
+        controller.screenLocked = { false }   // hermetic: ignore the host's real lock state
         return (controller, store, settings)
     }
     func testStartPersistsAndCountsDown() throws {
@@ -237,14 +238,32 @@ final class FocusSessionControllerTests: XCTestCase {
     }
 
     /// I6/R-T12d pin: ticking far past expiry (simulating a missed-tick gap
-    /// -- e.g. the lid closing mid-session) must clamp the persisted
-    /// duration to exactly `plannedSeconds`, not the huge wall-clock jump
-    /// `now` reports on the first post-wake tick.
+    /// -- e.g. the lid closing mid-session) must never persist the huge
+    /// wall-clock jump `now` reports on the first post-wake tick. The Mac
+    /// slept through the planned end, so the session is not completed: it
+    /// ends at the last tick before the gap (here, its start).
     func testTickAutoFinishClampsDurationToPlannedSeconds() throws {
         let (c, store, _) = try makeController()
         try c.start(minutes: 25)
         let start = c.running!.start
         c.tick(now: start.addingTimeInterval(10_000))
+        XCTAssertNil(c.running)
+        let rows = try store.sessions(overlapping: .init(start: start.addingTimeInterval(-60), end: start.addingTimeInterval(20_000)))
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertLessThanOrEqual(rows[0].end.timeIntervalSince(rows[0].start), 1500)
+        XCTAssertEqual(rows[0].end.timeIntervalSince(rows[0].start), 0, accuracy: 0.5)
+        XCTAssertFalse(rows[0].completed)
+    }
+
+    /// Ticks that keep coming through the planned end complete the session,
+    /// clamped to exactly `plannedSeconds`.
+    func testTickAutoFinishCompletesWhenTheUserWasThere() throws {
+        let (c, store, _) = try makeController()
+        try c.start(minutes: 25)
+        let start = c.running!.start
+        for t in stride(from: 10.0, through: 1510, by: 10) {
+            c.tick(now: start.addingTimeInterval(t))
+        }
         XCTAssertNil(c.running)
         let rows = try store.sessions(overlapping: .init(start: start.addingTimeInterval(-60), end: start.addingTimeInterval(20_000)))
         XCTAssertEqual(rows.count, 1)

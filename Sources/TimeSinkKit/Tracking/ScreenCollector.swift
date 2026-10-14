@@ -26,12 +26,16 @@ import os
 /// image was saved: small steps that add up to `changedFraction` store a
 /// new row and a new image, so a slowly changing chart is not lost.
 public actor ScreenCollector {
-    /// Never captured, whatever is in front.
+    /// Never captured, whatever is in front: password managers.
     public static let excludedBundleIDs: Set<String> = [
         "com.apple.keychainaccess",
         "com.apple.Passwords",
         "com.1password.1password",
+        "com.agilebits.onepassword7",
         "com.bitwarden.desktop",
+        "org.keepassx.keepassxc",
+        "com.dashlane.Dashlane",
+        "in.sinew.Enpass-Desktop",
     ]
 
     private let store: ObservationStore
@@ -332,13 +336,17 @@ public actor ScreenCollector {
     }
 
     /// Deletes day folders older than the retention window and forgets
-    /// their paths; capture rows and text stay.
+    /// their paths, then deletes the capture rows -- OCR text included --
+    /// last seen before it: "only kept N days" covers what was read off the
+    /// screen, not just the picture.
     private func prune(now: Date) {
         let fm = FileManager.default
         let days = (try? fm.contentsOfDirectory(atPath: imagesRoot.path)) ?? []
         for day in days where CaptureRetention.isExpired(dayFolder: day, now: now, days: retentionDays) {
             try? fm.removeItem(at: imagesRoot.appendingPathComponent(day))
         }
-        try? store.forgetImages(before: CaptureRetention.cutoff(now: now, days: retentionDays))
+        let cutoff = CaptureRetention.cutoff(now: now, days: retentionDays)
+        try? store.forgetImages(before: cutoff)
+        try? store.forgetCaptures(before: cutoff)
     }
 }

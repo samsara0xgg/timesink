@@ -25,9 +25,17 @@ public final class FocusSessionStore: Sendable {
         }
     }
 
-    public func heartbeat(id: Int64, end: Date) throws {
+    /// Advances `end`, and the block counts when given, so a session the
+    /// app never got to finish (a crash, a forced quit) keeps what it blocked.
+    public func heartbeat(id: Int64, end: Date, appBlocks: Int? = nil, siteBlocks: Int? = nil) throws {
         try writer.write { db in
-            try db.execute(sql: "UPDATE focusSession SET end = ? WHERE id = ?", arguments: [end, id])
+            try db.execute(
+                sql: """
+                    UPDATE focusSession SET end = ?, appBlocks = COALESCE(?, appBlocks), \
+                    siteBlocks = COALESCE(?, siteBlocks) WHERE id = ?
+                    """,
+                arguments: [end, appBlocks, siteBlocks, id]
+            )
         }
     }
 
@@ -44,10 +52,14 @@ public final class FocusSessionStore: Sendable {
         try writer.read { db in
             try FocusSession.fetchAll(
                 db,
-                sql: "SELECT * FROM focusSession WHERE start < ? AND end > ?",
+                sql: "SELECT * FROM focusSession WHERE start < ? AND end > ? ORDER BY start",
                 arguments: [interval.end, interval.start]
             )
         }
+    }
+
+    public func session(id: Int64) throws -> FocusSession? {
+        try writer.read { db in try FocusSession.fetchOne(db, key: id) }
     }
 
     /// When the first focus session started, to know how far back the history goes.
