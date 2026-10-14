@@ -4,6 +4,10 @@ import Foundation
 /// page shows: the last two weeks against the two before, and the leading
 /// categories week by week. Built from the per-day, per-category totals
 /// only, so nothing of the spans is kept.
+///
+/// Whole days only: the 28 days end with yesterday. Today, a few hours in,
+/// set against whole days made every morning read "less than the two weeks
+/// before"; leaving it out keeps "the latest week" a week of whole days.
 struct FourWeekComparison: Sendable, Equatable {
     struct Row: Identifiable, Sendable, Equatable {
         let id: String
@@ -39,9 +43,9 @@ struct FourWeekComparison: Sendable, Equatable {
         var recent = 0.0, before = 0.0
         for entry in daily {
             let ago = calendar.dateComponents([.day], from: calendar.startOfDay(for: entry.bucketStart), to: todayStart).day ?? -1
-            guard (0..<Self.days).contains(ago) else { continue }
-            weeks[entry.categoryID, default: [0, 0, 0, 0]][3 - ago / 7] += entry.seconds
-            if ago < 14 { recent += entry.seconds } else { before += entry.seconds }
+            guard (1...Self.days).contains(ago) else { continue }
+            weeks[entry.categoryID, default: [0, 0, 0, 0]][3 - (ago - 1) / 7] += entry.seconds
+            if ago <= 14 { recent += entry.seconds } else { before += entry.seconds }
         }
         func name(_ id: String) -> String { categories[id]?.name ?? String(localized: "未分类") }
         let unsorted: [Row] = weeks.map { id, seconds in

@@ -42,13 +42,13 @@ struct StatsSummary: Sendable {
         total = Aggregator.totalDuration(items.map(\.span))
         // A still-running period has only elapsed as far as `now`; dividing a
         // partial total by the FULL calendar window is biased by construction
-        // (Monday's `.week` divided 1 day of data by 7). Same `containsNow`
-        // clipping `recomputeDeltas` already applies to its duration deltas.
-        let elapsed = range.containsNow
-            ? now.timeIntervalSince(range.interval.start)
-            : range.interval.duration
-        let days = max(1, Int((elapsed / 86400).rounded()))
-        avgPerDay = total / Double(days)
+        // (Monday's `.week` divided 1 day of data by 7). Same clipping
+        // `recomputeDeltas` already applies to its duration deltas. Today
+        // counts as the part of it that has passed: a rounded day count made
+        // 近 7 天's divisor jump from 6 to 7 at noon. At least one day, so an
+        // early morning is not multiplied up.
+        let until = range.contains(now) ? now : range.interval.end
+        avgPerDay = total / max(1, Self.elapsedDays(from: range.interval.start, to: until, calendar: calendar))
 
         let byCategory = Aggregator.durationByCategory(items)
         pulse = Aggregator.pulse(durationByCategory: byCategory, categories: categories)
@@ -94,11 +94,31 @@ struct StatsSummary: Sendable {
                               colorHex: category?.colorHex ?? "#98989D", seconds: seconds)
         })
 
-        recomputeDeltas(prevItems: previous, apps: apps, range: range, categories: categories, now: now)
+        recomputeDeltas(prevItems: previous, apps: apps, range: range, categories: categories, now: now, calendar: calendar)
+    }
+
+    /// Local days from `start` (a midnight) to `until`, the last day's part
+    /// as a fraction of that day's own length, so a DST day is still one day.
+    static func elapsedDays(from start: Date, to until: Date, calendar: Calendar) -> Double {
+        let dayStart = calendar.startOfDay(for: until)
+        let whole = calendar.dateComponents([.day], from: calendar.startOfDay(for: start), to: dayStart).day ?? 0
+        guard let day = calendar.dateInterval(of: .day, for: until), day.duration > 0 else { return Double(whole) }
+        return Double(whole) + until.timeIntervalSince(day.start) / day.duration
+    }
+
+    /// The moment in the previous period (from `previousStart`) that matches
+    /// `now` in the current one (from `currentStart`): as many local days in,
+    /// at the same wall-clock time, as the popover's yesterday comparison
+    /// does. Elapsed seconds land an hour off when a DST change falls
+    /// between the two.
+    static func previousCutoff(currentStart: Date, previousStart: Date, now: Date, calendar: Calendar) -> Date {
+        let shift = calendar.dateComponents([.day], from: previousStart, to: currentStart).day ?? 0
+        return calendar.date(byAdding: .day, value: -shift, to: now)
+            ?? previousStart.addingTimeInterval(now.timeIntervalSince(currentStart))
     }
 
     private mutating func recomputeDeltas(prevItems: [CategorizedSpan], apps: [AppMovers.Total], range: DateRangeSelection,
-                                         categories: [String: Category], now: Date) {
+                                         categories: [String: Category], now: Date, calendar: Calendar) {
         guard !prevItems.isEmpty else {
             totalDelta = nil
             focusDelta = nil
@@ -115,10 +135,12 @@ struct StatsSummary: Sendable {
         }
 
         let durationPrevItems: [CategorizedSpan]
-        if range.containsNow {
-            let elapsed = now.timeIntervalSince(range.interval.start)
+        if range.contains(now) {
+            let previousStart = range.previousInterval.start
+            let cutoff = Self.previousCutoff(currentStart: range.interval.start, previousStart: previousStart,
+                                             now: now, calendar: calendar)
             durationPrevItems = Aggregator.clippedToElapsed(
-                prevItems, windowStart: range.previousInterval.start, elapsed: elapsed)
+                prevItems, windowStart: previousStart, elapsed: cutoff.timeIntervalSince(previousStart))
         } else {
             durationPrevItems = prevItems
         }

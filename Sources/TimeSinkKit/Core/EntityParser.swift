@@ -11,14 +11,66 @@ public enum EntityParser {
     /// sections (settings, auth flows, org/marketplace pages, trending
     /// feeds, account/billing pages, etc.), not an owner's username, so e.g.
     /// `/settings/emails` or `/trending/swift` must not be mistaken for a
-    /// 2-segment owner/repo path. Matched case-insensitively.
+    /// 2-segment owner/repo path. Matched case-insensitively. `copilot`
+    /// keeps a chat (`/copilot/c/<id>`) from reading as repo "c"; `users`
+    /// is `/users/<name>/projects/...`.
     static let reservedGitHubPaths: Set<String> = [
         "settings", "login", "apps", "orgs", "notifications", "pulls", "issues",
         "marketplace", "sponsors", "explore", "topics", "codespaces", "new",
         "about", "features", "search",
         "trending", "collections", "stars", "dashboard", "account", "security",
         "pricing", "signup", "logout", "organizations", "sessions",
+        "copilot", "github-copilot", "users", "enterprise", "enterprises", "team", "readme",
+        "customer-stories", "solutions", "resources", "events", "join", "contact", "site",
+        "password_reset", "watching",
     ]
+
+    /// The cloud drives macOS keeps under `~/Library`: inside one, the
+    /// drive's own root (`.../com~apple~CloudDocs`, `.../GoogleDrive-…`)
+    /// stands in for home.
+    private static let cloudDriveRoots: Set<String> = ["Mobile Documents", "CloudStorage"]
+
+    /// The project folder `path` is in, for `SessionSegmenter.projectKey`:
+    /// `~/Projects/timesink/Sources/x.swift` gives `timesink`, as does
+    /// `~/Projects/timesink` itself; outside home, the third component
+    /// (`/opt/x/y/...` gives `y`). nil when there is no folder to name:
+    ///
+    /// - `~/Library` is the system's and the apps', except the cloud drives
+    ///   in it, and `/Volumes/<drive>` is an external drive; each of those
+    ///   roots stands in for home, so iCloud's `Mobile Documents` or a
+    ///   drive's name is never the project.
+    /// - The name must be a folder: a file straight inside a container
+    ///   (`~/Desktop/notes.md`, `~/Downloads/x.pdf`) names nothing. A last
+    ///   component with an extension is taken for a file unless `isFolder`
+    ///   (the document was a folder URL, as a terminal's directory is).
+    static func projectFolder(path: String, home: String, isFolder: Bool) -> String? {
+        guard path != home else { return nil }
+        var parts: [String]
+        let index: Int
+        if path.hasPrefix(home + "/") {
+            parts = path.dropFirst(home.count + 1).split(separator: "/").map(String.init)
+            if parts.first == "Library" {
+                guard parts.count > 3, cloudDriveRoots.contains(parts[1]) else { return nil }
+                parts.removeFirst(3)
+            }
+            index = 1
+        } else {
+            parts = path.split(separator: "/").map(String.init)
+            if parts.first == "Volumes" {
+                guard parts.count > 2 else { return nil }
+                parts.removeFirst(2)
+                index = 1
+            } else {
+                index = min(2, parts.count - 1)
+            }
+        }
+        guard parts.count >= 2, index < parts.count else { return nil }
+        let name = parts[index]
+        guard !name.isEmpty else { return nil }
+        let isLast = index == parts.count - 1
+        if isLast, !isFolder, !(name as NSString).pathExtension.isEmpty { return nil }
+        return name
+    }
 
     /// First-path-segment denylist for gitlab.com — a different site
     /// structure than github's, so a separate set (see `entity`'s gitlab

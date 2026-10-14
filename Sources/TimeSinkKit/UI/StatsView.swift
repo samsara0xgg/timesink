@@ -218,7 +218,9 @@ struct StatsView: View {
     /// day under the pointer lit, a click opening that day in Activities.
     private func historyChart(_ points: [StatsModel.StackedPoint], unit: Calendar.Component, scale: (top: Double, step: Double),
                               average: TimeInterval? = nil) -> some View {
-        let calendar = Calendar.current
+        // The weeks the bars bin into start on the day Settings says, as the
+        // buckets `StatsSummary` built with the same calendar do.
+        let calendar = model.displayCalendar
         let daily = unit == .day
         return Chart {
             ForEach(points) { point in
@@ -237,6 +239,7 @@ struct StatsView: View {
                     }
             }
         }
+        .environment(\.calendar, calendar)
         #if DEBUG
         .onAppear { if daily { hoveredDay = Self.previewHover } }
         #endif

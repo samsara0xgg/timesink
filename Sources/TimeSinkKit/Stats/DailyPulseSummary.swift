@@ -18,13 +18,15 @@ enum DailyPulseSummary {
         let (totals, straddlers) = try store.dailyTupleTotals(dayBoundaries: boundaries)
         var byDay = Array(repeating: [String: TimeInterval](), count: days)
         for total in totals {
-            // `CategoryResolver.categoryID(for:)` reads only these four
+            // `CategoryResolver.categoryID(for:)` reads only these five
             // fields (they are its memo key), so a probe span with
             // placeholder timestamps classifies identically to the rows
             // it stands for -- and the resolver's memo means each tuple
-            // costs a dictionary hit after its first day.
+            // costs a dictionary hit after its first day. Without
+            // `document` an AI chat app would be judged as no conversation.
             let probe = Span(start: todayStart, end: todayStart, appBundleID: total.appBundleID,
-                             appName: "", title: total.title, url: total.url, domain: total.domain)
+                             appName: "", title: total.title, url: total.url, domain: total.domain,
+                             document: total.document)
             byDay[total.dayIndex][total.categoryOverride ?? classify(probe), default: 0] += total.seconds
         }
         // Boundary-crossing spans, split across the buckets they touch.
