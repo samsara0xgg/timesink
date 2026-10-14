@@ -288,9 +288,9 @@ final class ProjectTests: XCTestCase {
     func testAWindowDecidedByARuleOrNeverAProjectIsStillJudged() async throws {
         let alpha = try projects.add(name: "Alpha")
         let store2 = SpanStore(db)
-        // A hard rule decides the category (the owner's own app): no category request, but a project question.
-        let own = try store2.insert(Span(start: Date().addingTimeInterval(-3600), end: Date().addingTimeInterval(-3000), appBundleID: "com.alllllenshi.timesink",
-                                         appName: "TimeSink", title: "Today", url: nil, domain: nil))
+        // A hard rule decides the category (a system tool): no category request, but a project question.
+        let own = try store2.insert(Span(start: Date().addingTimeInterval(-3600), end: Date().addingTimeInterval(-3000), appBundleID: "com.bjango.istatmenus",
+                                         appName: "iStat Menus", title: "Today", url: nil, domain: nil))
         // A window the user filed under entertainment, a chat app, and a window with no rule at all.
         let video = try store2.insert(span(domain: "videos.example", title: "clip"))
         try store.setUserVerdict(VerdictKey(video), categoryID: "entertainment")
@@ -300,7 +300,7 @@ final class ProjectTests: XCTestCase {
         _ = try store2.insert(span(domain: "work.example", title: "work"))
         let transport = ProjectStubTransport { _, _ in (alpha.id, [alpha.id: 0.9]) }
         let run = await worker(transport).run(since: longAgo)
-        XCTAssertEqual(run.calls, 2, "the owner's app and the unruled window; the video and the chat are settled locally")
+        XCTAssertEqual(run.calls, 2, "the tool and the unruled window; the video and the chat are settled locally")
         XCTAssertEqual(Set(transport.requests.map(questions)), [["project"], ["category", "project"]])
         let found = try store.projectVerdicts()
         XCTAssertEqual(found[VerdictKey(own)]?.projectID, alpha.id)
@@ -369,7 +369,7 @@ final class ProjectTests: XCTestCase {
         XCTAssertEqual(Set(list.map(\.source)), ["suggested"])
         XCTAssertEqual(list.first?.description, "first")
         // The user deletes them: the seed does not come back.
-        for p in list { try projects.archive(p.id) }
+        for p in list { try projects.delete(p.id) }
         XCTAssertFalse(ProjectSeed.applyIfNeeded(store: projects, settings: settings, file: file))
         XCTAssertTrue(try projects.list().isEmpty)
     }

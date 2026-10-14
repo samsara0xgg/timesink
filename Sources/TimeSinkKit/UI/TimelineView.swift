@@ -673,7 +673,8 @@ private struct TimelineBlocksCanvas: View, Animatable {
     }
 }
 
-/// The toolbar's zoom: a slider between two buttons, ⌘− and ⌘+.
+/// The toolbar's zoom: a slider between two buttons, ⌘− and ⌘+ (while
+/// the page is on screen).
 struct TimelineZoomControl: View {
     @Binding var hourHeight: CGFloat
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -681,7 +682,7 @@ struct TimelineZoomControl: View {
     var body: some View {
         HStack(spacing: 6) {
             Button { step(-1) } label: { Image(systemName: "minus.magnifyingglass") }
-                .keyboardShortcut("-").help("缩小时间线")
+                .pageShortcut("-").help("缩小时间线")
             // Narrow, only the two buttons stay (and ⌘− ⌘+ with them).
             ViewThatFits(in: .horizontal) {
                 Slider(value: Binding(get: { TimelineZoom.position(for: hourHeight) },
@@ -692,7 +693,7 @@ struct TimelineZoomControl: View {
                 Color.clear.frame(width: 0, height: 0)
             }
             Button { step(1) } label: { Image(systemName: "plus.magnifyingglass") }
-                .keyboardShortcut("+").help("放大时间线")
+                .pageShortcut("+").help("放大时间线")
         }
         .buttonStyle(.borderless)
         .padding(.horizontal, 8)

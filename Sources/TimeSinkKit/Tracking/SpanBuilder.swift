@@ -9,11 +9,16 @@ public final class SpanBuilder {
         self.tick = tick; self.maxGap = maxGap
     }
 
+    /// A sample earlier than the open span's end minus one tick means the
+    /// clock went back (a manual change, an NTP step): extending would drag
+    /// `end` backwards, possibly before `start`. It closes the span at its
+    /// last good end and opens a new one instead, like a gap does.
     public func ingest(_ s: Sample) -> Span? {
         if var cur = current,
            cur.appBundleID == s.appBundleID, cur.title == s.windowTitle, cur.url == s.url,
            cur.document == s.document,
-           s.timestamp.timeIntervalSince(cur.end) <= maxGap {
+           s.timestamp.timeIntervalSince(cur.end) <= maxGap,
+           s.timestamp >= cur.end.addingTimeInterval(-tick) {
             cur.end = s.timestamp.addingTimeInterval(tick)
             current = cur
             return nil

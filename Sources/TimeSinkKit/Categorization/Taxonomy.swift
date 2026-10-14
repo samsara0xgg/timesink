@@ -7,7 +7,7 @@ public enum Taxonomy {
     public static let categories: [Category] = [
         Category(id: "softwareDev", name: "编程开发", colorHex: "#3478F6", productivity: 2, sortOrder: 0,  // l10n: data
                  description: "写代码、调试、跑终端、看仓库和本地预览，包括和 AI 一起写代码", isBuiltin: true),  // l10n: data
-        Category(id: "jobSearch", name: "求职 Coop", colorHex: "#A2845E", productivity: 2, sortOrder: 1,  // l10n: data
+        Category(id: "jobSearch", name: "求职", colorHex: "#A2845E", productivity: 2, sortOrder: 1,  // l10n: data
                  description: "找 coop/实习/工作：浏览职位、投递、写简历和求职信、测评、面试准备", isBuiltin: true),  // l10n: data
         Category(id: "learning", name: "学习", colorHex: "#34C759", productivity: 2, sortOrder: 2,  // l10n: data
                  description: "上课、做作业、看课程和教程、系统地学一门东西", isBuiltin: true),  // l10n: data
@@ -58,6 +58,11 @@ public enum Taxonomy {
         categories.first { $0.id == id }?.name
     }
 
+    /// Seed names a built-in category shipped with before, as databases made
+    /// then still hold them: the rename only reaches new installs, so a stored
+    /// name equal to one of these is still the app's own, never the user's.
+    static let formerSeedNames: [String: String] = ["jobSearch": "求职 Coop"]  // l10n: data
+
     static func seedDescription(_ id: String) -> String? {
         categories.first { $0.id == id }?.description
     }
@@ -67,7 +72,7 @@ public enum Taxonomy {
     static func localizedName(_ id: String) -> String? {
         switch id {
         case "softwareDev": String(localized: "编程开发")
-        case "jobSearch": String(localized: "求职 Coop")
+        case "jobSearch": String(localized: "求职")
         case "learning": String(localized: "学习")
         case "writing": String(localized: "设计写作")
         case "research": String(localized: "查资料")

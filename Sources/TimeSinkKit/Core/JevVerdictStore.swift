@@ -98,6 +98,52 @@ public struct LowConfidenceVerdict: Identifiable, Equatable, Sendable {
     public var id: VerdictKey { key }
 }
 
+/// Which question a `jevAttempt` row is about: its `kind` ("category",
+/// "project" or "capture") and `key`, the question's fields in a stable
+/// encoding.
+public struct JevAttemptKey: Hashable, Sendable {
+    public let kind: String
+    public let key: String
+
+    public static func category(_ key: VerdictKey) -> JevAttemptKey { JevAttemptKey(kind: "category", key: encode(key)) }
+    public static func project(_ key: VerdictKey) -> JevAttemptKey { JevAttemptKey(kind: "project", key: encode(key)) }
+    /// `textKey`: `captureKey(_:)` of the screen's text.
+    public static func capture(_ textKey: String) -> JevAttemptKey { JevAttemptKey(kind: "capture", key: textKey) }
+
+    /// The four fields joined by the unit separator, which no title or name contains.
+    static func encode(_ key: VerdictKey) -> String {
+        [key.appBundleID, key.domain, key.title, key.document].joined(separator: "\u{1F}")
+    }
+}
+
+/// How often one question came back with nothing usable (a category that
+/// was not offered, a reply that did not parse, a timeout), and when it was
+/// last asked. Such a question waits longer after each try instead of being
+/// asked on every run, and is no longer asked after `maxAttempts`.
+struct JevAttempt: Equatable, Sendable {
+    var attempts: Int
+    var lastTried: Date
+
+    static let maxAttempts = 6
+    /// 3 minutes, doubled per attempt, at most a day.
+    static let baseDelay: TimeInterval = 180
+    static let maxDelay: TimeInterval = 86_400
+
+    /// When the question may be asked again; nil once it has failed `maxAttempts` times.
+    static func nextTry(attempts: Int, lastTried: Date) -> Date? {
+        guard attempts < maxAttempts else { return nil }
+        let delay = min(baseDelay * Double(1 << min(max(attempts, 0), 30)), maxDelay)
+        return lastTried.addingTimeInterval(delay)
+    }
+
+    /// True for a question never tried and failed, or whose wait is over.
+    static func isDue(_ attempt: JevAttempt?, now: Date) -> Bool {
+        guard let attempt else { return true }
+        guard let next = nextTry(attempts: attempt.attempts, lastTried: attempt.lastTried) else { return false }
+        return now >= next
+    }
+}
+
 extension CategoryStore {
     func verdicts() throws -> [JevVerdict] {
         try writer.read { try JevVerdict.fetchAll($0) }
@@ -116,6 +162,7 @@ extension CategoryStore {
                 WHERE jevVerdict.source = 'jev'
                 """, arguments: [v.appBundleID, v.domain, v.title, v.document, v.categoryID, v.prob, v.runnerUp,
                                  v.runnerUpProb, v.promptVersion, v.at, v.screenText, v.model])
+            try Self.clearAttempt(.category(v.key), db)
         }
     }
 
@@ -126,6 +173,7 @@ extension CategoryStore {
                 INSERT OR REPLACE INTO jevProjectVerdict (appBundleID, domain, title, document, projectID, prob, runnerUp, promptVersion, at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, arguments: [key.appBundleID, key.domain, key.title, key.document, projectID, prob, runnerUp, promptVersion, Date()])
+            try Self.clearAttempt(.project(key), db)
         }
     }
 
@@ -148,7 +196,7 @@ extension CategoryStore {
         "net.whatsapp.WhatsApp", "com.hnc.Discord", "com.spotify.client",
     ]
 
-    /// Window contents seen since `since` that have no project answer for `version`, the longest first: `ask`
+    /// Window contents seen on this Mac since `since` that have no project answer for `version`, the longest first: `ask`
     /// for the model, `none` for the ones that are never a project (a chat app, an entertainment or feed
     /// category by app, site or verdict). `excluding`: contents the category request already carries the question for.
     func pendingProjectCombos(since: Date, version: String, excluding: Set<VerdictKey> = []) throws -> (ask: [JevCombo], none: [VerdictKey]) {
@@ -167,7 +215,8 @@ extension CategoryStore {
                 SELECT appBundleID, MAX(appName) AS appName, COALESCE(domain, '') AS domain, COALESCE(title, '') AS title,
                        COALESCE(document, '') AS document, MAX(COALESCE(url, '')) AS url,
                        SUM(julianday("end") - julianday(start)) * 86400 AS seconds
-                FROM span WHERE "end" > ? GROUP BY appBundleID, COALESCE(domain, ''), COALESCE(title, ''), COALESCE(document, '')
+                FROM span WHERE "end" > ? AND deviceID IS NULL
+                GROUP BY appBundleID, COALESCE(domain, ''), COALESCE(title, ''), COALESCE(document, '')
                 ORDER BY seconds DESC
                 """, arguments: [since])
             var ask: [JevCombo] = [], none: [VerdictKey] = []
@@ -185,6 +234,34 @@ extension CategoryStore {
         }
     }
 
+    // MARK: - Unusable answers
+
+    /// Every question that came back unusable and has not been answered since.
+    func jevAttempts() throws -> [JevAttemptKey: JevAttempt] {
+        try writer.read { db in
+            var out: [JevAttemptKey: JevAttempt] = [:]
+            for row in try Row.fetchAll(db, sql: "SELECT kind, key, attempts, lastTried FROM jevAttempt") {
+                out[JevAttemptKey(kind: row["kind"], key: row["key"])] = JevAttempt(attempts: row["attempts"], lastTried: row["lastTried"])
+            }
+            return out
+        }
+    }
+
+    /// Counts one more unusable answer (or timeout) for `key`, tried at `date`.
+    func recordJevAttempt(_ key: JevAttemptKey, at date: Date = Date()) throws {
+        try writer.write { db in
+            try db.execute(sql: """
+                INSERT INTO jevAttempt (kind, key, attempts, lastTried) VALUES (?, ?, 1, ?)
+                ON CONFLICT(kind, key) DO UPDATE SET attempts = jevAttempt.attempts + 1, lastTried = excluded.lastTried
+                """, arguments: [key.kind, key.key, date])
+        }
+    }
+
+    /// An answer was saved: the question no longer waits.
+    static func clearAttempt(_ key: JevAttemptKey, _ db: Database) throws {
+        try db.execute(sql: "DELETE FROM jevAttempt WHERE kind = ? AND key = ?", arguments: [key.kind, key.key])
+    }
+
     /// A re-ask with screen text that did not beat the verdict: keep it, do not ask again.
     func markScreenAsked(_ key: VerdictKey) throws {
         try writer.write { db in
@@ -194,8 +271,8 @@ extension CategoryStore {
     }
 
     /// Jev verdicts of the current prompt under `threshold` that were never asked
-    /// again, each with the latest capture text (over 40 characters, if any) of one
-    /// of its spans. Lowest probability first.
+    /// again and were seen on this Mac, each with the latest capture text (over 40
+    /// characters, if any) of one of its spans. Lowest probability first.
     func lowConfidenceRetries(since: Date, promptVersion: String, below threshold: Double) throws -> [(verdict: JevVerdict, appName: String, url: String, text: String?)] {
         try writer.read { db in
             try Row.fetchAll(db, sql: """
@@ -205,7 +282,7 @@ extension CategoryStore {
                            AND COALESCE(s.title, '') = v.title AND COALESCE(s.document, '') = v.document
                 LEFT JOIN capture c ON c.spanID = s.id AND length(c.text) > 40
                 WHERE v.source = 'jev' AND v.prob < ? AND v.screenText = 0 AND v.promptVersion = ?
-                  AND s."end" > ?
+                  AND s."end" > ? AND s.deviceID IS NULL
                 GROUP BY v.appBundleID, v.domain, v.title, v.document
                 ORDER BY v.prob
                 """, arguments: [threshold, promptVersion, since]).map { row in
@@ -247,6 +324,7 @@ extension CategoryStore {
                 INSERT OR REPLACE INTO jevCaptureVerdict (textKey, categoryID, prob, runnerUp, runnerUpProb, promptVersion, at, model)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """, arguments: [key, categoryID, prob, runnerUp, runnerUpProb, promptVersion, Date(), model])
+            try Self.clearAttempt(.capture(key), db)
         }
     }
 
@@ -262,7 +340,7 @@ extension CategoryStore {
                 SELECT c.text AS text, c.appName AS appName, s.appBundleID AS bundleID, COALESCE(s.title, '') AS title, s."end" AS spanEnd,
                        COALESCE(s.document, '') AS document, COALESCE(s.domain, '') AS domain
                 FROM capture c JOIN span s ON s.id = c.spanID
-                WHERE s."end" > ? AND length(c.text) > 40 ORDER BY c.at DESC
+                WHERE s."end" > ? AND s.deviceID IS NULL AND length(c.text) > 40 ORDER BY c.at DESC
                 """, arguments: [staleSince])
             var seen = Set<String>()
             return rows.compactMap { row in
@@ -275,15 +353,36 @@ extension CategoryStore {
         }
     }
 
-    /// Per span, the verdict of its latest capture that has one.
-    func captureVerdictsBySpan() throws -> [Int64: JevVerdictEntry] {
+    /// Per-screen verdicts and capture attempts are keyed by a screen's first 200
+    /// characters, so they hold OCR text. Once a capture is forgotten
+    /// (`ObservationStore.forgetCaptures`), its text goes from here too: drops every
+    /// capture verdict and capture attempt whose key no capture row still has.
+    /// Returns how many rows went.
+    @discardableResult
+    public func forgetOrphanedCaptureVerdicts() throws -> Int {
+        try writer.write { db -> Int in try Self.forgetOrphanedCaptureVerdicts(db) }
+    }
+
+    /// The same inside the caller's own write, e.g. right after deleting captures.
+    @discardableResult
+    public static func forgetOrphanedCaptureVerdicts(_ db: Database) throws -> Int {
+        try db.execute(sql: "DELETE FROM jevCaptureVerdict WHERE textKey NOT IN (SELECT substr(text, 1, 200) FROM capture)")
+        var gone = db.changesCount
+        try db.execute(sql: "DELETE FROM jevAttempt WHERE kind = 'capture' AND key NOT IN (SELECT substr(text, 1, 200) FROM capture)")
+        gone += db.changesCount
+        return gone
+    }
+
+    /// Per span, the verdict of its latest capture since `since` that has one. Bounded by
+    /// `capture.at` (indexed) so it reads the recent captures, not every screen ever read.
+    func captureVerdictsBySpan(since: Date) throws -> [Int64: JevVerdictEntry] {
         try writer.read { db in
             var out: [Int64: JevVerdictEntry] = [:]
             for row in try Row.fetchAll(db, sql: """
                 SELECT c.spanID AS spanID, v.categoryID AS categoryID, v.prob AS prob
                 FROM capture c JOIN jevCaptureVerdict v ON v.textKey = substr(c.text, 1, 200)
-                WHERE c.spanID IS NOT NULL ORDER BY c.at
-                """) {
+                WHERE c.at > ? AND c.spanID IS NOT NULL ORDER BY c.at
+                """, arguments: [since]) {
                 out[row["spanID"]] = JevVerdictEntry(categoryID: row["categoryID"], prob: row["prob"], usedScreenText: true)
             }
             return out
@@ -301,6 +400,7 @@ extension CategoryStore {
                     categoryID = excluded.categoryID, prob = 1, runnerUp = '', runnerUpProb = 0,
                     promptVersion = '', at = excluded.at, source = 'user'
                 """, arguments: [key.appBundleID, key.domain, key.title, key.document, categoryID, Date()])
+            try Self.clearAttempt(.category(key), db)
         }
         NotificationCenter.default.post(name: .userRecategorized, object: nil)
     }
@@ -313,12 +413,15 @@ extension CategoryStore {
         }
     }
 
-    /// Window contents Jev has no current answer for, longest first: none for a user
-    /// verdict, a seed row, one made under the current prompt, or one a local hard rule
-    /// decides without it. A combo never asked is wanted if seen since `since`; one that
-    /// has an answer from an older prompt only if seen since `staleSince` (older ones
-    /// keep their stored answer).
-    func pendingCombos(since: Date, staleSince: Date? = nil, promptVersion: String) throws -> [JevCombo] {
+    /// Window contents seen on this Mac that Jev has no current answer for: none for a
+    /// user verdict, a seed row, one made under the current prompt, one a local hard rule
+    /// decides without it, or (with `userRules`) one the user's own title, site, URL or
+    /// app rule decides. A combo never asked is wanted if seen since `since`, longest
+    /// first; one that has an answer from an older prompt only if seen since
+    /// `staleSince` (older ones keep their stored answer), after all the never-asked
+    /// ones, most recently seen first.
+    func pendingCombos(since: Date, staleSince: Date? = nil, promptVersion: String,
+                       userRules: ClassificationContext? = nil) throws -> [JevCombo] {
         let staleSince = min(staleSince ?? since, since)
         return try writer.read { db in
             let all = try Row.fetchAll(db, sql: "SELECT appBundleID, domain, title, document, promptVersion, source FROM jevVerdict")
@@ -330,12 +433,15 @@ extension CategoryStore {
             })
             let rows = try Row.fetchAll(db, sql: """
                 SELECT appBundleID, MAX(appName) AS appName, COALESCE(domain, '') AS domain, COALESCE(title, '') AS title,
-                       COALESCE(document, '') AS document, MAX(COALESCE(url, '')) AS url,
+                       COALESCE(document, '') AS document, MAX(COALESCE(url, '')) AS url, COUNT(DISTINCT COALESCE(url, '')) AS urls,
                        SUM(julianday("end") - julianday(start)) * 86400 AS seconds, MAX("end") AS lastEnd
-                FROM span WHERE "end" > ? GROUP BY appBundleID, COALESCE(domain, ''), COALESCE(title, ''), COALESCE(document, '')
+                FROM span WHERE "end" > ? AND deviceID IS NULL
+                GROUP BY appBundleID, COALESCE(domain, ''), COALESCE(title, ''), COALESCE(document, '')
                 ORDER BY seconds DESC
                 """, arguments: [staleSince])
-            return rows.compactMap { row -> JevCombo? in
+            var fresh: [JevCombo] = []
+            var stale: [(combo: JevCombo, lastEnd: Date)] = []
+            for row in rows {
                 let key = VerdictKey(appBundleID: row["appBundleID"], domain: row["domain"], title: row["title"], document: row["document"])
                 let url: String = row["url"]
                 let lastEnd: Date = row["lastEnd"]
@@ -343,9 +449,21 @@ extension CategoryStore {
                       // Without the url: a span's own url varies inside one combo, so a hit that only the
                       // url gives would leave the other spans of it with no verdict.
                       JevRules.match(appBundleID: key.appBundleID, domain: key.domain, url: nil, title: key.title, document: key.document) == nil
-                else { return nil }
-                return JevCombo(key: key, appName: row["appName"], url: url, seconds: row["seconds"])
+                else { continue }
+                if let userRules {
+                    // The url only when every span of the combo has that same one, for the same reason.
+                    let urlCount: Int = row["urls"]
+                    let decided = Classifier.userRuleCategory(
+                        appBundleID: key.appBundleID, url: urlCount == 1 && !url.isEmpty ? url : nil,
+                        domain: key.domain.isEmpty ? nil : key.domain, title: key.title.isEmpty ? nil : key.title, context: userRules)
+                    if decided != nil { continue }
+                }
+                let combo = JevCombo(key: key, appName: row["appName"], url: url, seconds: row["seconds"])
+                if answered.contains(key) { stale.append((combo, lastEnd)) } else { fresh.append(combo) }
             }
+            // A category edit makes every old answer stale at once; what was never answered is asked first.
+            stale.sort { (a: (combo: JevCombo, lastEnd: Date), b: (combo: JevCombo, lastEnd: Date)) -> Bool in a.lastEnd > b.lastEnd }
+            return fresh + stale.map { $0.combo }
         }
     }
 

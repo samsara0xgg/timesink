@@ -12,20 +12,13 @@ extension SBApplication: ChromeBlockerApplication {}
 /// failed write surface as `eventDidFail` instead of crashing. Records the
 /// failure so `setActiveTabURL` can report it via its return value rather
 /// than blindly claiming success once the write call itself didn't throw.
-/// `@preconcurrency`: `SBApplicationDelegate`'s requirements are declared
-/// `nonisolated` (a plain `@objc` protocol, not actor-aware), but
-/// `eventDidFail` is only ever invoked synchronously, on the calling
-/// thread, as the direct result of the synchronous Apple Event send inside
-/// `setActiveTabURL` -- itself always called on the main actor (this whole
-/// type is `@MainActor`). There is no genuine cross-actor race here; this
-/// silences the compiler's inability to see that synchronous-call
-/// invariant.
-@MainActor
-private final class ChromeBlockerDelegate: NSObject, @preconcurrency SBApplicationDelegate {
+/// One per call, never shared: `eventDidFail` is invoked synchronously, on
+/// the calling thread, as the direct result of the synchronous Apple Event
+/// send, so a call-local delegate is only ever touched by that one thread,
+/// whichever thread it is.
+private final class ChromeBlockerDelegate: NSObject, SBApplicationDelegate {
     private let logger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "chromeBlocker")
     private(set) var didFail = false
-
-    func reset() { didFail = false }
 
     func eventDidFail(_ event: UnsafePointer<AppleEvent>, withError error: any Error) -> Any? {
         didFail = true
@@ -41,11 +34,26 @@ private final class ChromeBlockerDelegate: NSObject, @preconcurrency SBApplicati
 /// `ChromeSampler`'s degraded-flag plumbing) is exactly the bug class A2
 /// already fixed; this type must never feed `TrackerEngine`'s
 /// `chromeBackoff`.
-@MainActor
-public final class ChromeBlocker {
-    private let delegate = ChromeBlockerDelegate()
-
+///
+/// Not `@MainActor`, for the same reason as `ChromeSampler`: every method is
+/// a synchronous Apple Event round-trip (up to its 1 s timeout against a
+/// hung Chrome), which froze the whole UI when sent from the main actor.
+/// The `async` variants run off it (a `nonisolated async` function does not
+/// inherit its caller's isolation, SE-0338 -- the hop `TrackerEngine`'s
+/// off-actor samplers rely on). `Sendable` without `@unchecked` because there
+/// is no stored state: each call binds its own `SBApplication` and delegate.
+public final class ChromeBlocker: Sendable {
     public init() {}
+
+    /// `setActiveTabURL` off the caller's actor.
+    public func setActiveTabURLOffActor(_ urlString: String) async -> Bool {
+        setActiveTabURL(urlString)
+    }
+
+    /// `activateTab(url:)` off the caller's actor.
+    public func activateTabOffActor(url urlString: String) async -> Bool {
+        activateTab(url: urlString)
+    }
 
     /// Sets the frontmost Chrome window's active tab URL. Must set
     /// `sb.timeout = 60` before any Apple Event write -- `SBApplication
@@ -66,31 +74,37 @@ public final class ChromeBlocker {
     public func activateTab(url urlString: String) -> Bool {
         guard let sb = SBApplication(bundleIdentifier: "com.google.Chrome"),
               sb.isRunning else { return false }
+        let delegate = ChromeBlockerDelegate()
         sb.timeout = 60
         sb.delegate = delegate
-        delegate.reset()
-        let windows = ((sb as ChromeBlockerApplication).windows?() ?? []).compactMap { $0 as? SBObject }
-        for window in windows {
-            guard let tabs = window.value(forKey: "tabs") as? SBElementArray,
-                  let index = (tabs.value(forKey: "URL") as? [String])?.firstIndex(of: urlString) else { continue }
-            window.setValue(index + 1, forKey: "activeTabIndex")
-            window.setValue(1, forKey: "index")
-            return !delegate.didFail
+        // Kept alive across every send, not just to its last mention: a
+        // delegate gone mid-call is no delegate, and R-T12f's crash is back.
+        return withExtendedLifetime(delegate) { () -> Bool in
+            let windows = ((sb as ChromeBlockerApplication).windows?() ?? []).compactMap { $0 as? SBObject }
+            for window in windows {
+                guard let tabs = window.value(forKey: "tabs") as? SBElementArray,
+                      let index = (tabs.value(forKey: "URL") as? [String])?.firstIndex(of: urlString) else { continue }
+                window.setValue(index + 1, forKey: "activeTabIndex")
+                window.setValue(1, forKey: "index")
+                return !delegate.didFail
+            }
+            return false
         }
-        return false
     }
 
     @discardableResult
     public func setActiveTabURL(_ urlString: String) -> Bool {
         guard let sb = SBApplication(bundleIdentifier: "com.google.Chrome"),
               sb.isRunning else { return false }
+        let delegate = ChromeBlockerDelegate()
         sb.timeout = 60
         sb.delegate = delegate
-        delegate.reset()
-        let chrome = sb as ChromeBlockerApplication
-        guard let windows = chrome.windows?(), let front = windows.first,
-              let tab = front.activeTab else { return false }
-        tab.setValue(urlString, forKey: "URL")
-        return !delegate.didFail
+        return withExtendedLifetime(delegate) { () -> Bool in
+            let chrome = sb as ChromeBlockerApplication
+            guard let windows = chrome.windows?(), let front = windows.first,
+                  let tab = front.activeTab else { return false }
+            tab.setValue(urlString, forKey: "URL")
+            return !delegate.didFail
+        }
     }
 }

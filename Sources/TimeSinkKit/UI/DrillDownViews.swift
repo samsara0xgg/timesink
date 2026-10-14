@@ -245,7 +245,8 @@ struct HourlyBigView: View {
 
     let categories: [String: Category]
     let todayBars: [Bar]
-    let loadLast7Bars: () -> [Bar]
+    /// Read off the main actor by the caller; called once, when 近 7 天 is first shown.
+    let loadLast7Bars: @MainActor () async -> [Bar]
     var width: CGFloat = DrillWidths.hourly
 
     #if DEBUG
@@ -278,11 +279,6 @@ struct HourlyBigView: View {
                 Spacer()
                 Segmented(options: Mode.allCases, selection: $mode, height: 24) { Text($0.label) }
                 .accessibilityLabel("时间范围")
-                .onChange(of: mode) { _, newMode in
-                    if newMode == .last7, last7Bars == nil {
-                        last7Bars = loadLast7Bars()
-                    }
-                }
             }
             if mode == .last7 {
                 Text("近 7 天 · 按小时累计").font(.note).foregroundStyle(Design.ink2)
@@ -296,7 +292,11 @@ struct HourlyBigView: View {
         }
         .frame(width: width, alignment: .leading)
         .flyoutCard()
-        .onAppear { if mode == .last7, last7Bars == nil { last7Bars = loadLast7Bars() } }
+        .task(id: mode) {
+            guard mode == .last7, last7Bars == nil else { return }
+            let bars = await loadLast7Bars()
+            if !Task.isCancelled { last7Bars = bars }
+        }
     }
 
     private func legend(_ ids: [String]) -> some View {

@@ -20,7 +20,7 @@ public final class CategoryStore: Sendable {
     public func allCategories() throws -> [Category] {
         try rawCategories().map { c in
             var c = c
-            if c.name == Taxonomy.seedName(c.id), let local = Taxonomy.localizedName(c.id) { c.name = local }
+            if c.name == Taxonomy.seedName(c.id) || c.name == Taxonomy.formerSeedNames[c.id], let local = Taxonomy.localizedName(c.id) { c.name = local }
             if c.description == Taxonomy.seedDescription(c.id), let local = Taxonomy.localizedDescription(c.id) { c.description = local }
             return c
         }
@@ -194,11 +194,20 @@ public final class CategoryStore: Sendable {
         }
     }
 
+    /// The ids of the categories in the database: shipped data naming one
+    /// the user has since removed (a deleted built-in) would fail its
+    /// foreign key and roll the whole import back, on every launch.
+    static func categoryIDs(_ db: Database) throws -> Set<String> {
+        Set(try String.fetchAll(db, sql: "SELECT id FROM category"))
+    }
+
     /// Imports seed domain classifications. Never overwrites an existing row.
+    /// A pair naming a category that no longer exists is skipped.
     public func importSeedDomains(_ pairs: [(domain: String, categoryID: String)]) throws {
         try writer.write { db in
             let now = Date()
-            for pair in pairs {
+            let known = try Self.categoryIDs(db)
+            for pair in pairs where known.contains(pair.categoryID) {
                 try db.execute(
                     sql: """
                     INSERT INTO domainCategory (domain, categoryID, source, updatedAt)
@@ -218,11 +227,13 @@ public final class CategoryStore: Sendable {
     /// already ranks below curated -- leaving it in place would make the
     /// curated tier unreachable for exactly the domains it targets (llm rows
     /// only exist for domains the deterministic chain, including curated,
-    /// left uncategorized).
+    /// left uncategorized). A pair naming a category that no longer exists
+    /// is skipped.
     public func importCuratedDomains(_ pairs: [(domain: String, categoryID: String)]) throws {
         try writer.write { db in
             let now = Date()
-            for pair in pairs {
+            let known = try Self.categoryIDs(db)
+            for pair in pairs where known.contains(pair.categoryID) {
                 try db.execute(
                     sql: """
                     INSERT INTO domainCategory (domain, categoryID, source, updatedAt)

@@ -130,7 +130,10 @@ public struct SuspensionState: Equatable {
 /// reconciles that row via `updateEnd`, even if a later idle-backdated close
 /// makes the final duration look short (or zero); there is no delete path
 /// and no minimum-duration clamp on an already-written row, so a written row
-/// must always be corrected rather than abandoned.
+/// must always be corrected rather than abandoned. The same holds for rows
+/// already closed: an idle or lock backdate also trims the spans written
+/// since the last input (`trimPersisted(after:)`) instead of leaving them
+/// with an idle tail.
 @MainActor
 public final class TrackerEngine {
     private static let chromeBundleID = "com.google.Chrome"
@@ -147,6 +150,13 @@ public final class TrackerEngine {
     private static let chatFetchInterval: TimeInterval = 5
     private static let minWriteDuration: TimeInterval = 1
     private static let heartbeatInterval: TimeInterval = 30
+    /// No input for this long when the screen locks or the Mac sleeps means
+    /// nobody was there: the close goes back to the last input.
+    private static let lockBackdateMinimum: TimeInterval = 30
+    /// While locked or asleep by our own account, the real lock state is
+    /// re-read this often, so one missed unlock notification cannot stop
+    /// recording for hours.
+    private static let lockRecheckInterval: TimeInterval = 10
 
     private let spanStore: SpanStore
     private let settings: SettingsStore
@@ -254,10 +264,16 @@ public final class TrackerEngine {
     /// True while the user is currently in a calendar meeting -- when set,
     /// `tick` forces `idleSeconds` to 0 regardless of the real idle reading,
     /// so hands-off-keyboard time during a video call never triggers
-    /// `becameIdle` (C3 idle exemption). Lock/sleep suspension is untouched
-    /// by this -- it only ever affects the idle branch of
+    /// `becameIdle` (C3 idle exemption). Only while not already idle: the
+    /// exemption keeps an active span from going idle, it never brings an
+    /// idle one back (left for lunch at 11:50, a 12:00 all-hands on the
+    /// calendar is not the user at the Mac). Lock/sleep suspension is
+    /// untouched by this -- it only ever affects the idle branch of
     /// `SuspensionState.tick`.
     var isInMeetingProvider: (() -> Bool)?
+    /// Whether the screen is locked right now; replaces the window-server
+    /// read (`SystemMonitor.isScreenLocked`) in tests.
+    var screenLockedProvider: (() -> Bool)?
 
     /// C4 focus session seam: consulted once per tick, after the sample
     /// guard and Chrome tab-URL enrichment, right before the sample is
@@ -345,9 +361,9 @@ public final class TrackerEngine {
     public var isSuspended: Bool { suspensionState.isSuspended }
     public private(set) var latestSample: Sample?
 
-    /// Previous tick's `isInMeetingProvider` reading -- used only to detect
-    /// the true->false transition below.
-    private var wasInMeeting = false
+    /// Whether the previous tick applied the meeting idle-exemption -- used
+    /// only to detect the true->false transition below.
+    private var wasExempt = false
     /// Set on the tick where the meeting idle-exemption transitions
     /// true->false (the moment it stops zeroing `idleSeconds`). CRITICAL
     /// fix: without this, un-exempting mid-idle-stretch backdates
@@ -367,6 +383,13 @@ public final class TrackerEngine {
     /// switched into it and any single shortcut like ⌘W.
     private var lastTickAt = Date.distantPast
     private var keyDownThisTick = false
+    /// The last input as of the latest tick, and the rows of the spans
+    /// closed since then: what an idle or lock backdate has to trim besides
+    /// the open span.
+    private var lastInputAt = Date.distantPast
+    private var rowsSinceInput: [Int64] = []
+    /// Last time the lock state was re-read while system-suspended.
+    private var lastLockCheck = Date.distantPast
 
     private let logger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "tracker")
 
@@ -381,6 +404,9 @@ public final class TrackerEngine {
         systemMonitor.onSuspend = { [weak self] date, source in self?.suspend(at: date, source: source) }
         systemMonitor.onResume = { [weak self] _, source in self?.resume(source: source) }
         systemMonitor.start()
+        // Launched behind the lock screen (a login item, an update relaunch):
+        // no lock notification is coming, so start suspended.
+        if screenLockedProvider?() ?? isScreenLocked() { suspend(at: Date(), source: .lock) }
 
         // `now` is captured at timer-fire time, not inside the tick, so span
         // timestamps stay on the 1s grid regardless of how long the IPC
@@ -568,12 +594,16 @@ public final class TrackerEngine {
         let sinceKey = keyDownSecondsProvider?() ?? idleMonitor.secondsSinceKeyDown()
         keyDownThisTick = now.addingTimeInterval(-sinceKey) > lastTickAt
         lastTickAt = now
+        noteInput(at: now.addingTimeInterval(-rawIdle))
+        recheckLock(at: now)
         let isInMeetingNow = isInMeetingProvider?() == true
-        if wasInMeeting, !isInMeetingNow {
+        // Never for an already-idle state: see `isInMeetingProvider`.
+        let exemptNow = isInMeetingNow && !suspensionState.idleSuspended
+        if wasExempt, !exemptNow {
             exemptionEndedAt = now
         }
-        wasInMeeting = isInMeetingNow
-        let idleSeconds = isInMeetingNow ? 0 : rawIdle
+        wasExempt = exemptNow
+        let idleSeconds = exemptNow ? 0 : rawIdle
         self.idleSeconds = idleSeconds
 
         let wasIdle = suspensionState.idleSuspended
@@ -589,6 +619,7 @@ public final class TrackerEngine {
             if let closed = builder.close(at: closeAt) {
                 persist(closed)
             }
+            trimPersisted(after: closeAt)
             observations?.logState("idle", at: closeAt)
             return .idle
         case .active:
@@ -720,11 +751,94 @@ public final class TrackerEngine {
         // costs at most one dropped 1s sample.
         suspensionEpoch += 1
         guard suspensionState.suspendSystem() else { return }
-        if let closed = builder.close(at: date) {
+        lastLockCheck = date
+        let closeAt = lockBackdate(at: date)
+        if let closed = builder.close(at: closeAt) {
             persist(closed)
         }
-        observations?.logState(source == .sleep ? "sleep" : "lock", at: date)
+        if closeAt < date { trimPersisted(after: closeAt) }
+        observations?.logState(source == .sleep ? "sleep" : "lock", at: closeAt)
         interruptCollector()
+    }
+
+    /// When the user left, for a lock or sleep at `date`. An unattended Mac
+    /// locks minutes after the last input (the display sleeps, then "require
+    /// password" locks it), so closing at the notification would hand that
+    /// stretch to the front app -- all of it below the idle threshold, which
+    /// `.becameIdle` never got to see. With no input for
+    /// `lockBackdateMinimum`, the close goes back to the last input, under
+    /// `.becameIdle`'s meeting rules: not while the exemption holds, and
+    /// never before the moment it ended. `date` itself when already idle:
+    /// the idle close has been made.
+    private func lockBackdate(at date: Date) -> Date {
+        guard !suspensionState.idleSuspended, isInMeetingProvider?() != true else { return date }
+        let rawIdle = idleSecondsProvider?() ?? idleMonitor.idleSeconds()
+        guard rawIdle >= Self.lockBackdateMinimum else { return date }
+        let backdated = date.addingTimeInterval(-rawIdle)
+        let closeAt = exemptionEndedAt.map { max(backdated, $0) } ?? backdated
+        exemptionEndedAt = nil
+        return min(closeAt, date)
+    }
+
+    /// Starts a new "since the last input" stretch when the input moved.
+    /// Half a second of slack: `now` minus the idle reading jitters by a few
+    /// milliseconds for one and the same input. A move backwards (the clock
+    /// went back) restarts the stretch too, so rows from before the jump are
+    /// never measured against a cutoff from after it.
+    private func noteInput(at inputAt: Date) {
+        guard abs(inputAt.timeIntervalSince(lastInputAt)) > 0.5 else { return }
+        lastInputAt = inputAt
+        rowsSinceInput.removeAll()
+    }
+
+    /// Self-healing for a missed `screenIsUnlocked`: while system-suspended
+    /// and ticking (so awake), the real lock state is re-read every
+    /// `lockRecheckInterval`, the first time no sooner than that after the
+    /// suspension began -- `willSleep` arrives a moment before the Mac
+    /// actually sleeps, unlocked. Unlocked means resumed.
+    private func recheckLock(at now: Date) {
+        guard suspensionState.systemSuspended,
+              abs(now.timeIntervalSince(lastLockCheck)) >= Self.lockRecheckInterval else { return }
+        lastLockCheck = now
+        guard !(screenLockedProvider?() ?? isScreenLocked()) else { return }
+        logger.info("screen found unlocked while suspended: resuming")
+        resume(source: .unlock)
+    }
+
+    /// Idle backdating for rows already written: a span closed since the
+    /// last input -- a title that changed by itself while the user was away
+    /// (an unread count, the next song, a finished build) -- is cut back to
+    /// `cutoff` like the open one, and its captures from the cut-off tail are
+    /// unfiled (taken while idle). A trimmed row is marked unsynced again
+    /// (`remoteSeq = NULL`): the sync engine pushes those, and the server
+    /// overwrites a row by its origin id.
+    private func trimPersisted(after cutoff: Date) {
+        let ids = rowsSinceInput
+        rowsSinceInput.removeAll()
+        guard !ids.isEmpty else { return }
+        let list = ids.map { String($0) }.joined(separator: ",")
+        do {
+            let earliest = try spanStore.writer.write { db -> Date? in
+                let first = try Date.fetchOne(
+                    db, sql: "SELECT MIN(start) FROM span WHERE id IN (\(list)) AND \"end\" > ?",
+                    arguments: [cutoff])
+                guard let first else { return nil }
+                try db.execute(
+                    sql: """
+                        UPDATE span SET "end" = MAX(start, ?), remoteSeq = NULL \
+                        WHERE id IN (\(list)) AND "end" > ?
+                        """,
+                    arguments: [cutoff, cutoff])
+                return first
+            }
+            try observations?.detachCaptures(fromSpans: ids, since: cutoff)
+            if let earliest {
+                lastWriteStart = earliest
+                onChange?()
+            }
+        } catch {
+            logger.error("idle trim failed: \(String(describing: error))")
+        }
     }
 
     /// `.unlock` (from `com.apple.screenIsUnlocked`) always resumes.
@@ -744,19 +858,15 @@ public final class TrackerEngine {
             suspensionState.unlock()
             observations?.logState("unlock")
         case .wake:
-            suspensionState.wake(screenStillLocked: isScreenLocked())
+            suspensionState.wake(screenStillLocked: screenLockedProvider?() ?? isScreenLocked())
             observations?.logState("wake")
         }
     }
 
-    /// Reads `CGSSessionScreenIsLocked` from the current window-server
-    /// session dictionary. That key isn't in the public `CGSession.h`
-    /// header, but reading it via `CGSessionCopyCurrentDictionary` is the
-    /// long-standing, widely-used way to answer "is the screen locked right
-    /// now" without extra permissions.
+    /// See `SystemMonitor.isScreenLocked`: locked, or another user's
+    /// session has the console.
     private func isScreenLocked() -> Bool {
-        guard let info = CGSessionCopyCurrentDictionary() as? [String: Any] else { return false }
-        return (info["CGSSessionScreenIsLocked"] as? Bool) ?? false
+        SystemMonitor.isScreenLocked()
     }
 
     /// Upserts the still-open current span, but only at 30s cadence: before
@@ -782,9 +892,14 @@ public final class TrackerEngine {
     /// via `updateEnd` regardless of duration (no delete path exists, so an
     /// already-persisted row must be corrected, not abandoned). Write
     /// failures are logged, never thrown further.
+    ///
+    /// Captures taken before the row existed went in with no span; they are
+    /// filed under it when it is inserted, and again when it closes (a
+    /// capture whose OCR was still running at the insert lands later).
     private func write(_ span: Span, at now: Date, final: Bool) {
         defer {
             if final {
+                if let rowID = currentRowID { rowsSinceInput.append(rowID) }
                 currentRowID = nil
                 lastHeartbeat = .distantPast
             }
@@ -794,6 +909,7 @@ public final class TrackerEngine {
                 try spanStore.updateEnd(id: rowID, end: span.end, keySeconds: span.keySeconds)
                 lastHeartbeat = now
                 lastWriteStart = span.start
+                if final { attachCaptures(to: rowID, of: span) }
                 onChange?()
             } catch {
                 logger.error("updateEnd failed: \(String(describing: error))")
@@ -804,10 +920,20 @@ public final class TrackerEngine {
                 currentRowID = inserted.id
                 lastHeartbeat = now
                 lastWriteStart = span.start
+                if let rowID = inserted.id { attachCaptures(to: rowID, of: span) }
                 onChange?()
             } catch {
                 logger.error("insert failed: \(String(describing: error))")
             }
+        }
+    }
+
+    private func attachCaptures(to rowID: Int64, of span: Span) {
+        do {
+            try observations?.attachCaptures(toSpan: rowID, appBundleID: span.appBundleID,
+                                             from: span.start, to: span.end)
+        } catch {
+            logger.error("capture backfill failed: \(String(describing: error))")
         }
     }
 }

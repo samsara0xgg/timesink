@@ -79,11 +79,13 @@ public enum BudgetEngine {
 
 /// Evaluates category budgets and the daily summary against `AppModel`'s
 /// already-computed today totals, on every `refreshMenu()`. Each of
-/// warn/limit fires at most once per category per local day (stamped via
-/// `BudgetStore.noteAlert` after a successful `post`, mirroring
-/// `SeedImporter`'s do-then-stamp convention); a single evaluation that jumps
-/// straight past both thresholds only fires the higher one, since `level(...)`
-/// itself only ever reports the single highest tier reached.
+/// warn/limit fires at most once per category per local day and limit
+/// (stamped via `BudgetStore.noteAlert` with the limit after a successful
+/// `post`, mirroring `SeedImporter`'s do-then-stamp convention): raising a
+/// limit re-arms that day's alerts, lowering one doesn't. A single
+/// evaluation that jumps straight past both thresholds only fires the higher
+/// one, since `level(...)` itself only ever reports the single highest tier
+/// reached.
 ///
 /// Neither `evaluate` nor `evaluateSummary` checks notification authorization
 /// -- both are synchronous (can't `await`), so an unauthorized state just
@@ -103,15 +105,43 @@ public final class BudgetMonitor {
         self.notifier = notifier
     }
 
+    private struct StampKey: Hashable {
+        let categoryID: String
+        let kind: String
+    }
+
+    /// The alerts sent on `day`, with the limit each went out under (a stamp
+    /// from before limits were recorded covers any limit). Read once a day,
+    /// and again when the budgets change, instead of on every menu refresh;
+    /// kept up to date as alerts go out.
+    private var sent: (day: String, budgets: [Budget], limits: [StampKey: Int])?
+
+    /// `sent` for `day` and these budgets, read from the database when it is
+    /// for another day or other budgets. nil when that read fails.
+    private func sentLimits(day: String, budgets: [Budget]) -> [StampKey: Int]? {
+        if let sent, sent.day == day, sent.budgets == budgets { return sent.limits }
+        guard let stamps = try? budgetStore.alertStamps(day: day) else { return nil }
+        var limits: [StampKey: Int] = [:]
+        for stamp in stamps {
+            limits[StampKey(categoryID: stamp.categoryID, kind: stamp.kind)] = stamp.limitSeconds ?? Int.max
+        }
+        sent = (day, budgets, limits)
+        return limits
+    }
+
     /// Called from `AppModel.refreshMenu()`'s tail with the day's
-    /// already-aggregated `byCategory` totals -- no new span query here, but
-    /// `budgets()` and the per-category alert-kind lookup below still run
-    /// against the DB each evaluation.
+    /// already-aggregated `byCategory` totals -- no new span query here;
+    /// `budgets()` is read each evaluation, the day's alert stamps only when
+    /// the day or the budgets change.
     public func evaluate(byCategory: [String: TimeInterval], categories: [String: Category], now: Date) {
         guard settings.budgetNotificationsEnabled, let budgets = try? budgetStore.budgets() else { return }
         let calendar = Calendar.current
         let day = BudgetEngine.dayStamp(now, calendar: calendar)
+        // Not knowing what already went out today, send nothing: guessing
+        // "nothing" would repeat an alert on every refresh.
+        guard var limits = sentLimits(day: day, budgets: budgets) else { return }
         let warnPercent = settings.budgetWarnPercent   // one read per evaluation, not per budget
+        defer { sent = (day, budgets, limits) }
 
         for budget in budgets where budget.enabled {
             let spent = byCategory[budget.categoryID] ?? 0
@@ -119,8 +149,9 @@ public final class BudgetMonitor {
             let level = BudgetEngine.level(spent: spent, limit: limit, warnPercent: warnPercent)
             guard level != .none else { continue }
 
-            let alreadyFired = (try? budgetStore.alertKinds(categoryID: budget.categoryID, day: day)) ?? []
-            guard !alreadyFired.contains(level.stampKind) else { continue }
+            // Sent already under this limit or a higher one.
+            let key = StampKey(categoryID: budget.categoryID, kind: level.stampKind)
+            if let sentUnder = limits[key], sentUnder >= budget.dailySeconds { continue }
 
             let name = categories[budget.categoryID]?.name ?? budget.categoryID
             let id: String
@@ -158,10 +189,15 @@ public final class BudgetMonitor {
             // that regression would fire a warn notification AFTER limit
             // already fired, falsifying both mandated copy strings ("今天不会
             // 再提醒" vs. "到达上限前会再提醒一次").
+            // Noted in memory first: a failed write must not re-send this on
+            // every refresh.
+            let warnKey = StampKey(categoryID: budget.categoryID, kind: BudgetEngine.Level.warn.stampKind)
+            limits[key] = budget.dailySeconds
+            if level == .limit { limits[warnKey] = budget.dailySeconds }
             do {
-                try budgetStore.noteAlert(categoryID: budget.categoryID, day: day, kind: level.stampKind)
+                try budgetStore.noteAlert(categoryID: budget.categoryID, day: day, kind: level.stampKind, limitSeconds: budget.dailySeconds)
                 if level == .limit {
-                    try budgetStore.noteAlert(categoryID: budget.categoryID, day: day, kind: BudgetEngine.Level.warn.stampKind)
+                    try budgetStore.noteAlert(categoryID: budget.categoryID, day: day, kind: warnKey.kind, limitSeconds: budget.dailySeconds)
                 }
             } catch {
                 budgetEngineLogger.error("noteAlert failed for \(budget.categoryID, privacy: .public)/\(day, privacy: .public): \(String(describing: error), privacy: .public)")

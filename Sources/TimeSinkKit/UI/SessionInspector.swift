@@ -17,7 +17,19 @@ struct SessionInspector: View {
     @State private var captures: [Capture] = []
     @State private var selectedCapture: Capture?
     @State private var error: String?
+    /// Why 重新归类 changed nothing.
+    @State private var note: String?
+    /// Every record in the session, whatever the list's search or filter:
+    /// read once per session and data change, not in `body`.
+    @State private var items: [CategorizedSpan] = []
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.undoManager) private var undoManager
+
+    private struct ItemsKey: Equatable {
+        let start: Date
+        let end: Date
+        let version: Int
+    }
 
     private var label: SessionLabel? { model.sessionLabels[session.nameKey] }
     private var override: SessionNameRow? { model.sessionOverrides[session.signature] }
@@ -41,14 +53,27 @@ struct SessionInspector: View {
         }
         .scrollContentBackground(.hidden)
         .fadeFoot()
-        .onChange(of: session.start) { _, _ in editingName = false; newProject = false; recatOpen = false }
+        .onChange(of: session.start) { _, _ in editingName = false; newProject = false; recatOpen = false; note = nil }
         .task(id: session.start) { loadCaptures() }
+        .pageTask(id: ItemsKey(start: session.start, end: session.end, version: model.dataVersion)) {
+            let loaded = await sessionItems()
+            if !Task.isCancelled { items = loaded }
+        }
         .sheet(item: $selectedCapture) { CaptureReviewSheet(capture: $0) }
     }
 
     private var kpis: SessionKPIs {
-        SessionKPIs.make(session, items: model.rangedSpans(for: DateInterval(start: session.start, end: session.end)),
-                         episodes: activities.dayInterruptions?.episodes ?? [])
+        SessionKPIs.make(session, items: items, episodes: activities.dayInterruptions?.episodes ?? [])
+    }
+
+    /// The session's records, unfiltered, off the main actor: the shown
+    /// day's rows (usually already cached) cut to the session.
+    private func sessionItems() async -> [CategorizedSpan] {
+        let day = model.range.interval
+        let span = DateInterval(start: session.start, end: max(session.start, session.end))
+        let interval = day.start <= span.start && span.end <= day.end ? day : span
+        let all = await model.spansOffMain(for: interval) ?? []
+        return all.filter { $0.span.start < span.end && $0.span.end > span.start }
     }
 
     /// 时长, 切换, 打断 and 主要应用 at a glance.
@@ -84,7 +109,7 @@ struct SessionInspector: View {
     private var actions: some View {
         HStack(spacing: Design.Space.sm) {
             splitMenu
-            Button { withAnimation(Design.motion(Design.layout, reduced: reduceMotion)) { activities.join(session, model: model) } } label: {
+            Button { withAnimation(Design.motion(Design.layout, reduced: reduceMotion)) { activities.join(session, model: model, undoManager: undoManager) } } label: {
                 Label("并入上一段", systemImage: "arrow.up.to.line")
             }
             .buttonStyle(PillButtonStyle()).disabled(previous == nil)
@@ -106,7 +131,7 @@ struct SessionInspector: View {
                         else { gap < 60 ? Text("和上一段是同一类，紧接着。") : Text("和上一段是同一类，只隔了 \(Format.duration(gap))。") }
                     }.foregroundStyle(Design.ink2).fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: Design.Space.xs)
-                    Button("合并成一段") { withAnimation(Design.motion(Design.layout, reduced: reduceMotion)) { activities.join(session, model: model) } }
+                    Button("合并成一段") { withAnimation(Design.motion(Design.layout, reduced: reduceMotion)) { activities.join(session, model: model, undoManager: undoManager) } }
                         .buttonStyle(PillButtonStyle(height: 24))
                 }
                 .padding(Design.Space.md)
@@ -128,7 +153,7 @@ struct SessionInspector: View {
             }
             if !recatOpen {
                 // Full width, as in the activity inspector: never squeezed beside the chip.
-                Button { recatCategory = session.categoryID; recatScope = .segment; recatOpen = true } label: {
+                Button { recatCategory = session.categoryID; recatScope = .segment; recatOpen = true; note = nil } label: {
                     Label("修改分类…", systemImage: "tag").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(PillButtonStyle())
@@ -161,34 +186,49 @@ struct SessionInspector: View {
                 HStack {
                     Spacer()
                     Button("取消") { recatOpen = false }.buttonStyle(PillButtonStyle())
-                    Button("重新归类") { applyRecat() }.buttonStyle(AccentButtonStyle()).disabled(recatCategory == session.categoryID)
+                    Button("重新归类") { Task { await applyRecat() } }.buttonStyle(AccentButtonStyle()).disabled(recatCategory == session.categoryID)
                 }
                 if let error { Text(error).font(.note).foregroundStyle(Design.alert) }
+                if let note { Text(note).font(.note).foregroundStyle(Design.ink2) }
             }
         }
     }
 
-    private func applyRecat() {
-        let items = activities.displayedItems.filter { $0.span.start < session.end && $0.span.end > session.start }
+    /// The whole session, not just what the list's search or filter shows:
+    /// every record is read again first, and the overrides are written in
+    /// one transaction. ⌘Z and the toast undo it, ⇧⌘Z redoes it.
+    private func applyRecat() async {
+        let target = recatCategory
         var edits: [ReclassificationEdit] = []
         do {
             if recatScope == .segment {
-                for item in items where item.categoryID != recatCategory {
-                    edits.append(try model.categoryStore.reclassify(span: item.span, scope: .segment, categoryID: recatCategory))
-                }
-            } else if let top = session.apps.first, let item = items.first(where: { $0.span.appBundleID == top.bundleID }) {
-                edits.append(try model.categoryStore.reclassify(span: item.span, scope: .activity, categoryID: recatCategory))
+                let spans = await sessionItems().filter { $0.categoryID != target }.map(\.span)
+                edits = try model.categoryStore.reclassifySegments(spans, categoryID: target)
+            } else if let top = session.apps.first {
+                // The app's own entry, whatever site it was showing: what 整个应用 says.
+                let app = Span(start: session.start, end: session.end, appBundleID: top.bundleID, appName: top.name,
+                               title: nil, url: nil, domain: nil)
+                edits = [try model.categoryStore.reclassify(span: app, scope: .activity, categoryID: target)]
             }
+        } catch {
+            self.error = String(localized: "分类未保存，请重试。")
+            return
+        }
+        error = nil
+        guard !edits.isEmpty else {
+            note = String(localized: "这段会话的记录已经都归在这一类，没有改动。")
+            return
+        }
+        note = nil
+        model.resolver.refresh(); model.dataChanged()
+        let applied = edits, manager = undoManager
+        model.registerReclassificationUndo(applied, on: manager) { [activities] message in activities.showNotice(message) }
+        activities.showUndo(String(localized: "已改分类")) { [model, activities, weak manager] in
+            manager?.removeAllActions(withTarget: model)
+            do { try model.categoryStore.undoReclassifications(applied) } catch { activities.showNotice(error.localizedDescription) }
             model.resolver.refresh(); model.dataChanged()
-            if !edits.isEmpty {
-                activities.showUndo(String(localized: "已改分类")) { [model] in
-                    try? model.categoryStore.undoReclassifications(edits)
-                    model.resolver.refresh(); model.dataChanged()
-                }
-            }
-            error = nil
-            withAnimation(Design.motion(Design.layout, reduced: reduceMotion)) { recatOpen = false }
-        } catch { self.error = String(localized: "分类未保存，请重试。") }
+        }
+        withAnimation(Design.motion(Design.layout, reduced: reduceMotion)) { recatOpen = false }
     }
 
     private func loadCaptures() {
@@ -225,7 +265,7 @@ struct SessionInspector: View {
     /// The category an app mostly sat in during this session.
     private func category(of bundleID: String) -> Category? {
         var seconds: [String: TimeInterval] = [:]
-        for item in activities.displayedItems where item.span.appBundleID == bundleID && item.span.start < session.end && item.span.end > session.start {
+        for item in items where item.span.appBundleID == bundleID {
             seconds[item.categoryID, default: 0] += item.span.duration
         }
         return seconds.max { $0.value < $1.value }.flatMap { model.resolver.categoriesByID[$0.key] }
@@ -249,7 +289,7 @@ struct SessionInspector: View {
                         .textSelection(.enabled)
                     Spacer(minLength: 4)
                     Button { name = title ?? ""; editingName = true; focused = true } label: { Image(systemName: "pencil") }
-                        .buttonStyle(.borderless).help("改名")
+                        .buttonStyle(.borderless).help("改名").accessibilityLabel("改名")
                 }
             }
             Text("\(model.time(session.start))–\(model.time(session.end)) · 记录 \(Format.chineseDuration(session.recorded))")
@@ -303,15 +343,17 @@ struct SessionInspector: View {
         }
     }
 
-    /// Assigns the project and offers 撤销 back to the override there was (none, if none).
+    /// Assigns the project and offers 撤销 (and ⌘Z, ⇧⌘Z) back to the
+    /// override there was (none, if none).
     private func assign(_ project: String) {
         let name = project.trimmingCharacters(in: .whitespacesAndNewlines)
         let previous = override?.project, target = session
         model.assignSession(target, toProject: name)
         guard !name.isEmpty else { return }
-        activities.showUndo(String(localized: "已把这段归到「\(name)」")) { [model] in
-            model.assignSession(target, toProject: previous ?? "")
-        }
+        activities.offerUndo(String(localized: "已把这段归到「\(name)」"), name: String(localized: "归入项目"), model: model,
+                             undoManager: undoManager,
+                             undo: { [model] in model.assignSession(target, toProject: previous ?? "") },
+                             redo: { [model] in model.assignSession(target, toProject: name) })
     }
 
     private var composition: some View {
@@ -373,7 +415,10 @@ struct SessionInspector: View {
                     Button("从 \(model.time(block.start)) 起拆开 · \(block.label)") {
                         let date = block.start
                         model.splitSession(at: date)
-                        activities.showUndo(String(localized: "已拆开")) { [model] in model.unsplitSession(at: date) }
+                        activities.offerUndo(String(localized: "已拆开"), name: String(localized: "拆开"), model: model,
+                                             undoManager: undoManager,
+                                             undo: { [model] in model.unsplitSession(at: date) },
+                                             redo: { [model] in model.splitSession(at: date) })
                     }
                 }
             } label: {

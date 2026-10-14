@@ -74,15 +74,10 @@ public enum SessionSegmenter {
     /// `owner/timesink` page on GitHub all give `timesink`.
     public static func projectKey(_ span: Span) -> (key: String, label: String)? {
         if let document = span.document, let path = DocumentIdentity.path(of: document) {
-            let home = DocumentIdentity.homePath
-            let relative = path == home ? [] : path.hasPrefix(home + "/")
-                ? path.dropFirst(home.count + 1).split(separator: "/").map(String.init)
-                : path.split(separator: "/").map(String.init)
-            // ~/Projects/timesink/... -> timesink; /opt/x/y/... -> y. A file
-            // straight under home or the root is not a project: it needs a folder.
-            guard relative.count >= 2 else { return nil }
-            let depth = path.hasPrefix(home + "/") ? 2 : 3
-            guard let name = relative.prefix(depth).last, !name.isEmpty else { return nil }
+            // ~/Projects/timesink/... -> timesink; /opt/x/y/... -> y. It needs
+            // a folder, and never a cloud drive's or a disk's root (see there).
+            guard let name = EntityParser.projectFolder(path: path, home: DocumentIdentity.homePath,
+                                                        isFolder: document.hasSuffix("/")) else { return nil }
             return (name.lowercased(), name)
         }
         // A bare site is never a project: only a repo or named workspace on it is.

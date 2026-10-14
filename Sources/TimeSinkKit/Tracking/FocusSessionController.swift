@@ -60,6 +60,14 @@ public final class FocusSessionController {
         "com.apple.Safari", "org.mozilla.firefox", "company.thebrowser.Browser", "com.microsoft.edgemac",
     ]
     private static let heartbeatInterval: TimeInterval = 30
+    /// A tick this late means the Mac slept: the 1s timer does not fire
+    /// while it is asleep.
+    private static let sleepGap: TimeInterval = 60
+    /// Settings key holding the row id of the session in progress, cleared
+    /// when it finishes. `completed = 0` alone cannot say a row is unfinished
+    /// (a session ended early is `completed = 0` too); this can, so a launch
+    /// after a crash finds the session the process died in.
+    static let runningSessionKey = "focusRunningSessionID"
     /// Double-tap window for `keepFocusTapped` (HUD "坚持专注" button). Not
     /// `private`: `FocusHUDController` waits exactly this long before
     /// collapsing the HUD on a first tap, so the second tap stays reachable.
@@ -87,6 +95,11 @@ public final class FocusSessionController {
     public var hideApp: ((String) -> Void)?
     /// Production = ChromeBlocker.setActiveTabURL.
     public var redirectChrome: ((String) -> Bool)?
+    /// Production = ChromeBlocker.setActiveTabURLOffActor: the same redirect
+    /// without holding the main actor for the Apple Event round-trip. When
+    /// set it is used instead of `redirectChrome`, and the block is counted
+    /// once the redirect comes back.
+    public var redirectChromeOffActor: (@Sendable (String) async -> Bool)?
     public var showHUD: ((_ appName: String, _ hideCount: Int) -> Void)?
     /// Every blocked attempt, when it happened: the timeline draws them as
     /// hollow ticks, counted apart from interruptions.
@@ -107,6 +120,13 @@ public final class FocusSessionController {
     /// `(appKey, date)` of the most recent `keepFocusTapped` call, used to
     /// detect the 0.4s double-tap.
     private var lastKeepFocusTap: (key: String, date: Date)?
+    /// Previous `tick`'s `now`, to see a sleep in the gap after it.
+    private var lastTickAt: Date = .distantPast
+    /// When a tick first found the screen locked; nil while it is not.
+    private var lockedSince: Date?
+    /// Whether the screen is locked (or another user has the console) right
+    /// now. A test seam; production asks the window server.
+    var screenLocked: () -> Bool = { SystemMonitor.isScreenLocked() }
 
     private let logger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "focusSession")
 
@@ -145,6 +165,9 @@ public final class FocusSessionController {
         blockedDestinations = [:]
         lastHeartbeat = now
         lastKeepFocusTap = nil
+        lastTickAt = now
+        lockedSince = nil
+        settings.set(Self.runningSessionKey, String(id))
 
         startTimer()
 
@@ -188,11 +211,53 @@ public final class FocusSessionController {
         } catch {
             logger.error("finish failed: \(String(describing: error))")
         }
+        settings.set(Self.runningSessionKey, "")
         let finalAppBlocks = appBlocks
         let finalSiteBlocks = siteBlocks
         onFinish?(completed, finalAppBlocks, finalSiteBlocks)
         self.running = nil
         remaining = 0
+    }
+
+    /// Launch-time reconciliation, called once after the closures above are
+    /// wired: the session the last process died in (a crash, a forced quit)
+    /// is picked up again if its planned end is still ahead, with the blocks
+    /// its heartbeats saved. One whose planned end passed while the app was
+    /// not running stays as its last heartbeat left it -- not completed,
+    /// ending when the app last saw it -- and is only forgotten as running.
+    /// Returns whether a session was resumed.
+    @discardableResult
+    public func restoreUnfinished(now: Date = Date()) -> Bool {
+        guard running == nil,
+              let raw = settings.get(Self.runningSessionKey), let id = Int64(raw) else { return false }
+        settings.set(Self.runningSessionKey, "")
+        let row: FocusSession?
+        do {
+            row = try store.session(id: id)
+        } catch {
+            logger.error("restore failed: \(String(describing: error))")
+            return false
+        }
+        guard let row, !row.completed,
+              Self.remainingSeconds(start: row.start, planned: row.plannedSeconds, now: now) > 0 else { return false }
+        running = Running(
+            id: id, start: row.start, plannedSeconds: row.plannedSeconds,
+            blockedApps: Set(settings.focusBlockedApps),
+            blockedCategories: Set(settings.focusBlockedCategories)
+        )
+        remaining = Self.remainingSeconds(start: row.start, planned: row.plannedSeconds, now: now)
+        appBlocks = row.appBlocks
+        siteBlocks = row.siteBlocks
+        policy = FocusBlockPolicy()
+        shownDegradedFor = []
+        blockedDestinations = [:]
+        lastHeartbeat = now
+        lastKeepFocusTap = nil
+        lastTickAt = now
+        lockedSince = nil
+        settings.set(Self.runningSessionKey, String(id))
+        startTimer()
+        return true
     }
 
     /// Called once per engine tick (see `TrackerEngine.focusInterceptor`).
@@ -243,10 +308,15 @@ public final class FocusSessionController {
            !policy.isAllowed(domain, at: now),
            policy.shouldHide(domain, at: now) {
             let target = Self.blockPageURL(domain: domain, remaining: remaining, endsAt: running.start.addingTimeInterval(Double(running.plannedSeconds)))
-            if redirectChrome?(target) == true {
-                blockedDestinations[domain] = url
-                siteBlocks += 1
-                onBlocked?(now)
+            if let redirect = redirectChromeOffActor {
+                // Inherits the main actor; only the `await` leaves it.
+                Task { [weak self] in
+                    let redirected = await redirect(target)
+                    guard redirected, let self else { return }
+                    self.noteSiteBlocked(domain: domain, url: url, at: now)
+                }
+            } else if redirectChrome?(target) == true {
+                noteSiteBlocked(domain: domain, url: url, at: now)
             }
             return false
         }
@@ -268,6 +338,12 @@ public final class FocusSessionController {
         }
 
         return false
+    }
+
+    private func noteSiteBlocked(domain: String, url: String, at now: Date) {
+        blockedDestinations[domain] = url
+        siteBlocks += 1
+        onBlocked?(now)
     }
 
     /// "放行 5 分钟" from the block page's own button.
@@ -343,19 +419,37 @@ public final class FocusSessionController {
     /// real 1s wait -- mirrors `TrackerEngine.tickAsync(now:)`'s shape. Updates
     /// only this controller's own `@Observable` state; never calls
     /// `AppModel.dataChanged()` (that's the explicit `finish` path's job).
+    ///
+    /// A session whose planned end arrives while nobody is at the Mac -- it
+    /// slept (no tick for `sleepGap`) or the screen is locked -- is not
+    /// announced as completed: it finishes as ended early, at the moment the
+    /// user left. A sleep or lock that is over before the planned end changes
+    /// nothing.
     func tick(now: Date) {
         guard let running else { return }
+        let sleptFrom: Date? = now.timeIntervalSince(lastTickAt) >= Self.sleepGap ? lastTickAt : nil
+        lastTickAt = now
+        let locked = screenLocked()
+        if locked, lockedSince == nil { lockedSince = now }
+        let away: [Date?] = [sleptFrom, lockedSince]
+        let awayFrom: Date? = away.compactMap { $0 }.min()
+        if !locked { lockedSince = nil }
         remaining = max(0, Self.remainingSeconds(start: running.start, planned: running.plannedSeconds, now: now))
         if now.timeIntervalSince(lastHeartbeat) >= Self.heartbeatInterval {
             lastHeartbeat = now
             do {
-                try store.heartbeat(id: running.id, end: now)
+                try store.heartbeat(id: running.id, end: now, appBlocks: appBlocks, siteBlocks: siteBlocks)
             } catch {
                 logger.error("heartbeat failed: \(String(describing: error))")
             }
         }
         if remaining <= 0 {
-            finish(completed: true, now: now)
+            if let awayFrom {
+                let plannedEnd = running.start.addingTimeInterval(TimeInterval(running.plannedSeconds))
+                finish(completed: false, now: max(running.start, min(awayFrom, plannedEnd)))
+            } else {
+                finish(completed: true, now: now)
+            }
         }
     }
 

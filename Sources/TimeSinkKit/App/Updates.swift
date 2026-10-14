@@ -5,8 +5,13 @@ import Sparkle
 /// Info.plist names a feed (`SUFeedURL`): a `swift run` build has no
 /// Info.plist, and a started updater without a feed alerts at launch.
 @MainActor
-public final class Updates: NSObject, SPUStandardUserDriverDelegate {
+public final class Updates: NSObject, SPUStandardUserDriverDelegate, SPUUpdaterDelegate {
     private var controller: SPUStandardUpdaterController!
+
+    /// Set when Sparkle is about to quit the app to install an update: a
+    /// running focus session then survives the relaunch instead of being
+    /// recorded as ended early.
+    public static var relaunchingForUpdate = false
 
     public static func startIfConfigured() -> Updates? {
         Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") == nil ? nil : Updates()
@@ -14,7 +19,7 @@ public final class Updates: NSObject, SPUStandardUserDriverDelegate {
 
     private override init() {
         super.init()
-        controller = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: self)
+        controller = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: self, userDriverDelegate: self)
     }
 
     public var automaticallyChecks: Bool {
@@ -46,5 +51,9 @@ public final class Updates: NSObject, SPUStandardUserDriverDelegate {
         _ handleShowingUpdate: Bool, forUpdate update: SUAppcastItem, state: SPUUserUpdateState
     ) {
         MainActor.assumeIsolated { NSApp.activate(ignoringOtherApps: true) }
+    }
+
+    public nonisolated func updaterWillRelaunchApplication(_ updater: SPUUpdater) {
+        MainActor.assumeIsolated { Updates.relaunchingForUpdate = true }
     }
 }

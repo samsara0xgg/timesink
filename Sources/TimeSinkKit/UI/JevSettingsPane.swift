@@ -19,6 +19,13 @@ struct JevSettingsPane: View {
 
     @State private var advancedOpen = false
     @State private var keyError: String?
+    /// The answer of the last key test, and whether it was good news.
+    @State private var keyCheck: String?
+    @State private var keyCheckOK = false
+    @State private var checkingKey = false
+
+    /// Where an OpenRouter key is made, and credits bought.
+    static let keysPage = URL(string: "https://openrouter.ai/keys")!
 
     var body: some View {
         Form {
@@ -31,8 +38,16 @@ struct JevSettingsPane: View {
                     keyField
                 }
                 if hasStoredKey {
-                    Label("API 密钥已保存", systemImage: "checkmark.circle.fill").font(.note).foregroundStyle(Design.live)
+                    HStack {
+                        Label("API 密钥已保存", systemImage: "checkmark.circle.fill").font(.note).foregroundStyle(Design.live)
+                        Spacer()
+                        Button("测试密钥") { testKey() }.disabled(checkingKey)
+                    }
+                    if let keyCheck {
+                        Text(keyCheck).font(.note).foregroundStyle(keyCheckOK ? Design.ink2 : Design.alert)
+                    }
                 }
+                Link("在 OpenRouter 创建 API 密钥或充值", destination: Self.keysPage).font(.note)
                 if enabled, let jev = model.jev {
                     if let line = statusLine { Text(line).font(.note).foregroundStyle(Design.ink2) }
                     if let lastRunAt = status?.lastRunAt {
@@ -54,6 +69,8 @@ struct JevSettingsPane: View {
                     Text("每段使用时间会向下面的服务发送这些内容，不会发送屏幕截图本身：")
                         .font(.note).foregroundStyle(Design.ink2)
                     ForEach(JevService.sentFields, id: \.self) { Text("· \($0)").font(.note).foregroundStyle(Design.ink2) }
+                    Text("网址、窗口标题和文档名发出前会去掉邮箱、电话和卡号等长数字，以及 API 密钥和令牌。")
+                        .font(.note).foregroundStyle(Design.ink2)
                 }
                 .font(.note)
             }
@@ -61,7 +78,7 @@ struct JevSettingsPane: View {
                 Toggle("同时发送屏幕截图里的文字", isOn: $screenText)
                     .disabled(!enabled)
                     .onChange(of: screenText) { _, newValue in model.jev?.setScreenText(newValue); refreshStatus() }
-                Text("会发送截图识别出的文字（已去掉邮箱和 6 位以上数字，最多 1200 字），用于判断拿不准的内容。需先开启上面的开关；默认关闭。")
+                Text("会发送截图识别出的文字（已去掉邮箱、6 位以上数字和 API 密钥、令牌，最多 1200 字），用于判断拿不准的内容。需先开启上面的开关；默认关闭。")
                     .font(.note).foregroundStyle(Design.ink2)
             }
             Section("费用") {
@@ -138,7 +155,8 @@ struct JevSettingsPane: View {
     private var statusLine: String? {
         guard let status else { return nil }
         if status.pausedAtCap { return String(localized: "已到本月上限，暂停判断 · 已判断 \(status.classified) 项，\(status.queued) 项排队") }
-        if status.offline { return String(localized: "连不上服务，稍后重试 · 已判断 \(status.classified) 项，\(status.queued) 项排队") }
+        // A bad key, no credits, a wrong model or address, and the service being down each read differently.
+        if let problem = status.problem { return String(localized: "\(problem.message) · 已判断 \(status.classified) 项，\(status.queued) 项排队") }
         return String(localized: "已判断 \(status.classified) 项，\(status.queued) 项排队")
     }
 
@@ -152,9 +170,12 @@ struct JevSettingsPane: View {
     }
 
     private func commitFields() {
+        let changed = endpoint != model.settings.jevEndpoint || jevModel.trimmingCharacters(in: .whitespaces) != model.settings.jevModel
         if endpoint != model.settings.jevEndpoint { model.settings.setJevEndpoint(endpoint) }
         if jevModel != model.settings.jevModel { model.settings.setJevModel(jevModel) }
         jevModel = model.settings.jevModel
+        // A corrected model or address is tried now, not after the backoff a refusal started.
+        if changed { model.jev?.nudge() }
         if let value = Self.parseCap(cap), value != model.settings.jevMonthlyCap {
             model.settings.setJevMonthlyCap(value)
             model.jev?.nudge()
@@ -184,14 +205,57 @@ struct JevSettingsPane: View {
             hasStoredKey = model.jev?.hasKey ?? true
             apiKeyStatus = String(localized: "已保存")
             keyError = nil
+            keyCheck = nil
+            model.jev?.nudge()
         case .failed(let message):
             apiKeyStatus = String(localized: "保存失败：\(message)")
         }
     }
 
+    /// Asks OpenRouter about the stored key (a typed one is saved first). The
+    /// call is free; it tells a bad key from a good one and shows what the key
+    /// has spent and may still spend.
+    private func testKey() {
+        saveKey()
+        // A typed key that could not be saved is not silently swapped for the stored one.
+        guard apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let key = Keychain.get(account: JevService.apiKeyAccount), !key.isEmpty else { return }
+        let endpoint = model.settings.jevEndpoint
+        checkingKey = true
+        keyCheck = nil
+        Task { @MainActor in
+            do {
+                let info = try await JevClient.checkKey(endpoint: endpoint, apiKey: key)
+                keyCheck = Self.keyLine(info)
+                keyCheckOK = !info.isFreeTier
+            } catch {
+                keyCheck = Self.keyErrorLine(error)
+                keyCheckOK = false
+            }
+            checkingKey = false
+        }
+    }
+
+    /// "密钥有效 · 已用 $0.12，额度还剩 $4.88".
+    static func keyLine(_ info: JevKeyInfo) -> String {
+        if info.isFreeTier { return String(localized: "密钥有效，但这个 OpenRouter 账户还没有充值过；Jev 需要账户里有余额") }
+        let used = String(format: "%.2f", info.usage)
+        guard let limit = info.limit else { return String(localized: "密钥有效 · 已用 $\(used)，密钥没有额度上限") }
+        let left = String(format: "%.2f", info.limitRemaining ?? max(0, limit - info.usage))
+        return String(localized: "密钥有效 · 已用 $\(used)，额度还剩 $\(left)")
+    }
+
+    /// An invalid key (401/403), no credits (402), a wrong address (400/404) and
+    /// the service being down each read differently.
+    static func keyErrorLine(_ error: any Error) -> String {
+        if let jevError = error as? JevError, case .badAnswer = jevError { return JevProblem.badModelOrEndpoint.message }
+        return JevProblem(error)?.message ?? error.localizedDescription
+    }
+
     private func removeKey() {
         Keychain.delete(account: JevService.apiKeyAccount)
         hasStoredKey = false
+        keyCheck = nil
         apiKeyStatus = String(localized: "已移除，判断会停止")
         if enabled { enabled = false }
     }

@@ -25,7 +25,12 @@ struct TodayView: View {
     @MainActor static var previewSelect: Int?
     #endif
 
-    private struct RefreshKey: Equatable { let version: Int; let offset: Int }
+    /// Besides the data: the session cut, the interruption rule and your
+    /// session names and projects, none of which bumps `dataVersion`.
+    private struct RefreshKey: Equatable {
+        let version: Int; let edits: Int; let offset: Int
+        let threshold: TimeInterval; let splits: Int; let rule: InterruptionRule; let names: Int
+    }
     private var offset: Int { model.todayDayOffset }
 
     var body: some View {
@@ -51,7 +56,9 @@ struct TodayView: View {
             .scrollIndicators(.never)
         }
         .background(WorkspaceBackground())
-        .pageTask(id: RefreshKey(version: model.dataVersion, offset: offset)) { await refresh() }
+        .pageTask(id: RefreshKey(version: model.dataVersion, edits: model.dataEditVersion, offset: offset,
+                                 threshold: model.sessionThreshold, splits: model.sessionSplitsVersion,
+                                 rule: model.interruptionRule, names: model.sessionOverridesVersion)) { await refresh() }
         .whilePageShown {
             // The now line and the headline move with the clock; nothing else
             // does while nothing is written. A past day never moves.
@@ -369,6 +376,7 @@ private struct TodayTodosCard: View {
     let start: (Int) -> Void
     @State private var filling: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.undoManager) private var undoManager
 
     var body: some View {
         VStack(alignment: .leading, spacing: Design.Space.sm) {
@@ -444,7 +452,16 @@ private struct TodayTodosCard: View {
                 }
         case .confirm:
             Button(p.action) {
-                for row in plan.guessedRows { if let project = row.project { model.assignSession(row.session, toProject: project) } }
+                // ⌘Z puts back what each session had before; the page follows the names on its own.
+                var found: [(session: WorkSession, project: String, before: String?)] = []
+                for row in plan.guessedRows {
+                    if let project = row.project { found.append((row.session, project, model.sessionOverrides[row.session.signature]?.project)) }
+                }
+                let picks = found
+                for pick in picks { model.assignSession(pick.session, toProject: pick.project) }
+                model.registerUndo(on: undoManager, name: String(localized: "确认项目"),
+                                   undo: { [model] in for pick in picks { model.assignSession(pick.session, toProject: pick.before ?? "") } },
+                                   redo: { [model] in for pick in picks { model.assignSession(pick.session, toProject: pick.project) } })
                 changed()
             }.buttonStyle(PillButtonStyle())
         case .newProject(let name):

@@ -1,5 +1,7 @@
+import CryptoKit
 import Foundation
 import GRDB
+import IOKit
 import os
 
 public final class SettingsStore: Sendable {
@@ -35,21 +37,40 @@ public final class SettingsStore: Sendable {
     private static let defaultFocusSiteBlockEnabled = true
     private static let defaultCalendarOverlayEnabled = false
 
-    public init(_ writer: any DatabaseWriter) {
+    /// Which Mac this is (`platformID` outside tests): see `cloudDeviceID`.
+    private let hardwareID: @Sendable () -> String?
+
+    public init(_ writer: any DatabaseWriter, hardwareID: (@Sendable () -> String?)? = nil) {
         self.writer = writer
+        if let hardwareID {
+            self.hardwareID = hardwareID
+        } else {
+            self.hardwareID = { SettingsStore.platformID }
+        }
+    }
+
+    /// The cached values, and how many writes have gone through `set`: a
+    /// read that missed fills the cache only if no write landed while it
+    /// read the database, so it can't put back a value a `set` replaced.
+    private struct Cache: Sendable {
+        var values: [String: String?] = [:]
+        var writes = 0
     }
 
     /// Settings are read several times a second on the main actor (the
     /// tracker's tick, SwiftUI bodies) and written rarely, only through this
     /// store, so reads are served from memory after the first.
-    private let cache = OSAllocatedUnfairLock(initialState: [String: String?]())
+    private let cache = OSAllocatedUnfairLock(initialState: Cache())
 
     /// Reads a raw setting value. Swallows any error and returns nil (not fatal).
     public func get(_ key: String) -> String? {
-        if let hit = cache.withLock({ $0[key] }) { return hit }
+        let (hit, writes) = cache.withLock { (state: inout Cache) -> (String??, Int) in (state.values[key], state.writes) }
+        if let hit { return hit }
         do {
             let value = try writer.read { db in try SettingRow.fetchOne(db, key: key)?.value }
-            cache.withLock { $0[key] = .some(value) }
+            cache.withLock { (state: inout Cache) in
+                if state.writes == writes { state.values[key] = .some(value) }
+            }
             return value
         } catch {
             return nil
@@ -68,9 +89,15 @@ public final class SettingsStore: Sendable {
                     arguments: [key, value]
                 )
             }
-            cache.withLock { $0[key] = .some(value) }
+            cache.withLock { (state: inout Cache) in
+                state.writes += 1
+                state.values[key] = .some(value)
+            }
         } catch {
-            cache.withLock { _ = $0.removeValue(forKey: key) }
+            cache.withLock { (state: inout Cache) in
+                state.writes += 1
+                state.values.removeValue(forKey: key)
+            }
         }
     }
 
@@ -249,16 +276,77 @@ public final class SettingsStore: Sendable {
     private static let cloudEmailKey = "cloud.email"
     private static let cloudUserSubKey = "cloud.userSub"
     private static let cloudLastSyncAtKey = "cloud.lastSyncAt"
+    private static let cloudHardwareIDKey = "cloud.hardwareID"
 
     /// This database's identity towards the cloud, minted on first use. It
     /// lives in the database on purpose: a fresh database is a new device,
     /// and the old one's rows come back to it as another device's.
+    ///
+    /// The Mac it was minted on is kept next to it. A database carried to
+    /// another Mac (Migration Assistant, a restored backup) would otherwise
+    /// push under the same id as the Mac it came from: the two overwrite each
+    /// other's rows in the cloud and never pull each other's. There, a new id
+    /// is minted, and the rows the old Mac already uploaded become that Mac's
+    /// rows -- which is what the cloud holds them as, so they are not pushed
+    /// again under the new id, and pulling them again (the pull cursor stays:
+    /// it is a position in the account's rows, not in one device's) finds
+    /// them already here. Rows not uploaded yet stay this Mac's and go up
+    /// under the new id.
     public var cloudDeviceID: String {
-        if let v = self.get(Self.cloudDeviceIDKey), !v.isEmpty { return v }
-        let v = UUID().uuidString.lowercased()
-        set(Self.cloudDeviceIDKey, v)
-        return v
+        let hardware = hardwareID()
+        if let id = self.get(Self.cloudDeviceIDKey), !id.isEmpty,
+           hardware == nil || self.get(Self.cloudHardwareIDKey) == hardware {
+            return id
+        }
+        do {
+            let id = try writer.write { db in try Self.settleDeviceID(db, hardware: hardware) }
+            let changed: [String] = [Self.cloudDeviceIDKey, Self.cloudHardwareIDKey]
+            cache.withLock { (state: inout Cache) in
+                state.writes += 1
+                for key in changed { state.values.removeValue(forKey: key) }
+            }
+            return id
+        } catch {
+            Logger(subsystem: "com.alllllenshi.TimeSink", category: "settings")
+                .error("could not store the cloud device id: \(String(describing: error), privacy: .public)")
+            return UUID().uuidString.lowercased()
+        }
     }
+
+    /// In one transaction: if the database was moved here from another Mac,
+    /// hands that Mac's uploaded rows back to its id and drops the id; then
+    /// mints an id unless one is stored (INSERT OR IGNORE, so two first
+    /// readers agree on one) and notes this Mac.
+    private static func settleDeviceID(_ db: Database, hardware: String?) throws -> String {
+        let storedHardware = try String.fetchOne(db, sql: "SELECT value FROM setting WHERE key = ?", arguments: [cloudHardwareIDKey])
+        let current = try String.fetchOne(db, sql: "SELECT value FROM setting WHERE key = ?", arguments: [cloudDeviceIDKey])
+        if let hardware, let storedHardware, !storedHardware.isEmpty, storedHardware != hardware,
+           let current, !current.isEmpty {
+            // Same columns a pulled row has: `insertRemote` then skips them as already here.
+            try db.execute(sql: "UPDATE OR IGNORE span SET deviceID = ?, originID = id WHERE deviceID IS NULL AND remoteSeq IS NOT NULL",
+                           arguments: [current])
+            try db.execute(sql: "DELETE FROM setting WHERE key = ?", arguments: [cloudDeviceIDKey])
+        }
+        try db.execute(sql: "DELETE FROM setting WHERE key = ? AND value = ''", arguments: [cloudDeviceIDKey])
+        try db.execute(sql: "INSERT OR IGNORE INTO setting (key, value) VALUES (?, ?)",
+                       arguments: [cloudDeviceIDKey, UUID().uuidString.lowercased()])
+        if let hardware {
+            try db.execute(sql: "INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                           arguments: [cloudHardwareIDKey, hardware])
+        }
+        return try String.fetchOne(db, sql: "SELECT value FROM setting WHERE key = ?", arguments: [cloudDeviceIDKey]) ?? ""
+    }
+
+    /// This Mac's hardware UUID (IOPlatformUUID), hashed so the database
+    /// never holds the identifier itself. nil if IOKit doesn't give one.
+    static let platformID: String? = { () -> String? in
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPlatformExpertDevice"))
+        guard service != 0 else { return nil }
+        defer { IOObjectRelease(service) }
+        guard let property = IORegistryEntryCreateCFProperty(service, "IOPlatformUUID" as CFString, kCFAllocatorDefault, 0),
+              let uuid = property.takeRetainedValue() as? String else { return nil }
+        return SHA256.hash(data: Data(uuid.utf8)).map { String(format: "%02x", $0) }.joined()
+    }()
 
     /// Off by default: nothing leaves the machine until the user says so.
     public var cloudSyncEnabled: Bool {

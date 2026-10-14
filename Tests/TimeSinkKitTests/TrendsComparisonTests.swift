@@ -19,7 +19,7 @@ final class TrendsComparisonTests: XCTestCase {
     }
 
     func testHeadlineNamesTheCategoryThatMovedMostTheSameWay() {
-        let daily = [entry(0, "dev", minutes: 300), entry(5, "chat", minutes: 60),
+        let daily = [entry(1, "dev", minutes: 300), entry(5, "chat", minutes: 60),
                      entry(20, "dev", minutes: 120), entry(21, "chat", minutes: 100)]
         let result = FourWeekComparison(daily: daily, today: today, categories: categories, calendar: calendar)
         // 360 recent against 220 before: +140 minutes, dev +180, chat -40.
@@ -33,16 +33,26 @@ final class TrendsComparisonTests: XCTestCase {
     }
 
     func testSmallDifferenceReadsAsTheSameAndNoPastMeansNoHeadline() {
-        let same = FourWeekComparison(daily: [entry(0, "dev", minutes: 100), entry(14, "dev", minutes: 98)],
+        let same = FourWeekComparison(daily: [entry(1, "dev", minutes: 100), entry(15, "dev", minutes: 98)],
                                       today: today, categories: categories, calendar: calendar)
         XCTAssertEqual(same.headline, .same)
-        let none = FourWeekComparison(daily: [entry(0, "dev", minutes: 100)], today: today, categories: categories, calendar: calendar)
+        let none = FourWeekComparison(daily: [entry(1, "dev", minutes: 100)], today: today, categories: categories, calendar: calendar)
         XCTAssertNil(none.headline)
     }
 
-    func testWeeksRunOldestFirstAndOlderDaysAreLeftOut() {
-        let daily = [entry(0, "dev", minutes: 10), entry(6, "dev", minutes: 20), entry(7, "dev", minutes: 30),
-                     entry(14, "dev", minutes: 40), entry(27, "dev", minutes: 50), entry(28, "dev", minutes: 999)]
+    /// Today is a few hours in: set against whole days it made every
+    /// morning read as "less". Only whole days are compared.
+    func testTodaysPartialDayIsLeftOut() {
+        let daily = [entry(0, "dev", minutes: 500), entry(1, "dev", minutes: 100), entry(15, "dev", minutes: 100)]
+        let result = FourWeekComparison(daily: daily, today: today, categories: categories, calendar: calendar)
+        XCTAssertEqual(result.headline, .same)
+        XCTAssertEqual(result.rows[0].weeks, [0, 6000, 0, 6000])
+    }
+
+    func testWeeksRunOldestFirstAndTodayAndOlderDaysAreLeftOut() {
+        let daily = [entry(0, "dev", minutes: 777), entry(1, "dev", minutes: 10), entry(7, "dev", minutes: 20),
+                     entry(8, "dev", minutes: 30), entry(15, "dev", minutes: 40), entry(28, "dev", minutes: 50),
+                     entry(29, "dev", minutes: 999)]
         let row = FourWeekComparison(daily: daily, today: today, categories: categories, calendar: calendar).rows[0]
         let expected: [TimeInterval] = [3000, 2400, 1800, 1800]
         XCTAssertEqual(row.weeks, expected)

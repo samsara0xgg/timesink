@@ -11,6 +11,32 @@ import Foundation
 public enum SeedImporter {
     private static let versionSettingKey = "seedVersion"
 
+    /// The resource bundle SwiftPM builds for this target.
+    static let resourceBundleName = "TimeSink_TimeSinkKit.bundle"
+
+    /// Where the seed CSVs are. SwiftPM's generated `Bundle.module` looks
+    /// only beside the .app (`TimeSink.app/TimeSink_TimeSinkKit.bundle`) and
+    /// at the build machine's own `.build` path, and traps when neither
+    /// exists -- but the packaged app carries the bundle in
+    /// `Contents/Resources` (Makefile `bundle`), so on any Mac without that
+    /// `.build` it crashed at launch. That is looked at first (a bare
+    /// `swift run` executable finds it there too); `Bundle.module` is the
+    /// fallback for `swift test`. A packaged app without the bundle gets nil
+    /// (no seed this launch) rather than the trap.
+    static func resourceBundle(main: Bundle = .main) -> Bundle? {
+        if let url = main.resourceURL?.appendingPathComponent(resourceBundleName), let bundle = Bundle(url: url) {
+            return bundle
+        }
+        if main.bundleURL.pathExtension == "app" { return nil }
+        return Bundle.module
+    }
+
+    /// The bundled `name.csv`, nil when it can't be read.
+    private static func bundledCSV(_ name: String) -> String? {
+        guard let url = resourceBundle()?.url(forResource: name, withExtension: "csv") else { return nil }
+        return try? String(contentsOf: url, encoding: .utf8)
+    }
+
     /// Parses `domain,categoryID` rows, skipping `#`-comment lines and any
     /// line that isn't exactly two comma-separated columns. Rows whose
     /// `categoryID` isn't one of `Taxonomy.categories`'s ids are dropped; a
@@ -41,8 +67,7 @@ public enum SeedImporter {
         var result: [String: (categoryID: String, source: String)] = [:]
         guard !domains.isEmpty else { return result }
         for (resource, source) in [("seed_overlay", "curated"), ("seed_domains", "seed")] {
-            guard let url = Bundle.module.url(forResource: resource, withExtension: "csv"),
-                  let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            guard let text = bundledCSV(resource) else { continue }
             for pair in parseCSV(text) where domains.contains(pair.domain) && result[pair.domain] == nil {
                 result[pair.domain] = (pair.categoryID, source)
             }
@@ -79,10 +104,7 @@ public enum SeedImporter {
     /// the setting so subsequent launches skip the import.
     @MainActor
     private static func importMainSeedIfNeeded(categoryStore: CategoryStore, settings: SettingsStore) {
-        guard let url = Bundle.module.url(forResource: "seed_domains", withExtension: "csv"),
-              let text = try? String(contentsOf: url, encoding: .utf8) else {
-            return
-        }
+        guard let text = bundledCSV("seed_domains") else { return }
         guard let bundledVersion = parseVersion(text) else { return }
         let currentVersion = settings.get(versionSettingKey).flatMap(Int.init) ?? 0
         guard bundledVersion > currentVersion else { return }
@@ -102,9 +124,7 @@ public enum SeedImporter {
     /// (curated dev/writing/productivity domains the WhoTracks.me data lacks).
     @MainActor
     private static func importOverlayIfNeeded(categoryStore: CategoryStore, settings: SettingsStore) {
-        guard let url = Bundle.module.url(forResource: "seed_overlay", withExtension: "csv"),
-              let text = try? String(contentsOf: url, encoding: .utf8),
-              let bundledVersion = parseVersion(text) else { return }
+        guard let text = bundledCSV("seed_overlay"), let bundledVersion = parseVersion(text) else { return }
         let currentVersion = settings.get(overlayVersionSettingKey).flatMap(Int.init) ?? 0
         guard bundledVersion > currentVersion else { return }
         do {

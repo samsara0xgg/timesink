@@ -67,7 +67,7 @@ final class UnderReportingTests: XCTestCase {
 
         let sel = DateRangeSelection(kind: .month, anchor: Date())
         let windowDays = (sel.interval.duration / 86400).rounded()
-        let elapsedDays = max(1, (Date().timeIntervalSince(sel.interval.start) / 86400).rounded())
+        let elapsedDays = max(1, StatsSummary.elapsedDays(from: sel.interval.start, to: Date(), calendar: .current))
         try XCTSkipUnless(elapsedDays < windowDays, "月末最后一两天两个分母相同，无从区分")
 
         model.range = sel
