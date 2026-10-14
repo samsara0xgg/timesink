@@ -2,18 +2,21 @@ import CoreGraphics
 import Foundation
 import os
 
-/// Throttles Chrome active-tab fetches: only re-fetch when the window title
-/// changed since the last fetch, or when `interval` seconds have elapsed.
+/// Throttles Chrome active-tab fetches: only re-fetch when the window or its
+/// title changed since the last fetch, or when `interval` seconds have
+/// elapsed. The window counts on its own because two windows can share a
+/// title (two "New Tab"s), and only one of them may be private.
 public struct ChromeThrottle {
     let interval: TimeInterval
     private var lastTitle: String??
+    private var lastWindow: UInt32??
     private var lastFetch = Date.distantPast
     public init(interval: TimeInterval = 5) { self.interval = interval }
-    public mutating func shouldFetch(title: String?, at date: Date) -> Bool {
-        title != lastTitle || date.timeIntervalSince(lastFetch) >= interval
+    public mutating func shouldFetch(title: String?, window: UInt32? = nil, at date: Date) -> Bool {
+        title != lastTitle || window != lastWindow || date.timeIntervalSince(lastFetch) >= interval
     }
-    public mutating func noteFetched(title: String?, at date: Date) {
-        lastTitle = title; lastFetch = date
+    public mutating func noteFetched(title: String?, window: UInt32? = nil, at date: Date) {
+        lastTitle = title; lastWindow = window; lastFetch = date
     }
 }
 
@@ -196,6 +199,7 @@ public final class TrackerEngine {
         if paused, let closed = builder.close(at: date) { persist(closed) }
         throttle = ChromeThrottle()
         chromeTabState = .none
+        chromeTabWindowID = nil
         chromeTabBundleID = nil
         chatSession = nil
         lastChatFetch = .distantPast
@@ -204,21 +208,35 @@ public final class TrackerEngine {
     }
     private var lastHeartbeat = Date.distantPast
 
-    /// Chrome tab capture state. `.none` (fetch failed / never fetched) never
-    /// carries a URL -- the pre-fix code kept applying the last successful
-    /// URL forever, misattributing days of browsing to one stale domain once
-    /// fetches started failing. It keeps the AX window title only while
-    /// Chrome Automation is authorized (see `chromeAutomationAuthorized`);
-    /// unauthorized, we can't confirm the window isn't incognito, so both
-    /// are suppressed. A failure never overwrites a prior `.incognito` --
-    /// that suppression is sticky until the next successful, non-incognito
-    /// fetch.
+    /// Chrome tab capture state, for the window `chromeTabWindowID`. `.none`
+    /// (fetch failed / never fetched) never carries a URL -- the pre-fix code
+    /// kept applying the last successful URL forever, misattributing days of
+    /// browsing to one stale domain once fetches started failing. It keeps
+    /// the AX window title only for a window an earlier read found not
+    /// private (`browserWindowPrivacy`); any other window may be private, so
+    /// both are suppressed. A failure never overwrites a prior `.incognito`
+    /// -- that suppression is sticky until the next successful,
+    /// non-incognito fetch. `blockURL` is a private tab's address, read only
+    /// while focus blocking needs it (`focusNeedsPrivateTab`) and handed to
+    /// `focusInterceptor` alone; it is never recorded.
     private enum ChromeTabState {
         case none
         case tab(url: String?, title: String?)
-        case incognito
+        case incognito(blockURL: String?)
     }
     private var chromeTabState: ChromeTabState = .none
+    /// The CGWindowID `chromeTabState` was read from. Another window of the
+    /// same browser gets nothing from it: a cached page or a "not private"
+    /// answer belongs to the window it was read from.
+    private var chromeTabWindowID: UInt32?
+    /// Whether a browser window was found private (true) or not (false), by
+    /// CGWindowID. A window is one or the other for its whole life, so this
+    /// answers for it when a read fails, is backed off, or was of another
+    /// window. A private answer is never overwritten: a read can race the
+    /// user switching windows, and the race may only ever err toward
+    /// recording less.
+    private var browserWindowPrivacy: [UInt32: Bool] = [:]
+    private static let browserWindowPrivacyLimit = 512
     /// The browser `chromeTabState`, `throttle` and the cached authorization
     /// describe. Switching browsers drops all three, so Chrome's page can
     /// never be filed under Arc, nor Arc's private window outlive the switch
@@ -240,10 +258,10 @@ public final class TrackerEngine {
     /// attempt -- inside the same `chromeBackoffs` gate that
     /// spaces out attempts -- rather than on every tick.
     /// `AEDeterminePermissionToAutomateTarget` is a slow IPC round-trip to
-    /// tccd; the `.none` tab-state arm and `chromeCaptureDegraded` used to
-    /// call it fresh every second, forever, for anyone who declined the
-    /// permission (`.none` is the permanent steady state in that case). Both
-    /// now only ever read this cached value.
+    /// tccd; `chromeCaptureDegraded` used to call it fresh every second,
+    /// forever, for anyone who declined the permission (`.none` is the
+    /// permanent steady state in that case). It now only ever reads this
+    /// cached value.
     private var cachedChromeAutomationAuthorized = false
 
     /// Test seams: when set, replace the real AX / ScriptingBridge samplers.
@@ -275,19 +293,25 @@ public final class TrackerEngine {
     /// read (`SystemMonitor.isScreenLocked`) in tests.
     var screenLockedProvider: (() -> Bool)?
 
-    /// C4 focus session seam: consulted once per tick, after the sample
-    /// guard and Chrome tab-URL enrichment, right before the sample is
-    /// handed to `builder.ingest`. Returning `true` skips this tick's sample
-    /// entirely (the focus block page's own synthetic Chrome tab -- see
+    /// C4 focus session seam: consulted once per sampled tick, after Chrome
+    /// tab-URL enrichment and before the private-window, left-out and idle
+    /// checks that skip recording -- none of those may be a way around a
+    /// focus session. Returning `true` skips this tick's sample entirely
+    /// (the focus block page's own synthetic Chrome tab -- see
     /// `FocusSessionController.intercept`'s decision 2); every other
     /// intercept outcome (app hidden, site redirected) returns `false` and
     /// the sample is recorded normally. Deliberately placed AFTER Chrome
     /// enrichment rather than immediately after the sample guard: Chrome
     /// site-category blocking needs `sample.url`, which `WindowSampler`
     /// always leaves `nil` -- only the Chrome branch above ever populates it
-    /// from `chromeTabState`. Placed here it still never touches the
-    /// calendar idle-exemption logic above the sample guard.
+    /// from `chromeTabState`. A private window's sample carries its
+    /// `blockURL` here and nowhere else. Placed here it still never touches
+    /// the calendar idle-exemption logic above the sample guard. Paused
+    /// recording reads no window at all, so it is not consulted then.
     var focusInterceptor: ((Sample, Date) -> Bool)?
+    /// Whether focus blocking wants to see sites in `browser` right now; only
+    /// then is a private window's address read (see `ChromeTabState`).
+    var focusNeedsPrivateTab: ((String) -> Bool)?
 
     /// True when 5+ consecutive Chrome tab fetch failures coincide with
     /// Chrome Automation not being authorized; cleared by the next success.
@@ -475,28 +499,45 @@ public final class TrackerEngine {
         ) else { return }
         guard suspensionEpoch == epochBeforeSample else { return }
 
+        // What is known about the browser window in front: nil for any
+        // other app.
+        var frontTab: ChromeTabState?
+        let axTitle = sample.windowTitle
         if Self.browserBundleIDs.contains(sample.appBundleID) {
             let browser = sample.appBundleID
             if chromeTabBundleID != browser {
                 chromeTabBundleID = browser
                 chromeTabState = .none
+                chromeTabWindowID = nil
                 throttle = ChromeThrottle()
                 cachedChromeAutomationAuthorized = false
             }
             if settings.get("chromeTrackingEnabled") == "false" {
+                // Turned off in Settings: browsers record app time only.
                 chromeTabState = .none
                 cachedChromeAutomationAuthorized = false
-            } else if shouldFetchChromeTab(browser: browser, title: sample.windowTitle, at: now) {
-                // Refresh the cached authorization answer once per attempt,
-                // regardless of whether the fetch itself succeeds -- this is
-                // the only place that ever calls the real TCC check.
-                cachedChromeAutomationAuthorized = chromeAutomationAuthorized(browser: browser)
-                let epochBeforeChrome = suspensionEpoch
-                let fetched = await offActorChromeTab(provider: chromeTabProvider, browser: browser)
-                guard suspensionEpoch == epochBeforeChrome else { return }
-                noteChromeFetch(fetched, browser: browser, title: sample.windowTitle, at: now)
+                sample.url = nil
+                sample.windowTitle = nil
+                frontTab = ChromeTabState.none
+            } else {
+                if shouldFetchChromeTab(browser: browser, title: sample.windowTitle, window: sample.windowID, at: now) {
+                    // Refresh the cached authorization answer once per attempt,
+                    // regardless of whether the fetch itself succeeds -- this is
+                    // the only place that ever calls the real TCC check.
+                    cachedChromeAutomationAuthorized = chromeAutomationAuthorized(browser: browser)
+                    let readPrivateURL = focusNeedsPrivateTab?(browser) == true
+                    let epochBeforeChrome = suspensionEpoch
+                    let fetched = await offActorChromeTab(
+                        provider: chromeTabProvider, browser: browser, readPrivateURL: readPrivateURL
+                    )
+                    guard suspensionEpoch == epochBeforeChrome else { return }
+                    noteChromeFetch(fetched, browser: browser, title: sample.windowTitle,
+                                    window: sample.windowID, readPrivateURL: readPrivateURL, at: now)
+                }
+                let state = tabState(forWindow: sample.windowID)
+                applyChromeTabState(state, to: &sample)
+                frontTab = state
             }
-            applyChromeTabState(to: &sample)
         } else if Self.chatBundleIDs.contains(sample.appBundleID) {
             // Refetch when the cached answer belongs to a different app, or
             // when it has simply aged out; otherwise reuse it, exactly as
@@ -512,31 +553,44 @@ public final class TrackerEngine {
             sample.document = chatSession?.title
         }
 
-        let privateChrome: Bool
-        if case .incognito = chromeTabState { privateChrome = Self.browserBundleIDs.contains(sample.appBundleID) }
-        else { privateChrome = false }
-        if privateChrome || settings.excludes(sample) {
+        // Focus blocking sees every sampled tick, recorded or not: a private
+        // window, an app or site left out of the record, or a stretch away
+        // from the keyboard must not be a way around it. Its sample is the
+        // recorded one, plus what blocking alone may see: a private tab's
+        // address, and the block page's own marker title.
+        var focusSample = sample
+        var isPrivate = false
+        if case .incognito(let blockURL)? = frontTab {
+            isPrivate = true
+            focusSample.url = blockURL
+        }
+        if axTitle == FocusBlockPage.pageMarkerTitle { focusSample.windowTitle = axTitle }
+        let intercepted = focusInterceptor?(focusSample, now) == true
+
+        if isPrivate || settings.excludes(sample) {
             if let closed = builder.close(at: now) { persist(closed) }
             latestSample = nil
             interruptCollector()
             return
         }
         if phase == .idle {
-            offerToCollector(sample, now: now, spanID: nil)
+            offerToCollector(sample, frontTab: frontTab, now: now, spanID: nil)
             return
         }
-        finishTick(sample, now: now)
-        offerToCollector(sample, now: now, spanID: currentRowID)
+        finishTick(sample, intercepted: intercepted, now: now)
+        offerToCollector(sample, frontTab: frontTab, now: now, spanID: currentRowID)
     }
 
     /// Fire-and-forget: the collector paces and dedupes itself, and a tick
     /// must never wait on a screenshot or OCR.
-    private func offerToCollector(_ sample: Sample, now: Date, spanID: Int64?) {
+    private func offerToCollector(_ sample: Sample, frontTab: ChromeTabState?, now: Date, spanID: Int64?) {
         guard let screenCollector, !settings.excludes(sample) else { return }
         if Self.browserBundleIDs.contains(sample.appBundleID) {
-            // A tab without a URL is also how a browser that can't say
-            // whether the window is private comes back: no screenshot then.
-            guard case .tab(let url, _) = chromeTabState, url != nil else { return }
+            // Only a page read from this very window: a tab without a URL is
+            // also how a browser that can't say whether the window is
+            // private comes back, and a window nothing was read from may be
+            // private. No screenshot then.
+            guard case .tab(let url, _)? = frontTab, url != nil else { return }
         }
         let idleSeconds = idleSeconds
         Task { await screenCollector.tick(now: now, sample: sample, spanID: spanID, idleSeconds: idleSeconds) }
@@ -578,9 +632,9 @@ public final class TrackerEngine {
     /// one cooperative-pool thread by `tickInFlight`. See
     /// `offActorWindowSample`.
     nonisolated private func offActorChromeTab(
-        provider: (@Sendable () -> ChromeSampler.TabInfo?)?, browser: String
+        provider: (@Sendable () -> ChromeSampler.TabInfo?)?, browser: String, readPrivateURL: Bool
     ) async -> ChromeSampler.TabInfo? {
-        provider.map { $0() } ?? chromeSampler.activeTab(bundleID: browser)
+        provider.map { $0() } ?? chromeSampler.activeTab(bundleID: browser, readPrivateURL: readPrivateURL)
     }
 
     enum TickPhase { case suspended, idle, active }
@@ -628,23 +682,31 @@ public final class TrackerEngine {
         }
     }
 
-    /// Chrome tab-fetch gate: the 5s/title-change throttle AND the failure
-    /// backoff must both allow it. Pure read -- neither call mutates.
-    private func shouldFetchChromeTab(browser: String, title: String?, at now: Date) -> Bool {
-        throttle.shouldFetch(title: title, at: now) && chromeBackoffs[browser, default: ChromeFetchBackoff()].shouldAttempt(at: now)
+    /// Chrome tab-fetch gate: the 5s/window-or-title-change throttle AND the
+    /// failure backoff must both allow it. Pure read -- neither call mutates.
+    private func shouldFetchChromeTab(browser: String, title: String?, window: UInt32?, at now: Date) -> Bool {
+        throttle.shouldFetch(title: title, window: window, at: now)
+            && chromeBackoffs[browser, default: ChromeFetchBackoff()].shouldAttempt(at: now)
     }
 
     /// Folds one browser tab fetch result into `throttle`, `chromeBackoffs`,
-    /// `chromeTabState` and `chromeCaptureDegraded`. `title` is the AX window
-    /// title of the sample that triggered the fetch (what the throttle keys
-    /// on).
-    private func noteChromeFetch(_ fetched: ChromeSampler.TabInfo?, browser: String, title: String?, at now: Date) {
+    /// `chromeTabState`, `browserWindowPrivacy` and `chromeCaptureDegraded`.
+    /// `title` and `window` are the AX window title and CGWindowID of the
+    /// sample that triggered the fetch (what the throttle keys on, and the
+    /// window the answer is filed under).
+    private func noteChromeFetch(_ fetched: ChromeSampler.TabInfo?, browser: String, title: String?,
+                                 window: UInt32?, readPrivateURL: Bool, at now: Date) {
         if let tab = fetched {
-            throttle.noteFetched(title: title, at: now)
+            throttle.noteFetched(title: title, window: window, at: now)
             chromeBackoffs[browser, default: ChromeFetchBackoff()].noteSuccess()
+            chromeTabWindowID = window
             chromeTabState = tab.isIncognito
-                ? .incognito
+                ? .incognito(blockURL: readPrivateURL ? tab.url : nil)
                 : .tab(url: tab.url, title: tab.title)
+            if let window, tab.isIncognito || tab.privacyKnown, browserWindowPrivacy[window] != true {
+                if browserWindowPrivacy.count >= Self.browserWindowPrivacyLimit { browserWindowPrivacy.removeAll() }
+                browserWindowPrivacy[window] = tab.isIncognito
+            }
         } else {
             chromeBackoffs[browser, default: ChromeFetchBackoff()].noteFailure(at: now)
             // A failed re-fetch must not un-suppress a window we
@@ -665,9 +727,30 @@ public final class TrackerEngine {
         }
     }
 
-    /// Overlays the cached Chrome tab state onto a Chrome sample. Runs on
-    /// every Chrome tick, whether or not this tick fetched.
-    private func applyChromeTabState(to sample: inout Sample) {
+    /// What is known about browser window `windowID`: the last read of it,
+    /// or, when that read failed or was of another window, only whether an
+    /// earlier read found it private.
+    private func tabState(forWindow windowID: UInt32?) -> ChromeTabState {
+        if windowID == chromeTabWindowID {
+            switch chromeTabState {
+            case .tab, .incognito: return chromeTabState
+            case .none: break
+            }
+        }
+        return isKnownPrivate(windowID) ? .incognito(blockURL: nil) : .none
+    }
+
+    private func isKnownPrivate(_ windowID: UInt32?) -> Bool {
+        windowID.flatMap { browserWindowPrivacy[$0] } == true
+    }
+
+    private func isKnownNotPrivate(_ windowID: UInt32?) -> Bool {
+        windowID.flatMap { browserWindowPrivacy[$0] } == false
+    }
+
+    /// Overlays the front window's tab state onto a browser sample. Runs on
+    /// every browser tick, whether or not this tick fetched.
+    private func applyChromeTabState(_ state: ChromeTabState, to sample: inout Sample) {
         // R-T12a: the AX title read fresh THIS tick, captured before
         // anything below can overwrite `sample.windowTitle` with a
         // ScriptingBridge title that can be stale (the throttle only
@@ -677,7 +760,7 @@ public final class TrackerEngine {
         // replaced by a stale SB title -- decision 2's block-page
         // detection would otherwise lose its title signal.
         let axTitle = sample.windowTitle
-        switch chromeTabState {
+        switch state {
         case .tab(let url, let title):
             sample.url = url
             // R-T12a: keep the fresh AX title instead of the (possibly
@@ -690,22 +773,22 @@ public final class TrackerEngine {
             sample.url = nil
             sample.windowTitle = nil
         case .none:
-            // No confirmed tab state. Automation still authorized: keep
-            // the AX window title (classification degrades to app-level,
-            // but nothing private leaks -- Chrome's AX title for a
-            // non-incognito window is just the page title). Automation
-            // NOT authorized: we cannot tell whether this window is
-            // incognito, so suppress both, matching pre-change behavior.
-            if !cachedChromeAutomationAuthorized {
-                sample.url = nil
-                sample.windowTitle = nil
-            }
+            // Nothing read from this window this time: the read failed, was
+            // backed off, or was of another window. One an earlier read
+            // found not private keeps its AX window title (classification
+            // degrades to app-level, but nothing private leaks -- the AX
+            // title of a normal window is just the page title). Any other
+            // window may be private, so it keeps neither, as the privacy
+            // note in Settings promises. A slow or failing read is not
+            // evidence that a window is normal.
+            sample.url = nil
+            if !isKnownNotPrivate(sample.windowID) { sample.windowTitle = nil }
         }
     }
 
-    /// Tick phase 3 (main actor, no IPC): focus intercept, span ingest,
-    /// heartbeat.
-    private func finishTick(_ sample: Sample, now: Date) {
+    /// Tick phase 3 (main actor, no IPC): span ingest and heartbeat, given
+    /// the focus intercept's answer for this tick.
+    private func finishTick(_ sample: Sample, intercepted: Bool, now: Date) {
         // Heartbeat runs regardless of whether this tick's sample is
         // intercepted (fold-in fix): the interceptor only ever skips
         // INGESTING the current sample, but the span already open in
@@ -715,7 +798,7 @@ public final class TrackerEngine {
         // early-return here left that open span's row un-checkpointed for
         // the entire dwell (observed: 120 intercepted ticks, 0 heartbeat
         // writes).
-        guard focusInterceptor?(sample, now) != true else {
+        guard !intercepted else {
             heartbeat(now: now)
             return
         }

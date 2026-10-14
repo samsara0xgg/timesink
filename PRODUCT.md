@@ -27,7 +27,7 @@ The user confirmed on 2026-09-23 that the menu bar should prioritize a quick vie
 - `TimeSinkSpace` remains a separate experimental executable. The main app now exposes local screen/OCR review in the Activity inspector; missing or expired captures show an honest empty state.
 - The 2026-09-28 user request selects the supplied Refined artifact for full replication: Today, Activity, Trends, Focus and budgets, Organization, seven settings tabs, onboarding and auxiliary surfaces. Earlier unselected concepts remain non-authoritative.
 - Global tracking pause now closes the active segment, blocks application/title/URL sampling and screen collection, and preserves a real gap. The preference is persistent; exact restart deadline scheduling still needs B11 in the backend checklist.
-- Chrome website sampling has a persistent Privacy control, separate from automation permission. Confirmed incognito windows are excluded; unknown privacy state suppresses titles, URLs and screenshots while app-level duration remains (B08).
+- Chrome website sampling has a persistent Privacy control, separate from automation permission. Confirmed incognito windows are excluded; unknown privacy state suppresses titles, URLs and screenshots while app-level duration remains (B08). Privacy is decided per window: a failed or skipped read is unknown, not normal. While a focus session blocks sites, a private Chrome tab's address is read only to redirect it and is never recorded.
 - AI website suggestions require explicit acceptance. Native-app suggestions, unified cross-type ordering, device counts and browser restoration gaps are tracked in `docs/refined-backend-checklist.md`.
 
 ## Brand Commitments

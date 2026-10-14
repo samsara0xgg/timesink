@@ -20,9 +20,14 @@ extension SBApplication: ChromeApplication {}
 /// and never shares an `SBObject` across threads.
 public final class ChromeSampler: Sendable {
     public struct TabInfo: Equatable, Sendable {
+        /// For a private window, set only when asked for with
+        /// `readPrivateURL`, and then for focus blocking alone.
         public var url: String?
         public var title: String?
         public var isIncognito: Bool
+        /// False when the browser answered neither `mode` nor `incognito`:
+        /// the window may be private, so nothing it shows is kept.
+        public var privacyKnown = true
     }
     /// Hoisted out of `activeTab()` (see the rationale there) only so a test
     /// can pin the value: shortening it makes slow replies count as failures
@@ -44,7 +49,10 @@ public final class ChromeSampler: Sendable {
 
     public init() {}
 
-    public func activeTab(bundleID: String = "com.google.Chrome") -> TabInfo? {
+    /// `readPrivateURL` asks for a private window's address too, which only
+    /// focus blocking does (it has to see a site to turn it away); the
+    /// caller never records it.
+    public func activeTab(bundleID: String = "com.google.Chrome", readPrivateURL: Bool = false) -> TabInfo? {
         // Bind + configure before any Apple Event is sent: `isRunning` just
         // reads the process list (no AE), but `windows()` below is itself a
         // synchronous AE round-trip -- the riskiest send, made fresh on every
@@ -61,12 +69,12 @@ public final class ChromeSampler: Sendable {
         let chrome = sb as ChromeApplication
         guard let windows = chrome.windows?(), let front = windows.first else { return nil }
         if front.mode == "incognito" || front.incognito == true {
-            return TabInfo(url: nil, title: nil, isIncognito: true)
+            return TabInfo(url: readPrivateURL ? front.activeTab?.URL : nil, title: nil, isIncognito: true)
         }
         // A browser that answers neither question can't confirm the window
         // isn't private: keep its time, drop the page.
         guard front.mode != nil || front.incognito != nil else {
-            return TabInfo(url: nil, title: nil, isIncognito: false)
+            return TabInfo(url: nil, title: nil, isIncognito: false, privacyKnown: false)
         }
         let tab = front.activeTab
         return TabInfo(url: tab?.URL, title: tab?.title, isIncognito: false)

@@ -150,7 +150,7 @@ final class ChromeFetchBackoffTests: XCTestCase {
 /// capture a `@MainActor` XCTestCase `self`.
 private func chromeSample(at date: Date) -> Sample {
     Sample(timestamp: date, appBundleID: "com.google.Chrome",
-           appName: "Google Chrome", windowTitle: "AX Title", url: nil)
+           appName: "Google Chrome", windowTitle: "AX Title", url: nil, windowID: 1)
 }
 
 @MainActor
@@ -170,10 +170,9 @@ final class TrackerEngineChromeCacheTests: XCTestCase {
     func testFetchFailureFallsBackToAXTitleInsteadOfStaleURL() async throws {
         let (engine, _) = try makeEngine()
         engine.windowSampleProvider = { chromeSample(at: $0) }
-        // Automation is authorized in this scenario -- the AX-title fallback
-        // is only safe to observe when we can confirm the window isn't
-        // incognito, and being authorized is what lets a successful fetch
-        // confirm that.
+        // The AX-title fallback is only safe for a window a successful
+        // fetch has confirmed isn't incognito -- the first tick below is
+        // that fetch, for window 1.
         engine.chromeAutomationAuthorizedProvider = { true }
 
         // 先成功一次：缓存 github.com
@@ -294,7 +293,7 @@ final class TrackerEngineChromeCacheTests: XCTestCase {
 
 private func arcSample(at date: Date) -> Sample {
     Sample(timestamp: date, appBundleID: "company.thebrowser.Browser",
-           appName: "Arc", windowTitle: "Arc AX Title", url: nil)
+           appName: "Arc", windowTitle: "Arc AX Title", url: nil, windowID: 2)
 }
 
 /// Arc, Edge, Brave and the other Chromium browsers go through the same
@@ -329,7 +328,8 @@ final class TrackerEngineBrowserTests: XCTestCase {
     }
 
     /// Chrome's page is cached between fetches; switching to Arc must fetch
-    /// Arc afresh, and a failed Arc fetch must not wear Chrome's URL.
+    /// Arc afresh, and a failed Arc fetch must not wear Chrome's URL -- nor
+    /// keep Arc's own title, since nothing has said that window isn't private.
     func testSwitchingBrowsersDropsTheOtherBrowsersTab() async throws {
         let engine = try makeEngine()
         engine.windowSampleProvider = { chromeSample(at: $0) }
@@ -345,7 +345,7 @@ final class TrackerEngineBrowserTests: XCTestCase {
         await engine.tickAsync(now: ts(1))
         XCTAssertEqual(engine.latestSample?.appBundleID, "company.thebrowser.Browser")
         XCTAssertNil(engine.latestSample?.url)
-        XCTAssertEqual(engine.latestSample?.windowTitle, "Arc AX Title")
+        XCTAssertNil(engine.latestSample?.windowTitle)
     }
 
     /// A private Chrome window must not keep Arc from being recorded after
@@ -366,14 +366,23 @@ final class TrackerEngineBrowserTests: XCTestCase {
     }
 
     /// A browser that can't say whether the window is private comes back
-    /// as a tab with neither URL nor title: keep the time, drop the page.
+    /// as a tab with neither URL nor title: keep the time, drop the page --
+    /// and that answer must not count as "not private" when a later read of
+    /// the same window fails.
     func testUnknownPrivacyKeepsTimeButNotTitle() async throws {
         let engine = try makeEngine()
         engine.windowSampleProvider = { arcSample(at: $0) }
-        engine.chromeTabProvider = { ChromeSampler.TabInfo(url: nil, title: nil, isIncognito: false) }
+        engine.chromeTabProvider = {
+            ChromeSampler.TabInfo(url: nil, title: nil, isIncognito: false, privacyKnown: false)
+        }
         await engine.tickAsync(now: ts(0))
         XCTAssertEqual(engine.latestSample?.appBundleID, "company.thebrowser.Browser")
         XCTAssertNil(engine.latestSample?.url)
+        XCTAssertNil(engine.latestSample?.windowTitle)
+
+        engine.chromeTabProvider = { nil }
+        await engine.tickAsync(now: ts(6))
+        XCTAssertEqual(engine.latestSample?.appBundleID, "company.thebrowser.Browser")
         XCTAssertNil(engine.latestSample?.windowTitle)
     }
 
