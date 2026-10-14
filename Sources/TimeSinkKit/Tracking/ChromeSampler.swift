@@ -3,7 +3,10 @@ import ScriptingBridge
 @objc fileprivate protocol ChromeTab { @objc optional var URL: String { get }; @objc optional var title: String { get } }
 @objc fileprivate protocol ChromeWindow {
     @objc optional var activeTab: ChromeTab { get }
+    /// Chrome, Edge, Brave and Vivaldi: "normal" or "incognito".
     @objc optional var mode: String { get }
+    /// Arc says the same thing as a boolean.
+    @objc optional var incognito: Bool { get }
 }
 @objc fileprivate protocol ChromeApplication { @objc optional func windows() -> [ChromeWindow] }
 extension SBObject: ChromeTab, ChromeWindow {}
@@ -26,14 +29,27 @@ public final class ChromeSampler: Sendable {
     /// and feed `chromeBackoff`, so it must not drift unnoticed.
     static let timeoutTicks = 15
 
+    /// Chromium browsers that publish Chrome's scripting dictionary (`windows`,
+    /// `active tab`, `URL`, `title`) and say whether a window is private.
+    /// Safari is left out on purpose: its dictionary cannot tell a private
+    /// window apart, so recording its URLs would record private browsing.
+    public static let bundleIDs: Set<String> = [
+        "com.google.Chrome", "com.google.Chrome.beta", "com.google.Chrome.dev", "com.google.Chrome.canary",
+        "company.thebrowser.Browser", // Arc
+        "com.microsoft.edgemac", "com.microsoft.edgemac.Beta", "com.microsoft.edgemac.Dev",
+        "com.brave.Browser", "com.brave.Browser.beta",
+        "com.vivaldi.Vivaldi",
+        "org.chromium.Chromium",
+    ]
+
     public init() {}
 
-    public func activeTab() -> TabInfo? {
+    public func activeTab(bundleID: String = "com.google.Chrome") -> TabInfo? {
         // Bind + configure before any Apple Event is sent: `isRunning` just
         // reads the process list (no AE), but `windows()` below is itself a
         // synchronous AE round-trip -- the riskiest send, made fresh on every
         // tick -- so the timeout must be set before it, not after the guard.
-        guard let sb = SBApplication(bundleIdentifier: "com.google.Chrome"),
+        guard let sb = SBApplication(bundleIdentifier: bundleID),
               sb.isRunning else { return nil }
         // SBApplication.timeout is in ticks (1/60s). Default Apple Event reply
         // timeout is about a minute; a hung Chrome would freeze the app that long.
@@ -44,8 +60,13 @@ public final class ChromeSampler: Sendable {
         sb.timeout = Self.timeoutTicks
         let chrome = sb as ChromeApplication
         guard let windows = chrome.windows?(), let front = windows.first else { return nil }
-        if front.mode == "incognito" {
+        if front.mode == "incognito" || front.incognito == true {
             return TabInfo(url: nil, title: nil, isIncognito: true)
+        }
+        // A browser that answers neither question can't confirm the window
+        // isn't private: keep its time, drop the page.
+        guard front.mode != nil || front.incognito != nil else {
+            return TabInfo(url: nil, title: nil, isIncognito: false)
         }
         let tab = front.activeTab
         return TabInfo(url: tab?.URL, title: tab?.title, isIncognito: false)

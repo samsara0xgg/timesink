@@ -292,6 +292,103 @@ final class TrackerEngineChromeCacheTests: XCTestCase {
     }
 }
 
+private func arcSample(at date: Date) -> Sample {
+    Sample(timestamp: date, appBundleID: "company.thebrowser.Browser",
+           appName: "Arc", windowTitle: "Arc AX Title", url: nil)
+}
+
+/// Arc, Edge, Brave and the other Chromium browsers go through the same
+/// tab path as Chrome; what one browser reported must never land on another.
+@MainActor
+final class TrackerEngineBrowserTests: XCTestCase {
+    private func makeEngine() throws -> TrackerEngine {
+        let db = try AppDatabase.openInMemory()
+        let engine = TrackerEngine(spanStore: SpanStore(db), settings: SettingsStore(db))
+        engine.idleSecondsProvider = { 0 }
+        engine.chromeAutomationAuthorizedProvider = { true }
+        return engine
+    }
+
+    func testChromiumBrowsersAreRead() {
+        for id in ["company.thebrowser.Browser", "com.microsoft.edgemac", "com.brave.Browser", "com.vivaldi.Vivaldi"] {
+            XCTAssertTrue(TrackerEngine.browserBundleIDs.contains(id), id)
+        }
+        // Safari can't say whether a window is private.
+        XCTAssertFalse(TrackerEngine.browserBundleIDs.contains("com.apple.Safari"))
+    }
+
+    func testArcTabURLIsRecorded() async throws {
+        let engine = try makeEngine()
+        engine.windowSampleProvider = { arcSample(at: $0) }
+        engine.chromeTabProvider = {
+            ChromeSampler.TabInfo(url: "https://linear.app/t/1", title: "Issue 1", isIncognito: false)
+        }
+        await engine.tickAsync(now: ts(0))
+        XCTAssertEqual(engine.latestSample?.url, "https://linear.app/t/1")
+        XCTAssertEqual(engine.latestSample?.windowTitle, "Issue 1")
+    }
+
+    /// Chrome's page is cached between fetches; switching to Arc must fetch
+    /// Arc afresh, and a failed Arc fetch must not wear Chrome's URL.
+    func testSwitchingBrowsersDropsTheOtherBrowsersTab() async throws {
+        let engine = try makeEngine()
+        engine.windowSampleProvider = { chromeSample(at: $0) }
+        engine.chromeTabProvider = {
+            ChromeSampler.TabInfo(url: "https://github.com/a/b", title: "PR #1", isIncognito: false)
+        }
+        await engine.tickAsync(now: ts(0))
+        XCTAssertEqual(engine.latestSample?.url, "https://github.com/a/b")
+
+        // One second later: inside Chrome's 5 s throttle, but a new browser.
+        engine.windowSampleProvider = { arcSample(at: $0) }
+        engine.chromeTabProvider = { nil }
+        await engine.tickAsync(now: ts(1))
+        XCTAssertEqual(engine.latestSample?.appBundleID, "company.thebrowser.Browser")
+        XCTAssertNil(engine.latestSample?.url)
+        XCTAssertEqual(engine.latestSample?.windowTitle, "Arc AX Title")
+    }
+
+    /// A private Chrome window must not keep Arc from being recorded after
+    /// the switch, and Arc's own page must be read rather than suppressed.
+    func testChromeIncognitoDoesNotCarryIntoArc() async throws {
+        let engine = try makeEngine()
+        engine.windowSampleProvider = { chromeSample(at: $0) }
+        engine.chromeTabProvider = { ChromeSampler.TabInfo(url: nil, title: nil, isIncognito: true) }
+        await engine.tickAsync(now: ts(0))
+        XCTAssertNil(engine.latestSample?.windowTitle)
+
+        engine.windowSampleProvider = { arcSample(at: $0) }
+        engine.chromeTabProvider = {
+            ChromeSampler.TabInfo(url: "https://linear.app/t/1", title: "Issue 1", isIncognito: false)
+        }
+        await engine.tickAsync(now: ts(1))
+        XCTAssertEqual(engine.latestSample?.url, "https://linear.app/t/1")
+    }
+
+    /// A browser that can't say whether the window is private comes back
+    /// as a tab with neither URL nor title: keep the time, drop the page.
+    func testUnknownPrivacyKeepsTimeButNotTitle() async throws {
+        let engine = try makeEngine()
+        engine.windowSampleProvider = { arcSample(at: $0) }
+        engine.chromeTabProvider = { ChromeSampler.TabInfo(url: nil, title: nil, isIncognito: false) }
+        await engine.tickAsync(now: ts(0))
+        XCTAssertEqual(engine.latestSample?.appBundleID, "company.thebrowser.Browser")
+        XCTAssertNil(engine.latestSample?.url)
+        XCTAssertNil(engine.latestSample?.windowTitle)
+    }
+
+    /// Arc failing (say, Automation never granted) must not raise the
+    /// Chrome-specific permission warning.
+    func testOtherBrowserFailuresLeaveChromeWarningAlone() async throws {
+        let engine = try makeEngine()
+        engine.chromeAutomationAuthorizedProvider = { false }
+        engine.windowSampleProvider = { arcSample(at: $0) }
+        engine.chromeTabProvider = { nil }
+        for i in 0..<40 { await engine.tickAsync(now: ts(Double(i) * 2)) }
+        XCTAssertFalse(engine.chromeCaptureDegraded)
+    }
+}
+
 /// C3 idle-exemption seam: meetings suppress `becameIdle` so a real-world
 /// idle stretch (hands off keyboard during a video call) never suspends
 /// tracking mid-meeting. Both tests below keep the sampled timestamp and

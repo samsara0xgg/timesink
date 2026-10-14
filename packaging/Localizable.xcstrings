@@ -2975,12 +2975,12 @@
         }
       }
     },
-    "已关闭；Chrome 只记录应用时长。": {
+    "已关闭；浏览器只记录应用时长。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Off; Chrome records app time only."
+            "value": "Off; browsers record app time only."
           }
         }
       }
@@ -3941,22 +3941,22 @@
         }
       }
     },
-    "按网站分类需 Chrome 自动化权限。": {
+    "按网站分类需要浏览器的自动化权限；第一次用 Arc、Edge 等浏览器时系统会询问。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Website categories require Chrome Automation permission."
+            "value": "Website categories need each browser's Automation permission; macOS asks the first time you use Arc, Edge and other browsers."
           }
         }
       }
     },
-    "按网站记录 Chrome": {
+    "按网站记录浏览器": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Record Chrome websites"
+            "value": "Record browser websites"
           }
         }
       }

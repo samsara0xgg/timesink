@@ -65,7 +65,7 @@ public enum JevRules {
         let domain = domain ?? "", url = url ?? "", title = title ?? "", document = document ?? ""
         if withJob, let hit = job(appBundleID: appBundleID, domain: domain, url: url, title: title, document: document) { return hit }
         let trimmed = title.trimmingCharacters(in: .whitespaces)
-        if appBundleID == "com.google.Chrome", blankTabTitles.contains(trimmed), domain.isEmpty {
+        if ChromeSampler.bundleIDs.contains(appBundleID), blankTabTitles.contains(trimmed), domain.isEmpty {
             return Hit(categoryID: "utilities", reason: .blankTab)
         }
         if tools.contains(appBundleID) { return Hit(categoryID: "utilities", reason: .tool) }
