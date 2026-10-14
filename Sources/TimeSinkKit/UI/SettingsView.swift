@@ -316,7 +316,7 @@ struct PermissionsSection: View {
         } header: {
             Text("权限")
         } footer: {
-            Text("回到 TimeSink 时自动重新检查。其他浏览器目前只按应用记录。")
+            Text("回到 TimeSink 时自动重新检查。Safari 和 Firefox 目前只按应用记录。")
                 .font(.note).foregroundStyle(Design.ink2)
         }
         .task { await refresh() }

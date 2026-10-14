@@ -2543,12 +2543,12 @@
         }
       }
     },
-    "回到 TimeSink 时自动重新检查。其他浏览器目前只按应用记录。": {
+    "回到 TimeSink 时自动重新检查。Safari 和 Firefox 目前只按应用记录。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Permissions are checked again when you return to TimeSink. Other browsers are currently recorded at app level only."
+            "value": "Permissions are checked again when you return to TimeSink. Safari and Firefox are currently recorded at app level only."
           }
         }
       }
