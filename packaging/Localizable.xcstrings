@@ -73,6 +73,16 @@
         }
       }
     },
+    "%@ · 已判断 %lld 项，%lld 项排队": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %lld judged, %lld queued"
+          }
+        }
+      }
+    },
     "%@ · 无记录": {
       "localizations": {
         "en": {
@@ -809,6 +819,16 @@
         }
       }
     },
+    "API 密钥无效或已被撤销，请检查后重新保存": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The API key is invalid or was revoked; check it and save it again"
+          }
+        }
+      }
+    },
     "Apple 智能在本机起的名，只读了标题和应用名": {
       "localizations": {
         "en": {
@@ -879,6 +899,16 @@
         }
       }
     },
+    "OpenRouter 账户余额不足，充值后会自动继续": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your OpenRouter account is out of credits; Jev resumes once you add some"
+          }
+        }
+      }
+    },
     "TimeSink · 示例数据验收": {
       "localizations": {
         "en": {
@@ -925,6 +955,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "."
+          }
+        }
+      }
+    },
+    "「%@」的颜色": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Color of “%@”"
           }
         }
       }
@@ -1279,6 +1319,16 @@
         }
       }
     },
+    "也删除以前的记录…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete Earlier Records Too…"
+          }
+        }
+      }
+    },
     "事务": {
       "localizations": {
         "en": {
@@ -1429,6 +1479,16 @@
         }
       }
     },
+    "以后不再记录%@，以前的记录还在这台 Mac 上。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ will no longer be recorded. Earlier records are still on this Mac."
+          }
+        }
+      }
+    },
     "以后同类的会话也用这个名字": {
       "localizations": {
         "en": {
@@ -1445,6 +1505,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Break"
+          }
+        }
+      }
+    },
+    "会发送截图识别出的文字（已去掉邮箱、6 位以上数字和 API 密钥、令牌，最多 1200 字），用于判断拿不准的内容。需先开启上面的开关；默认关闭。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sends text recognized from screenshots (emails, numbers of 6+ digits, and API keys and tokens removed, at most 1,200 characters) to judge unsure items. Needs the switch above; off by default."
           }
         }
       }
@@ -1711,6 +1781,26 @@
         }
       }
     },
+    "允许后重新启动才生效": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Takes effect after a relaunch"
+          }
+        }
+      }
+    },
+    "先打开 Chrome，再回来允许": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Chrome first, then come back to allow"
+          }
+        }
+      }
+    },
     "全天 24 小时": {
       "localizations": {
         "en": {
@@ -1833,12 +1923,32 @@
         }
       }
     },
+    "内置规则 · 本机开发页面": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Built-in rule · local development page"
+          }
+        }
+      }
+    },
     "再专注 25 分钟": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Focus for another 25 minutes"
+          }
+        }
+      }
+    },
+    "冷色（推荐）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cool (Recommended)"
           }
         }
       }
@@ -1859,6 +1969,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "m"
+          }
+        }
+      }
+    },
+    "分到这个项目的会话会变回没有项目，Jev 对它的判断也会删除。删除后无法恢复。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sessions in this project go back to having no project, and Jev's judgments for it are deleted. This can't be undone."
           }
         }
       }
@@ -2003,6 +2123,16 @@
         }
       }
     },
+    "删除%@以前的记录？": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete earlier records of %@?"
+          }
+        }
+      }
+    },
     "删除今天保存的截图？": {
       "localizations": {
         "en": {
@@ -2089,6 +2219,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Delete limit"
+          }
+        }
+      }
+    },
+    "删除项目": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete Project"
+          }
+        }
+      }
+    },
+    "删除项目“%@”？": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete the project “%@”?"
           }
         }
       }
@@ -2623,12 +2773,32 @@
         }
       }
     },
+    "在 OpenRouter 创建 API 密钥或充值": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Create an API key or add credits on OpenRouter"
+          }
+        }
+      }
+    },
     "在时间轴上显示日程": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Show calendar events on timeline"
+          }
+        }
+      }
+    },
+    "在访达中显示": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show in Finder"
           }
         }
       }
@@ -2729,6 +2899,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Done"
+          }
+        }
+      }
+    },
+    "密钥有效 · 已用 $%@，密钥没有额度上限": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Key works · $%@ used, no limit on this key"
+          }
+        }
+      }
+    },
+    "密钥有效 · 已用 $%@，额度还剩 $%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Key works · $%@ used, $%@ left of its limit"
+          }
+        }
+      }
+    },
+    "密钥有效，但这个 OpenRouter 账户还没有充值过；Jev 需要账户里有余额": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The key works, but this OpenRouter account has never added credits; Jev needs a balance"
           }
         }
       }
@@ -3003,6 +3203,16 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "已删除 %lld 条以前的记录。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deleted %lld earlier records."
           }
         }
       }
@@ -3391,6 +3601,16 @@
         }
       }
     },
+    "开始,结束,应用,应用标识,标题,网址,域名,分类\r\n": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start,End,App,App Identifier,Title,URL,Domain,Category\r\n"
+          }
+        }
+      }
+    },
     "开始专注": {
       "localizations": {
         "en": {
@@ -3417,6 +3637,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Assign To"
+          }
+        }
+      }
+    },
+    "归入项目": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Assign to Project"
           }
         }
       }
@@ -3531,12 +3761,12 @@
         }
       }
     },
-    "截图到期自动删除；识别文字保留。": {
+    "截图和识别文字到期自动删除。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Screenshots are deleted when they expire; recognized text is kept."
+            "value": "Screenshots and recognized text are deleted when they expire."
           }
         }
       }
@@ -4201,6 +4431,16 @@
         }
       }
     },
+    "无法打开 TimeSink 的数据库": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TimeSink can't open its database"
+          }
+        }
+      }
+    },
     "无法校验是否与内置规则冲突，请重试": {
       "localizations": {
         "en": {
@@ -4671,6 +4911,16 @@
         }
       }
     },
+    "服务暂时连不上，稍后自动重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can't reach the service right now; will retry automatically"
+          }
+        }
+      }
+    },
     "服务没有返回分类。": {
       "localizations": {
         "en": {
@@ -4903,6 +5153,16 @@
         }
       }
     },
+    "柔和": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Soft"
+          }
+        }
+      }
+    },
     "查看": {
       "localizations": {
         "en": {
@@ -4979,6 +5239,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Show This Stretch"
+          }
+        }
+      }
+    },
+    "标准": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Standard"
           }
         }
       }
@@ -5099,6 +5369,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Check recording and permission settings"
+          }
+        }
+      }
+    },
+    "模型名或地址不对（HTTP %lld），请检查高级设置。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The model ID or address is wrong (HTTP %lld). Check Advanced."
+          }
+        }
+      }
+    },
+    "模型名或地址不对，请检查高级设置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The model ID or address is wrong; check Advanced"
+          }
+        }
+      }
+    },
+    "欢迎引导": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Welcome Guide"
           }
         }
       }
@@ -5375,6 +5675,16 @@
         }
       }
     },
+    "求职": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Job Search"
+          }
+        }
+      }
+    },
     "沟通": {
       "localizations": {
         "en": {
@@ -5551,16 +5861,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Marked automatically from a calendar event"
-          }
-        }
-      }
-    },
-    "画面已到期删除，以下为当时识别的文字。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This image has expired and been deleted. Recognized text from that time appears below."
           }
         }
       }
@@ -6055,6 +6355,16 @@
         }
       }
     },
+    "网址、窗口标题和文档名发出前会去掉邮箱、电话和卡号等长数字，以及 API 密钥和令牌。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Emails, long numbers such as phone and card numbers, and API keys and tokens are removed from URLs, window titles and document names before they are sent."
+          }
+        }
+      }
+    },
     "网址包含，或 re: 正则表达式": {
       "localizations": {
         "en": {
@@ -6071,6 +6381,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "URL rule…"
+          }
+        }
+      }
+    },
+    "网址，只到路径为止，不含 ? 和 # 之后的部分（最多 300 字）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "URL up to its path, never what follows ? or # (up to 300 characters)"
           }
         }
       }
@@ -8487,16 +8807,6 @@
         }
       }
     },
-    "内置规则 · 自己的项目": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Built-in rule · your own projects"
-          }
-        }
-      }
-    },
     "刷短视频、刷社交媒体和信息流、看帖子": {
       "localizations": {
         "en": {
@@ -8627,16 +8937,6 @@
         }
       }
     },
-    "求职 Coop": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Job Search"
-          }
-        }
-      }
-    },
     "用 Jev 给每段使用时间判断分类": {
       "localizations": {
         "en": {
@@ -8703,16 +9003,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Development"
-          }
-        }
-      }
-    },
-    "网址（最多 300 字）": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "URL (up to 300 characters)"
           }
         }
       }
@@ -8969,16 +9259,6 @@
         }
       }
     },
-    "内置规则 · 自己部署的项目": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Built-in rule · your own deployed projects"
-          }
-        }
-      }
-    },
     "同时发送屏幕截图里的文字": {
       "localizations": {
         "en": {
@@ -9175,16 +9455,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cost"
-          }
-        }
-      }
-    },
-    "连不上服务，稍后重试 · 已判断 %lld 项，%lld 项排队": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cannot reach the service, will retry · %lld judged, %lld queued"
           }
         }
       }
@@ -9397,16 +9667,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Each stretch of use sends these fields to the service below. The screenshot itself is never sent:"
-          }
-        }
-      }
-    },
-    "会发送截图识别出的文字（已去掉邮箱和 6 位以上数字，最多 1200 字），用于判断拿不准的内容。需先开启上面的开关；默认关闭。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sends text recognized from screenshots (emails and numbers of 6+ digits removed, at most 1,200 characters) to judge unsure items. Needs the switch above; off by default."
           }
         }
       }
@@ -9641,12 +9901,72 @@
         }
       }
     },
+    "没有它就无法记录，TimeSink 将退出。文件可能已损坏，或磁盘空间不足；升级前的备份（如有）在同一个文件夹里。\n\n%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TimeSink can't record without it and will quit. The file may be damaged, or the disk may be full; backups made before updates, if any, are in the same folder.\n\n%@"
+          }
+        }
+      }
+    },
+    "没能删除：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't delete: %@"
+          }
+        }
+      }
+    },
+    "测试密钥": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test Key"
+          }
+        }
+      }
+    },
     "热力图时段 · %@ %@–%@": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Heatmap period · %1$@ %2$@–%3$@"
+          }
+        }
+      }
+    },
+    "确认项目": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirm Projects"
+          }
+        }
+      }
+    },
+    "经典": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Classic"
+          }
+        }
+      }
+    },
+    "编辑项目「%@」": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit Project “%@”"
           }
         }
       }
@@ -10981,62 +11301,22 @@
         }
       }
     },
+    "这段会话的记录已经都归在这一类，没有改动。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Everything in this session is already in this category; nothing changed."
+          }
+        }
+      }
+    },
     "配色": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Colour scheme"
-          }
-        }
-      }
-    },
-    "原版": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Original"
-          }
-        }
-      }
-    },
-    "A 保守": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "A · Conservative"
-          }
-        }
-      }
-    },
-    "B 协调": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "B · Harmonised"
-          }
-        }
-      }
-    },
-    "C 鲜明": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "C · Vivid"
-          }
-        }
-      }
-    },
-    "C 冷调（推荐）": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "C · Cool (Recommended)"
           }
         }
       }
@@ -11097,6 +11377,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Open at login"
+          }
+        }
+      }
+    },
+    "这张画面已删除，以下为当时识别的文字。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This image has been deleted. Below is the text recognized at the time."
           }
         }
       }
@@ -11167,6 +11457,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Yesterday's full record is here"
+          }
+        }
+      }
+    },
+    "这台 Mac 上它们的活动、标题和截图都会删除，不能撤销。已同步到其他 Mac 的不受影响。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Their activity, titles and screenshots on this Mac will be deleted. This can't be undone. Copies already synced to other Macs aren't affected."
+          }
+        }
+      }
+    },
+    "重新启动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Relaunch"
+          }
+        }
+      }
+    },
+    "重新显示引导": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show Welcome Guide Again"
+          }
+        }
+      }
+    },
+    "鲜明": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vivid"
           }
         }
       }
