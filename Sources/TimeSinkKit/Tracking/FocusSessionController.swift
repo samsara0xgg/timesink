@@ -260,6 +260,16 @@ public final class FocusSessionController {
         return true
     }
 
+    /// Whether a site open in `bundleID` right now would be checked against
+    /// the session's blocked categories, the same conditions `intercept`
+    /// redirects under. The engine reads a private window's address only
+    /// then (see `TrackerEngine.focusNeedsPrivateTab`).
+    public func blocksSites(in bundleID: String) -> Bool {
+        guard let running else { return false }
+        return settings.focusSiteBlockEnabled && bundleID == Self.chromeBundleID
+            && !running.blockedCategories.isEmpty
+    }
+
     /// Called once per engine tick (see `TrackerEngine.focusInterceptor`).
     /// Returns `true` only for the block-page's own sample (decision 2) --
     /// every other branch (app hide, site redirect, degraded notice) records

@@ -186,6 +186,9 @@ public struct TimeSinkApp: App {
         engine.focusInterceptor = { [weak focusController] sample, now in
             focusController?.intercept(sample: sample, at: now) ?? false
         }
+        engine.focusNeedsPrivateTab = { [weak focusController] browser in
+            focusController?.blocksSites(in: browser) ?? false
+        }
 
         let needsOnboarding = Bundle.main.bundleIdentifier == "com.alllllenshi.TimeSink"
             && !Permissions.accessibilityGranted(prompt: false)
