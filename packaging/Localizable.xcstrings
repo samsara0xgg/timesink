@@ -899,6 +899,26 @@
         }
       }
     },
+    "TimeSink · 需要注意": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TimeSink · Needs attention"
+          }
+        }
+      }
+    },
+    "TimeSink 打不开数据库": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TimeSink cannot open its database"
+          }
+        }
+      }
+    },
     "TimeSink 拦截页": {
       "localizations": {
         "en": {
@@ -1015,6 +1035,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Last sync failed: %@"
+          }
+        }
+      }
+    },
+    "上次成功写入 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last successful write %@"
           }
         }
       }
@@ -1853,6 +1883,16 @@
         }
       }
     },
+    "写入失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Write failed"
+          }
+        }
+      }
+    },
     "减弱动态效果 · 150ms 淡变": {
       "localizations": {
         "en": {
@@ -2119,6 +2159,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Lunch"
+          }
+        }
+      }
+    },
+    "原因：%@\n\n%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reason: %@\n\n%@"
           }
         }
       }
@@ -2659,6 +2709,66 @@
           "stringUnit": {
             "state": "translated",
             "value": "URL"
+          }
+        }
+      }
+    },
+    "开机启动被关掉了": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Launch at login was turned off"
+          }
+        }
+      }
+    },
+    "打开设置…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Settings…"
+          }
+        }
+      }
+    },
+    "数据库只读": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Database is read-only"
+          }
+        }
+      }
+    },
+    "数据库损坏": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Database is corrupt"
+          }
+        }
+      }
+    },
+    "无法读取数据库文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cannot read the database file"
+          }
+        }
+      }
+    },
+    "未知错误": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unknown error"
           }
         }
       }
@@ -4377,6 +4487,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Time format"
+          }
+        }
+      }
+    },
+    "磁盘满": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disk full"
+          }
+        }
+      }
+    },
+    "磁盘读写出错": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disk read/write error"
+          }
+        }
+      }
+    },
+    "记录没能写入：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Records could not be saved: %@"
           }
         }
       }
