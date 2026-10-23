@@ -96,6 +96,18 @@ public final class WindowSampler: Sendable {
         public let titleRead: Bool?
     }
 
+    /// What an AX read's answer says about the Accessibility channel itself, for `AXReadHealth`:
+    /// an answer (even "no window", "no title") means the channel works; a refusal or a dead
+    /// connection (`.apiDisabled` after a stale grant, `.cannotComplete`) means it is broken.
+    /// Anything else says something about this one app, not about the grant, and is not counted.
+    static func channelWorks(_ error: AXError) -> Bool? {
+        switch error {
+        case .success, .noValue, .attributeUnsupported: true
+        case .apiDisabled, .cannotComplete: false
+        default: nil
+        }
+    }
+
     /// Title, CGWindowID and document of `pid`'s focused window, from one AX read.
     /// The ID comes from `_AXUIElementGetWindow` (private but stable, what
     /// window managers use); when AX has no focused window, the largest
@@ -108,20 +120,20 @@ public final class WindowSampler: Sendable {
         // would stall every 1s tick. 250ms is ample for a healthy app.
         AXUIElementSetMessagingTimeout(appRef, 0.25)
         var window: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(appRef, kAXFocusedWindowAttribute as CFString, &window) == .success,
-              let win = window else {
-            let fallback = Self.largestWindowID(pid: pid)
-            return FocusedWindow(title: nil, id: fallback, document: nil, titleRead: fallback == nil ? nil : false)
+        let windowError = AXUIElementCopyAttributeValue(appRef, kAXFocusedWindowAttribute as CFString, &window)
+        guard windowError == .success, let win = window else {
+            return FocusedWindow(title: nil, id: Self.largestWindowID(pid: pid), document: nil,
+                                 titleRead: Self.channelWorks(windowError))
         }
         let winElement = win as! AXUIElement
         AXUIElementSetMessagingTimeout(winElement, 0.25)
         var title: CFTypeRef?
-        let titleRead = AXUIElementCopyAttributeValue(winElement, kAXTitleAttribute as CFString, &title) == .success
-        let titleString = titleRead ? title as? String : nil
+        let titleError = AXUIElementCopyAttributeValue(winElement, kAXTitleAttribute as CFString, &title)
+        let titleString = titleError == .success ? title as? String : nil
         var id: CGWindowID = 0
         let idValue: UInt32? = _AXUIElementGetWindow(winElement, &id) == .success && id != 0 ? id : nil
         return FocusedWindow(title: titleString, id: idValue ?? Self.largestWindowID(pid: pid),
-                             document: documentAttribute(winElement), titleRead: titleRead)
+                             document: documentAttribute(winElement), titleRead: Self.channelWorks(titleError))
     }
 
     /// `kAXDocument` (a terminal's working directory, an editor's file),

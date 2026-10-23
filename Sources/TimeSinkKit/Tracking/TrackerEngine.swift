@@ -493,7 +493,8 @@ public final class TrackerEngine {
             now: now, provider: windowSampleProvider, app: frontmost
         ) else { return }
         guard suspensionEpoch == epochBeforeSample else { return }
-        if let read = sample.axTitleRead {
+        // Not while idle: nobody is using the window, and its title says nothing about the grant.
+        if phase == .active, let read = sample.axTitleRead {
             axHealth.note(ok: read, at: now)
             axReadDegraded = axHealth.isDegraded(at: now)
         }

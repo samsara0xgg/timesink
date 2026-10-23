@@ -15,6 +15,29 @@ final class AXReadHealthTests: XCTestCase {
         XCTAssertFalse(few.isDegraded(at: ts(AXReadHealth.minSpan * 10)), "long, but too few failures")
     }
 
+    func testOnlyABrokenChannelCountsAsAFailure() {
+        typealias W = WindowSampler
+        XCTAssertEqual(W.channelWorks(.success), true)
+        XCTAssertEqual(W.channelWorks(.noValue), true, "no window or no title is an answer")
+        XCTAssertEqual(W.channelWorks(.attributeUnsupported), true)
+        XCTAssertEqual(W.channelWorks(.apiDisabled), false)
+        XCTAssertEqual(W.channelWorks(.cannotComplete), false)
+        XCTAssertNil(W.channelWorks(.notImplemented), "this app only")
+        XCTAssertNil(W.channelWorks(.invalidUIElement))
+    }
+
+    @MainActor
+    func testIdleTicksDoNotCountTowardTheWarning() async throws {
+        let db = try AppDatabase.openInMemory()
+        let engine = TrackerEngine(spanStore: SpanStore(db), settings: SettingsStore(db))
+        engine.idleSecondsProvider = { 10_000 }
+        engine.windowSampleProvider = { now in
+            Sample(timestamp: now, appBundleID: "app.a", appName: "A", windowTitle: nil, url: nil, windowID: 1, axTitleRead: false)
+        }
+        for t in stride(from: 0.0, through: AXReadHealth.minSpan + 60, by: 6) { await engine.tickAsync(now: ts(t)) }
+        XCTAssertFalse(engine.axReadDegraded)
+    }
+
     func testOneSuccessClears() {
         var h = AXReadHealth()
         for i in 0..<AXReadHealth.minFailures { h.note(ok: false, at: ts(TimeInterval(i * 10))) }
