@@ -287,6 +287,9 @@ public final class TrackerEngine {
     /// user to check a permission that's actually fine.
     public private(set) var chromeCaptureDegraded = false
 
+    /// Counts consecutive failed span/call writes; set once by `TimeSinkApp`.
+    public var writeHealth: WriteHealth?
+
     private var timer: Timer?
 
     /// Reentrancy guard for `tickAsync`. The 1s timer keeps firing while a
@@ -695,7 +698,9 @@ public final class TrackerEngine {
                 let id = try callStore.open(at: now, bundleID: call.bundleID, appName: call.appName).id ?? 0
                 openCall = OpenCall(id: id, bundleID: call.bundleID, wrote: now, lastSeen: now)
             }
+            writeHealth?.succeeded()
         } catch {
+            writeHealth?.failed(error)
             logger.error("call span write failed: \(String(describing: error))")
         }
     }
@@ -703,7 +708,8 @@ public final class TrackerEngine {
     private func closeCall(at date: Date) {
         guard let open = openCall else { return }
         openCall = nil
-        do { try callStore?.extend(id: open.id, end: date) } catch {
+        do { try callStore?.extend(id: open.id, end: date); writeHealth?.succeeded() } catch {
+            writeHealth?.failed(error)
             logger.error("call span close failed: \(String(describing: error))")
         }
     }
@@ -909,8 +915,10 @@ public final class TrackerEngine {
                 try spanStore.updateEnd(id: rowID, end: span.end, keySeconds: span.keySeconds)
                 lastHeartbeat = now
                 lastWriteStart = span.start
+                writeHealth?.succeeded()
                 onChange?()
             } catch {
+                writeHealth?.failed(error)
                 logger.error("updateEnd failed: \(String(describing: error))")
             }
         } else if span.duration >= Self.minWriteDuration {
@@ -919,8 +927,10 @@ public final class TrackerEngine {
                 currentRowID = inserted.id
                 lastHeartbeat = now
                 lastWriteStart = span.start
+                writeHealth?.succeeded()
                 onChange?()
             } catch {
+                writeHealth?.failed(error)
                 logger.error("insert failed: \(String(describing: error))")
             }
         }

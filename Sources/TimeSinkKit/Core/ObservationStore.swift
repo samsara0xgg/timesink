@@ -5,13 +5,26 @@ import GRDB
 public final class ObservationStore: Sendable {
     let writer: any DatabaseWriter
 
-    public init(_ writer: any DatabaseWriter) {
+    let health: WriteHealth?
+
+    public init(_ writer: any DatabaseWriter, health: WriteHealth? = nil) {
         self.writer = writer
+        self.health = health
     }
 
     public func logState(_ kind: String, at: Date = Date()) {
         var event = StateEvent(at: at, kind: kind)
-        _ = try? writer.write { db in try event.insert(db) }
+        write { db in try event.insert(db) }
+    }
+
+    /// A write whose failure the caller cannot act on: counted in `health`, never thrown.
+    private func write(_ body: (Database) throws -> Void) {
+        do {
+            try writer.write(body)
+            health?.succeeded()
+        } catch {
+            health?.failed(error)
+        }
     }
 
     @discardableResult
@@ -69,7 +82,7 @@ public final class ObservationStore: Sendable {
     /// silence, never by dropping ticks.
     public func record(_ health: CaptureHealth) {
         var row = health
-        _ = try? writer.write { db in try row.insert(db) }
+        write { db in try row.insert(db) }
     }
 
     public func health(overlapping interval: DateInterval) throws -> [CaptureHealth] {
