@@ -373,15 +373,19 @@ public final class TrackerEngine {
         var missingSince: Date?
     }
     private var openCall: OpenCall?
-    /// A call survives this long without a presence read showing it: one miss
-    /// (reads come every `refreshInterval`) is a hiccup, the next one confirms.
-    static let callMissGrace = PresenceMonitor.refreshInterval
+    /// A call survives this long without a presence read showing it. Ticks come every second and
+    /// the presence is cached for `refreshInterval`, so the first miss can land anywhere in a
+    /// refresh cycle; one and a half cycles always spans a second read: one miss is a hiccup,
+    /// the next one confirms.
+    static let callMissGrace = PresenceMonitor.refreshInterval * 1.5
     /// A call of the same app starting within this long of its last row's end
     /// continues that row (a hiccup longer than the grace, an app restart).
     static let callRejoinWindow: TimeInterval = 60
     /// Between `willSleep` and the next wake or unlock. A lock suspends
     /// sampling but not call tracking; a sleep ends the call.
     private var asleep = false
+    /// When the Mac last went to sleep: a call row that ended by then is not continued.
+    private var sleptAt: Date?
     /// Set on the tick where the meeting idle-exemption transitions
     /// true->false (the moment it stops zeroing `idleSeconds`). CRITICAL
     /// fix: without this, un-exempting mid-idle-stretch backdates
@@ -394,6 +398,9 @@ public final class TrackerEngine {
     private var exemptionEndedAt: Date?
     /// A `hands_off` is open: raw idle crossed the threshold under a presence exemption.
     private var handsOff = false
+    /// The `hands_off` written for this stretch of no input, until input returns: an exemption
+    /// that flickers off and on again does not write a second one at the same instant.
+    private var handsOffLogged = false
     /// This tick's idle reading (0 in a meeting), handed to the screen
     /// collector so an untouched window is checked less often.
     private var idleSeconds: TimeInterval = 0
@@ -666,14 +673,19 @@ public final class TrackerEngine {
             }
         } else if exempt, rawIdle >= threshold {
             handsOff = true
-            observations?.logState("hands_off", at: now.addingTimeInterval(-rawIdle))
+            if !handsOffLogged {
+                handsOffLogged = true
+                observations?.logState("hands_off", at: now.addingTimeInterval(-rawIdle))
+            }
         }
+        if rawIdle < threshold { handsOffLogged = false }
     }
 
     /// Opens, extends (at the heartbeat cadence) or closes the call row for this tick's presence.
     /// A call that stops showing is closed only once reads have missed it for `callMissGrace`,
-    /// and then at the time it was last seen. A new call needs the app to run input and output;
-    /// an open one needs input alone, so silence in a voice channel cannot split it.
+    /// and then at the time it was last seen. A new row needs the app to run input and output;
+    /// an open call, or a rejoin of the app's last row, needs input alone, so silence in a voice
+    /// channel cannot split it.
     private func trackCall(now: Date) {
         guard let callStore else { return }
         let call = tickPresence?.kind == .call ? tickPresence : nil
@@ -686,7 +698,9 @@ public final class TrackerEngine {
                 do {
                     try callStore.extend(id: open.id, end: now)
                     openCall?.wrote = now
+                    writeHealth?.succeeded()
                 } catch {
+                    writeHealth?.failed(error)
                     logger.error("call span write failed: \(String(describing: error))")
                 }
                 return
@@ -698,13 +712,13 @@ public final class TrackerEngine {
             }
             closeCall(at: open.lastSeen)
         }
-        guard let call, call.output else { return }
+        guard let call else { return }
         do {
-            if let recent = try callStore.latest(bundleID: call.bundleID), let id = recent.id,
+            if let recent = try callStore.rejoinable(bundleID: call.bundleID, endingAfter: sleptAt), let id = recent.id,
                now.timeIntervalSince(recent.end) <= Self.callRejoinWindow {
                 try callStore.extend(id: id, end: max(now, recent.end))
                 openCall = OpenCall(id: id, bundleID: call.bundleID, wrote: now, lastSeen: now)
-            } else {
+            } else if call.output {
                 let id = try callStore.open(at: now, bundleID: call.bundleID, appName: call.appName).id ?? 0
                 openCall = OpenCall(id: id, bundleID: call.bundleID, wrote: now, lastSeen: now)
             }
@@ -846,10 +860,12 @@ public final class TrackerEngine {
         handsOff = false
         if source == .sleep {
             asleep = true
+            sleptAt = date
             closeCall(at: openCall?.lastSeen ?? date)
         }
-        guard suspensionState.suspendSystem() else { return }
+        // On every signal, not only the first: the heal age counts from the latest lock or wake.
         lockedAt = date
+        guard suspensionState.suspendSystem() else { return }
         if let closed = builder.close(at: date) {
             persist(closed)
         }
@@ -870,6 +886,7 @@ public final class TrackerEngine {
     func resume(source: SystemMonitor.ResumeSource, at date: Date = Date()) {
         suspensionEpoch += 1
         asleep = false
+        if source == .wake { lockedAt = date }
         switch source {
         case .unlock:
             suspensionState.unlock()

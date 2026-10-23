@@ -1,4 +1,5 @@
 import XCTest
+import os
 @testable import TimeSinkKit
 
 final class PresenceDecisionTests: XCTestCase {
@@ -160,7 +161,7 @@ final class TrackerEnginePresenceTests: XCTestCase {
         XCTAssertGreaterThan(rows[0].duration, 500)
     }
 
-    func testCallSpanOpensExtendsAndClosesAtLastSeenAfterTwoMisses() async throws {
+    func testCallSpanOpensExtendsAndClosesAtLastSeenAfterTwoReads() async throws {
         let (engine, _, calls) = try makeEngine()
         engine.idleSecondsProvider = { 0 }
         engine.presenceProvider = { self.zoom }
@@ -173,9 +174,11 @@ final class TrackerEnginePresenceTests: XCTestCase {
         await engine.tickAsync(now: ts(100))
         XCTAssertEqual(try calls.spans(overlapping: all)[0].end, ts(90), "first miss: still open")
         await engine.tickAsync(now: ts(105))
+        XCTAssertEqual(try calls.spans(overlapping: all)[0].end, ts(90), "a read only 5 s on is not yet a second one")
+        await engine.tickAsync(now: ts(110))
         rows = try calls.spans(overlapping: all)
         XCTAssertEqual(rows.count, 1)
-        XCTAssertEqual(rows[0].end, ts(95), "second miss closes at the last tick that saw the call")
+        XCTAssertEqual(rows[0].end, ts(95), "the next read closes at the last tick that saw the call")
         XCTAssertEqual(rows[0].appBundleID, "us.zoom.xos")
     }
 
@@ -194,6 +197,76 @@ final class TrackerEnginePresenceTests: XCTestCase {
         let rows = try calls.spans(overlapping: all)
         XCTAssertEqual(rows.count, 1)
         XCTAssertEqual(rows[0].end, ts(60))
+    }
+
+    /// The presence is cached for 5 s, so one stale-nil read shows on five 1 s ticks.
+    func testOneMissedReadHeldForAWholeRefreshCycleKeepsOneRow() async throws {
+        let (engine, _, calls) = try makeEngine()
+        engine.idleSecondsProvider = { 0 }
+        for t in 0...20 { await run(engine, zoom, Double(t), Double(t)) }
+        for t in 21...26 { await run(engine, nil, Double(t), Double(t)) }
+        for t in 27...40 { await run(engine, zoom, Double(t), Double(t)) }
+        let rows = try calls.spans(overlapping: all)
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].end, ts(30), "kept extending")
+    }
+
+    func testRejoinNeedsInputOnlyButANewRowNeedsOutputToo() async throws {
+        let silent = Presence(kind: .call, bundleID: "us.zoom.xos", appName: "zoom.us", output: false)
+        let (engine, _, calls) = try makeEngine()
+        engine.idleSecondsProvider = { 0 }
+        await run(engine, zoom, 0, 20)
+        await run(engine, nil, 25, 35)                  // closed at 20
+        await run(engine, silent, 40, 45)
+        var rows = try calls.spans(overlapping: all)
+        XCTAssertEqual(rows.count, 1, "silent rejoin continues the row")
+        XCTAssertEqual(rows[0].end, ts(40))
+        await run(engine, nil, 50, 60)
+        await run(engine, silent, 200, 205)
+        rows = try calls.spans(overlapping: all)
+        XCTAssertEqual(rows.count, 1, "outside the window a silent mic opens nothing")
+    }
+
+    func testSleepEndsTheCallSoTheOldRowIsNotRejoined() async throws {
+        let (engine, _, calls) = try makeEngine()
+        engine.idleSecondsProvider = { 0 }
+        await run(engine, zoom, 0, 20)
+        engine.suspend(at: ts(22), source: .sleep)
+        engine.resume(source: .unlock, at: ts(30))
+        await run(engine, zoom, 35, 40)
+        let rows = try calls.spans(overlapping: all)
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertEqual(rows[0].end, ts(20))
+    }
+
+    func testAThenBThenAWithinASixtySecondsIsThreeCalls() async throws {
+        let (engine, _, calls) = try makeEngine()
+        engine.idleSecondsProvider = { 0 }
+        let discord = Presence(kind: .call, bundleID: "com.hnc.Discord", appName: "Discord")
+        await run(engine, zoom, 0, 20)
+        await run(engine, discord, 25, 40)
+        await run(engine, zoom, 45, 50)
+        let rows = try calls.spans(overlapping: all)
+        XCTAssertEqual(rows.map(\.appBundleID), ["us.zoom.xos", "com.hnc.Discord", "us.zoom.xos"])
+        XCTAssertEqual(rows[0].end, ts(20))
+    }
+
+    func testCallHeartbeatFailureCountsIntoWriteHealth() async throws {
+        let db = try AppDatabase.openInMemory()
+        let engine = TrackerEngine(spanStore: SpanStore(db), settings: SettingsStore(db))
+        engine.callStore = CallSpanStore(db)
+        engine.windowSampleProvider = { Sample(timestamp: $0, appBundleID: "com.apple.finder", appName: "Finder", windowTitle: "Desktop", url: nil) }
+        engine.idleSecondsProvider = { 0 }
+        // The finder spans keep succeeding and reset the count, so watch for the moment it degrades.
+        let health = WriteHealth(threshold: 1)
+        let degradedOnce = OSAllocatedUnfairLock(initialState: false)
+        health.observe { if health.degraded != nil { degradedOnce.withLock { $0 = true } } }
+        engine.writeHealth = health
+        await run(engine, zoom, 0, 5)
+        XCTAssertFalse(degradedOnce.withLock { $0 })
+        try await db.write { try $0.drop(table: "callSpan") }
+        await run(engine, zoom, 10, 45)
+        XCTAssertTrue(degradedOnce.withLock { $0 }, "the failed heartbeat extend was counted")
     }
 
     func testSameAppBackWithinSixtySecondsExtendsTheOldRowAndAfterThatOpensANewOne() async throws {
@@ -341,6 +414,20 @@ final class TrackerEngineLockHealTests: XCTestCase {
         XCTAssertFalse(engine.isSuspended)
     }
 
+    func testAnotherLockSignalRestartsTheHealAge() async throws {
+        let db = try AppDatabase.openInMemory()
+        let engine = TrackerEngine(spanStore: SpanStore(db), settings: SettingsStore(db))
+        engine.windowSampleProvider = { Sample(timestamp: $0, appBundleID: "com.apple.finder", appName: "Finder", windowTitle: "Desktop", url: nil) }
+        engine.screenLockedProvider = { false }
+        engine.idleSecondsProvider = { 0 }
+        engine.suspend(at: ts(0))
+        engine.suspend(at: ts(8))                       // a second lock signal while locked
+        await engine.tickAsync(now: ts(11))
+        XCTAssertTrue(engine.isSuspended, "only 3 s since the latest lock")
+        await engine.tickAsync(now: ts(18))
+        XCTAssertFalse(engine.isSuspended)
+    }
+
     func testSleepIsNotHealedByATick() async throws {
         let db = try AppDatabase.openInMemory()
         let engine = TrackerEngine(spanStore: SpanStore(db), settings: SettingsStore(db))
@@ -409,6 +496,24 @@ final class TrackerEngineHandsOffTests: XCTestCase {
         await engine.tickAsync(now: ts(330))
         let kinds = try events(observations)
         XCTAssertEqual(kinds, ["hands_off@100", "lock@310", "unlock@320"])
+    }
+
+    func testExemptionFlickerDoesNotWriteASecondHandsOff() async throws {
+        let (engine, _, observations) = try makeEngine()
+        idle = 200
+        await engine.tickAsync(now: ts(300))
+        engine.presenceProvider = { nil }
+        idle = 201
+        await engine.tickAsync(now: ts(301))
+        engine.presenceProvider = { self.zoom }
+        idle = 202
+        await engine.tickAsync(now: ts(302))
+        XCTAssertEqual(try events(observations).filter { $0.hasPrefix("hands_off") }, ["hands_off@100"])
+        idle = 0
+        await engine.tickAsync(now: ts(310))
+        idle = 200
+        await engine.tickAsync(now: ts(600))
+        XCTAssertEqual(try events(observations).filter { $0.hasPrefix("hands_off") }.count, 2, "a new stretch writes again")
     }
 
     func testNoHandsOffWithoutAPresenceExemption() async throws {

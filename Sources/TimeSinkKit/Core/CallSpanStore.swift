@@ -40,11 +40,15 @@ public final class CallSpanStore: Sendable {
         try writer.write { db in try db.execute(sql: "UPDATE callSpan SET end = ? WHERE id = ?", arguments: [end, id]) }
     }
 
-    /// The row of `bundleID` that ended last, if any.
-    public func latest(bundleID: String) throws -> CallSpan? {
+    /// The row of `bundleID` that ended last and that a call may continue: it ended after `notBefore`
+    /// (a sleep ends a call) and no other row started after it (A, then B, then A is three calls).
+    public func rejoinable(bundleID: String, endingAfter notBefore: Date?) throws -> CallSpan? {
         try writer.read { db in
-            try CallSpan.fetchOne(db, sql: "SELECT * FROM callSpan WHERE appBundleID = ? ORDER BY \"end\" DESC LIMIT 1",
-                                  arguments: [bundleID])
+            try CallSpan.fetchOne(db, sql: """
+                SELECT * FROM callSpan WHERE appBundleID = ? AND (? IS NULL OR "end" > ?)
+                AND NOT EXISTS (SELECT 1 FROM callSpan later WHERE later.start > callSpan.start)
+                ORDER BY "end" DESC LIMIT 1
+                """, arguments: [bundleID, notBefore, notBefore])
         }
     }
 
