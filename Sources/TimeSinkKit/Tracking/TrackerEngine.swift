@@ -171,7 +171,7 @@ public final class TrackerEngine {
     public func setPermissionGranted(_ granted: Bool, at date: Date = Date()) {
         guard granted != permissionGranted else { return }
         permissionGranted = granted; suspensionEpoch += 1
-        if !granted { closeCall(at: date) }
+        if !granted { closeCall(at: date); handsOff = false }
         if !granted, let closed = builder.close(at: date) { persist(closed) }
         interruptCollector()
     }
@@ -182,7 +182,7 @@ public final class TrackerEngine {
         guard userPaused != paused else { return }
         userPaused = paused
         suspensionEpoch += 1
-        if paused { closeCall(at: date) }
+        if paused { closeCall(at: date); handsOff = false }
         if paused, let closed = builder.close(at: date) { persist(closed) }
         throttle = ChromeThrottle()
         chromeTabState = .none
@@ -381,6 +381,8 @@ public final class TrackerEngine {
     /// idle. Clamping the close to no earlier than this moment preserves
     /// the span's real extent. Consumed (cleared) the next time it's read.
     private var exemptionEndedAt: Date?
+    /// A `hands_off` is open: raw idle crossed the threshold under a presence exemption.
+    private var handsOff = false
     /// This tick's idle reading (0 in a meeting), handed to the screen
     /// collector so an untouched window is checked less often.
     private var idleSeconds: TimeInterval = 0
@@ -429,6 +431,7 @@ public final class TrackerEngine {
         // Both callers quit the app, but `NSApp.terminate` still spins the run
         // loop, so that continuation can land.
         suspensionEpoch += 1
+        handsOff = false
         closeCall(at: Date())
         if let closed = builder.close(at: Date()) {
             persist(closed)
@@ -605,6 +608,8 @@ public final class TrackerEngine {
             resume(source: .unlock, at: now)
         }
 
+        trackHandsOff(exempt: isInMeetingNow, rawIdle: rawIdle, now: now)
+
         let wasIdle = suspensionState.idleSuspended
         let outcome = suspensionState.tick(idleSeconds: idleSeconds, threshold: settings.idleThreshold)
         if outcome != .systemSuspended || !asleep { trackCall(now: now) }
@@ -625,6 +630,25 @@ public final class TrackerEngine {
         case .active:
             if wasIdle { observations?.logState("active", at: now) }
             return .active
+        }
+    }
+
+    /// Marks a hands-off stretch the presence exemption keeps from going idle: `hands_off` at the
+    /// last input, `hands_on` when input returns. Screen time is untouched. An exemption that ends
+    /// first leaves the stretch to `idle`; lock, sleep and pause reset it with no `hands_on`.
+    private func trackHandsOff(exempt: Bool, rawIdle: TimeInterval, now: Date) {
+        guard !suspensionState.systemSuspended else { return }
+        let threshold = settings.idleThreshold
+        if handsOff {
+            if rawIdle < threshold {
+                handsOff = false
+                observations?.logState("hands_on", at: now)
+            } else if !exempt {
+                handsOff = false
+            }
+        } else if exempt, rawIdle >= threshold {
+            handsOff = true
+            observations?.logState("hands_off", at: now.addingTimeInterval(-rawIdle))
         }
     }
 
@@ -798,6 +822,7 @@ public final class TrackerEngine {
         // superset of "the suspension context moved", and a redundant signal
         // costs at most one dropped 1s sample.
         suspensionEpoch += 1
+        handsOff = false
         if source == .sleep {
             asleep = true
             closeCall(at: openCall?.lastSeen ?? date)

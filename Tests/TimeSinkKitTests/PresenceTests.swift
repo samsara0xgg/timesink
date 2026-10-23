@@ -329,3 +329,71 @@ final class TrackerEngineLockHealTests: XCTestCase {
         XCTAssertTrue(engine.isSuspended)
     }
 }
+
+@MainActor
+final class TrackerEngineHandsOffTests: XCTestCase {
+    private let zoom = Presence(kind: .call, bundleID: "us.zoom.xos", appName: "zoom.us")
+    private var idle: TimeInterval = 0
+
+    private func makeEngine() throws -> (TrackerEngine, SpanStore, ObservationStore) {
+        let db = try AppDatabase.openInMemory()
+        let observations = ObservationStore(db), store = SpanStore(db)
+        let engine = TrackerEngine(spanStore: store, settings: SettingsStore(db), observations: observations)
+        engine.windowSampleProvider = { Sample(timestamp: $0, appBundleID: "us.zoom.xos", appName: "zoom.us", windowTitle: "Standup", url: nil) }
+        engine.idleSecondsProvider = { self.idle }
+        engine.screenLockedProvider = { true }
+        engine.presenceProvider = { self.zoom }
+        return (engine, store, observations)
+    }
+    private func events(_ observations: ObservationStore) throws -> [String] {
+        try observations.stateEvents(in: DateInterval(start: ts(-1), end: ts(10_000))).map { "\($0.kind)@\(Int($0.at.timeIntervalSince(ts(0))))" }
+    }
+
+    func testHandsOffAtLastInputAndHandsOnWhenInputReturnsWithoutDroppingScreenTime() async throws {
+        let (engine, store, observations) = try makeEngine()
+        for t in stride(from: 0.0, through: 100, by: 10) { idle = t; await engine.tickAsync(now: ts(t)) }
+        XCTAssertEqual(try events(observations), [], "under the threshold")
+        for t in stride(from: 110.0, through: 400, by: 10) { idle = t - 20; await engine.tickAsync(now: ts(t)) }
+        idle = 0
+        await engine.tickAsync(now: ts(410))
+        await engine.tickAsync(now: ts(420))
+        XCTAssertEqual(try events(observations), ["hands_off@20", "hands_on@410"])
+        let rows = try store.spans(overlapping: DateInterval(start: ts(-1), end: ts(1000)))
+        XCTAssertEqual(rows.count, 1, "one unbroken span")
+        XCTAssertGreaterThan(rows[0].duration, 400)
+    }
+
+    func testExemptionEndingWhileHandsOffLeavesItToIdle() async throws {
+        let (engine, _, observations) = try makeEngine()
+        idle = 200
+        await engine.tickAsync(now: ts(300))
+        engine.presenceProvider = { nil }
+        idle = 400
+        await engine.tickAsync(now: ts(500))
+        XCTAssertEqual(try events(observations), ["hands_off@100", "idle@500"])
+        idle = 0
+        await engine.tickAsync(now: ts(510))
+        XCTAssertEqual(try events(observations), ["hands_off@100", "idle@500", "active@510"], "no hands_on")
+    }
+
+    func testLockWhileHandsOffWritesNoHandsOn() async throws {
+        let (engine, _, observations) = try makeEngine()
+        idle = 200
+        await engine.tickAsync(now: ts(300))
+        engine.suspend(at: ts(310))
+        engine.resume(source: .unlock, at: ts(320))
+        idle = 0
+        await engine.tickAsync(now: ts(330))
+        let kinds = try events(observations)
+        XCTAssertEqual(kinds, ["hands_off@100", "lock@310", "unlock@320"])
+    }
+
+    func testNoHandsOffWithoutAPresenceExemption() async throws {
+        let (engine, _, observations) = try makeEngine()
+        engine.presenceProvider = { Presence(kind: .call, bundleID: "us.zoom.xos", appName: "zoom.us", onScreen: false) }
+        idle = 200
+        await engine.tickAsync(now: ts(300))
+        XCTAssertEqual(try events(observations), ["idle@100"])
+    }
+}
+
