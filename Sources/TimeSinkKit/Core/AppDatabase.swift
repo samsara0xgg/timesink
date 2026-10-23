@@ -1,12 +1,50 @@
 import Foundation
 import GRDB
+import os
 
 public enum AppDatabase {
     /// Opens (creating if needed) a WAL-mode database pool at `url` and runs migrations.
-    public static func open(at url: URL) throws -> DatabasePool {
+    ///
+    /// With `backupsDirectory`, an existing database that still has migrations
+    /// to apply is copied there first (see `backUpBeforeMigrating`).
+    public static func open(at url: URL, backupsDirectory: URL? = nil) throws -> DatabasePool {
+        let existed = FileManager.default.fileExists(atPath: url.path)
         let pool = try DatabasePool(path: url.path)
+        if existed, let backupsDirectory {
+            backUpBeforeMigrating(pool, databaseURL: url, into: backupsDirectory)
+        }
         try migrator.migrate(pool)
         return pool
+    }
+
+    /// Copies `pool` to `<name>.pre-<first unapplied migration>.sqlite` in
+    /// `directory` when migrations are pending, then keeps only the newest
+    /// `keep` such files. A failed backup is logged and does not stop the open.
+    static func backUpBeforeMigrating(_ pool: DatabasePool, databaseURL: URL, into directory: URL, keep: Int = 3) {
+        do {
+            let applied = try pool.read { try migrator.appliedMigrations($0) }
+            guard let next = migrator.migrations.first(where: { !applied.contains($0) }) else { return }
+            let fileManager = FileManager.default
+            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            let base = databaseURL.deletingPathExtension().lastPathComponent
+            let backup = directory.appendingPathComponent("\(base).pre-\(next).sqlite")
+            try? fileManager.removeItem(at: backup)
+            try pool.backup(to: try DatabaseQueue(path: backup.path))
+
+            let others = try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.contentModificationDateKey])
+                .filter { $0.lastPathComponent != backup.lastPathComponent && $0.lastPathComponent.hasPrefix("\(base).pre-") && $0.pathExtension == "sqlite" }
+                .sorted {
+                    let a = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                    let b = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                    return a > b
+                }
+            for old in others.dropFirst(max(keep - 1, 0)) {
+                for suffix in ["", "-wal", "-shm"] { try? fileManager.removeItem(atPath: old.path + suffix) }
+            }
+        } catch {
+            Logger(subsystem: "com.alllllenshi.TimeSink", category: "db")
+                .error("pre-migration backup failed: \(String(describing: error))")
+        }
     }
 
     /// Opens an in-memory database queue and runs migrations. Useful for tests.
