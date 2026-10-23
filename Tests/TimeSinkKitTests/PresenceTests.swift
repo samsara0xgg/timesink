@@ -19,7 +19,25 @@ final class PresenceDecisionTests: XCTestCase {
 
     func testZoomHelperInputIsCallReportedAsMainApp() {
         XCTAssertEqual(decide([proc(11, "us.zoom.CptHost", input: true)]),
-                       Presence(kind: .call, bundleID: "us.zoom.xos", appName: "zoom.us", onScreen: false))
+                       Presence(kind: .call, bundleID: "us.zoom.xos", appName: "zoom.us", onScreen: false, output: false))
+    }
+
+    func testCallOutputIsTheSameRootAppPlayingAudio() {
+        let input = proc(11, "us.zoom.CptHost", input: true)
+        XCTAssertEqual(decide([input])?.output, false, "mic only")
+        XCTAssertEqual(decide([input, proc(12, "us.zoom.xos.helper", output: true)])?.output, true, "output from another process of the app")
+        XCTAssertEqual(decide([input, proc(21, "com.google.Chrome.helper", output: true)])?.output, false, "another app's output")
+    }
+
+    func testTencentMeetingAndQQAreCallApps() {
+        let more = apps + [M.App(pid: 60, bundleID: "com.tencent.meeting", name: "腾讯会议", regular: true),
+                           M.App(pid: 70, bundleID: "com.tencent.qq", name: "QQ", regular: true)]
+        func call(_ audio: [M.AudioProcess]) -> Presence? {
+            M.decide(audio: audio, displayAssertionPIDs: [], apps: more, ownPID: 999)
+        }
+        XCTAssertEqual(call([proc(61, "com.tencent.meeting", input: true)])?.appName, "腾讯会议")
+        XCTAssertEqual(call([proc(71, "com.tencent.qq.helper", input: true)])?.bundleID, "com.tencent.qq")
+        XCTAssertNil(call([proc(80, "com.tencent.QQMusicMac", input: true)]))
     }
 
     func testCallIsOnScreenOnlyWhileItsAppKeepsTheDisplayAwake() {

@@ -13,9 +13,13 @@ public struct Presence: Equatable, Sendable {
     /// Something is playing on screen (the app keeps the display awake): only
     /// then does presence count as screen time. A voice-only call is just a lane.
     public var onScreen: Bool
+    /// The app is playing audio too. A call opens only with output (so a lone
+    /// open mic is not a call) but, once open, continues on input alone: silence
+    /// in a voice channel stops the output without ending the call.
+    public var output: Bool
 
-    public init(kind: Kind, bundleID: String, appName: String, onScreen: Bool = true) {
-        self.kind = kind; self.bundleID = bundleID; self.appName = appName; self.onScreen = onScreen
+    public init(kind: Kind, bundleID: String, appName: String, onScreen: Bool = true, output: Bool = true) {
+        self.kind = kind; self.bundleID = bundleID; self.appName = appName; self.onScreen = onScreen; self.output = output
     }
 }
 
@@ -41,7 +45,8 @@ public final class PresenceMonitor: @unchecked Sendable {
 
     /// Bundle ID prefixes of call apps. Helpers (`us.zoom.CptHost`,
     /// `com.hnc.Discord.helper`) carry the app's prefix.
-    static let callPrefixes = ["us.zoom", "com.hnc.Discord", "com.tencent.xinWeChat", "com.apple.FaceTime", "com.microsoft.teams"]
+    static let callPrefixes = ["us.zoom", "com.hnc.Discord", "com.tencent.xinWeChat", "com.apple.FaceTime", "com.microsoft.teams",
+                                  "com.tencent.meeting", "com.tencent.qq"]
     static let refreshInterval: TimeInterval = 5
 
     /// The app that owns `bundleID`: the longest running regular app whose bundle ID it is or extends.
@@ -50,10 +55,11 @@ public final class PresenceMonitor: @unchecked Sendable {
             .max { $0.bundleID.count < $1.bundleID.count }
     }
 
-    private static func presence(_ kind: Presence.Kind, bundleID: String, apps: [App], onScreen: Set<String>) -> Presence {
+    private static func presence(_ kind: Presence.Kind, bundleID: String, apps: [App], onScreen: Set<String>, audio: [AudioProcess]) -> Presence {
         let owner = root(of: bundleID, apps: apps)
         let id = owner?.bundleID ?? bundleID
-        return Presence(kind: kind, bundleID: id, appName: owner?.name ?? bundleID, onScreen: onScreen.contains(id))
+        let output = audio.contains { $0.output && (root(of: $0.bundleID, apps: apps)?.bundleID ?? $0.bundleID) == id }
+        return Presence(kind: kind, bundleID: id, appName: owner?.name ?? bundleID, onScreen: onScreen.contains(id), output: output)
     }
 
     /// Call wins over video. Video needs a display-sleep assertion AND audio output from the same
@@ -68,12 +74,12 @@ public final class PresenceMonitor: @unchecked Sendable {
             if let prefix = callPrefixes.first(where: { process.bundleID.hasPrefix($0) }) {
                 // The running regular app carrying the prefix is the call's app (Zoom's audio comes from a helper).
                 let main = apps.first { $0.regular && $0.bundleID.hasPrefix(prefix) }
-                return presence(.call, bundleID: main?.bundleID ?? process.bundleID, apps: apps, onScreen: Set(displayOwners))
+                return presence(.call, bundleID: main?.bundleID ?? process.bundleID, apps: apps, onScreen: Set(displayOwners), audio: audio)
             }
         }
         let playing = Set(audio.filter(\.output).compactMap { root(of: $0.bundleID, apps: apps)?.bundleID ?? $0.bundleID })
         for owner in displayOwners where playing.contains(owner) {
-            return presence(.video, bundleID: owner, apps: apps, onScreen: Set(displayOwners))
+            return presence(.video, bundleID: owner, apps: apps, onScreen: Set(displayOwners), audio: audio)
         }
         return nil
     }
