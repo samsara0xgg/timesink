@@ -216,7 +216,7 @@ public final class TrackerEngine {
     /// app's conversation under the other -- the same stale-value failure
     /// the Chrome tab cache was fixed for, where a cached value outlived
     /// what it described.
-    private var chatSession: (bundleID: String, title: String?)?
+    private var chatSession: (bundleID: String, reading: ChatReading)?
     private var lastChatFetch = Date.distantPast
 
     /// Chrome Automation authorization, refreshed at most once per fetch
@@ -238,7 +238,7 @@ public final class TrackerEngine {
     /// throttle+backoff gate already keeps it to at most once per 5s.
     var windowSampleProvider: (@Sendable (Date) -> Sample?)?
     var chromeTabProvider: (@Sendable () -> ChromeSampler.TabInfo?)?
-    var chatSessionProvider: (@Sendable () -> String?)?
+    var chatSessionProvider: (@Sendable () -> ChatReading)?
     var chromeAutomationAuthorizedProvider: (() -> Bool)?
     var idleSecondsProvider: (() -> TimeInterval)?
     var screenLockedProvider: (() -> Bool)?
@@ -518,7 +518,8 @@ public final class TrackerEngine {
                 guard suspensionEpoch == epochBeforeChat else { return }
                 chatSession = (sample.appBundleID, fetched)
             }
-            sample.document = chatSession?.title
+            sample.document = chatSession?.reading.document
+            sample.context = chatSession?.reading.context
         }
 
         if let presence = tickPresence, presence.onScreen, rawIdle >= Self.handsOffSeconds, sample.appBundleID != presence.bundleID {
@@ -579,11 +580,11 @@ public final class TrackerEngine {
     /// (Claude) for the whole walk, and it runs at most once per
     /// `chatFetchInterval`.
     nonisolated private func offActorChatSession(
-        provider: (@Sendable () -> String?)?, app: WindowSampler.FrontmostApp?
-    ) async -> String? {
+        provider: (@Sendable () -> ChatReading)?, app: WindowSampler.FrontmostApp?
+    ) async -> ChatReading {
         if let provider { return provider() }
-        guard let app else { return nil }
-        return chatSampler.session(pid: app.pid, appName: app.name)
+        guard let app else { return ChatReading() }
+        return chatSampler.reading(pid: app.pid, appName: app.name)
     }
 
     /// Off-actor counterpart for the Chrome Apple Event -- likewise bounded to
