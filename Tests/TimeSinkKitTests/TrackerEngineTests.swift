@@ -308,6 +308,8 @@ private func meetingSample(at date: Date) -> Sample {
            windowTitle: "T", url: nil)
 }
 
+private let callOnScreen = Presence(kind: .call, bundleID: "us.zoom.xos", appName: "zoom.us")
+
 @MainActor
 final class TrackerEngineMeetingExemptionTests: XCTestCase {
     private func makeEngine() throws -> (TrackerEngine, SpanStore) {
@@ -330,7 +332,7 @@ final class TrackerEngineMeetingExemptionTests: XCTestCase {
         var currentTime = ts(0)
         engine.windowSampleProvider = { meetingSample(at: $0) }
         engine.idleSecondsProvider = { 300 }         // > 默认阈值 180，模拟手离键盘
-        engine.isInMeetingProvider = { true }
+        engine.presenceProvider = { callOnScreen }
 
         for t in stride(from: 0.0, through: 30, by: 10) {
             currentTime = ts(t)
@@ -342,6 +344,20 @@ final class TrackerEngineMeetingExemptionTests: XCTestCase {
         XCTAssertEqual(rows[0].start, ts(0))
         XCTAssertEqual(rows[0].end, ts(31))   // 30s 心跳写入时刻 + SpanBuilder 的 1s tick 余量
         XCTAssertFalse(engine.isSuspended)    // 会议期间空闲豁免：未挂起
+    }
+
+    /// A calendar meeting alone (no call or video on screen) no longer exempts
+    /// idle: the engine has no calendar seam, so hands off the keyboard past the
+    /// threshold suspends as usual.
+    func testCalendarMeetingWithoutPresenceGoesIdleAfterThreshold() async throws {
+        let (engine, _) = try makeEngine()
+        engine.windowSampleProvider = { meetingSample(at: $0) }
+        engine.idleSecondsProvider = { 179 }
+        await engine.tickAsync(now: ts(0))
+        XCTAssertFalse(engine.isSuspended)
+        engine.idleSecondsProvider = { 180 }
+        await engine.tickAsync(now: ts(1))
+        XCTAssertTrue(engine.isSuspended)
     }
 
     /// CRITICAL regression: un-exempting mid-idle-stretch must not backdate
@@ -358,7 +374,7 @@ final class TrackerEngineMeetingExemptionTests: XCTestCase {
         let (engine, store) = try makeEngine()
         var currentTime = ts(0)
         engine.windowSampleProvider = { meetingSample(at: $0) }
-        engine.isInMeetingProvider = { true }
+        engine.presenceProvider = { callOnScreen }
         engine.idleSecondsProvider = { 9999 }   // 会中手一直离键盘
 
         // 开会：每 5s 一 tick，持续到 595s -- 跨过多次 30s 心跳，span 被写入
@@ -372,10 +388,10 @@ final class TrackerEngineMeetingExemptionTests: XCTestCase {
         XCTAssertEqual(midMeetingRows.count, 1)
         XCTAssertGreaterThan(midMeetingRows[0].end.timeIntervalSince(midMeetingRows[0].start), 500)
 
-        // 会议结束，手仍未动：isInMeetingProvider 翻 false，idleSecondsProvider
+        // 会议结束，手仍未动：presenceProvider 翻 nil，idleSecondsProvider
         // 报告整段真实空闲 600s（>= 阈值 180）——这正是 bug 复现条件：不打
         // 补丁的话，close(at: 600 - 600 = ts(0)) 会把 end 拍扁回 span.start。
-        engine.isInMeetingProvider = { false }
+        engine.presenceProvider = { nil }
         engine.idleSecondsProvider = { 600 }
         currentTime = ts(600)
         await engine.tickAsync(now: currentTime)

@@ -81,7 +81,6 @@ public struct TimeSinkApp: App {
 
         let calendarStore = CalendarStore()
         model.calendarStore = calendarStore
-        engine.isInMeetingProvider = { [weak model] in model?.isNowInMeeting ?? false }
         let presenceMonitor = PresenceMonitor()
         engine.presenceProvider = { presenceMonitor.current() }
         let callStore = CallSpanStore(db)

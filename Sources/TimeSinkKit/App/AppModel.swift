@@ -306,9 +306,8 @@ public final class AppModel {
     public var observationStore: ObservationStore?
 
     /// Today's meeting-tagged calendar events, refreshed by
-    /// `refreshCalendarWindows()`. Not `@Observable`-tracked -- only
-    /// `isNowInMeeting` (derived from it) needs to be, and that's read by
-    /// `TrackerEngine.isInMeetingProvider`, not SwiftUI.
+    /// `refreshCalendarWindows()`. Not `@Observable`-tracked. Names an away
+    /// stretch (`awaySuggestion`); it no longer exempts idle.
     @ObservationIgnored
     internal(set) var todayMeetingEvents: [CalendarEvent] = []
 
@@ -820,13 +819,6 @@ public final class AppModel {
         todayMeetingEvents = fetched
     }
 
-    /// Whether the current moment falls inside any of today's meeting
-    /// events -- read by `TrackerEngine.isInMeetingProvider` (idle
-    /// exemption) via the `[weak self]` closure `TimeSinkApp.init` wires up.
-    public var isNowInMeeting: Bool {
-        MeetingTagger.inMeeting(at: Date(), events: todayMeetingEvents)
-    }
-
     /// Handle for the loop `startCalendarRefreshLoop()` starts -- stored so
     /// the loop is a real, cancellable Task rather than a fire-and-forget
     /// one nothing can ever stop.
@@ -845,7 +837,7 @@ public final class AppModel {
     /// a second time, or cancelled directly) would keep busy-looping through
     /// `Task.sleep`'s immediate cancellation-error return instead of
     /// actually stopping. Never calls `dataChanged()`: a background calendar
-    /// refresh updates only the meeting-window cache `isNowInMeeting` reads,
+    /// refresh updates only the meeting-window cache `awaySuggestion` reads,
     /// not app data views re-query on.
     public func startCalendarRefreshLoop() {
         calendarRefreshTask?.cancel()

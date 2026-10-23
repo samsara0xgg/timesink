@@ -175,7 +175,7 @@ final class AppModelCacheTests: XCTestCase {
     // `CalendarMeetingTests` since it's `AppModel`-level guard-ordering
     // behavior, not a pure `CalendarEvent`/`MeetingTagger` function.
     //
-    // `todayMeetingEvents` (and therefore `isNowInMeeting`) can't be driven
+    // `todayMeetingEvents` can't be driven
     // to a genuinely non-empty state from a test without either a real
     // `CalendarStore`-backed `EKEventStore` (forbidden -- see Task 10's
     // testing constraints) or reaching into `AppModel`'s private storage, so
@@ -191,6 +191,6 @@ final class AppModelCacheTests: XCTestCase {
         let (model, _) = try makeModel()
         XCTAssertFalse(model.calendarOverlayEnabled)   // 默认关闭，settings 默认值
         await model.refreshCalendarWindows()
-        XCTAssertFalse(model.isNowInMeeting)
+        XCTAssertTrue(model.todayMeetingEvents.isEmpty)
     }
 }

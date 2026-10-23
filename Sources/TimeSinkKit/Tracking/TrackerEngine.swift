@@ -243,16 +243,12 @@ public final class TrackerEngine {
     /// Seconds since the last keyDown; the real reading is one
     /// `CGEventSource` call, the same kind `IdleMonitor` already makes.
     var keyDownSecondsProvider: (() -> TimeInterval)?
-    /// True while the user is currently in a calendar meeting -- when set,
-    /// `tick` forces `idleSeconds` to 0 regardless of the real idle reading,
-    /// so hands-off-keyboard time during a video call never triggers
-    /// `becameIdle` (C3 idle exemption). Lock/sleep suspension is untouched
-    /// by this -- it only ever affects the idle branch of
-    /// `SuspensionState.tick`.
-    var isInMeetingProvider: (() -> Bool)?
-    /// The app the user is on a call in or watching a video in. Treated like a
-    /// calendar meeting for idle (exemption), and, once hands have been off
-    /// for `handsOffSeconds`, it is also who the tick's sample is attributed to.
+    /// The app the user is on a call in or watching a video in. While it is on
+    /// screen, `beginTick` forces `idleSeconds` to 0 regardless of the real idle
+    /// reading (idle exemption; a calendar meeting alone no longer exempts), and,
+    /// once hands have been off for `handsOffSeconds`, it is also who the tick's
+    /// sample is attributed to. Lock/sleep suspension is untouched by this: it
+    /// only affects the idle branch of `SuspensionState.tick`.
     var presenceProvider: (() -> Presence?)?
     /// Where call intervals are persisted; nil keeps tests store-free.
     public var callStore: CallSpanStore?
@@ -347,8 +343,8 @@ public final class TrackerEngine {
     public var isSuspended: Bool { suspensionState.isSuspended }
     public private(set) var latestSample: Sample?
 
-    /// Previous tick's `isInMeetingProvider` reading -- used only to detect
-    /// the true->false transition below.
+    /// Previous tick's idle exemption -- used only to detect the true->false
+    /// transition below.
     private var wasInMeeting = false
     /// This tick's presence and raw idle, read by `tickAsync` for attribution.
     private var tickPresence: Presence?
@@ -574,7 +570,7 @@ public final class TrackerEngine {
         lastTickAt = now
         tickPresence = presenceProvider?()
         self.rawIdle = rawIdle
-        let isInMeetingNow = isInMeetingProvider?() == true || tickPresence?.onScreen == true
+        let isInMeetingNow = tickPresence?.onScreen == true
         if wasInMeeting, !isInMeetingNow {
             exemptionEndedAt = now
         }

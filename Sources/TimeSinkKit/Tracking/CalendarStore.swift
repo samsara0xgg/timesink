@@ -80,12 +80,6 @@ public enum MeetingTagger {
         }
         return (spanIDs, seconds)
     }
-
-    /// True when `date` falls within any meeting event's `[start, end)` --
-    /// drives the idle-exemption seam (`TrackerEngine.isInMeetingProvider`).
-    public static func inMeeting(at date: Date, events: [CalendarEvent]) -> Bool {
-        events.contains { $0.isMeeting && $0.start <= date && date < $0.end }
-    }
 }
 
 /// EventKit's sole home in TimeSinkKit -- `import EventKit` appears only

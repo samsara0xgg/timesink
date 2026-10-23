@@ -26,11 +26,6 @@ final class CalendarMeetingTests: XCTestCase {
         XCTAssertEqual(r.spanIDs, [1])          // brushing 重叠 100s < 1800s 的 50%
         XCTAssertEqual(r.seconds, 1000)
     }
-    func testInMeetingWindow() {
-        XCTAssertTrue(MeetingTagger.inMeeting(at: ts(100), events: [ev(0, 600)]))
-        XCTAssertFalse(MeetingTagger.inMeeting(at: ts(700), events: [ev(0, 600)]))
-        XCTAssertFalse(MeetingTagger.inMeeting(at: ts(100), events: [ev(0, 600, declined: true)]))
-    }
 
     // MARK: - Review round 1, IMPORTANT 9: pin the 50% boundary and the
     // seconds/re-check semantics `tagged()` doesn't otherwise have coverage
