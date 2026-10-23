@@ -11360,6 +11360,26 @@
           }
         }
       }
+    },
+    "屏幕文字识别持续失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Screen text recognition keeps failing"
+          }
+        }
+      }
+    },
+    "重启 TimeSink 后仍然识别不了屏幕文字，可能需要清理系统的文字识别缓存。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Text recognition still fails after restarting TimeSink. The system's text recognition cache may need clearing."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

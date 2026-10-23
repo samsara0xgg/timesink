@@ -49,8 +49,20 @@ public actor ScreenCollector {
                           text: String, readAt: Date)?
     private var inFlight = false
     /// Test seam replacing the screenshot, the front-window recheck and OCR.
-    typealias FrameProvider = @Sendable (WindowKey) async -> (image: CGImage, text: String)?
+    /// A nil `text` sends the frame through the real OCR path (and its seam).
+    typealias FrameProvider = @Sendable (WindowKey) async -> (image: CGImage, text: String?)?
     private var frameProvider: FrameProvider?
+    /// Test seam replacing Vision.
+    typealias Recognizer = @Sendable (CGImage) throws -> String
+    private var recognizer: Recognizer = { try ScreenCollector.recognizeText(in: $0) }
+    /// OCR failures since the last success; see `SelfHeal`.
+    public private(set) var ocrStreak = OCRStreak(since: Date())
+    /// Told after every OCR failure; the app wires the self-heal monitor here.
+    private var onOCRFailure: (@Sendable (OCRStreak) -> Void)?
+    /// Where the once-per-streak OCR error goes (the os log unless a test replaces it).
+    private var logOCRError: @Sendable (String) -> Void = { message in
+        Logger(subsystem: "com.alllllenshi.TimeSink", category: "screen").error("\(message, privacy: .public)")
+    }
     private var permissionLogged = false
     private var lastPrune = Date.distantPast
     private var retentionDays = 30
@@ -98,6 +110,15 @@ public actor ScreenCollector {
         self.frameProvider = frameProvider
     }
 
+    func install(recognizer: @escaping Recognizer, logOCRError: (@Sendable (String) -> Void)? = nil) {
+        self.recognizer = recognizer
+        if let logOCRError { self.logOCRError = logOCRError }
+    }
+
+    public func setOnOCRFailure(_ handler: @escaping @Sendable (OCRStreak) -> Void) {
+        onOCRFailure = handler
+    }
+
     /// One tracker tick. `spanID` is the open span's row, nil while idle.
     /// `idleSeconds` is the time since the last keyboard or mouse input.
     public func tick(now: Date, sample: Sample, spanID: Int64?, idleSeconds: TimeInterval = 0) async {
@@ -142,6 +163,7 @@ public actor ScreenCollector {
         if let frameProvider {
             frame = await frameProvider(key).map { ($0.image, $0.text) }
             if frame == nil { health.screenshotFailed += 1 }
+            ocrStreak.noteScreenshot(ok: frame != nil)
         } else {
             frame = await look(at: key).map { ($0, nil) }
         }
@@ -194,14 +216,24 @@ public actor ScreenCollector {
         health.ocrRuns += 1
         // First OCR in a process warms the model up (see `ocrQueue`), then ~1 s.
         let image = frame.image
-        let recognized = await withCheckedContinuation { continuation in
-            Self.ocrQueue.async { continuation.resume(returning: Self.recognizeText(in: image)) }
+        let recognizer = recognizer
+        let recognized = await withCheckedContinuation { (continuation: CheckedContinuation<Result<String, Error>, Never>) in
+            Self.ocrQueue.async { continuation.resume(returning: Result { try recognizer(image) }) }
         }
-        guard let text = recognized else {
+        switch recognized {
+        case .success(let text):
+            if let ended = ocrStreak.noteSuccess(at: Date()) {
+                logger.notice("OCR recovered after \(ended) failed runs")
+            }
+            return text
+        case .failure(let error):
             health.ocrFailed += 1
+            if ocrStreak.noteFailure() {
+                logOCRError("OCR failed, first of a streak: \(String(describing: error))")
+            }
+            onOCRFailure?(ocrStreak)
             return nil
         }
-        return text
     }
 
     private func extend(_ rowID: Int64, at now: Date) {
@@ -223,8 +255,10 @@ public actor ScreenCollector {
     private func look(at key: WindowKey) async -> CGImage? {
         guard let image = await screenshot(windowID: key.windowID) else {
             health.screenshotFailed += 1
+            ocrStreak.noteScreenshot(ok: false)
             return nil
         }
+        ocrStreak.noteScreenshot(ok: true)
         // The window may have changed while the screenshot was in flight;
         // a sample of A must never be filed under B.
         guard await Self.frontWindowKey() == key else {
@@ -283,14 +317,15 @@ public actor ScreenCollector {
     /// are skipped while it runs; give the first OCR default QoS if that matters.
     private static let ocrQueue = DispatchQueue(label: "com.alllllenshi.TimeSink.ocr", qos: .background)
 
-    /// Recognized text top to bottom; nil when the request itself failed.
-    static func recognizeText(in image: CGImage) -> String? {
+    /// Recognized text top to bottom; throws what Vision threw (an empty page is "").
+    static func recognizeText(in image: CGImage) throws -> String {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.recognitionLanguages = ["zh-Hans", "en-US"]
         request.usesLanguageCorrection = true
         let handler = VNImageRequestHandler(cgImage: image)
-        guard (try? handler.perform([request])) != nil, let results = request.results else { return nil }
+        try handler.perform([request])
+        let results = request.results ?? []
         // Vision's origin is bottom-left; read top to bottom.
         return results
             .sorted { $0.boundingBox.midY > $1.boundingBox.midY }
