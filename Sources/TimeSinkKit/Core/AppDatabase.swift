@@ -539,6 +539,15 @@ public enum AppDatabase {
                 t.add(column: "axFailed", .integer).notNull().defaults(to: 0)
             }
         }
+        migrator.registerMigration("v22-span-context") { db in
+            // The project a Claude conversation sits in, one row per span that has one. A side
+            // table rather than a span column so span rows (and what a mirror of them re-sends)
+            // stay byte-identical; never synced. Additive, so a rollback never sees it.
+            try db.create(table: "spanContext") { t in
+                t.column("spanID", .integer).primaryKey().references("span", onDelete: .cascade)
+                t.column("context", .text).notNull()
+            }
+        }
         return migrator
     }
 }
