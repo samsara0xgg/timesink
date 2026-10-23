@@ -44,7 +44,14 @@ public struct TimeSinkApp: App {
         } catch {
             Logger(subsystem: "com.alllllenshi.TimeSink", category: "app")
                 .fault("failed to open database: \(String(describing: error))")
-            fatalError("cannot open TimeSink database: \(error)")
+            let message = DatabaseOpenFailure.message(for: error)
+            let alert = NSAlert()
+            alert.alertStyle = .critical
+            alert.messageText = message.title
+            alert.informativeText = message.detail
+            NSApp.activate(ignoringOtherApps: true)
+            alert.runModal()
+            exit(1)
         }
 
         let spanStore = SpanStore(db)
