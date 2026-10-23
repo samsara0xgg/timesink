@@ -106,7 +106,7 @@ extension AppModel {
     func finishOnboarding(from start: CGPoint?, launchAtLogin: Bool) {
         // Same guard as Settings' toggle: only an installed app can be a login item.
         if launchAtLogin, Bundle.main.bundlePath.hasPrefix("/Applications") {
-            do { try SMAppService.mainApp.register() }
+            do { try SMAppService.mainApp.register(); setLoginItemWanted(true) }
             catch { onboardingLogger.error("login item: \(error.localizedDescription)") }
         }
         Task { @MainActor in

@@ -40,7 +40,8 @@ public struct TimeSinkApp: App {
 
         let db: any DatabaseWriter
         do {
-            db = try AppDatabase.open(at: try AppDatabase.defaultURL())
+            let url = try AppDatabase.defaultURL()
+            db = try AppDatabase.open(at: url, backupsDirectory: url.deletingLastPathComponent().appendingPathComponent("Backups"))
         } catch {
             Logger(subsystem: "com.alllllenshi.TimeSink", category: "app")
                 .fault("failed to open database: \(String(describing: error))")
@@ -60,8 +61,10 @@ public struct TimeSinkApp: App {
         SeedImporter.importIfNeeded(categoryStore: categoryStore, settings: settingsStore)
 
         let resolver = CategoryResolver(categoryStore: categoryStore)
-        let observationStore = ObservationStore(db)
+        let writeHealth = WriteHealth()
+        let observationStore = ObservationStore(db, health: writeHealth)
         let engine = TrackerEngine(spanStore: spanStore, settings: settingsStore, observations: observationStore)
+        engine.writeHealth = writeHealth
         // First run: screen capture waits for the onboarding switch, as its
         // first page promises, instead of raising the system prompt unasked.
         if settingsStore.get("screenCapturePaused") == nil,
@@ -82,6 +85,8 @@ public struct TimeSinkApp: App {
         )
         self.model = model
         model.observationStore = observationStore
+        model.attach(writeHealth: writeHealth)
+        model.refreshLoginItem()
         model.screenCollector = engine.screenCollector
 
         model.updates = Updates.startIfConfigured()
@@ -121,6 +126,7 @@ public struct TimeSinkApp: App {
         let focusHUD = FocusHUDController()
 
         focusController.notifier = notifier
+        focusController.writeHealth = writeHealth
         focusController.onBlocked = { observationStore.logState("focus_block", at: $0) }
         focusController.categoryForDomain = { [weak model] domain, url in
             guard let model else { return "uncategorized" }
@@ -319,14 +325,14 @@ struct MenuBarLabel: View {
                 Image(nsImage: FocusCapsule.image(symbol: "arrow.uturn.backward", text: String(localized: "回到 \(offer.appName)")))
                     .accessibilityLabel(String(localized: "回到 \(offer.appName)"))
             } else {
-            if model.distracted, model.accessibilityGranted, !model.trackingPaused, !model.chromeDegraded {
+            if model.distracted, model.accessibilityGranted, !model.trackingPaused, !model.barWarning {
                 // 5 minutes straight in a distracting category (DistractionHint.swift).
                 Image(nsImage: FocusCapsule.distractedHourglass)
                     .accessibilityLabel(String(localized: "TimeSink · 已分心 5 分钟以上"))
             } else {
-            Image(systemName: !model.accessibilityGranted ? "exclamationmark.triangle" : model.trackingPaused ? "pause.circle" : model.chromeDegraded
+            Image(systemName: !model.accessibilityGranted ? "exclamationmark.triangle" : model.trackingPaused ? "pause.circle" : model.barWarning
                   ? "hourglass.badge.exclamationmark" : "hourglass")
-                .accessibilityLabel(model.chromeDegraded ? "Chrome 采集降级" : "TimeSink")
+                .accessibilityLabel(model.chromeDegraded ? "Chrome 采集降级" : model.barWarning ? "TimeSink · 需要注意" : "TimeSink")
             }
             // C4 (R-T12h, stands as reviewed): while a focus session is
             // running, the label swaps to a live mm:ss countdown regardless
@@ -359,6 +365,7 @@ struct MenuBarLabel: View {
         })
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             model.accessibilityGranted = Permissions.accessibilityGranted(prompt: false)
+            model.refreshLoginItem()
         }
         // C4: consumes a tapped notification's route. This label is the
         // menu bar's persistent view (unlike the popover content, which is

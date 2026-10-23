@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import ServiceManagement
 import os
 
 /// Top-level sidebar destination.
@@ -244,6 +245,33 @@ public final class AppModel {
     /// `refreshMenu()`, which already runs on every relevant update path
     /// (engine writes via `dataChanged()`, and construction).
     public private(set) var chromeDegraded: Bool = false
+
+    /// Writes keep failing (`WriteHealth`); nil while healthy.
+    public private(set) var storageDegraded: WriteHealth.Degraded?
+    /// He wants the login item on but macOS reports it off (`LoginItemGuard`).
+    public private(set) var loginItemOff = false
+    /// Any of the warnings that badge the menu bar hourglass.
+    public var barWarning: Bool { chromeDegraded || storageDegraded != nil || loginItemOff }
+
+    public func attach(writeHealth: WriteHealth) {
+        writeHealth.observe { [weak self] in
+            Task { @MainActor in self?.storageDegraded = writeHealth.degraded }
+        }
+    }
+
+    /// Re-reads the login item status against his recorded wish; run at launch
+    /// and whenever the app becomes active.
+    public func refreshLoginItem(status: SMAppService.Status = SMAppService.mainApp.status) {
+        let decision = LoginItemGuard.decide(stored: settings.get(LoginItemGuard.wantedKey), status: status)
+        if let store = decision.store { settings.set(LoginItemGuard.wantedKey, String(store)) }
+        loginItemOff = decision.warn
+    }
+
+    /// Records his wish for the login item (Settings toggle, onboarding).
+    public func setLoginItemWanted(_ wanted: Bool) {
+        settings.set(LoginItemGuard.wantedKey, String(wanted))
+        refreshLoginItem()
+    }
 
     /// C3 calendar overlay -- **injection convention**: every new
     /// collaborator introduced this batch is a post-init optional property,

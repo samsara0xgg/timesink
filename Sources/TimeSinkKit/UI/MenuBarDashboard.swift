@@ -1,6 +1,7 @@
 import SwiftUI
 import Charts
 import Observation
+import ServiceManagement
 import os
 
 private let menuBarDashboardLogger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "menuBarDashboard")
@@ -592,6 +593,7 @@ struct MenuBarDashboardView: View {
                 case .permission:
                     permissionPlatter
                     chromeRow
+                    guardRows
                     todayPlatter(dim: true, categories: false)
                 case .paused:
                     pausedPlatter
@@ -599,14 +601,17 @@ struct MenuBarDashboardView: View {
                 case .morning:
                     morningPlatter
                     chromeRow
+                    guardRows
                     focusPlatter(withLimits: false)
                 case .idle:
                     platterRow { Label("你离开了电脑，这段时间不计入。回来后会自动继续。", systemImage: "moon").foregroundStyle(Design.ink2) }
                     chromeRow
+                    guardRows
                     todayPlatter(dim: false, categories: true)
                     focusPlatter(withLimits: true)
                 case .recording:
                     chromeRow
+                    guardRows
                     todayPlatter(dim: false, categories: true)
                     focusPlatter(withLimits: true)
                 }
@@ -1031,6 +1036,28 @@ struct MenuBarDashboardView: View {
             .buttonStyle(AccentButtonStyle())
             Text("重新打开后自动继续，不用重启 TimeSink。").font(.note).foregroundStyle(Design.ink2)
         })
+    }
+
+    /// Storage write failures and a login item he switched off: no modal, a row each.
+    @ViewBuilder private var guardRows: some View {
+        if let degraded = model.storageDegraded {
+            platterRow {
+                Image(systemName: "externaldrive.badge.exclamationmark").foregroundStyle(Design.alert).accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("记录没能写入：\(degraded.failure.reason)").foregroundStyle(Design.ink2)
+                    if let last = degraded.lastSuccess {
+                        Text("上次成功写入 \(model.time(last))").font(.note).foregroundStyle(Design.ink2)
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        if model.loginItemOff {
+            platterRow {
+                Image(systemName: "power").foregroundStyle(Design.alert).accessibilityHidden(true)
+                Text("开机启动被关掉了").foregroundStyle(Design.ink2).frame(maxWidth: .infinity, alignment: .leading)
+                Button("打开设置…") { SMAppService.openSystemSettingsLoginItems() }.buttonStyle(PillButtonStyle(height: 24))
+            }
+        }
     }
 
     @ViewBuilder private var chromeRow: some View {
