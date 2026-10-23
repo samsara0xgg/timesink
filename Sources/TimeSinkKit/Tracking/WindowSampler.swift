@@ -19,10 +19,12 @@ public final class WindowSampler: Sendable {
         public let bundleID: String
         public let name: String
         public let pid: pid_t
+        /// A regular Dock app; accessories and agents have no window to read a title from.
+        public let isRegular: Bool
         /// Public so `tsprobe` can ask what the tracker would record for an
         /// app without that app having to be frontmost.
-        public init(bundleID: String, name: String, pid: pid_t) {
-            self.bundleID = bundleID; self.name = name; self.pid = pid
+        public init(bundleID: String, name: String, pid: pid_t, isRegular: Bool = true) {
+            self.bundleID = bundleID; self.name = name; self.pid = pid; self.isRegular = isRegular
         }
     }
 
@@ -52,14 +54,16 @@ public final class WindowSampler: Sendable {
               !bundleID.hasPrefix("com.alllllenshi.TimeSink.") else { return nil }
         return FrontmostApp(bundleID: bundleID,
                             name: app.localizedName ?? bundleID,
-                            pid: app.processIdentifier)
+                            pid: app.processIdentifier,
+                            isRegular: app.activationPolicy == .regular)
     }
 
     public func sample(at date: Date = Date(), app: FrontmostApp) -> Sample {
         let focused = focusedWindow(pid: app.pid)
         return Sample(timestamp: date, appBundleID: app.bundleID, appName: app.name,
                       windowTitle: focused.title, url: nil, windowID: focused.id,
-                      document: document(for: app, focused: focused))
+                      document: document(for: app, focused: focused),
+                      axTitleRead: app.isRegular ? focused.titleRead : nil)
     }
 
     /// A document worth recording, or nil.
@@ -88,6 +92,8 @@ public final class WindowSampler: Sendable {
         public let title: String?
         public let id: UInt32?
         public let document: String?
+        /// Whether the AX title read worked; nil when the app has no window to read.
+        public let titleRead: Bool?
     }
 
     /// Title, CGWindowID and document of `pid`'s focused window, from one AX read.
@@ -104,17 +110,18 @@ public final class WindowSampler: Sendable {
         var window: CFTypeRef?
         guard AXUIElementCopyAttributeValue(appRef, kAXFocusedWindowAttribute as CFString, &window) == .success,
               let win = window else {
-            return FocusedWindow(title: nil, id: Self.largestWindowID(pid: pid), document: nil)
+            let fallback = Self.largestWindowID(pid: pid)
+            return FocusedWindow(title: nil, id: fallback, document: nil, titleRead: fallback == nil ? nil : false)
         }
         let winElement = win as! AXUIElement
         AXUIElementSetMessagingTimeout(winElement, 0.25)
         var title: CFTypeRef?
-        let titleString = AXUIElementCopyAttributeValue(winElement, kAXTitleAttribute as CFString, &title) == .success
-            ? title as? String : nil
+        let titleRead = AXUIElementCopyAttributeValue(winElement, kAXTitleAttribute as CFString, &title) == .success
+        let titleString = titleRead ? title as? String : nil
         var id: CGWindowID = 0
         let idValue: UInt32? = _AXUIElementGetWindow(winElement, &id) == .success && id != 0 ? id : nil
         return FocusedWindow(title: titleString, id: idValue ?? Self.largestWindowID(pid: pid),
-                             document: documentAttribute(winElement))
+                             document: documentAttribute(winElement), titleRead: titleRead)
     }
 
     /// `kAXDocument` (a terminal's working directory, an editor's file),

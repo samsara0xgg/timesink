@@ -532,6 +532,13 @@ public enum AppDatabase {
                 t.column("appName", .text).notNull()
             }
         }
+        migrator.registerMigration("self_health_ax_counters") { db in
+            // Accessibility title reads per health window: a stale grant reads nothing, silently.
+            try db.alter(table: "captureHealth") { t in
+                t.add(column: "axReads", .integer).notNull().defaults(to: 0)
+                t.add(column: "axFailed", .integer).notNull().defaults(to: 0)
+            }
+        }
         return migrator
     }
 }

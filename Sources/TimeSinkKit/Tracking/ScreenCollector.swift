@@ -131,6 +131,10 @@ public actor ScreenCollector {
         } else if now.timeIntervalSince(health.windowStart) >= Self.healthWindow {
             flushHealth(at: now)
         }
+        if let read = sample.axTitleRead {
+            health.axReads += 1
+            if !read { health.axFailed += 1 }
+        }
         var key: WindowKey?
         if !paused, !Self.excludedBundleIDs.contains(sample.appBundleID), let id = sample.windowID {
             key = WindowKey(bundleID: sample.appBundleID, windowID: id)

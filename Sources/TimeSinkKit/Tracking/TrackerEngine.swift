@@ -171,6 +171,7 @@ public final class TrackerEngine {
     public func setPermissionGranted(_ granted: Bool, at date: Date = Date()) {
         guard granted != permissionGranted else { return }
         permissionGranted = granted; suspensionEpoch += 1
+        axHealth = AXReadHealth(); axReadDegraded = false
         if !granted { closeCall(at: date); handsOff = false }
         if !granted, let closed = builder.close(at: date) { persist(closed) }
         interruptCollector()
@@ -289,6 +290,10 @@ public final class TrackerEngine {
 
     /// Counts consecutive failed span/call writes; set once by `TimeSinkApp`.
     public var writeHealth: WriteHealth?
+    /// Accessibility is granted but window titles have not been readable for
+    /// 30+ minutes; cleared by the next successful read. See `AXReadHealth`.
+    public private(set) var axReadDegraded = false
+    private var axHealth = AXReadHealth()
 
     private var timer: Timer?
 
@@ -481,6 +486,10 @@ public final class TrackerEngine {
             now: now, provider: windowSampleProvider, app: frontmost
         ) else { return }
         guard suspensionEpoch == epochBeforeSample else { return }
+        if let read = sample.axTitleRead {
+            axHealth.note(ok: read, at: now)
+            axReadDegraded = axHealth.isDegraded(at: now)
+        }
 
         if sample.appBundleID == Self.chromeBundleID {
             if settings.get("chromeTrackingEnabled") == "false" {

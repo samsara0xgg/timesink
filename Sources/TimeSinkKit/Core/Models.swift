@@ -14,12 +14,15 @@ public struct Sample: Equatable, Sendable {
     /// name. nil for everything that identifies itself by title alone.
     /// See `DocumentIdentity`.
     public var document: String?
+    /// Whether this tick's AX window-title read worked. nil when none was
+    /// made: no regular windowed app in front, or a sample not read from AX.
+    public var axTitleRead: Bool?
     public init(timestamp: Date, appBundleID: String, appName: String,
                 windowTitle: String?, url: String?, windowID: UInt32? = nil,
-                document: String? = nil) {
+                document: String? = nil, axTitleRead: Bool? = nil) {
         self.timestamp = timestamp; self.appBundleID = appBundleID
         self.appName = appName; self.windowTitle = windowTitle; self.url = url
-        self.windowID = windowID; self.document = document
+        self.windowID = windowID; self.document = document; self.axTitleRead = axTitleRead
     }
 }
 

@@ -198,6 +198,10 @@ public struct CaptureHealth: Codable, Equatable, Sendable, FetchableRecord, Muta
     public var permissionDenied = 0
     /// A check fell due while the previous one was still in flight.
     public var skippedBusy = 0
+    /// Focused-window title reads on ticks where a regular windowed app was
+    /// frontmost, and how many of them failed (migration self_health_ax_counters).
+    public var axReads = 0
+    public var axFailed = 0
 
     public init(windowStart: Date, windowEnd: Date) {
         self.windowStart = windowStart
@@ -205,7 +209,7 @@ public struct CaptureHealth: Codable, Equatable, Sendable, FetchableRecord, Muta
     }
 
     public var hasActivity: Bool {
-        checks + permissionDenied + skippedBusy > 0
+        checks + permissionDenied + skippedBusy + axReads > 0
     }
 
     public mutating func didInsert(_ inserted: InsertionSuccess) { id = inserted.rowID }

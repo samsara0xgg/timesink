@@ -11361,6 +11361,16 @@
         }
       }
     },
+    "读不到窗口标题，请在系统设置里重新勾选辅助功能": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can't read window titles. Toggle Accessibility off and on again in System Settings"
+          }
+        }
+      }
+    },
     "屏幕文字识别持续失败": {
       "localizations": {
         "en": {

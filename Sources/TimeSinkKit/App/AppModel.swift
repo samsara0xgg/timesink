@@ -245,6 +245,8 @@ public final class AppModel {
     /// `refreshMenu()`, which already runs on every relevant update path
     /// (engine writes via `dataChanged()`, and construction).
     public private(set) var chromeDegraded: Bool = false
+    /// Same mirror for `engine.axReadDegraded` (window titles unreadable).
+    public private(set) var axDegraded: Bool = false
 
     /// Writes keep failing (`WriteHealth`); nil while healthy.
     public private(set) var storageDegraded: WriteHealth.Degraded?
@@ -541,6 +543,7 @@ public final class AppModel {
             todayPulseTitle = "--"
         }
         chromeDegraded = engine.chromeCaptureDegraded
+        axDegraded = engine.axReadDegraded
 
         // C4: budget/summary notifications, off the totals just computed
         // above -- no new span query. `budgetMonitor` is nil until
