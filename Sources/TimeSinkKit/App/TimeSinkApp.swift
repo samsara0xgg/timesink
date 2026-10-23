@@ -188,10 +188,10 @@ public struct TimeSinkApp: App {
         // OCR stuck failing (Vision model caches wiped): restart once, else say so.
         if Bundle.main.bundleIdentifier == "com.alllllenshi.TimeSink", let collector = model.screenCollector {
             let selfHeal = SelfHealMonitor(
-                settings: settingsStore, notifier: notifier,
+                notifier: notifier,
                 isFocusRunning: { [weak focusController] in focusController?.running != nil },
                 // Through applicationShouldTerminate, which writes the `stop` event.
-                relaunch: { SelfHeal.reopen(bundleURL: Bundle.main.bundleURL); NSApp.terminate(nil) })
+                relaunch: { SelfHeal.reopen(bundleURL: Bundle.main.bundleURL, afterExitOf: ProcessInfo.processInfo.processIdentifier); NSApp.terminate(nil) })
             Task { await collector.setOnOCRFailure { streak in Task { @MainActor in selfHeal.ocrStreakChanged(streak) } } }
         }
         ProjectSeed.applyIfNeeded(store: categoryStore.projects, settings: settingsStore)

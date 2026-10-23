@@ -68,11 +68,11 @@ final class SelfHealDecisionTests: XCTestCase {
 @MainActor
 final class SelfHealMonitorTests: XCTestCase {
     private func make(focus: @escaping () -> Bool = { false }) throws
-        -> (SelfHealMonitor, SettingsStore, SpyNotifier, Counter) {
-        let settings = SettingsStore(try AppDatabase.openInMemory())
+        -> (SelfHealMonitor, UserDefaults, SpyNotifier, Counter) {
+        let settings = UserDefaults(suiteName: "selfheal-test-\(UUID().uuidString)")!
         let notifier = SpyNotifier()
         let counter = Counter()
-        let monitor = SelfHealMonitor(settings: settings, notifier: notifier, isFocusRunning: focus,
+        let monitor = SelfHealMonitor(defaults: settings, notifier: notifier, isFocusRunning: focus,
                                       relaunch: { counter.relaunches += 1 }, now: { ts(SelfHeal.minSilence + 1) },
                                       delay: .milliseconds(5))
         return (monitor, settings, notifier, counter)
@@ -87,7 +87,7 @@ final class SelfHealMonitorTests: XCTestCase {
         monitor.ocrStreakChanged(bad)                     // same streak, still waiting: one relaunch only
         try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertEqual(counter.relaunches, 1)
-        XCTAssertEqual(settings.get(SelfHeal.relaunchKey).flatMap(TimeInterval.init), ts(SelfHeal.minSilence + 1).timeIntervalSince1970)
+        XCTAssertEqual(settings.object(forKey: SelfHeal.relaunchKey) as? TimeInterval, ts(SelfHeal.minSilence + 1).timeIntervalSince1970)
         XCTAssertTrue(notifier.posted.isEmpty)
 
         // The new process starts, the streak comes back.
@@ -106,7 +106,7 @@ final class SelfHealMonitorTests: XCTestCase {
         focus = true
         try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertEqual(counter.relaunches, 0)
-        XCTAssertNil(settings.get(SelfHeal.relaunchKey))
+        XCTAssertNil(settings.object(forKey: SelfHeal.relaunchKey))
     }
 
     func testBelowThresholdNeverActs() async throws {
@@ -115,6 +115,45 @@ final class SelfHealMonitorTests: XCTestCase {
         try await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertEqual(counter.relaunches, 0)
         XCTAssertTrue(notifier.posted.isEmpty)
+    }
+}
+
+/// The shell that reopens the app waits for the old process, with an upper bound.
+final class SelfHealReopenTests: XCTestCase {
+    private func run(sleeping seconds: Int, maxWait: Int) throws -> (marker: URL, child: Process) {
+        let marker = FileManager.default.temporaryDirectory.appendingPathComponent("reopen-\(UUID().uuidString)")
+        let child = Process()
+        child.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        child.arguments = [String(seconds)]
+        try child.run()
+        // `touch` stands in for `open`: it creates the marker where the real one would launch the app.
+        SelfHeal.reopen(bundleURL: marker, afterExitOf: child.processIdentifier, maxWait: maxWait, opener: "/usr/bin/touch")
+        return (marker, child)
+    }
+    private func appears(_ url: URL, within seconds: Double) async -> Bool {
+        let end = Date().addingTimeInterval(seconds)
+        while Date() < end {
+            if FileManager.default.fileExists(atPath: url.path) { return true }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        return false
+    }
+
+    func testOpensOnlyAfterTheOldProcessExits() async throws {
+        let (marker, child) = try run(sleeping: 2, maxWait: 30)
+        defer { try? FileManager.default.removeItem(at: marker) }
+        let early = await appears(marker, within: 1.0)
+        XCTAssertFalse(early, "old process still alive")
+        child.waitUntilExit()
+        let late = await appears(marker, within: 2.0)
+        XCTAssertTrue(late)
+    }
+
+    func testOpensAnywayAfterTheUpperBound() async throws {
+        let (marker, child) = try run(sleeping: 30, maxWait: 1)
+        defer { child.terminate(); try? FileManager.default.removeItem(at: marker) }
+        let opened = await appears(marker, within: 3.0)
+        XCTAssertTrue(opened)
     }
 }
 

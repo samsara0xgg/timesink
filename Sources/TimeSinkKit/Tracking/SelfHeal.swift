@@ -52,13 +52,26 @@ public enum SelfHeal {
         return .relaunch
     }
 
-    /// Opens the same bundle again after this process has exited. Detached on
-    /// purpose: `open` of a running app only activates it, so the shell waits.
-    public static func reopen(bundleURL: URL, after seconds: Int = 3) {
-        let shell = Process()
-        shell.executableURL = URL(fileURLWithPath: "/bin/sh")
-        shell.arguments = ["-c", "sleep \(seconds); /usr/bin/open \"$0\"", bundleURL.path]
-        try? shell.run()
+    /// Opens `bundleURL` again once process `pid` (this one) has exited. A new instance exits
+    /// when an older one of the same bundle is still alive (`TimeSinkApp.init`), and `open` of a
+    /// running app only activates it, so the shell waits for the old pid instead of a fixed
+    /// delay, and opens anyway after `maxWait` seconds. It runs in a session of its own
+    /// (`POSIX_SPAWN_SETSID`) with no terminal, so it outlives the quitting app.
+    public static func reopen(bundleURL: URL, afterExitOf pid: pid_t, maxWait: Int = 60, opener: String = "/usr/bin/open") {
+        let script = "n=0; while kill -0 \"$1\" 2>/dev/null && [ $n -lt $2 ]; do sleep 0.2; n=$((n+1)); done; exec \"$3\" \"$0\""
+        let args = ["sh", "-c", script, bundleURL.path, String(pid), String(maxWait * 5), opener]
+        var attr: posix_spawnattr_t?
+        posix_spawnattr_init(&attr)
+        defer { posix_spawnattr_destroy(&attr) }
+        posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_SETSID))
+        var actions: posix_spawn_file_actions_t?
+        posix_spawn_file_actions_init(&actions)
+        defer { posix_spawn_file_actions_destroy(&actions) }
+        for fd: Int32 in 0...2 { posix_spawn_file_actions_addopen(&actions, fd, "/dev/null", O_RDWR, 0) }
+        let argv = args.map { strdup($0) } + [nil]
+        defer { argv.forEach { free($0) } }
+        var child: pid_t = 0
+        posix_spawn(&child, "/bin/sh", &actions, &attr, argv, environ)
     }
 }
 
@@ -66,7 +79,7 @@ public enum SelfHeal {
 /// never touch the running app.
 @MainActor
 public final class SelfHealMonitor {
-    private let settings: SettingsStore
+    private let defaults: UserDefaults
     private let notifier: any Notifying
     private let isFocusRunning: () -> Bool
     private let relaunch: () -> Void
@@ -76,16 +89,17 @@ public final class SelfHealMonitor {
     private var notified = false
     private let logger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "selfheal")
 
-    public init(settings: SettingsStore, notifier: any Notifying, isFocusRunning: @escaping () -> Bool,
+    public init(defaults: UserDefaults = .standard, notifier: any Notifying, isFocusRunning: @escaping () -> Bool,
                 relaunch: @escaping () -> Void, now: @escaping () -> Date = Date.init,
                 delay: Duration = .seconds(5)) {
-        self.settings = settings; self.notifier = notifier; self.isFocusRunning = isFocusRunning
+        self.defaults = defaults; self.notifier = notifier; self.isFocusRunning = isFocusRunning
         self.relaunch = relaunch; self.now = now; self.delay = delay
     }
 
     /// Called after every OCR failure.
     public func ocrStreakChanged(_ streak: OCRStreak) {
-        let lastRelaunch = settings.get(SelfHeal.relaunchKey).flatMap(TimeInterval.init).map(Date.init(timeIntervalSince1970:))
+        // UserDefaults, not the database: if the database cannot be written the marker would be lost and the relaunch could loop.
+        let lastRelaunch = (defaults.object(forKey: SelfHeal.relaunchKey) as? TimeInterval).map(Date.init(timeIntervalSince1970:))
         switch SelfHeal.decide(streak: streak, now: now(), focusRunning: isFocusRunning(), lastRelaunch: lastRelaunch) {
         case .none:
             return
@@ -102,7 +116,7 @@ public final class SelfHealMonitor {
                 try? await Task.sleep(for: delay)
                 // A focus session may have started during the delay.
                 guard !isFocusRunning() else { pending = false; return }
-                settings.set(SelfHeal.relaunchKey, String(now().timeIntervalSince1970))
+                defaults.set(now().timeIntervalSince1970, forKey: SelfHeal.relaunchKey)
                 relaunch()
             }
         }
