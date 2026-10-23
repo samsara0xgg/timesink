@@ -40,6 +40,14 @@ public final class CallSpanStore: Sendable {
         try writer.write { db in try db.execute(sql: "UPDATE callSpan SET end = ? WHERE id = ?", arguments: [end, id]) }
     }
 
+    /// The row of `bundleID` that ended last, if any.
+    public func latest(bundleID: String) throws -> CallSpan? {
+        try writer.read { db in
+            try CallSpan.fetchOne(db, sql: "SELECT * FROM callSpan WHERE appBundleID = ? ORDER BY \"end\" DESC LIMIT 1",
+                                  arguments: [bundleID])
+        }
+    }
+
     public func spans(overlapping interval: DateInterval) throws -> [CallSpan] {
         try writer.read { db in
             try CallSpan.fetchAll(db, sql: "SELECT * FROM callSpan WHERE start < ? AND end > ? ORDER BY start",

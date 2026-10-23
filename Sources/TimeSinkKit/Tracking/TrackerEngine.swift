@@ -349,8 +349,25 @@ public final class TrackerEngine {
     /// This tick's presence and raw idle, read by `tickAsync` for attribution.
     private var tickPresence: Presence?
     private var rawIdle: TimeInterval = 0
-    /// The open call row and when it was last written.
-    private var openCall: (id: Int64, bundleID: String, wrote: Date)?
+    /// The open call row, when it was last written, when a presence read last
+    /// showed the call, and when reads first stopped showing it.
+    private struct OpenCall {
+        var id: Int64
+        var bundleID: String
+        var wrote: Date
+        var lastSeen: Date
+        var missingSince: Date?
+    }
+    private var openCall: OpenCall?
+    /// A call survives this long without a presence read showing it: one miss
+    /// (reads come every `refreshInterval`) is a hiccup, the next one confirms.
+    static let callMissGrace = PresenceMonitor.refreshInterval
+    /// A call of the same app starting within this long of its last row's end
+    /// continues that row (a hiccup longer than the grace, an app restart).
+    static let callRejoinWindow: TimeInterval = 60
+    /// Between `willSleep` and the next wake or unlock. A lock suspends
+    /// sampling but not call tracking; a sleep ends the call.
+    private var asleep = false
     /// Set on the tick where the meeting idle-exemption transitions
     /// true->false (the moment it stops zeroing `idleSeconds`). CRITICAL
     /// fix: without this, un-exempting mid-idle-stretch backdates
@@ -580,7 +597,7 @@ public final class TrackerEngine {
 
         let wasIdle = suspensionState.idleSuspended
         let outcome = suspensionState.tick(idleSeconds: idleSeconds, threshold: settings.idleThreshold)
-        if outcome != .systemSuspended { trackCall(now: now) }
+        if outcome != .systemSuspended || !asleep { trackCall(now: now) }
         switch outcome {
         case .systemSuspended:
             return .suspended
@@ -602,18 +619,42 @@ public final class TrackerEngine {
     }
 
     /// Opens, extends (at the heartbeat cadence) or closes the call row for this tick's presence.
+    /// A call that stops showing is closed only once reads have missed it for `callMissGrace`,
+    /// and then at the time it was last seen. A new call needs the app to run input and output;
+    /// an open one needs input alone, so silence in a voice channel cannot split it.
     private func trackCall(now: Date) {
         guard let callStore else { return }
         let call = tickPresence?.kind == .call ? tickPresence : nil
-        if let open = openCall, open.bundleID != call?.bundleID { closeCall(at: now) }
-        guard let call else { return }
-        do {
-            if let open = openCall {
+        if var open = openCall {
+            if open.bundleID == call?.bundleID {
+                open.lastSeen = now
+                open.missingSince = nil
+                openCall = open
                 guard now.timeIntervalSince(open.wrote) >= Self.heartbeatInterval else { return }
-                try callStore.extend(id: open.id, end: now)
-                openCall = (open.id, open.bundleID, now)
+                do {
+                    try callStore.extend(id: open.id, end: now)
+                    openCall?.wrote = now
+                } catch {
+                    logger.error("call span write failed: \(String(describing: error))")
+                }
+                return
+            }
+            if call == nil {
+                let since = open.missingSince ?? now
+                openCall?.missingSince = since
+                guard now.timeIntervalSince(since) >= Self.callMissGrace else { return }
+            }
+            closeCall(at: open.lastSeen)
+        }
+        guard let call, call.output else { return }
+        do {
+            if let recent = try callStore.latest(bundleID: call.bundleID), let id = recent.id,
+               now.timeIntervalSince(recent.end) <= Self.callRejoinWindow {
+                try callStore.extend(id: id, end: max(now, recent.end))
+                openCall = OpenCall(id: id, bundleID: call.bundleID, wrote: now, lastSeen: now)
             } else {
-                openCall = (try callStore.open(at: now, bundleID: call.bundleID, appName: call.appName).id ?? 0, call.bundleID, now)
+                let id = try callStore.open(at: now, bundleID: call.bundleID, appName: call.appName).id ?? 0
+                openCall = OpenCall(id: id, bundleID: call.bundleID, wrote: now, lastSeen: now)
             }
         } catch {
             logger.error("call span write failed: \(String(describing: error))")
@@ -747,7 +788,10 @@ public final class TrackerEngine {
         // superset of "the suspension context moved", and a redundant signal
         // costs at most one dropped 1s sample.
         suspensionEpoch += 1
-        closeCall(at: date)
+        if source == .sleep {
+            asleep = true
+            closeCall(at: openCall?.lastSeen ?? date)
+        }
         guard suspensionState.suspendSystem() else { return }
         if let closed = builder.close(at: date) {
             persist(closed)
@@ -768,6 +812,7 @@ public final class TrackerEngine {
     /// lock+unlock pair that both land inside one IPC window.
     func resume(source: SystemMonitor.ResumeSource) {
         suspensionEpoch += 1
+        asleep = false
         switch source {
         case .unlock:
             suspensionState.unlock()

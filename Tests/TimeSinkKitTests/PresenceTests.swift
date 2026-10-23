@@ -150,7 +150,7 @@ final class TrackerEnginePresenceTests: XCTestCase {
         XCTAssertGreaterThan(rows[0].duration, 500)
     }
 
-    func testCallSpanOpensExtendsAndClosesAtCallEnd() async throws {
+    func testCallSpanOpensExtendsAndClosesAtLastSeenAfterTwoMisses() async throws {
         let (engine, _, calls) = try makeEngine()
         engine.idleSecondsProvider = { 0 }
         engine.presenceProvider = { self.zoom }
@@ -161,10 +161,77 @@ final class TrackerEnginePresenceTests: XCTestCase {
         XCTAssertEqual(rows[0].end, ts(90), "extended only every 30 s")
         engine.presenceProvider = { nil }
         await engine.tickAsync(now: ts(100))
+        XCTAssertEqual(try calls.spans(overlapping: all)[0].end, ts(90), "first miss: still open")
+        await engine.tickAsync(now: ts(105))
         rows = try calls.spans(overlapping: all)
         XCTAssertEqual(rows.count, 1)
-        XCTAssertEqual(rows[0].end, ts(100))
+        XCTAssertEqual(rows[0].end, ts(95), "second miss closes at the last tick that saw the call")
         XCTAssertEqual(rows[0].appBundleID, "us.zoom.xos")
+    }
+
+    /// Ticks every 5 s from `from` to `through` with `presence`.
+    private func run(_ engine: TrackerEngine, _ presence: Presence?, _ from: TimeInterval, _ through: TimeInterval) async {
+        engine.presenceProvider = { presence }
+        for t in stride(from: from, through: through, by: 5) { await engine.tickAsync(now: ts(t)) }
+    }
+
+    func testOneMissedReadKeepsOneRow() async throws {
+        let (engine, _, calls) = try makeEngine()
+        engine.idleSecondsProvider = { 0 }
+        await run(engine, zoom, 0, 20)
+        await run(engine, nil, 25, 25)
+        await run(engine, zoom, 30, 60)
+        let rows = try calls.spans(overlapping: all)
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].end, ts(60))
+    }
+
+    func testSameAppBackWithinSixtySecondsExtendsTheOldRowAndAfterThatOpensANewOne() async throws {
+        for (backAt, expectedRows) in [(80.0, 1), (85.0, 2)] {
+            let (engine, _, calls) = try makeEngine()
+            engine.idleSecondsProvider = { 0 }
+            await run(engine, zoom, 0, 20)             // last seen at 20
+            await run(engine, nil, 25, backAt - 5)
+            await run(engine, zoom, backAt, backAt)
+            let rows = try calls.spans(overlapping: all)
+            XCTAssertEqual(rows.count, expectedRows, "back at \(backAt)")
+            XCTAssertEqual(rows.last?.end, ts(backAt))
+            XCTAssertEqual(rows[0].end, expectedRows == 1 ? ts(backAt) : ts(20))
+        }
+    }
+
+    func testRestartContinuesTheRecentRow() async throws {
+        let (engine, _, calls) = try makeEngine()
+        engine.idleSecondsProvider = { 0 }
+        let old = try calls.open(at: ts(0), bundleID: "us.zoom.xos", appName: "zoom.us")
+        try calls.extend(id: old.id!, end: ts(100))
+        await run(engine, zoom, 130, 130)
+        let rows = try calls.spans(overlapping: all)
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].end, ts(130))
+    }
+
+    func testAnotherAppsRowIsNotContinued() async throws {
+        let (engine, _, calls) = try makeEngine()
+        engine.idleSecondsProvider = { 0 }
+        let old = try calls.open(at: ts(0), bundleID: "com.hnc.Discord", appName: "Discord")
+        try calls.extend(id: old.id!, end: ts(100))
+        await run(engine, zoom, 110, 110)
+        XCTAssertEqual(try calls.spans(overlapping: all).count, 2)
+    }
+
+    func testNewCallNeedsInputAndOutputButAnOpenOneOnlyInput() async throws {
+        let (engine, _, calls) = try makeEngine()
+        engine.idleSecondsProvider = { 0 }
+        let silent = Presence(kind: .call, bundleID: "us.zoom.xos", appName: "zoom.us", output: false)
+        await run(engine, silent, 0, 40)
+        XCTAssertTrue(try calls.spans(overlapping: all).isEmpty, "mic alone does not open a call")
+        await run(engine, zoom, 45, 50)
+        XCTAssertEqual(try calls.spans(overlapping: all).count, 1)
+        await run(engine, silent, 55, 140)
+        let rows = try calls.spans(overlapping: all)
+        XCTAssertEqual(rows.count, 1, "silence does not split the call")
+        XCTAssertEqual(rows[0].end, ts(135), "and keeps it extending")
     }
 
     func testVideoIsNotACallSpan() async throws {
@@ -174,17 +241,31 @@ final class TrackerEnginePresenceTests: XCTestCase {
         XCTAssertTrue(try calls.spans(overlapping: all).isEmpty)
     }
 
-    func testSuspendClosesCallAndLockedTicksDoNotReopenIt() async throws {
+    func testLockKeepsTheCallAndSleepClosesItAtLastSeen() async throws {
         let (engine, _, calls) = try makeEngine()
         engine.idleSecondsProvider = { 0 }
-        engine.presenceProvider = { self.zoom }
-        for t in stride(from: 0.0, through: 40, by: 10) { await engine.tickAsync(now: ts(t)) }
+        await run(engine, zoom, 0, 40)
         engine.suspend(at: ts(45))
-        await engine.tickAsync(now: ts(50))
-        await engine.tickAsync(now: ts(90))
-        let rows = try calls.spans(overlapping: all)
+        await run(engine, zoom, 50, 100)
+        XCTAssertTrue(engine.isSuspended)
+        var rows = try calls.spans(overlapping: all)
         XCTAssertEqual(rows.count, 1)
-        XCTAssertEqual(rows[0].end, ts(45))
+        XCTAssertEqual(rows[0].end, ts(90), "locked ticks keep extending the call")
+        engine.suspend(at: ts(103), source: .sleep)
+        rows = try calls.spans(overlapping: all)
+        XCTAssertEqual(rows[0].end, ts(100), "sleep closes at the last tick that saw the call")
+        await run(engine, zoom, 105, 200)
+        XCTAssertEqual(try calls.spans(overlapping: all).count, 1, "ticks while asleep do not reopen it")
+        XCTAssertEqual(try calls.spans(overlapping: all)[0].end, ts(100))
+    }
+
+    func testCallEndingWhileLockedClosesAfterTwoMisses() async throws {
+        let (engine, _, calls) = try makeEngine()
+        engine.idleSecondsProvider = { 0 }
+        await run(engine, zoom, 0, 20)
+        engine.suspend(at: ts(22))
+        await run(engine, nil, 25, 35)
+        XCTAssertEqual(try calls.spans(overlapping: all)[0].end, ts(20))
     }
 }
 
