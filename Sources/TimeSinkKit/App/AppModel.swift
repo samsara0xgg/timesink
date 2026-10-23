@@ -310,7 +310,7 @@ public final class AppModel {
     /// `isNowInMeeting` (derived from it) needs to be, and that's read by
     /// `TrackerEngine.isInMeetingProvider`, not SwiftUI.
     @ObservationIgnored
-    private(set) var todayMeetingEvents: [CalendarEvent] = []
+    internal(set) var todayMeetingEvents: [CalendarEvent] = []
 
     /// C4 budgets -- same post-init injection convention as `calendarStore`:
     /// `TimeSinkApp.init` assigns these after constructing `AppModel`. All

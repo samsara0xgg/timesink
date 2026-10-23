@@ -40,7 +40,7 @@ extension AppModel {
     /// The calendar event that covers most of the stretch, if any.
     func awaySuggestion(for interval: DateInterval) -> CalendarEvent? {
         todayMeetingEvents
-            .filter { !$0.isAllDay && !$0.isDeclined && $0.start < interval.end && $0.end > interval.start }
+            .filter { !$0.isAllDay && !$0.isDeclined && !$0.isCanceled && $0.start < interval.end && $0.end > interval.start }
             .max { overlap($0, interval) < overlap($1, interval) }
             .flatMap { overlap($0, interval) >= interval.duration / 2 ? $0 : nil }
     }

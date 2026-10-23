@@ -3,9 +3,9 @@ import XCTest
 
 final class CalendarMeetingTests: XCTestCase {
     private func ev(_ s: TimeInterval, _ e: TimeInterval, attendees: Int = 2, title: String = "Sync",
-                    allDay: Bool = false, declined: Bool = false) -> CalendarEvent {
+                    allDay: Bool = false, declined: Bool = false, canceled: Bool = false) -> CalendarEvent {
         CalendarEvent(id: UUID().uuidString, title: title, start: ts(s), end: ts(e),
-                      isAllDay: allDay, attendeeCount: attendees, isDeclined: declined,
+                      isAllDay: allDay, attendeeCount: attendees, isDeclined: declined, isCanceled: canceled,
                       calendarTitle: "工作", colorHex: "#3478F6")
     }
     func testIsMeetingPredicate() {
@@ -14,6 +14,7 @@ final class CalendarMeetingTests: XCTestCase {
         XCTAssertFalse(ev(0, 3600, attendees: 0, title: "写代码").isMeeting)    // 单人非会议
         XCTAssertFalse(ev(0, 3600, allDay: true).isMeeting)                    // 全天排除
         XCTAssertFalse(ev(0, 3600, declined: true).isMeeting)                  // 已拒绝排除
+        XCTAssertFalse(ev(0, 3600, canceled: true).isMeeting)                  // 已取消排除
     }
     func testTaggedRequiresHalfOverlap() {
         let meeting = ev(0, 1800)

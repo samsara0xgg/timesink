@@ -13,11 +13,12 @@ public struct CalendarEvent: Sendable, Equatable, Identifiable {
     public var isAllDay: Bool
     public var attendeeCount: Int
     public var isDeclined: Bool
+    public var isCanceled: Bool
     public var calendarTitle: String
     public var colorHex: String
 
     public init(id: String, title: String, start: Date, end: Date, isAllDay: Bool,
-                attendeeCount: Int, isDeclined: Bool, calendarTitle: String, colorHex: String) {
+                attendeeCount: Int, isDeclined: Bool, isCanceled: Bool = false, calendarTitle: String, colorHex: String) {
         self.id = id
         self.title = title
         self.start = start
@@ -25,6 +26,7 @@ public struct CalendarEvent: Sendable, Equatable, Identifiable {
         self.isAllDay = isAllDay
         self.attendeeCount = attendeeCount
         self.isDeclined = isDeclined
+        self.isCanceled = isCanceled
         self.calendarTitle = calendarTitle
         self.colorHex = colorHex
     }
@@ -35,9 +37,9 @@ public struct CalendarEvent: Sendable, Equatable, Identifiable {
     /// attendee list.
     static let meetingKeywords = ["sync", "1:1", "standup", "组会", "例会", "meeting"]  // l10n: data
 
-    /// 纯谓词：非全天 && 未拒绝 && (2 人以上 || 标题命中会议词)。
+    /// 纯谓词：非全天 && 未拒绝 && 未取消 && (2 人以上 || 标题命中会议词)。
     public var isMeeting: Bool {
-        guard !isAllDay, !isDeclined else { return false }
+        guard !isAllDay, !isDeclined, !isCanceled else { return false }
         if attendeeCount >= 2 { return true }
         let lowered = title.lowercased()
         return Self.meetingKeywords.contains { lowered.contains($0) }
@@ -204,6 +206,7 @@ public actor CalendarStore {
             isAllDay: event.isAllDay,
             attendeeCount: attendees.count,
             isDeclined: isDeclined,
+            isCanceled: event.status == .canceled,
             calendarTitle: calendarTitle ?? "",
             colorHex: hexString(from: calendar.cgColor)
         )
