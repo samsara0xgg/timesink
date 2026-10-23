@@ -259,6 +259,9 @@ public final class TrackerEngine {
     static let handsOffSeconds: TimeInterval = 60
     /// A lock suspension heals when the screen is unlocked and input is this recent.
     static let lockHealIdle: TimeInterval = 5
+    /// ... and only once the lock is this old.
+    static let lockHealAge: TimeInterval = 10
+    private var lockedAt: Date?
 
     /// C4 focus session seam: consulted once per tick, after the sample
     /// guard and Chrome tab-URL enrichment, right before the sample is
@@ -603,7 +606,9 @@ public final class TrackerEngine {
 
         // A missed `screenIsUnlocked` must not leave tracking suspended behind a
         // working Mac: not locked and input just now is an unlock.
+        // The lock flag can lag the lock notification, so a fresh lock is left alone.
         if suspensionState.systemSuspended, !asleep, rawIdle < Self.lockHealIdle,
+           lockedAt.map({ now.timeIntervalSince($0) >= Self.lockHealAge }) == true,
            !(screenLockedProvider?() ?? isScreenLocked()) {
             resume(source: .unlock, at: now)
         }
@@ -828,6 +833,7 @@ public final class TrackerEngine {
             closeCall(at: openCall?.lastSeen ?? date)
         }
         guard suspensionState.suspendSystem() else { return }
+        lockedAt = date
         if let closed = builder.close(at: date) {
             persist(closed)
         }

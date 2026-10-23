@@ -307,15 +307,28 @@ final class TrackerEngineLockHealTests: XCTestCase {
         await engine.tickAsync(now: ts(2))
         XCTAssertTrue(engine.isSuspended, "still locked")
         locked = false; idle = 30
-        await engine.tickAsync(now: ts(3))
+        await engine.tickAsync(now: ts(13))
         XCTAssertTrue(engine.isSuspended, "unlocked but no input just now")
         idle = 2
-        await engine.tickAsync(now: ts(4))
+        await engine.tickAsync(now: ts(14))
         XCTAssertFalse(engine.isSuspended)
         XCTAssertNotNil(engine.latestSample, "sampling again")
-        let events = try observations.stateEvents(in: DateInterval(start: ts(-1), end: ts(10)))
+        let events = try observations.stateEvents(in: DateInterval(start: ts(-1), end: ts(20)))
         XCTAssertEqual(events.map(\.kind), ["lock", "unlock"])
-        XCTAssertEqual(events.last?.at, ts(4))
+        XCTAssertEqual(events.last?.at, ts(14))
+    }
+
+    func testFreshLockIsNotHealedUntilTenSecondsOld() async throws {
+        let db = try AppDatabase.openInMemory()
+        let engine = TrackerEngine(spanStore: SpanStore(db), settings: SettingsStore(db))
+        engine.windowSampleProvider = { Sample(timestamp: $0, appBundleID: "com.apple.finder", appName: "Finder", windowTitle: "Desktop", url: nil) }
+        engine.screenLockedProvider = { false }
+        engine.idleSecondsProvider = { 0 }
+        engine.suspend(at: ts(0))
+        await engine.tickAsync(now: ts(1))
+        XCTAssertTrue(engine.isSuspended, "lock flag may lag the notification")
+        await engine.tickAsync(now: ts(11))
+        XCTAssertFalse(engine.isSuspended)
     }
 
     func testSleepIsNotHealedByATick() async throws {
