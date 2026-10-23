@@ -290,3 +290,42 @@ final class CallSpanStoreTests: XCTestCase {
         XCTAssertEqual(tagged.seconds, 1000)
     }
 }
+
+@MainActor
+final class TrackerEngineLockHealTests: XCTestCase {
+    func testLockedSuspensionHealsWhenUnlockedAndInputIsRecent() async throws {
+        let db = try AppDatabase.openInMemory()
+        let observations = ObservationStore(db)
+        let engine = TrackerEngine(spanStore: SpanStore(db), settings: SettingsStore(db), observations: observations)
+        engine.windowSampleProvider = { Sample(timestamp: $0, appBundleID: "com.apple.finder", appName: "Finder", windowTitle: "Desktop", url: nil) }
+        var locked = true
+        var idle: TimeInterval = 1
+        engine.screenLockedProvider = { locked }
+        engine.idleSecondsProvider = { idle }
+        await engine.tickAsync(now: ts(0))
+        engine.suspend(at: ts(1))
+        await engine.tickAsync(now: ts(2))
+        XCTAssertTrue(engine.isSuspended, "still locked")
+        locked = false; idle = 30
+        await engine.tickAsync(now: ts(3))
+        XCTAssertTrue(engine.isSuspended, "unlocked but no input just now")
+        idle = 2
+        await engine.tickAsync(now: ts(4))
+        XCTAssertFalse(engine.isSuspended)
+        XCTAssertNotNil(engine.latestSample, "sampling again")
+        let events = try observations.stateEvents(in: DateInterval(start: ts(-1), end: ts(10)))
+        XCTAssertEqual(events.map(\.kind), ["lock", "unlock"])
+        XCTAssertEqual(events.last?.at, ts(4))
+    }
+
+    func testSleepIsNotHealedByATick() async throws {
+        let db = try AppDatabase.openInMemory()
+        let engine = TrackerEngine(spanStore: SpanStore(db), settings: SettingsStore(db))
+        engine.windowSampleProvider = { Sample(timestamp: $0, appBundleID: "com.apple.finder", appName: "Finder", windowTitle: "Desktop", url: nil) }
+        engine.screenLockedProvider = { false }
+        engine.idleSecondsProvider = { 0 }
+        engine.suspend(at: ts(0), source: .sleep)
+        await engine.tickAsync(now: ts(1))
+        XCTAssertTrue(engine.isSuspended)
+    }
+}

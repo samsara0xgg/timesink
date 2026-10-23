@@ -240,6 +240,7 @@ public final class TrackerEngine {
     var chatSessionProvider: (@Sendable () -> String?)?
     var chromeAutomationAuthorizedProvider: (() -> Bool)?
     var idleSecondsProvider: (() -> TimeInterval)?
+    var screenLockedProvider: (() -> Bool)?
     /// Seconds since the last keyDown; the real reading is one
     /// `CGEventSource` call, the same kind `IdleMonitor` already makes.
     var keyDownSecondsProvider: (() -> TimeInterval)?
@@ -256,6 +257,8 @@ public final class TrackerEngine {
     /// of a hands-off stretch still go to the frontmost app; a retroactive
     /// swap would need span rewriting.
     static let handsOffSeconds: TimeInterval = 60
+    /// A lock suspension heals when the screen is unlocked and input is this recent.
+    static let lockHealIdle: TimeInterval = 5
 
     /// C4 focus session seam: consulted once per tick, after the sample
     /// guard and Chrome tab-URL enrichment, right before the sample is
@@ -595,6 +598,13 @@ public final class TrackerEngine {
         let idleSeconds = isInMeetingNow ? 0 : rawIdle
         self.idleSeconds = idleSeconds
 
+        // A missed `screenIsUnlocked` must not leave tracking suspended behind a
+        // working Mac: not locked and input just now is an unlock.
+        if suspensionState.systemSuspended, !asleep, rawIdle < Self.lockHealIdle,
+           !(screenLockedProvider?() ?? isScreenLocked()) {
+            resume(source: .unlock, at: now)
+        }
+
         let wasIdle = suspensionState.idleSuspended
         let outcome = suspensionState.tick(idleSeconds: idleSeconds, threshold: settings.idleThreshold)
         if outcome != .systemSuspended || !asleep { trackCall(now: now) }
@@ -810,16 +820,16 @@ public final class TrackerEngine {
     ///
     /// Internal for the same reason as `suspend(at:)`: a test drives a
     /// lock+unlock pair that both land inside one IPC window.
-    func resume(source: SystemMonitor.ResumeSource) {
+    func resume(source: SystemMonitor.ResumeSource, at date: Date = Date()) {
         suspensionEpoch += 1
         asleep = false
         switch source {
         case .unlock:
             suspensionState.unlock()
-            observations?.logState("unlock")
+            observations?.logState("unlock", at: date)
         case .wake:
             suspensionState.wake(screenStillLocked: isScreenLocked())
-            observations?.logState("wake")
+            observations?.logState("wake", at: date)
         }
     }
 
