@@ -25,7 +25,8 @@ final class PresenceDecisionTests: XCTestCase {
     func testCallOutputIsTheSameRootAppPlayingAudio() {
         let input = proc(11, "us.zoom.CptHost", input: true)
         XCTAssertEqual(decide([input])?.output, false, "mic only")
-        XCTAssertEqual(decide([input, proc(12, "us.zoom.xos.helper", output: true)])?.output, true, "output from another process of the app")
+        XCTAssertEqual(decide([input, proc(12, "us.zoom.ZoomCefHelper", output: true)])?.output, true, "output from another process of the app")
+        XCTAssertEqual(decide([input, proc(13, "us.zoom.CptHost", output: true)])?.output, true, "the audio helper itself")
         XCTAssertEqual(decide([input, proc(21, "com.google.Chrome.helper", output: true)])?.output, false, "another app's output")
     }
 
@@ -38,6 +39,15 @@ final class PresenceDecisionTests: XCTestCase {
         XCTAssertEqual(call([proc(61, "com.tencent.meeting", input: true)])?.appName, "腾讯会议")
         XCTAssertEqual(call([proc(71, "com.tencent.qq.helper", input: true)])?.bundleID, "com.tencent.qq")
         XCTAssertNil(call([proc(80, "com.tencent.QQMusicMac", input: true)]))
+        XCTAssertEqual(call([proc(61, "com.tencent.meeting", input: true), proc(62, "com.tencent.meeting.WemeetLauncher", output: true)])?.output, true)
+        XCTAssertEqual(call([proc(71, "com.tencent.qq.helper", input: true), proc(72, "com.tencent.qq.helper.Renderer", output: true)])?.output, true)
+    }
+
+    func testDiscordHelperOutputOpensTheCall() {
+        let discord = apps + [M.App(pid: 90, bundleID: "com.hnc.Discord", name: "Discord", regular: true)]
+        let presence = M.decide(audio: [proc(91, "com.hnc.Discord.helper", input: true), proc(92, "com.hnc.Discord.helper.Renderer", output: true)],
+                                displayAssertionPIDs: [], apps: discord, ownPID: 999)
+        XCTAssertEqual(presence, Presence(kind: .call, bundleID: "com.hnc.Discord", appName: "Discord", onScreen: false, output: true))
     }
 
     func testCallIsOnScreenOnlyWhileItsAppKeepsTheDisplayAwake() {

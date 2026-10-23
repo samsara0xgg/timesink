@@ -74,7 +74,10 @@ public final class PresenceMonitor: @unchecked Sendable {
             if let prefix = callPrefixes.first(where: { process.bundleID.hasPrefix($0) }) {
                 // The running regular app carrying the prefix is the call's app (Zoom's audio comes from a helper).
                 let main = apps.first { $0.regular && $0.bundleID.hasPrefix(prefix) }
-                return presence(.call, bundleID: main?.bundleID ?? process.bundleID, apps: apps, onScreen: Set(displayOwners), audio: audio)
+                var call = presence(.call, bundleID: main?.bundleID ?? process.bundleID, apps: apps, onScreen: Set(displayOwners), audio: audio)
+                // Output by the same prefix: Zoom's audio helpers (`us.zoom.CptHost`) are not under `us.zoom.xos.`.
+                call.output = audio.contains { $0.output && $0.bundleID.hasPrefix(prefix) }
+                return call
             }
         }
         let playing = Set(audio.filter(\.output).compactMap { root(of: $0.bundleID, apps: apps)?.bundleID ?? $0.bundleID })
