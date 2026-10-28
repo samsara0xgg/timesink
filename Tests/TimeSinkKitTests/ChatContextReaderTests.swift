@@ -40,6 +40,13 @@ final class ChatContextReaderTests: XCTestCase {
             XCTAssertEqual(read(claudePage(title: title, button: "Button name")), ChatReading(document: "Button name"))
         }
     }
+    func testBuiltInBrowserPageGivesItsURL() {
+        let page = window([web(title: "", url: "file:///Applications/Claude.app/shell.html"),
+                           web(title: "Careers | Indeed.com", url: "https://www.indeed.com/cmp/x")])
+        XCTAssertEqual(read(page), ChatReading(document: "Careers | Indeed.com", url: "https://www.indeed.com/cmp/x"))
+        // A claude.ai page keeps the conversation name and no url.
+        XCTAssertEqual(read(window([web(title: "Chat")])).url, nil)
+    }
     func testEmptyButtonKeepsTodaysNil() {
         XCTAssertEqual(read(claudePage(title: "", button: nil)), ChatReading())
     }

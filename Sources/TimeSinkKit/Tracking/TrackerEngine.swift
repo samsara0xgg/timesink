@@ -527,6 +527,7 @@ public final class TrackerEngine {
                 chatSession = (sample.appBundleID, fetched)
             }
             sample.document = chatSession?.reading.document
+            sample.url = chatSession?.reading.url
         }
 
         if let presence = tickPresence, presence.onScreen, rawIdle >= Self.handsOffSeconds, sample.appBundleID != presence.bundleID {

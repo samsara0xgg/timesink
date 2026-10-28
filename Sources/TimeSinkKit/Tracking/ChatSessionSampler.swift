@@ -2,11 +2,13 @@ import ApplicationServices
 import Foundation
 import os
 
-/// What a chat app is showing: the conversation name, nil when it shows none.
+/// What a chat app is showing: the conversation name, nil when it shows none. `url` is set when
+/// that name is a web page in the app's built-in browser rather than a conversation.
 public struct ChatReading: Equatable, Sendable {
     public var document: String?
-    public init(document: String? = nil) {
-        self.document = document
+    public var url: String?
+    public init(document: String? = nil, url: String? = nil) {
+        self.document = document; self.url = url
     }
 }
 
@@ -59,12 +61,17 @@ enum ChatContextReader {
 
     static func read<N: ChatAXNode>(window: N, appName: String, miss: inout Miss?) -> ChatReading {
         var title: String?
+        var pageURL: String?
         var claudeWeb: N?
         findWebAreas(window, depth: 0) { area in
-            if let text = area.title, !text.isEmpty, text != appName { title = text }
+            if let text = area.title, !text.isEmpty, text != appName {
+                title = text
+                // Claude's built-in browser pane: a web area on an ordinary http(s) page, not claude.ai or the shell.
+                pageURL = area.url.flatMap { $0.hasPrefix("http") && !$0.hasPrefix(claudeURLPrefix) ? $0 : nil }
+            }
             if claudeWeb == nil, area.url?.hasPrefix(claudeURLPrefix) == true { claudeWeb = area }
         }
-        var reading = ChatReading(document: title)
+        var reading = ChatReading(document: title, url: pageURL)
         guard let web = claudeWeb else { return reading }
         let thisMiss = Miss(title: title)
         if miss == thisMiss { return reading }
