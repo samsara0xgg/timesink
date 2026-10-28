@@ -19,20 +19,8 @@ public final class SpanStore: Sendable {
         var span = span
         try writer.write { db in
             try span.insert(db)
-            if let id = span.id, let context = span.context {
-                try db.execute(sql: "INSERT INTO spanContext(spanID, context) VALUES (?, ?)",
-                               arguments: [id, context])
-            }
         }
         return span
-    }
-
-    /// The project a span was recorded in, or nil when none was (every row
-    /// from before migration v22, and every span outside a project).
-    public func context(forSpan id: Int64) throws -> String? {
-        try writer.read { db in
-            try String.fetchOne(db, sql: "SELECT context FROM spanContext WHERE spanID = ?", arguments: [id])
-        }
     }
 
     public func updateEnd(id: Int64, end: Date, keySeconds: Int = 0) throws {

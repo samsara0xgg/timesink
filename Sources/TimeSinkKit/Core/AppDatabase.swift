@@ -548,6 +548,10 @@ public enum AppDatabase {
                 t.column("context", .text).notNull()
             }
         }
+        migrator.registerMigration("v23-drop-span-context") { db in
+            // The chat project side table wrote no rows in real use; the project name is in the page title.
+            try db.drop(table: "spanContext")
+        }
         return migrator
     }
 }

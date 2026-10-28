@@ -12,7 +12,7 @@ public final class SpanBuilder {
     public func ingest(_ s: Sample) -> Span? {
         if var cur = current,
            cur.appBundleID == s.appBundleID, cur.title == s.windowTitle, cur.url == s.url,
-           cur.document == s.document, cur.context == s.context,
+           cur.document == s.document,
            s.timestamp.timeIntervalSince(cur.end) <= maxGap {
             cur.end = s.timestamp.addingTimeInterval(tick)
             current = cur
@@ -23,7 +23,7 @@ public final class SpanBuilder {
                        appBundleID: s.appBundleID, appName: s.appName,
                        title: s.windowTitle, url: s.url,
                        domain: s.url.flatMap(DomainParser.domain(from:)),
-                       document: s.document, context: s.context)
+                       document: s.document)
         return closed
     }
 

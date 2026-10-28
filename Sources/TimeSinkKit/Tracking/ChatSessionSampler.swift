@@ -2,13 +2,11 @@ import ApplicationServices
 import Foundation
 import os
 
-/// What a chat app is showing: the conversation name and, for Claude, the
-/// project it is filed under. Both nil when the app shows neither.
+/// What a chat app is showing: the conversation name, nil when it shows none.
 public struct ChatReading: Equatable, Sendable {
     public var document: String?
-    public var context: String?
-    public init(document: String? = nil, context: String? = nil) {
-        self.document = document; self.context = context
+    public init(document: String? = nil) {
+        self.document = document
     }
 }
 
@@ -21,8 +19,6 @@ protocol ChatAXNode {
     var title: String? { get }
     /// `AXURL` as text.
     var url: String? { get }
-    /// `AXDescription`.
-    var label: String? { get }
     /// `AXDOMClassList`.
     var domClasses: [String] { get }
     var children: [Self] { get }
@@ -34,11 +30,10 @@ extension ChatAXNode {
     var expired: Bool { false }
 }
 
-/// Decides the conversation name and project from a chat window's nodes.
+/// Decides the conversation name from a chat window's nodes.
 ///
 /// Claude desktop's top bar holds a button (DOM class `cursor-text`) with the
-/// conversation name, next to a link or pop-up button naming the project. It
-/// sits under `dframe-root` > `AXLandmarkMain` inside the claude.ai web area.
+/// conversation name. It sits under `dframe-root` > `AXLandmarkMain` inside the claude.ai web area.
 /// That is the same path another tracker reads (reverse-engineered, not
 /// measured here), and it is only ever *looked for*: nothing forces the
 /// Electron tree open, so when any node on the path is missing the result is
@@ -74,7 +69,7 @@ enum ChatContextReader {
         let thisMiss = Miss(title: title)
         if miss == thisMiss { return reading }
         guard let root = firstNode(below: web, where: { $0.domClasses.contains("dframe-root") }),
-              let main = root.node.children.first(where: { $0.subrole == "AXLandmarkMain" }),
+              let main = root.children.first(where: { $0.subrole == "AXLandmarkMain" }),
               let bar = firstNode(below: main, where: { $0.role == "AXButton" && $0.domClasses.contains("cursor-text") })
         else {
             // Out of time is not a miss: the page may be fine and just slow this once.
@@ -82,18 +77,8 @@ enum ChatContextReader {
             return reading
         }
         miss = nil
-        if title == nil, let name = bar.node.title, !name.isEmpty { reading.document = name }
-        reading.context = project(siblings: bar.siblings, barIndex: bar.index)
+        if title == nil, let name = bar.title, !name.isEmpty { reading.document = name }
         return reading
-    }
-
-    /// The project: a link to a `/project/` page, or the pop-up button right beside the title
-    /// button. Any other link or button in the bar (share, menu) is not a project.
-    private static func project<N: ChatAXNode>(siblings: [N], barIndex: Int) -> String? {
-        let link = siblings.lazy.filter { $0.role == "AXLink" && $0.url?.contains("/project/") == true }.compactMap(\.label).first
-        let popup = [barIndex - 1, barIndex + 1].lazy.filter { siblings.indices.contains($0) && siblings[$0].role == "AXPopUpButton" }
-            .compactMap { siblings[$0].title }.first
-        return [link, popup].lazy.compactMap { $0 }.first { !$0.isEmpty }
     }
 
     /// Every web area under `node`, none descended into: the web areas that
@@ -104,21 +89,16 @@ enum ChatContextReader {
         for child in node.children { findWebAreas(child, depth: depth + 1, body) }
     }
 
-    /// Breadth-first, bounded by depth, node count and the time budget. Returns the node, the
-    /// children of its parent (itself included) and its place among them.
-    private static func firstNode<N: ChatAXNode>(
-        below start: N, where match: (N) -> Bool
-    ) -> (node: N, siblings: [N], index: Int)? {
-        let top = start.children
-        var queue = top.enumerated().map { (node: $0.element, depth: 1, siblings: top, index: $0.offset) }
+    /// Breadth-first, bounded by depth, node count and the time budget.
+    private static func firstNode<N: ChatAXNode>(below start: N, where match: (N) -> Bool) -> N? {
+        var queue = start.children.map { (node: $0, depth: 1) }
         var head = 0, seen = 0
         while head < queue.count, seen < maxDescent, !start.expired {
-            let (node, depth, siblings, index) = queue[head]
+            let (node, depth) = queue[head]
             head += 1; seen += 1
-            if match(node) { return (node, siblings, index) }
+            if match(node) { return node }
             guard depth < maxDescentDepth else { continue }
-            let kids = node.children
-            queue.append(contentsOf: kids.enumerated().map { (node: $0.element, depth: depth + 1, siblings: kids, index: $0.offset) })
+            queue.append(contentsOf: node.children.map { (node: $0, depth: depth + 1) })
         }
         return nil
     }
@@ -163,7 +143,7 @@ public final class ChatSessionSampler: Sendable {
         reading(pid: pid, appName: appName).document
     }
 
-    /// The conversation and, when shown, its project.
+    /// The conversation name.
     public func reading(pid: pid_t, appName: String) -> ChatReading {
         let appRef = AXUIElementCreateApplication(pid)
         // Same budget as `WindowSampler`: this runs on the 1s tick's thread.
@@ -200,7 +180,6 @@ private struct LiveChatNode: ChatAXNode {
     var role: String? { copy(kAXRoleAttribute) as? String }
     var subrole: String? { copy(kAXSubroleAttribute) as? String }
     var title: String? { copy(kAXTitleAttribute) as? String }
-    var label: String? { copy(kAXDescriptionAttribute) as? String }
     var url: String? {
         guard let value = copy(kAXURLAttribute) else { return nil }
         return (value as? URL)?.absoluteString ?? value as? String

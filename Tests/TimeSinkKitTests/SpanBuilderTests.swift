@@ -56,18 +56,4 @@ final class SpanBuilderTests: XCTestCase {
         XCTAssertEqual(closed?.start, ts(100))
         XCTAssertEqual(closed?.end, ts(100))
     }
-    func testContextChangeSplitsSpanAndIsCarried() {
-        func chat(_ t: TimeInterval, context: String?) -> Sample {
-            Sample(timestamp: ts(t), appBundleID: "com.anthropic.claudefordesktop", appName: "Claude",
-                   windowTitle: "Claude", url: nil, document: "same chat", context: context)
-        }
-        let b = SpanBuilder()
-        _ = b.ingest(chat(0, context: "A")); _ = b.ingest(chat(1, context: "A"))
-        XCTAssertEqual(b.current?.context, "A")
-        let closed = b.ingest(chat(2, context: "B"))
-        XCTAssertEqual(closed?.context, "A")
-        XCTAssertEqual(b.current?.context, "B")
-        XCTAssertNotNil(b.ingest(chat(3, context: nil)))   // leaving the project is a change too
-        XCTAssertNil(b.current?.context)
-    }
 }

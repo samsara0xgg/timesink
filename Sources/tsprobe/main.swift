@@ -212,7 +212,6 @@ if CommandLine.arguments.dropFirst().first == "chat" {
     let start = Date()
     let reading = ChatSessionSampler().reading(pid: app.processIdentifier, appName: app.localizedName ?? "")
     print("document:", reading.document ?? "nil")
-    print("project:", reading.context ?? "nil")
     print(String(format: "%.1f ms", Date().timeIntervalSince(start) * 1000))
     exit(0)
 }

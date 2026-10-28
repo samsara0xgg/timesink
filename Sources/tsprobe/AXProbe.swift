@@ -55,8 +55,8 @@ enum AXProbe {
         let (reading, sessionMs) = timed {
             ChatSessionSampler().reading(pid: app.processIdentifier, appName: app.localizedName ?? bundleID)
         }
-        print(String(format: "ChatSessionSampler -> document %@, project %@   (%.1f ms)",
-                     reading.document.map(quote) ?? "nil", reading.context.map(quote) ?? "nil", sessionMs))
+        print(String(format: "ChatSessionSampler -> document %@   (%.1f ms)",
+                     reading.document.map(quote) ?? "nil", sessionMs))
         let frontmost = WindowSampler.FrontmostApp(bundleID: bundleID,
                                                    name: app.localizedName ?? bundleID,
                                                    pid: app.processIdentifier)

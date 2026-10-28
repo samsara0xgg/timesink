@@ -62,31 +62,14 @@ final class DatabaseTests: XCTestCase {
         let miss = try store.spans(overlapping: DateInterval(start: ts(100), end: ts(200)))
         XCTAssertTrue(miss.isEmpty)
     }
-    func testV22SpanContextIsASideTableAndLeavesSpanRowsAlone() throws {
+    func testV23DropsTheSpanContextTableAndKeepsSpanRows() throws {
         let db = try DatabaseQueue()
-        try AppDatabase.migrator.migrate(db, upTo: "v21")
+        try AppDatabase.migrator.migrate(db, upTo: "v22-span-context")
         let old = try insertPreV11Span(db)
-        let spanColumns = try db.read { try $0.columns(in: "span").map(\.name) }
+        XCTAssertTrue(try db.read { try $0.tableExists("spanContext") })
         try AppDatabase.migrator.migrate(db)
-        XCTAssertEqual(try db.read { try $0.columns(in: "span").map(\.name) }, spanColumns)
-        let store = SpanStore(db)
-        XCTAssertNil(try store.context(forSpan: old))   // older rows: no context, still readable
-        XCTAssertEqual(try store.spans(overlapping: DateInterval(start: ts(0), end: ts(200))).first?.id, old)
-
-        let with = try store.insert(Span(start: ts(300), end: ts(320), appBundleID: "a", appName: "A",
-                                         title: nil, url: nil, domain: nil, document: "chat", context: "Project X"))
-        let without = try store.insert(Span(start: ts(400), end: ts(420), appBundleID: "a", appName: "A",
-                                            title: nil, url: nil, domain: nil))
-        XCTAssertEqual(try store.context(forSpan: with.id!), "Project X")
-        XCTAssertNil(try store.context(forSpan: without.id!))
-        XCTAssertEqual(try db.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM spanContext") }, 1)
-        // The row and its JSON carry no context, so exports and the cloud wire are unchanged.
-        let fetched = try store.spans(overlapping: DateInterval(start: ts(300), end: ts(330)))
-        XCTAssertNil(fetched[0].context)
-        XCTAssertFalse(String(decoding: try JSONEncoder().encode(with), as: UTF8.self).contains("context"))
-        XCTAssertEqual(HTTPCloud.wire(with)?.document, "chat")
-        try db.write { try $0.execute(sql: "DELETE FROM span WHERE id = ?", arguments: [with.id!]) }
-        XCTAssertNil(try store.context(forSpan: with.id!))   // cascades
+        XCTAssertFalse(try db.read { try $0.tableExists("spanContext") })
+        XCTAssertEqual(try SpanStore(db).spans(overlapping: DateInterval(start: ts(0), end: ts(200))).first?.id, old)
     }
     func testSeedImportDoesNotOverwriteUser() throws {
         let db = try makeDB()

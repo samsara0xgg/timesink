@@ -17,16 +17,12 @@ public struct Sample: Equatable, Sendable {
     /// Whether this tick's AX window-title read worked. nil when none was
     /// made: no regular windowed app in front, or a sample not read from AX.
     public var axTitleRead: Bool?
-    /// The project a chat conversation is filed under (Claude desktop), when
-    /// the app shows one. Kept apart from `document` so the conversation name
-    /// and everything keyed on it stay as they were. See `ChatContextReader`.
-    public var context: String?
     public init(timestamp: Date, appBundleID: String, appName: String,
                 windowTitle: String?, url: String?, windowID: UInt32? = nil,
-                document: String? = nil, axTitleRead: Bool? = nil, context: String? = nil) {
+                document: String? = nil, axTitleRead: Bool? = nil) {
         self.timestamp = timestamp; self.appBundleID = appBundleID
         self.appName = appName; self.windowTitle = windowTitle; self.url = url
-        self.windowID = windowID; self.document = document; self.axTitleRead = axTitleRead; self.context = context
+        self.windowID = windowID; self.document = document; self.axTitleRead = axTitleRead
     }
 }
 
@@ -47,19 +43,13 @@ public struct Span: Equatable, Sendable, Codable {
     /// counting the span's first second (usually the ⌘⇥ that opened it).
     /// Only the count is stored, never which keys.
     public var keySeconds: Int
-    /// Migration v22 (table `spanContext`, not a `span` column): the project
-    /// the conversation sits in. Only set on a span about to be inserted;
-    /// reads do not fill it, and it is deliberately not part of the span's
-    /// row, its JSON or the cloud payload.
-    public var context: String?
     private enum CodingKeys: String, CodingKey {
         case id, start, end, appBundleID, appName, title, url, domain, document, keySeconds
     }
     public var duration: TimeInterval { end.timeIntervalSince(start) }
     public init(id: Int64? = nil, start: Date, end: Date, appBundleID: String,
                 appName: String, title: String?, url: String?, domain: String?,
-                document: String? = nil, keySeconds: Int = 0, context: String? = nil) {
-        self.context = context
+                document: String? = nil, keySeconds: Int = 0) {
         self.id = id; self.start = start; self.end = end
         self.appBundleID = appBundleID; self.appName = appName
         self.title = title; self.url = url; self.domain = domain

@@ -7,7 +7,6 @@ private struct Fake: ChatAXNode {
     var subrole: String?
     var title: String?
     var url: String?
-    var label: String?
     var domClasses: [String] = []
     var children: [Fake] = []
 }
@@ -16,51 +15,30 @@ private func web(title: String?, url: String = "https://claude.ai/chat/x", _ kid
     Fake(role: "AXWebArea", title: title, url: url, children: kids)
 }
 private func window(_ kids: [Fake]) -> Fake { Fake(role: "AXWindow", children: kids) }
-private func bar(button: String?, siblings: [Fake] = []) -> [Fake] {
+private func bar(button: String?) -> [Fake] {
     let btn = Fake(role: "AXButton", title: button, domClasses: ["x", "cursor-text"])
     let noise = Fake(role: "AXGroup", children: [Fake(role: "AXStaticText")])
-    return [Fake(role: "AXGroup", children: [noise] + [Fake(role: "AXGroup", children: [btn] + siblings)])]
+    return [Fake(role: "AXGroup", children: [noise] + [Fake(role: "AXGroup", children: [btn])])]
 }
 /// web area > ... > dframe-root > AXLandmarkMain > top bar
-private func claudePage(title: String?, button: String?, siblings: [Fake] = []) -> Fake {
-    let main = Fake(role: "AXGroup", subrole: "AXLandmarkMain", children: bar(button: button, siblings: siblings))
+private func claudePage(title: String?, button: String?) -> Fake {
+    let main = Fake(role: "AXGroup", subrole: "AXLandmarkMain", children: bar(button: button))
     let root = Fake(role: "AXGroup", domClasses: ["dframe-root"], children: [Fake(role: "AXGroup"), main])
     let wrapper = Fake(role: "AXGroup", children: [root])
     return window([web(title: "", url: "file:///Applications/Claude.app/shell.html"),
                    web(title: title, [wrapper])])
 }
-private let link = Fake(role: "AXLink", url: "https://claude.ai/project/abc", label: "My Project")
-private let popup = Fake(role: "AXPopUpButton", title: "Popup Project")
 
 final class ChatContextReaderTests: XCTestCase {
     private func read(_ w: Fake) -> ChatReading { ChatContextReader.read(window: w, appName: "Claude") }
 
-    func testTitleComesFromWebAreaAndProjectFromLink() {
-        let r = read(claudePage(title: "Chat name", button: "Button name", siblings: [link]))
-        XCTAssertEqual(r, ChatReading(document: "Chat name", context: "My Project"))
+    func testTitleComesFromWebArea() {
+        XCTAssertEqual(read(claudePage(title: "Chat name", button: "Button name")), ChatReading(document: "Chat name"))
     }
     func testButtonTitleStandsInWhenWebAreaTitleIsEmptyOrTheAppName() {
         for title in [nil, "", "Claude"] {
-            XCTAssertEqual(read(claudePage(title: title, button: "Button name", siblings: [popup])),
-                           ChatReading(document: "Button name", context: "Popup Project"))
+            XCTAssertEqual(read(claudePage(title: title, button: "Button name")), ChatReading(document: "Button name"))
         }
-    }
-    func testNoProjectSiblingGivesNilContext() {
-        XCTAssertEqual(read(claudePage(title: "Chat", button: "B", siblings: [Fake(role: "AXLink", label: "")])),
-                       ChatReading(document: "Chat", context: nil))
-    }
-    func testOnlyAProjectLinkOrAdjacentPopUpIsAProject() {
-        let share = Fake(role: "AXLink", url: "https://claude.ai/share/1", label: "Share")
-        XCTAssertEqual(read(claudePage(title: "Chat", button: "B", siblings: [share])), ChatReading(document: "Chat", context: nil))
-        let menu = Fake(role: "AXPopUpButton", title: "Menu")
-        // A pop-up button two places from the title button is not "beside" it.
-        XCTAssertEqual(read(claudePage(title: "Chat", button: "B", siblings: [Fake(role: "AXGroup"), menu])), ChatReading(document: "Chat", context: nil))
-        // A project link wins wherever it sits among the siblings, and a pop-up before the button counts.
-        XCTAssertEqual(read(claudePage(title: "Chat", button: "B", siblings: [Fake(role: "AXGroup"), link])).context, "My Project")
-        let main = Fake(role: "AXGroup", subrole: "AXLandmarkMain", children: [Fake(role: "AXGroup", children: [
-            popup, Fake(role: "AXButton", title: "B", domClasses: ["cursor-text"])])])
-        let root = Fake(role: "AXGroup", domClasses: ["dframe-root"], children: [main])
-        XCTAssertEqual(read(window([web(title: "Chat", [root])])).context, "Popup Project")
     }
     func testEmptyButtonKeepsTodaysNil() {
         XCTAssertEqual(read(claudePage(title: "", button: nil)), ChatReading())
@@ -79,7 +57,7 @@ final class ChatContextReaderTests: XCTestCase {
         XCTAssertEqual(read(window([])), ChatReading())
     }
     func testOnlyAClaudeWebAreaIsSearched() {
-        var page = claudePage(title: "", button: "Button name", siblings: [link])
+        var page = claudePage(title: "", button: "Button name")
         page.children[1].url = "https://chatgpt.com/c/1"
         XCTAssertEqual(read(page), ChatReading())
     }
@@ -112,7 +90,6 @@ private struct Counted: ChatAXNode {
     var subrole: String? { touch(); return nil }
     var title: String? { touch(); return "Chat" }
     var url: String? { touch(); return depth == 0 ? "https://claude.ai/chat/x" : nil }
-    var label: String? { touch(); return nil }
     var domClasses: [String] { touch(); return [] }
     var children: [Counted] { touch(); return (0..<5).map { _ in Counted(reads: reads, depth: depth + 1) } }
 }
@@ -131,11 +108,11 @@ final class ChatContextBudgetTests: XCTestCase {
         _ = ChatContextReader.read(window: page("A"), appName: "Claude", miss: &miss)
         XCTAssertEqual(miss, ChatContextReader.Miss(title: "A"))
         // Same page again: skipped, even though a good page would now be found.
-        let good = claudePage(title: "A", button: "B", siblings: [link])
+        let good = claudePage(title: "A", button: "B")
         XCTAssertEqual(ChatContextReader.read(window: good, appName: "Claude", miss: &miss), ChatReading(document: "A"))
         // A new title searches again, finds the bar and forgets the miss.
-        let found = ChatContextReader.read(window: claudePage(title: "C", button: "B", siblings: [link]), appName: "Claude", miss: &miss)
-        XCTAssertEqual(found, ChatReading(document: "C", context: "My Project"))
+        let found = ChatContextReader.read(window: claudePage(title: "C", button: "B"), appName: "Claude", miss: &miss)
+        XCTAssertEqual(found, ChatReading(document: "C"))
         XCTAssertNil(miss)
     }
 }
