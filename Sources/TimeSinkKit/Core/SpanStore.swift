@@ -175,13 +175,14 @@ public final class SpanStore: Sendable {
 
     /// This device's rows the cloud has not acknowledged, oldest first.
     /// `openID` is the engine's current row: its `end` is still moving, so
-    /// it goes up once it has closed.
-    public func unsynced(excluding openID: Int64?, limit: Int) throws -> [Span] {
+    /// it goes up once it has closed. A row that closed within the flicker window may still be
+    /// extended over a short span after it (see `SpanBuilder`), so it waits too.
+    public func unsynced(excluding openID: Int64?, limit: Int, now: Date = Date()) throws -> [Span] {
         try writer.read { db in
             try Span.fetchAll(
                 db,
-                sql: "SELECT * FROM span WHERE remoteSeq IS NULL AND deviceID IS NULL AND id != ? ORDER BY id LIMIT ?",
-                arguments: [openID ?? -1, limit]
+                sql: "SELECT * FROM span WHERE remoteSeq IS NULL AND deviceID IS NULL AND id != ? AND end <= ? ORDER BY id LIMIT ?",
+                arguments: [openID ?? -1, now.addingTimeInterval(-2 * SpanBuilder.minSpanDuration), limit]
             )
         }
     }

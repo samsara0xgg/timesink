@@ -163,6 +163,8 @@ public final class TrackerEngine {
     private var throttle = ChromeThrottle()
 
     public private(set) var currentRowID: Int64?
+    /// The last row written and the start of the span it holds, kept after the span closes.
+    private var lastRow: (id: Int64, start: Date)?
     /// Read-only presentation state; reading this never starts sampling.
     public var currentActivity: Span? { builder.current }
     public var isRunning: Bool { timer != nil }
@@ -945,9 +947,13 @@ public final class TrackerEngine {
                 lastHeartbeat = .distantPast
             }
         }
-        if let rowID = currentRowID {
+        // A span the builder took back (a flicker merged into it) has no current row id but its
+        // start is the last written row's.
+        if let rowID = currentRowID ?? lastRow.flatMap({ $0.start == span.start ? $0.id : nil }) {
             do {
                 try spanStore.updateEnd(id: rowID, end: span.end, keySeconds: span.keySeconds)
+                currentRowID = rowID
+                lastRow = (rowID, span.start)
                 lastHeartbeat = now
                 lastWriteStart = span.start
                 writeHealth?.succeeded()
@@ -960,6 +966,7 @@ public final class TrackerEngine {
             do {
                 let inserted = try spanStore.insert(span)
                 currentRowID = inserted.id
+                lastRow = inserted.id.map { ($0, span.start) }
                 lastHeartbeat = now
                 lastWriteStart = span.start
                 writeHealth?.succeeded()

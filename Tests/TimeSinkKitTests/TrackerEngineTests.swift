@@ -828,4 +828,22 @@ final class TrackerEngineKeySecondTests: XCTestCase {
         XCTAssertEqual(rows.count, 1)
         XCTAssertEqual(rows[0].keySeconds, 60)
     }
+
+    func testFlickerBetweenTheSameWindowStaysOneRow() async throws {
+        let db = try AppDatabase.openInMemory()
+        let store = SpanStore(db)
+        let engine = TrackerEngine(spanStore: store, settings: SettingsStore(db))
+        engine.idleSecondsProvider = { 0 }
+        engine.windowSampleProvider = { date in
+            let flicker = date == ts(40)
+            return Sample(timestamp: date, appBundleID: flicker ? "com.apple.finder" : "com.apple.dt.Xcode",
+                          appName: flicker ? "Finder" : "Xcode", windowTitle: "main.swift", url: nil)
+        }
+        for t in 0...60 { await engine.tickAsync(now: ts(TimeInterval(t))) }
+        engine.stop()
+        let rows = try store.spans(overlapping: DateInterval(start: ts(-1), end: ts(100)))
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].start, ts(0))
+        XCTAssertEqual(rows[0].end, ts(61))
+    }
 }
