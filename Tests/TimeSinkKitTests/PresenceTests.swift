@@ -91,16 +91,28 @@ final class TrackerEnginePresenceTests: XCTestCase {
     private let chromeVideo = Presence(kind: .video, bundleID: "com.google.Chrome", appName: "Google Chrome")
     private let voiceCall = Presence(kind: .call, bundleID: "com.hnc.Discord", appName: "Discord", onScreen: false)
 
-    func testVoiceOnlyCallIsALaneNotScreenTime() async throws {
+    func testBackgroundCallIsNotIdleForFifteenMinutesThenIdleAsUsual() async throws {
         let (engine, _, calls) = try makeEngine()
         engine.presenceProvider = { self.voiceCall }
-        engine.idleSecondsProvider = { 120 }
+        engine.idleSecondsProvider = { 30 }
         await engine.tickAsync(now: ts(0))
-        XCTAssertEqual(engine.latestSample?.appBundleID, "com.apple.finder", "no hands-off swap")
+        XCTAssertEqual(engine.latestSample?.appBundleID, "com.apple.finder", "under a minute: still the frontmost app")
         engine.idleSecondsProvider = { 600 }
         await engine.tickAsync(now: ts(1))
-        XCTAssertTrue(engine.isSuspended, "idle as usual")
+        XCTAssertFalse(engine.isSuspended, "listening in the background is not away")
+        XCTAssertEqual(engine.latestSample?.appBundleID, "com.hnc.Discord", "hands-off time goes to the call app")
+        engine.idleSecondsProvider = { TrackerEngine.backgroundCallIdleLimit }
+        await engine.tickAsync(now: ts(2))
+        XCTAssertTrue(engine.isSuspended, "idle as usual past the limit")
         XCTAssertEqual(try calls.spans(overlapping: all).count, 1, "still drawn on the call lane")
+    }
+
+    func testBackgroundVideoStillGoesIdle() async throws {
+        let (engine, _, _) = try makeEngine()
+        engine.presenceProvider = { Presence(kind: .video, bundleID: "com.google.Chrome", appName: "Google Chrome", onScreen: false) }
+        engine.idleSecondsProvider = { 600 }
+        await engine.tickAsync(now: ts(0))
+        XCTAssertTrue(engine.isSuspended)
     }
 
     private func makeEngine() throws -> (TrackerEngine, SpanStore, CallSpanStore) {
@@ -518,10 +530,20 @@ final class TrackerEngineHandsOffTests: XCTestCase {
 
     func testNoHandsOffWithoutAPresenceExemption() async throws {
         let (engine, _, observations) = try makeEngine()
-        engine.presenceProvider = { Presence(kind: .call, bundleID: "us.zoom.xos", appName: "zoom.us", onScreen: false) }
+        engine.presenceProvider = { Presence(kind: .video, bundleID: "us.zoom.xos", appName: "zoom.us", onScreen: false) }
         idle = 200
         await engine.tickAsync(now: ts(300))
         XCTAssertEqual(try events(observations), ["idle@100"])
+    }
+
+    func testBackgroundCallLogsHandsOffAndHandsOnUntilTheLimit() async throws {
+        let (engine, _, observations) = try makeEngine()
+        engine.presenceProvider = { Presence(kind: .call, bundleID: "us.zoom.xos", appName: "zoom.us", onScreen: false) }
+        idle = 200
+        await engine.tickAsync(now: ts(300))
+        idle = 0
+        await engine.tickAsync(now: ts(310))
+        XCTAssertEqual(try events(observations), ["hands_off@100", "hands_on@310"])
     }
 }
 

@@ -246,7 +246,8 @@ public final class TrackerEngine {
     /// `CGEventSource` call, the same kind `IdleMonitor` already makes.
     var keyDownSecondsProvider: (() -> TimeInterval)?
     /// The app the user is on a call in or watching a video in. While it is on
-    /// screen, `beginTick` forces `idleSeconds` to 0 regardless of the real idle
+    /// screen (or a call, up to `backgroundCallIdleLimit` of raw idle), `beginTick` forces
+    /// `idleSeconds` to 0 regardless of the real idle
     /// reading (idle exemption; a calendar meeting alone no longer exempts), and,
     /// once hands have been off for `handsOffSeconds`, it is also who the tick's
     /// sample is attributed to. Lock/sleep suspension is untouched by this: it
@@ -258,6 +259,9 @@ public final class TrackerEngine {
     /// of a hands-off stretch still go to the frontmost app; a retroactive
     /// swap would need span rewriting.
     static let handsOffSeconds: TimeInterval = 60
+    /// A call in the background is only listened to, not watched: past this much raw idle it
+    /// no longer keeps the user from going idle. On-screen presence has no limit.
+    static let backgroundCallIdleLimit: TimeInterval = 15 * 60
     /// A lock suspension heals when the screen is unlocked and input is this recent.
     static let lockHealIdle: TimeInterval = 5
     /// ... and only once the lock is this old.
@@ -362,6 +366,8 @@ public final class TrackerEngine {
     private var wasInMeeting = false
     /// This tick's presence and raw idle, read by `tickAsync` for attribution.
     private var tickPresence: Presence?
+    /// Whether `tickPresence` exempts this tick from idle.
+    private var presenceExempt = false
     private var rawIdle: TimeInterval = 0
     /// The open call row, when it was last written, when a presence read last
     /// showed the call, and when reads first stopped showing it.
@@ -530,7 +536,7 @@ public final class TrackerEngine {
             sample.url = chatSession?.reading.url
         }
 
-        if let presence = tickPresence, presence.onScreen, rawIdle >= Self.handsOffSeconds, sample.appBundleID != presence.bundleID {
+        if let presence = tickPresence, presenceExempt, rawIdle >= Self.handsOffSeconds, sample.appBundleID != presence.bundleID {
             sample = Sample(timestamp: sample.timestamp, appBundleID: presence.bundleID, appName: presence.appName,
                             windowTitle: nil, url: nil)
         }
@@ -617,7 +623,8 @@ public final class TrackerEngine {
         lastTickAt = now
         tickPresence = presenceProvider?()
         self.rawIdle = rawIdle
-        let isInMeetingNow = tickPresence?.onScreen == true
+        let isInMeetingNow = tickPresence.map { $0.onScreen || ($0.kind == .call && rawIdle < Self.backgroundCallIdleLimit) } ?? false
+        presenceExempt = isInMeetingNow
         if wasInMeeting, !isInMeetingNow {
             exemptionEndedAt = now
         }
