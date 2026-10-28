@@ -339,6 +339,7 @@ final class TrackerEnginePresenceTests: XCTestCase {
     func testLockKeepsTheCallAndSleepClosesItAtLastSeen() async throws {
         let (engine, _, calls) = try makeEngine()
         engine.idleSecondsProvider = { 0 }
+        engine.screenLockedProvider = { true }
         await run(engine, zoom, 0, 40)
         engine.suspend(at: ts(45))
         await run(engine, zoom, 50, 100)
