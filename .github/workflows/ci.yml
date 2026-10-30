@@ -42,7 +42,8 @@ jobs:
           persist-credentials: false
       - run: make bundle CERT=-
       - run: lipo dist/TimeSink.app/Contents/MacOS/TimeSink -verify_arch arm64 x86_64
-      - run: test -f dist/TimeSink.app/Contents/Resources/TimeSink_TimeSinkKit.bundle/Contents/Resources/seed_domains.csv
+      # Bundle(url:) finds the seeds in either bundle layout, flat or Contents/Resources.
+      - run: find dist/TimeSink.app/Contents/Resources/TimeSink_TimeSinkKit.bundle -name seed_domains.csv | grep .
       - run: codesign --verify --deep --strict dist/TimeSink.app
 
   lambda:
