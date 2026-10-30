@@ -26,6 +26,8 @@ if [ -n "$LIVE" ] && [ "$BUILD" -le "$LIVE" ]; then
 fi
 
 make bundle CERT="$IDENTITY" SIGN_FLAGS=--timestamp
+# Intel Macs refuse an app built for Apple Silicon only.
+lipo dist/TimeSink.app/Contents/MacOS/TimeSink -verify_arch arm64 x86_64
 
 notarize() {
     # grep without -q: -q exits at the first match, tee then dies of SIGPIPE

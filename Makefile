@@ -13,10 +13,15 @@ SIGN = codesign --force --options runtime --sign "$(CERT)" $(SIGN_FLAGS)
 # clang then records the deployment target as the SDK version; macOS 26 draws
 # such an app in its old look. Name the SDK the build really uses.
 SDK_LINK = -Xlinker -platform_version -Xlinker macos -Xlinker 14.0 -Xlinker $(shell xcrun --sdk macosx --show-sdk-version)
+# One binary for Apple Silicon and Intel: without --arch, swift build makes
+# only the build machine's, and the app then refuses to open on the other.
+# Two archs move the products out of .build/release, so ask where they went.
+ARCHS = --arch arm64 --arch x86_64
+BIN = $(shell swift build -c release $(ARCHS) --show-bin-path)
 
 .PHONY: build test run bundle install clean
 build:
-	swift build -c release $(SDK_LINK)
+	swift build -c release $(ARCHS) $(SDK_LINK)
 test:
 	swift test
 run:
@@ -24,11 +29,11 @@ run:
 bundle: build
 	rm -rf $(DIST)
 	mkdir -p $(DIST)/Contents/MacOS $(DIST)/Contents/Resources $(DIST)/Contents/Frameworks
-	cp .build/release/$(APP) $(DIST)/Contents/MacOS/
+	cp $(BIN)/$(APP) $(DIST)/Contents/MacOS/
 	install_name_tool -add_rpath @executable_path/../Frameworks $(DIST)/Contents/MacOS/$(APP)
 	cp packaging/Info.plist $(DIST)/Contents/Info.plist
-	cp -R .build/release/TimeSink_TimeSinkKit.bundle $(DIST)/Contents/Resources/
-	ditto .build/release/Sparkle.framework $(SPARKLE)
+	cp -R $(BIN)/TimeSink_TimeSinkKit.bundle $(DIST)/Contents/Resources/
+	ditto $(BIN)/Sparkle.framework $(SPARKLE)
 	xcrun xcstringstool compile packaging/Localizable.xcstrings -o $(DIST)/Contents/Resources
 	cp packaging/en.lproj/InfoPlist.strings $(DIST)/Contents/Resources/en.lproj/
 	# Chinese is the source language, so the catalog compiles no zh-Hans

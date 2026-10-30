@@ -6,9 +6,9 @@
 
 [Download for macOS](https://d2e75eb005kjod.cloudfront.net/TimeSink.dmg) · [Releases](https://github.com/samsara0xgg/timesink/releases) · [Jev categories](#automatic-categories-with-jev) · [Features](#from-activity-to-understanding) · [Engineering](#engineering-highlights) · [Privacy](#your-data-your-choice) · [Build from source](#build-from-source)
 
-> ### New in 0.3.0: automatic categories with Jev
+> ### New in 0.3.1
 >
-> Most categorization can now go to Jev, TypeSafe's decision model, called through OpenRouter. 0.3.0 also redesigns every page and adds projects, sessions and a first-run tour. [Release notes](https://github.com/samsara0xgg/timesink/releases/tag/v0.3.0).
+> Websites in Arc, Edge, Brave and Vivaldi as well as Chrome, a Today timeline drawn as one lane per category, more accurate idle and lock handling, and a fix for a crash at launch on some Macs. [Release notes](https://github.com/samsara0xgg/timesink/releases/tag/v0.3.1). 0.3.0 added Jev, an optional AI categorizer, plus projects, sessions and a redesign of every page ([0.3.0 notes](https://github.com/samsara0xgg/timesink/releases/tag/v0.3.0)).
 
 ![TimeSink — automatic activity tracking, time analysis, and focus tools for macOS](docs/assets/readme/timesink-poster.png)
 
@@ -20,7 +20,7 @@ TimeSink lives in the menu bar and records the foreground app as you work. Open 
 
 | What you can do | How TimeSink helps |
 | --- | --- |
-| **Track automatically** | Records active apps and window titles, reads the current Chrome tab URL, and detects idle time, sleep, and screen lock. |
+| **Track automatically** | Records active apps and window titles, reads the current tab URL in Chrome, Arc, Edge, Brave and Vivaldi (not Safari), and detects idle time, sleep, and screen lock. |
 | **Glance from the menu bar** | The popover is the main surface: what you are doing now, today's time by category, and a detail flyout when you hover a row. |
 | **Understand your day** | See where time went today, compare the last four weeks, and spot interruptions on a radar and a weekday-by-hour heatmap. Choose daily, weekly, monthly, or custom ranges. |
 | **Work in sessions and projects** | Each day is cut into sessions where you left or switched tasks. Join, split, or assign sessions to projects, with undo, and see hours per project each week. |
@@ -33,7 +33,7 @@ TimeSink lives in the menu bar and records the foreground app as you work. Open 
 ## Engineering highlights
 
 ```text
-Foreground app + Chrome + system state          (sampled once a second)
+Foreground app + browser tab + system state     (sampled once a second)
                   ↓
           Activity spans → SQLite (GRDB)          (a new span when app, title, URL or document changes)
                   ↓                    ↘
@@ -47,7 +47,7 @@ Foreground app + Chrome + system state          (sampled once a second)
 
 ### Automatic categories with Jev
 
-Jev is TypeSafe's decision model, called through OpenRouter. Each distinct activity (app, site, window title) is judged once and cached, and your own rules always take priority. If Jev isn't sure, it asks again with examples you've already confirmed. Anything still uncertain goes to a To confirm list instead of being guessed.
+Jev is an optional AI categorizer, called through OpenRouter. Each distinct activity (app, site, window title) is judged once and cached, and your own rules always take priority. If Jev isn't sure, it asks again with examples you've already confirmed. Anything still uncertain goes to a To confirm list instead of being guessed.
 
 - On 30 days of real usage, 98% of tracked time landed in the right category, up from 73% with the old rule-based classifier. This was measured on 262 activities that two independent labelers agreed on.
 - Classifying the full 30 days cost about $0.25. Ongoing use stays under a monthly cap you set (default $1).
@@ -77,6 +77,8 @@ Screenshots are rendered from a synthetic fixture (`TimeSink --design-preview`) 
 
 ## Install
 
+Requires macOS 14 or later on an Apple Silicon Mac. 0.3.1 does not run on Intel Macs yet.
+
 1. [Download TimeSink.dmg](https://d2e75eb005kjod.cloudfront.net/TimeSink.dmg), or pick a version from [Releases](https://github.com/samsara0xgg/timesink/releases). The app is signed with a Developer ID and notarized by Apple.
 2. Drag **TimeSink** into **Applications**, then open it.
 3. Grant Accessibility access to start tracking. Enable the other permissions only for the features you use. A short tour then shows you around the menu bar, and TimeSink starts at login unless you untick it.
@@ -98,7 +100,7 @@ Activity is stored in a local SQLite database. **Cloud sync and Jev categories a
 ### macOS permissions
 
 - **Accessibility:** foreground app and window-title tracking.
-- **Automation for Chrome:** current-tab URL detection and website blocking during focus sessions.
+- **Automation for your browser** (Chrome, Arc, Edge, Brave or Vivaldi): current-tab URL detection, and in Chrome, website blocking during focus sessions.
 - **Calendar — optional:** event overlays, meeting detection, and meeting-aware idle handling.
 - **Screen Recording — optional:** foreground-window capture for local OCR and recall.
 - **Notifications — optional:** limit reminders, daily summaries, and focus-session reminders.
