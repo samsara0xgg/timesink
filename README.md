@@ -12,7 +12,7 @@
 
 ![TimeSink — automatic activity tracking, time analysis, and focus tools for macOS](docs/assets/readme/timesink-poster.png)
 
-**macOS 14+ · Swift 6 · SwiftUI · SQLite (GRDB) · AWS Lambda · DynamoDB · CDK · GitHub Actions · English & Chinese**
+**macOS 14+ (Apple Silicon) · Swift 6 · SwiftUI · SQLite (GRDB) · AWS Lambda · DynamoDB · CDK · GitHub Actions · English & Chinese**
 
 ## From activity to understanding
 
@@ -77,7 +77,7 @@ Screenshots are rendered from a synthetic fixture (`TimeSink --design-preview`) 
 
 ## Install
 
-Requires macOS 14 or later on an Apple Silicon Mac. 0.3.1 does not run on Intel Macs yet.
+Requires macOS 14 or later on an Apple Silicon Mac (M1 or newer). Intel Macs are not supported.
 
 1. [Download TimeSink.dmg](https://d2e75eb005kjod.cloudfront.net/TimeSink.dmg), or pick a version from [Releases](https://github.com/samsara0xgg/timesink/releases). The app is signed with a Developer ID and notarized by Apple.
 2. Drag **TimeSink** into **Applications**, then open it.
