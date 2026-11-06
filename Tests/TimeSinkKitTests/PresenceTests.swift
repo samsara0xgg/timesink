@@ -102,7 +102,7 @@ final class TrackerEnginePresenceTests: XCTestCase {
         XCTAssertFalse(engine.isSuspended, "listening in the background is not away")
         XCTAssertEqual(engine.latestSample?.appBundleID, "com.hnc.Discord", "hands-off time goes to the call app")
         engine.idleSecondsProvider = { TrackerEngine.backgroundCallIdleLimit }
-        await engine.tickAsync(now: ts(2))
+        await engine.tickAsync(now: ts(5))
         XCTAssertTrue(engine.isSuspended, "idle as usual past the limit")
         XCTAssertEqual(try calls.spans(overlapping: all).count, 1, "still drawn on the call lane")
     }
@@ -287,7 +287,7 @@ final class TrackerEnginePresenceTests: XCTestCase {
             engine.idleSecondsProvider = { 0 }
             await run(engine, zoom, 0, 20)             // last seen at 20
             await run(engine, nil, 25, backAt - 5)
-            await run(engine, zoom, backAt, backAt)
+            await run(engine, zoom, backAt, backAt + 5)   // a new row needs a second read
             let rows = try calls.spans(overlapping: all)
             XCTAssertEqual(rows.count, expectedRows, "back at \(backAt)")
             XCTAssertEqual(rows.last?.end, ts(backAt))
@@ -311,7 +311,7 @@ final class TrackerEnginePresenceTests: XCTestCase {
         engine.idleSecondsProvider = { 0 }
         let old = try calls.open(at: ts(0), bundleID: "com.hnc.Discord", appName: "Discord")
         try calls.extend(id: old.id!, end: ts(100))
-        await run(engine, zoom, 110, 110)
+        await run(engine, zoom, 110, 115)
         XCTAssertEqual(try calls.spans(overlapping: all).count, 2)
     }
 
@@ -327,6 +327,43 @@ final class TrackerEnginePresenceTests: XCTestCase {
         let rows = try calls.spans(overlapping: all)
         XCTAssertEqual(rows.count, 1, "silence does not split the call")
         XCTAssertEqual(rows[0].end, ts(135), "and keeps it extending")
+    }
+
+    /// WeChat dictation left on: the app holds the mic and plays nothing.
+    func testMicHeldWithoutPlaybackForHalfAnHourIsNoCall() async throws {
+        let (engine, _, calls) = try makeEngine()
+        engine.idleSecondsProvider = { 0 }
+        let dictation = Presence(kind: .call, bundleID: "com.tencent.xinWeChat", appName: "WeChat", output: false)
+        await run(engine, dictation, 0, 1800)
+        XCTAssertTrue(try calls.spans(overlapping: all).isEmpty)
+    }
+
+    /// A message sound during dictation is one read with output; the 1 s ticks before the next read see it cached.
+    func testOneReadWithOutputDuringDictationIsNoCall() async throws {
+        let (engine, _, calls) = try makeEngine()
+        engine.idleSecondsProvider = { 0 }
+        let dictation = Presence(kind: .call, bundleID: "com.tencent.xinWeChat", appName: "WeChat", output: false)
+        let ding = Presence(kind: .call, bundleID: "com.tencent.xinWeChat", appName: "WeChat", output: true)
+        for t in 0..<100 { await run(engine, dictation, Double(t), Double(t)) }
+        for t in 100..<105 { await run(engine, ding, Double(t), Double(t)) }
+        for t in 105...400 { await run(engine, dictation, Double(t), Double(t)) }
+        XCTAssertTrue(try calls.spans(overlapping: all).isEmpty)
+    }
+
+    func testCallOpensOnTwoReadsAtTheFirstThenRunsOnInputAndClosesAfterTheGrace() async throws {
+        let (engine, _, calls) = try makeEngine()
+        engine.idleSecondsProvider = { 0 }
+        let silent = Presence(kind: .call, bundleID: "us.zoom.xos", appName: "zoom.us", output: false)
+        await run(engine, zoom, 0, 0)
+        XCTAssertTrue(try calls.spans(overlapping: all).isEmpty, "one read opens nothing")
+        await run(engine, zoom, 5, 20)
+        XCTAssertEqual(try calls.spans(overlapping: all).first?.start, ts(0), "the second read opens it from the first")
+        await run(engine, silent, 25, 300)
+        await run(engine, nil, 305, 315)
+        let rows = try calls.spans(overlapping: all)
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].start, ts(0))
+        XCTAssertEqual(rows[0].end, ts(300), "input alone kept it open; closed at the last read that saw it")
     }
 
     func testVideoIsNotACallSpan() async throws {

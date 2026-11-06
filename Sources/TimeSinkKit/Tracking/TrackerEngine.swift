@@ -381,6 +381,10 @@ public final class TrackerEngine {
         var missingSince: Date?
     }
     private var openCall: OpenCall?
+    /// The first read that showed a call app running input and output while no call was open.
+    /// A new row needs the next read to show it again: a notification sound played while
+    /// the app holds the mic for dictation is one read, not a call.
+    private var callHeard: (bundleID: String, at: Date)?
     /// A call survives this long without a presence read showing it. Ticks come every second and
     /// the presence is cached for `refreshInterval`, so the first miss can land anywhere in a
     /// refresh cycle; one and a half cycles always spans a second read: one miss is a hiccup,
@@ -693,8 +697,8 @@ public final class TrackerEngine {
 
     /// Opens, extends (at the heartbeat cadence) or closes the call row for this tick's presence.
     /// A call that stops showing is closed only once reads have missed it for `callMissGrace`,
-    /// and then at the time it was last seen. A new row needs the app to run input and output;
-    /// an open call, or a rejoin of the app's last row, needs input alone, so silence in a voice
+    /// and then at the time it was last seen. A new row needs the app to run input and output
+    /// on two reads in a row, and starts at the first; an open call, or a rejoin of the app's last row, needs input alone, so silence in a voice
     /// channel cannot split it.
     private func trackCall(now: Date) {
         guard let callStore else { return }
@@ -722,15 +726,23 @@ public final class TrackerEngine {
             }
             closeCall(at: open.lastSeen)
         }
-        guard let call else { return }
+        guard let call else { callHeard = nil; return }
         do {
             if let recent = try callStore.rejoinable(bundleID: call.bundleID, endingAfter: sleptAt), let id = recent.id,
                now.timeIntervalSince(recent.end) <= Self.callRejoinWindow {
                 try callStore.extend(id: id, end: max(now, recent.end))
                 openCall = OpenCall(id: id, bundleID: call.bundleID, wrote: now, lastSeen: now)
-            } else if call.output {
-                let id = try callStore.open(at: now, bundleID: call.bundleID, appName: call.appName).id ?? 0
-                openCall = OpenCall(id: id, bundleID: call.bundleID, wrote: now, lastSeen: now)
+            } else if !call.output {
+                callHeard = nil
+            } else if let heard = callHeard, heard.bundleID == call.bundleID,
+                      now.timeIntervalSince(heard.at) <= Self.callMissGrace {
+                // Ticks between two reads see the cached first one again.
+                guard now.timeIntervalSince(heard.at) >= PresenceMonitor.refreshInterval else { return }
+                let id = try callStore.open(at: heard.at, bundleID: call.bundleID, appName: call.appName).id ?? 0
+                openCall = OpenCall(id: id, bundleID: call.bundleID, wrote: heard.at, lastSeen: now)
+                callHeard = nil
+            } else {
+                callHeard = (call.bundleID, now)
             }
             writeHealth?.succeeded()
         } catch {
