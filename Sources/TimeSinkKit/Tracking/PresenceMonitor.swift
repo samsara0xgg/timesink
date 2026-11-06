@@ -17,9 +17,13 @@ public struct Presence: Equatable, Sendable {
     /// open mic is not a call) but, once open, continues on input alone: silence
     /// in a voice channel stops the output without ending the call.
     public var output: Bool
+    /// When the read this came from was taken; nil when not from a read. Cached reads hand the
+    /// same one to several ticks, so "two reads in a row" is two different times here.
+    public var sampledAt: Date?
 
-    public init(kind: Kind, bundleID: String, appName: String, onScreen: Bool = true, output: Bool = true) {
+    public init(kind: Kind, bundleID: String, appName: String, onScreen: Bool = true, output: Bool = true, sampledAt: Date? = nil) {
         self.kind = kind; self.bundleID = bundleID; self.appName = appName; self.onScreen = onScreen; self.output = output
+        self.sampledAt = sampledAt
     }
 }
 
@@ -29,13 +33,13 @@ public struct Presence: Equatable, Sendable {
 /// always-on voice assistant holds the mic all day, so a call is only a process
 /// from the allowlist running input.
 public final class PresenceMonitor: @unchecked Sendable {
-    struct AudioProcess: Equatable {
+    struct AudioProcess: Equatable, Sendable {
         var pid: pid_t
         var bundleID: String
         var input: Bool
         var output: Bool
     }
-    struct App: Equatable {
+    struct App: Equatable, Sendable {
         var pid: pid_t
         var bundleID: String
         var name: String
@@ -89,18 +93,128 @@ public final class PresenceMonitor: @unchecked Sendable {
 
     private var cached: Presence?
     private var readAt = Date.distantPast
+    private var refreshing = false
     private let lock = NSLock()
+    private let queue = DispatchQueue(label: "com.alllllenshi.TimeSink.presence", qos: .utility)
+    // Only accessed on queue. Keep system IPC outside the snapshot lock.
+    private var sampledAt = Date.distantPast
+    private var sampled: Presence?
+    private var audioReader = AudioReader()
+    private let readOverride: (@Sendable () -> Presence?)?
 
-    public init() {}
+    public init() { readOverride = nil }
 
-    /// The current presence, read at most every 5 s.
+    init(readPresence: @escaping @Sendable () -> Presence?) { readOverride = readPresence }
+
+    /// Returns once a queued background read has finished (tests).
+    func waitForRefresh() { queue.sync {} }
+
+    /// Synchronous read for command-line probes; app ticks use cachedCurrent.
     public func current(now: Date = Date()) -> Presence? {
-        lock.lock(); defer { lock.unlock() }
-        guard now.timeIntervalSince(readAt) >= Self.refreshInterval else { return cached }
+        queue.sync { refresh(now: now) }
+    }
+
+    /// Never waits for CoreAudio. At most one refresh is queued, and the next
+    /// tracker tick sees its result. The five-second sampling cadence is unchanged.
+    public func cachedCurrent(now: Date = Date()) -> Presence? {
+        lock.lock()
+        let result = cached
+        let elapsed = now.timeIntervalSince(readAt)
+        let needsRefresh = !refreshing && (elapsed < 0 || elapsed >= Self.refreshInterval)
+        if needsRefresh { refreshing = true }
+        lock.unlock()
+        if needsRefresh {
+            // NSRunningApplication caches dynamic properties on the main run loop.
+            // Snapshot them on the caller (the app's main thread); background
+            // property reads otherwise repeatedly fetch LaunchServices metadata.
+            let apps = readOverride == nil ? Self.runningApps() : nil
+            queue.async { [self] in
+                _ = refresh(now: now, appSnapshot: apps)
+                lock.lock()
+                refreshing = false
+                lock.unlock()
+            }
+        }
+        return result
+    }
+
+    private func refresh(now: Date, appSnapshot: [App]? = nil) -> Presence? {
+        let elapsed = now.timeIntervalSince(sampledAt)
+        guard elapsed < 0 || elapsed >= Self.refreshInterval else { return sampled }
+        if let readOverride {
+            sampled = readOverride()
+        } else {
+            let apps = appSnapshot ?? Self.runningApps()
+            let assertions = Self.displayAssertionPIDs()
+            let audio = audioReader.read(objects: Self.audioObjects(), apps: apps,
+                                         displayAssertionPIDs: assertions, now: now,
+                                         pid: { Self.property($0, kAudioProcessPropertyPID, as: pid_t.self, default: 0) },
+                                         bundle: { Self.property($0, kAudioProcessPropertyBundleID, as: CFString?.self, default: nil).flatMap { $0 }.map { $0 as String } },
+                                         running: { Self.property($0, $1, as: UInt32.self, default: 0).map { $0 != 0 } ?? false })
+            sampled = Self.decide(audio: audio, displayAssertionPIDs: assertions,
+                                  apps: apps, ownPID: ProcessInfo.processInfo.processIdentifier)
+        }
+        sampled?.sampledAt = now
+        sampledAt = now
+        lock.lock()
+        cached = sampled
         readAt = now
-        cached = Self.decide(audio: Self.audioProcesses(), displayAssertionPIDs: Self.displayAssertionPIDs(),
-                             apps: Self.runningApps(), ownPID: ProcessInfo.processInfo.processIdentifier)
-        return cached
+        lock.unlock()
+        return sampled
+    }
+
+    /// Refresh the PID every poll to catch reused audio object IDs. Bundle IDs
+    /// are stable for a process, so cache them (with a bounded fallback expiry).
+    /// Read live input only for call apps, and output only for call apps and display owners.
+    struct AudioReader {
+        private struct Identity {
+            var pid: pid_t
+            var bundleID: String
+            var readAt: Date
+        }
+        private var identities: [AudioObjectID: Identity] = [:]
+
+        mutating func read(objects: [AudioObjectID], apps: [App], displayAssertionPIDs: [pid_t], now: Date,
+                           pid: (AudioObjectID) -> pid_t?, bundle: (AudioObjectID) -> String?,
+                           running: (AudioObjectID, AudioObjectPropertySelector) -> Bool) -> [AudioProcess] {
+            let live = Set(objects)
+            identities = identities.filter { live.contains($0.key) }
+            let processes: [(AudioObjectID, Identity)] = objects.compactMap { object in
+                guard let processID = pid(object) else {
+                    identities.removeValue(forKey: object)
+                    return nil
+                }
+                if let cached = identities[object], cached.pid == processID,
+                   (0..<60).contains(now.timeIntervalSince(cached.readAt)) {
+                    return (object, cached)
+                }
+                guard let bundleID = bundle(object) else {
+                    identities.removeValue(forKey: object)
+                    return nil
+                }
+                let identity = Identity(pid: processID, bundleID: bundleID, readAt: now)
+                identities[object] = identity
+                return (object, identity)
+            }
+            // Retain all identities: a display assertion may belong to a helper
+            // absent from NSWorkspace.runningApplications.
+            let owners = Set(displayAssertionPIDs.compactMap { processID -> String? in
+                guard let id = apps.first(where: { $0.pid == processID })?.bundleID
+                    ?? processes.first(where: { $0.1.pid == processID })?.1.bundleID else { return nil }
+                return Self.owner(id, apps: apps)
+            })
+            return processes.map { object, identity in
+                let isCallApp = PresenceMonitor.callPrefixes.contains { identity.bundleID.hasPrefix($0) }
+                let isDisplayOwner = owners.contains(Self.owner(identity.bundleID, apps: apps))
+                return AudioProcess(pid: identity.pid, bundleID: identity.bundleID,
+                                    input: isCallApp && running(object, kAudioProcessPropertyIsRunningInput),
+                                    output: (isCallApp || isDisplayOwner) && running(object, kAudioProcessPropertyIsRunningOutput))
+            }
+        }
+
+        private static func owner(_ bundleID: String, apps: [App]) -> String {
+            PresenceMonitor.root(of: bundleID, apps: apps)?.bundleID ?? bundleID
+        }
     }
 
     // MARK: OS reads
@@ -128,19 +242,14 @@ public final class PresenceMonitor: @unchecked Sendable {
         return AudioObjectGetPropertyData(object, &address, 0, nil, &size, &value) == noErr ? value : nil
     }
 
-    static func audioProcesses() -> [AudioProcess] {
+    private static func audioObjects() -> [AudioObjectID] {
         var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyProcessObjectList, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
         var size: UInt32 = 0
         let system = AudioObjectID(kAudioObjectSystemObject)
         guard AudioObjectGetPropertyDataSize(system, &address, 0, nil, &size) == noErr, size > 0 else { return [] }
         var objects = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
         guard AudioObjectGetPropertyData(system, &address, 0, nil, &size, &objects) == noErr else { return [] }
-        return objects.compactMap { object in
-            guard let pid = property(object, kAudioProcessPropertyPID, as: pid_t.self, default: 0),
-                  let bundle = property(object, kAudioProcessPropertyBundleID, as: CFString?.self, default: nil) ?? nil else { return nil }
-            return AudioProcess(pid: pid, bundleID: bundle as String,
-                                input: (property(object, kAudioProcessPropertyIsRunningInput, as: UInt32.self, default: 0) ?? 0) != 0,
-                                output: (property(object, kAudioProcessPropertyIsRunningOutput, as: UInt32.self, default: 0) ?? 0) != 0)
-        }
+        // The list may shrink between the size query and the data read.
+        return Array(objects.prefix(Int(size) / MemoryLayout<AudioObjectID>.size))
     }
 }

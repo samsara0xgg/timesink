@@ -381,7 +381,8 @@ public final class TrackerEngine {
         var missingSince: Date?
     }
     private var openCall: OpenCall?
-    /// The first read that showed a call app running input and output while no call was open.
+    /// The first read (its `sampledAt`, else the tick) that showed a call app running input and
+    /// output while no call was open.
     /// A new row needs the next read to show it again: a notification sound played while
     /// the app holds the mic for dictation is one read, not a call.
     private var callHeard: (bundleID: String, at: Date)?
@@ -735,14 +736,14 @@ public final class TrackerEngine {
             } else if !call.output {
                 callHeard = nil
             } else if let heard = callHeard, heard.bundleID == call.bundleID,
-                      now.timeIntervalSince(heard.at) <= Self.callMissGrace {
-                // Ticks between two reads see the cached first one again.
-                guard now.timeIntervalSince(heard.at) >= PresenceMonitor.refreshInterval else { return }
+                      (call.sampledAt ?? now).timeIntervalSince(heard.at) <= Self.callMissGrace {
+                // Ticks between two reads, or while the next read is late, see the first one again.
+                guard (call.sampledAt ?? now).timeIntervalSince(heard.at) >= PresenceMonitor.refreshInterval else { return }
                 let id = try callStore.open(at: heard.at, bundleID: call.bundleID, appName: call.appName).id ?? 0
                 openCall = OpenCall(id: id, bundleID: call.bundleID, wrote: heard.at, lastSeen: now)
                 callHeard = nil
             } else {
-                callHeard = (call.bundleID, now)
+                callHeard = (call.bundleID, call.sampledAt ?? now)
             }
             writeHealth?.succeeded()
         } catch {

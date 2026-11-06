@@ -94,7 +94,7 @@ public struct TimeSinkApp: App {
         let calendarStore = CalendarStore()
         model.calendarStore = calendarStore
         let presenceMonitor = PresenceMonitor()
-        engine.presenceProvider = { presenceMonitor.current() }
+        engine.presenceProvider = { presenceMonitor.cachedCurrent() }
         let callStore = CallSpanStore(db)
         engine.callStore = callStore
         model.callStore = callStore

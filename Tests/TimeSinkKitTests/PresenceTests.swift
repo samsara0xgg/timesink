@@ -366,6 +366,79 @@ final class TrackerEnginePresenceTests: XCTestCase {
         XCTAssertEqual(rows[0].end, ts(300), "input alone kept it open; closed at the last read that saw it")
     }
 
+    /// The app's own monitor: each read runs off the tick, is stamped with its time, and is seen
+    /// from the next tick on. `stall` holds a read back, so ticks keep seeing the one before it.
+    private final class Reads: @unchecked Sendable {
+        private let lock = NSLock()
+        private var clock = 0.0, count = 0
+        var script: @Sendable (Int) -> Presence? = { _ in nil }
+        let stall = DispatchSemaphore(value: 0)
+        var stallRead: Int?
+        var now: Double { get { lock.withLock { clock } } set { lock.withLock { clock = newValue } } }
+        func read() -> Presence? {
+            let n = lock.withLock { count += 1; return count }
+            if n == stallRead { stall.wait() }
+            return script(n)
+        }
+    }
+
+    private func asyncEngine(_ reads: Reads) throws -> (TrackerEngine, CallSpanStore, PresenceMonitor) {
+        let (engine, _, calls) = try makeEngine()
+        engine.idleSecondsProvider = { 0 }
+        let monitor = PresenceMonitor(readPresence: { reads.read() })
+        engine.presenceProvider = { monitor.cachedCurrent(now: ts(reads.now)) }
+        return (engine, calls, monitor)
+    }
+
+    private func tick(_ engine: TrackerEngine, _ monitor: PresenceMonitor, _ reads: Reads, _ seconds: ClosedRange<Int>, wait: Bool = true) async {
+        for t in seconds {
+            reads.now = Double(t)
+            await engine.tickAsync(now: ts(Double(t)))
+            if wait { monitor.waitForRefresh() }
+        }
+    }
+
+    func testAsyncReadsMicOnlyForHalfAnHourIsNoCall() async throws {
+        let reads = Reads()
+        reads.script = { _ in Presence(kind: .call, bundleID: "com.tencent.xinWeChat", appName: "WeChat", output: false) }
+        let (engine, calls, monitor) = try asyncEngine(reads)
+        await tick(engine, monitor, reads, 0...1800)
+        XCTAssertTrue(try calls.spans(overlapping: all).isEmpty)
+    }
+
+    /// The sound lands on read 3 (t = 10) and read 4 (t = 15) is late: ticks 16-22 still see read 3,
+    /// more than a refresh after it was first seen. One read is still one read.
+    func testAsyncReadsOneSoundWithTheNextReadLateIsNoCall() async throws {
+        let reads = Reads()
+        reads.script = { n in Presence(kind: .call, bundleID: "com.tencent.xinWeChat", appName: "WeChat", output: n == 3) }
+        reads.stallRead = 4
+        let (engine, calls, monitor) = try asyncEngine(reads)
+        await tick(engine, monitor, reads, 0...14)
+        await tick(engine, monitor, reads, 15...22, wait: false)
+        XCTAssertTrue(try calls.spans(overlapping: all).isEmpty, "the late read's ticks reuse the sound's read")
+        reads.stall.signal()
+        monitor.waitForRefresh()
+        await tick(engine, monitor, reads, 23...400)
+        XCTAssertTrue(try calls.spans(overlapping: all).isEmpty)
+    }
+
+    func testAsyncReadsCallOpensAtTheFirstOfTwoReadsAndRunsOnInput() async throws {
+        let reads = Reads()
+        // Reads come at 0, 5, 10, ...: n = t / 5 + 1. Output on 0-20, input alone to 300, then gone.
+        reads.script = { n in
+            let t = (n - 1) * 5
+            return t > 300 ? nil : Presence(kind: .call, bundleID: "us.zoom.xos", appName: "zoom.us", output: t <= 20)
+        }
+        let (engine, calls, monitor) = try asyncEngine(reads)
+        await tick(engine, monitor, reads, 0...5)
+        XCTAssertTrue(try calls.spans(overlapping: all).isEmpty, "only one read seen yet")
+        await tick(engine, monitor, reads, 6...330)
+        let rows = try calls.spans(overlapping: all)
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].start, ts(0), "starts at the first read")
+        XCTAssertEqual(rows[0].end, ts(305), "input kept it open; closed at the last tick that saw it")
+    }
+
     func testVideoIsNotACallSpan() async throws {
         let (engine, _, calls) = try makeEngine()
         engine.presenceProvider = { self.chromeVideo }
