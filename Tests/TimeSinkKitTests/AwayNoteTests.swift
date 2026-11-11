@@ -73,4 +73,17 @@ final class AwayNoteTests: XCTestCase {
         model.answerAway(label: nil, symbol: "")
         XCTAssertEqual(try model.observationStore?.awayNotes(overlapping: day).count, 1)
     }
+
+    func testCanceledEventDoesNotNameAnAwayStretch() throws {
+        let (model, _) = try makeModel()
+        func event(canceled: Bool) -> CalendarEvent {
+            CalendarEvent(id: "e", title: "Review", start: ts(0), end: ts(3600), isAllDay: false, attendeeCount: 3,
+                          isDeclined: false, isCanceled: canceled, calendarTitle: "", colorHex: "#000000")
+        }
+        let stretch = DateInterval(start: ts(600), end: ts(1800))
+        model.todayMeetingEvents = [event(canceled: false)]
+        XCTAssertEqual(model.awaySuggestion(for: stretch)?.title, "Review")
+        model.todayMeetingEvents = [event(canceled: true)]
+        XCTAssertNil(model.awaySuggestion(for: stretch))
+    }
 }

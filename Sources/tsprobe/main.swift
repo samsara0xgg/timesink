@@ -16,6 +16,12 @@ func processUsage() -> (cpu: Double, peakMiB: Double) {
     return (cpu, Double(usage.ru_maxrss) / 1_048_576)
 }
 
+/// `tsprobe presence`: the call or video the Mac is in right now, read once. Read-only.
+if CommandLine.arguments.dropFirst().first == "presence" {
+    print(PresenceMonitor().current().map { "\($0.kind.rawValue) \($0.appName) (\($0.bundleID))" } ?? "none")
+    exit(0)
+}
+
 if CommandLine.arguments.dropFirst().first == "jev-live" {
     Task { @MainActor in
         await runJevLive(Array(CommandLine.arguments.dropFirst(2)))
@@ -196,6 +202,20 @@ if CommandLine.arguments.dropFirst().first == "interruptions" {
 /// `tsprobe ax <bundleID> [maxDepth]`: one-shot accessibility dump of an
 /// app's focused window -- see `AXProbe`. Runs from the command line without
 /// the target being frontmost, so it can be pointed at whatever is open.
+/// `tsprobe chat <bundleID>`: what the chat reader returns for that app's focused
+/// window -- conversation name and project only. Read-only; never forces the AX tree.
+if CommandLine.arguments.dropFirst().first == "chat" {
+    guard CommandLine.arguments.count > 2,
+          let app = NSRunningApplication.runningApplications(withBundleIdentifier: CommandLine.arguments[2]).first
+    else { print("usage: tsprobe chat <bundleID> (app must be running)"); exit(64) }
+    print("AX granted:", Permissions.accessibilityGranted(prompt: false))
+    let start = Date()
+    let reading = ChatSessionSampler().reading(pid: app.processIdentifier, appName: app.localizedName ?? "")
+    print("document:", reading.document ?? "nil")
+    print(String(format: "%.1f ms", Date().timeIntervalSince(start) * 1000))
+    exit(0)
+}
+
 if CommandLine.arguments.dropFirst().first == "ax" {
     let args = Array(CommandLine.arguments.dropFirst(2))
     guard let bundleID = args.first else {

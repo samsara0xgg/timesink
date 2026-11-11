@@ -14,12 +14,15 @@ public struct Sample: Equatable, Sendable {
     /// name. nil for everything that identifies itself by title alone.
     /// See `DocumentIdentity`.
     public var document: String?
+    /// Whether this tick's AX window-title read worked. nil when none was
+    /// made: no regular windowed app in front, or a sample not read from AX.
+    public var axTitleRead: Bool?
     public init(timestamp: Date, appBundleID: String, appName: String,
                 windowTitle: String?, url: String?, windowID: UInt32? = nil,
-                document: String? = nil) {
+                document: String? = nil, axTitleRead: Bool? = nil) {
         self.timestamp = timestamp; self.appBundleID = appBundleID
         self.appName = appName; self.windowTitle = windowTitle; self.url = url
-        self.windowID = windowID; self.document = document
+        self.windowID = windowID; self.document = document; self.axTitleRead = axTitleRead
     }
 }
 
@@ -40,6 +43,9 @@ public struct Span: Equatable, Sendable, Codable {
     /// counting the span's first second (usually the ⌘⇥ that opened it).
     /// Only the count is stored, never which keys.
     public var keySeconds: Int
+    private enum CodingKeys: String, CodingKey {
+        case id, start, end, appBundleID, appName, title, url, domain, document, keySeconds
+    }
     public var duration: TimeInterval { end.timeIntervalSince(start) }
     public init(id: Int64? = nil, start: Date, end: Date, appBundleID: String,
                 appName: String, title: String?, url: String?, domain: String?,

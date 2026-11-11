@@ -19,10 +19,12 @@ public final class WindowSampler: Sendable {
         public let bundleID: String
         public let name: String
         public let pid: pid_t
+        /// A regular Dock app; accessories and agents have no window to read a title from.
+        public let isRegular: Bool
         /// Public so `tsprobe` can ask what the tracker would record for an
         /// app without that app having to be frontmost.
-        public init(bundleID: String, name: String, pid: pid_t) {
-            self.bundleID = bundleID; self.name = name; self.pid = pid
+        public init(bundleID: String, name: String, pid: pid_t, isRegular: Bool = true) {
+            self.bundleID = bundleID; self.name = name; self.pid = pid; self.isRegular = isRegular
         }
     }
 
@@ -52,14 +54,16 @@ public final class WindowSampler: Sendable {
               !bundleID.hasPrefix("com.alllllenshi.TimeSink.") else { return nil }
         return FrontmostApp(bundleID: bundleID,
                             name: app.localizedName ?? bundleID,
-                            pid: app.processIdentifier)
+                            pid: app.processIdentifier,
+                            isRegular: app.activationPolicy == .regular)
     }
 
     public func sample(at date: Date = Date(), app: FrontmostApp) -> Sample {
         let focused = focusedWindow(pid: app.pid)
         return Sample(timestamp: date, appBundleID: app.bundleID, appName: app.name,
                       windowTitle: focused.title, url: nil, windowID: focused.id,
-                      document: document(for: app, focused: focused))
+                      document: document(for: app, focused: focused),
+                      axTitleRead: app.isRegular ? focused.titleRead : nil)
     }
 
     /// A document worth recording, or nil.
@@ -88,6 +92,20 @@ public final class WindowSampler: Sendable {
         public let title: String?
         public let id: UInt32?
         public let document: String?
+        /// Whether the AX title read worked; nil when the app has no window to read.
+        public let titleRead: Bool?
+    }
+
+    /// What an AX read's answer says about the Accessibility channel itself, for `AXReadHealth`:
+    /// an answer (even "no window", "no title") means the channel works; a refusal or a dead
+    /// connection (`.apiDisabled` after a stale grant, `.cannotComplete`) means it is broken.
+    /// Anything else says something about this one app, not about the grant, and is not counted.
+    static func channelWorks(_ error: AXError) -> Bool? {
+        switch error {
+        case .success, .noValue, .attributeUnsupported: true
+        case .apiDisabled, .cannotComplete: false
+        default: nil
+        }
     }
 
     /// Title, CGWindowID and document of `pid`'s focused window, from one AX read.
@@ -102,19 +120,20 @@ public final class WindowSampler: Sendable {
         // would stall every 1s tick. 250ms is ample for a healthy app.
         AXUIElementSetMessagingTimeout(appRef, 0.25)
         var window: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(appRef, kAXFocusedWindowAttribute as CFString, &window) == .success,
-              let win = window else {
-            return FocusedWindow(title: nil, id: Self.largestWindowID(pid: pid), document: nil)
+        let windowError = AXUIElementCopyAttributeValue(appRef, kAXFocusedWindowAttribute as CFString, &window)
+        guard windowError == .success, let win = window else {
+            return FocusedWindow(title: nil, id: Self.largestWindowID(pid: pid), document: nil,
+                                 titleRead: Self.channelWorks(windowError))
         }
         let winElement = win as! AXUIElement
         AXUIElementSetMessagingTimeout(winElement, 0.25)
         var title: CFTypeRef?
-        let titleString = AXUIElementCopyAttributeValue(winElement, kAXTitleAttribute as CFString, &title) == .success
-            ? title as? String : nil
+        let titleError = AXUIElementCopyAttributeValue(winElement, kAXTitleAttribute as CFString, &title)
+        let titleString = titleError == .success ? title as? String : nil
         var id: CGWindowID = 0
         let idValue: UInt32? = _AXUIElementGetWindow(winElement, &id) == .success && id != 0 ? id : nil
         return FocusedWindow(title: titleString, id: idValue ?? Self.largestWindowID(pid: pid),
-                             document: documentAttribute(winElement))
+                             document: documentAttribute(winElement), titleRead: Self.channelWorks(titleError))
     }
 
     /// `kAXDocument` (a terminal's working directory, an editor's file),

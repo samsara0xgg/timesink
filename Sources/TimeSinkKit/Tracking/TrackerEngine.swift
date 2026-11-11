@@ -156,10 +156,6 @@ public final class TrackerEngine {
     /// No input for this long when the screen locks or the Mac sleeps means
     /// nobody was there: the close goes back to the last input.
     private static let lockBackdateMinimum: TimeInterval = 30
-    /// While locked or asleep by our own account, the real lock state is
-    /// re-read this often, so one missed unlock notification cannot stop
-    /// recording for hours.
-    private static let lockRecheckInterval: TimeInterval = 10
 
     private let spanStore: SpanStore
     private let settings: SettingsStore
@@ -178,6 +174,8 @@ public final class TrackerEngine {
     private var throttle = ChromeThrottle()
 
     public private(set) var currentRowID: Int64?
+    /// The last row written and the start of the span it holds, kept after the span closes.
+    private var lastRow: (id: Int64, start: Date)?
     /// Read-only presentation state; reading this never starts sampling.
     public var currentActivity: Span? { builder.current }
     public var isRunning: Bool { timer != nil }
@@ -186,6 +184,8 @@ public final class TrackerEngine {
     public func setPermissionGranted(_ granted: Bool, at date: Date = Date()) {
         guard granted != permissionGranted else { return }
         permissionGranted = granted; suspensionEpoch += 1
+        axHealth = AXReadHealth(); axReadDegraded = false
+        if !granted { closeCall(at: date); handsOff = false }
         if !granted, let closed = builder.close(at: date) { persist(closed) }
         interruptCollector()
     }
@@ -196,6 +196,7 @@ public final class TrackerEngine {
         guard userPaused != paused else { return }
         userPaused = paused
         suspensionEpoch += 1
+        if paused { closeCall(at: date); handsOff = false }
         if paused, let closed = builder.close(at: date) { persist(closed) }
         throttle = ChromeThrottle()
         chromeTabState = .none
@@ -251,7 +252,7 @@ public final class TrackerEngine {
     /// app's conversation under the other -- the same stale-value failure
     /// the Chrome tab cache was fixed for, where a cached value outlived
     /// what it described.
-    private var chatSession: (bundleID: String, title: String?)?
+    private var chatSession: (bundleID: String, reading: ChatReading)?
     private var lastChatFetch = Date.distantPast
 
     /// Chrome Automation authorization, refreshed at most once per fetch
@@ -273,25 +274,35 @@ public final class TrackerEngine {
     /// throttle+backoff gate already keeps it to at most once per 5s.
     var windowSampleProvider: (@Sendable (Date) -> Sample?)?
     var chromeTabProvider: (@Sendable () -> ChromeSampler.TabInfo?)?
-    var chatSessionProvider: (@Sendable () -> String?)?
+    var chatSessionProvider: (@Sendable () -> ChatReading)?
     var chromeAutomationAuthorizedProvider: (() -> Bool)?
     var idleSecondsProvider: (() -> TimeInterval)?
+    var screenLockedProvider: (() -> Bool)?
     /// Seconds since the last keyDown; the real reading is one
     /// `CGEventSource` call, the same kind `IdleMonitor` already makes.
     var keyDownSecondsProvider: (() -> TimeInterval)?
-    /// True while the user is currently in a calendar meeting -- when set,
-    /// `tick` forces `idleSeconds` to 0 regardless of the real idle reading,
-    /// so hands-off-keyboard time during a video call never triggers
-    /// `becameIdle` (C3 idle exemption). Only while not already idle: the
-    /// exemption keeps an active span from going idle, it never brings an
-    /// idle one back (left for lunch at 11:50, a 12:00 all-hands on the
-    /// calendar is not the user at the Mac). Lock/sleep suspension is
-    /// untouched by this -- it only ever affects the idle branch of
-    /// `SuspensionState.tick`.
-    var isInMeetingProvider: (() -> Bool)?
-    /// Whether the screen is locked right now; replaces the window-server
-    /// read (`SystemMonitor.isScreenLocked`) in tests.
-    var screenLockedProvider: (() -> Bool)?
+    /// The app the user is on a call in or watching a video in. While it is on
+    /// screen (or a call, up to `backgroundCallIdleLimit` of raw idle), `beginTick` forces
+    /// `idleSeconds` to 0 regardless of the real idle
+    /// reading (idle exemption; a calendar meeting alone no longer exempts), and,
+    /// once hands have been off for `handsOffSeconds`, it is also who the tick's
+    /// sample is attributed to. Lock/sleep suspension is untouched by this: it
+    /// only affects the idle branch of `SuspensionState.tick`.
+    var presenceProvider: (() -> Presence?)?
+    /// Where call intervals are persisted; nil keeps tests store-free.
+    public var callStore: CallSpanStore?
+    /// Raw idle at or above this counts as hands-off. ponytail: the first 60 s
+    /// of a hands-off stretch still go to the frontmost app; a retroactive
+    /// swap would need span rewriting.
+    static let handsOffSeconds: TimeInterval = 60
+    /// A call in the background is only listened to, not watched: past this much raw idle it
+    /// no longer keeps the user from going idle. On-screen presence has no limit.
+    static let backgroundCallIdleLimit: TimeInterval = 15 * 60
+    /// A lock suspension heals when the screen is unlocked and input is this recent.
+    static let lockHealIdle: TimeInterval = 5
+    /// ... and only once the lock is this old.
+    static let lockHealAge: TimeInterval = 10
+    private var lockedAt: Date?
 
     /// C4 focus session seam: consulted once per sampled tick, after Chrome
     /// tab-URL enrichment and before the private-window, left-out and idle
@@ -322,6 +333,13 @@ public final class TrackerEngine {
     /// permissions problem and must not trigger a warning that tells the
     /// user to check a permission that's actually fine.
     public private(set) var chromeCaptureDegraded = false
+
+    /// Counts consecutive failed span/call writes; set once by `TimeSinkApp`.
+    public var writeHealth: WriteHealth?
+    /// Accessibility is granted but window titles have not been readable for
+    /// 30+ minutes; cleared by the next successful read. See `AXReadHealth`.
+    public private(set) var axReadDegraded = false
+    private var axHealth = AXReadHealth()
 
     private var timer: Timer?
 
@@ -385,9 +403,42 @@ public final class TrackerEngine {
     public var isSuspended: Bool { suspensionState.isSuspended }
     public private(set) var latestSample: Sample?
 
-    /// Whether the previous tick applied the meeting idle-exemption -- used
-    /// only to detect the true->false transition below.
-    private var wasExempt = false
+    /// Previous tick's idle exemption -- used only to detect the true->false
+    /// transition below.
+    private var wasInMeeting = false
+    /// This tick's presence and raw idle, read by `tickAsync` for attribution.
+    private var tickPresence: Presence?
+    /// Whether `tickPresence` exempts this tick from idle.
+    private var presenceExempt = false
+    private var rawIdle: TimeInterval = 0
+    /// The open call row, when it was last written, when a presence read last
+    /// showed the call, and when reads first stopped showing it.
+    private struct OpenCall {
+        var id: Int64
+        var bundleID: String
+        var wrote: Date
+        var lastSeen: Date
+        var missingSince: Date?
+    }
+    private var openCall: OpenCall?
+    /// The first read (its `sampledAt`, else the tick) that showed a call app running input and
+    /// output while no call was open.
+    /// A new row needs the next read to show it again: a notification sound played while
+    /// the app holds the mic for dictation is one read, not a call.
+    private var callHeard: (bundleID: String, at: Date)?
+    /// A call survives this long without a presence read showing it. Ticks come every second and
+    /// the presence is cached for `refreshInterval`, so the first miss can land anywhere in a
+    /// refresh cycle; one and a half cycles always spans a second read: one miss is a hiccup,
+    /// the next one confirms.
+    static let callMissGrace = PresenceMonitor.refreshInterval * 1.5
+    /// A call of the same app starting within this long of its last row's end
+    /// continues that row (a hiccup longer than the grace, an app restart).
+    static let callRejoinWindow: TimeInterval = 60
+    /// Between `willSleep` and the next wake or unlock. A lock suspends
+    /// sampling but not call tracking; a sleep ends the call.
+    private var asleep = false
+    /// When the Mac last went to sleep: a call row that ended by then is not continued.
+    private var sleptAt: Date?
     /// Set on the tick where the meeting idle-exemption transitions
     /// true->false (the moment it stops zeroing `idleSeconds`). CRITICAL
     /// fix: without this, un-exempting mid-idle-stretch backdates
@@ -398,6 +449,11 @@ public final class TrackerEngine {
     /// idle. Clamping the close to no earlier than this moment preserves
     /// the span's real extent. Consumed (cleared) the next time it's read.
     private var exemptionEndedAt: Date?
+    /// A `hands_off` is open: raw idle crossed the threshold under a presence exemption.
+    private var handsOff = false
+    /// The `hands_off` written for this stretch of no input, until input returns: an exemption
+    /// that flickers off and on again does not write a second one at the same instant.
+    private var handsOffLogged = false
     /// This tick's idle reading (0 in a meeting), handed to the screen
     /// collector so an untouched window is checked less often.
     private var idleSeconds: TimeInterval = 0
@@ -412,8 +468,6 @@ public final class TrackerEngine {
     /// the open span.
     private var lastInputAt = Date.distantPast
     private var rowsSinceInput: [Int64] = []
-    /// Last time the lock state was re-read while system-suspended.
-    private var lastLockCheck = Date.distantPast
 
     private let logger = Logger(subsystem: "com.alllllenshi.TimeSink", category: "tracker")
 
@@ -456,6 +510,8 @@ public final class TrackerEngine {
         // Both callers quit the app, but `NSApp.terminate` still spins the run
         // loop, so that continuation can land.
         suspensionEpoch += 1
+        handsOff = false
+        closeCall(at: Date())
         if let closed = builder.close(at: Date()) {
             persist(closed)
         }
@@ -498,6 +554,11 @@ public final class TrackerEngine {
             now: now, provider: windowSampleProvider, app: frontmost
         ) else { return }
         guard suspensionEpoch == epochBeforeSample else { return }
+        // Not while idle: nobody is using the window, and its title says nothing about the grant.
+        if phase == .active, let read = sample.axTitleRead {
+            axHealth.note(ok: read, at: now)
+            axReadDegraded = axHealth.isDegraded(at: now)
+        }
 
         // What is known about the browser window in front: nil for any
         // other app.
@@ -550,7 +611,15 @@ public final class TrackerEngine {
                 guard suspensionEpoch == epochBeforeChat else { return }
                 chatSession = (sample.appBundleID, fetched)
             }
-            sample.document = chatSession?.title
+            sample.document = chatSession?.reading.document
+            sample.url = chatSession?.reading.url
+        }
+
+        if let presence = tickPresence, presenceExempt, rawIdle >= Self.handsOffSeconds, sample.appBundleID != presence.bundleID {
+            sample = Sample(timestamp: sample.timestamp, appBundleID: presence.bundleID, appName: presence.appName,
+                            windowTitle: nil, url: nil)
+            // The browser window in front is no longer what this tick records.
+            frontTab = nil
         }
 
         // Focus blocking sees every sampled tick, recorded or not: a private
@@ -621,11 +690,11 @@ public final class TrackerEngine {
     /// (Claude) for the whole walk, and it runs at most once per
     /// `chatFetchInterval`.
     nonisolated private func offActorChatSession(
-        provider: (@Sendable () -> String?)?, app: WindowSampler.FrontmostApp?
-    ) async -> String? {
+        provider: (@Sendable () -> ChatReading)?, app: WindowSampler.FrontmostApp?
+    ) async -> ChatReading {
         if let provider { return provider() }
-        guard let app else { return nil }
-        return chatSampler.session(pid: app.pid, appName: app.name)
+        guard let app else { return ChatReading() }
+        return chatSampler.reading(pid: app.pid, appName: app.name)
     }
 
     /// Off-actor counterpart for the Chrome Apple Event -- likewise bounded to
@@ -649,19 +718,35 @@ public final class TrackerEngine {
         keyDownThisTick = now.addingTimeInterval(-sinceKey) > lastTickAt
         lastTickAt = now
         noteInput(at: now.addingTimeInterval(-rawIdle))
-        recheckLock(at: now)
-        let isInMeetingNow = isInMeetingProvider?() == true
-        // Never for an already-idle state: see `isInMeetingProvider`.
-        let exemptNow = isInMeetingNow && !suspensionState.idleSuspended
-        if wasExempt, !exemptNow {
+        tickPresence = presenceProvider?()
+        self.rawIdle = rawIdle
+        let presentNow = tickPresence.map { $0.onScreen || ($0.kind == .call && rawIdle < Self.backgroundCallIdleLimit) } ?? false
+        // Never for an already-idle state: the exemption keeps an active span
+        // from going idle, it never brings an idle one back.
+        let isInMeetingNow = presentNow && !suspensionState.idleSuspended
+        presenceExempt = isInMeetingNow
+        if wasInMeeting, !isInMeetingNow {
             exemptionEndedAt = now
         }
-        wasExempt = exemptNow
-        let idleSeconds = exemptNow ? 0 : rawIdle
+        wasInMeeting = isInMeetingNow
+        let idleSeconds = isInMeetingNow ? 0 : rawIdle
         self.idleSeconds = idleSeconds
 
+        // A missed `screenIsUnlocked` must not leave tracking suspended behind a
+        // working Mac: not locked and input just now is an unlock.
+        // The lock flag can lag the lock notification, so a fresh lock is left alone.
+        if suspensionState.systemSuspended, !asleep, rawIdle < Self.lockHealIdle,
+           lockedAt.map({ now.timeIntervalSince($0) >= Self.lockHealAge }) == true,
+           !(screenLockedProvider?() ?? isScreenLocked()) {
+            resume(source: .unlock, at: now)
+        }
+
+        trackHandsOff(exempt: isInMeetingNow, rawIdle: rawIdle, now: now)
+
         let wasIdle = suspensionState.idleSuspended
-        switch suspensionState.tick(idleSeconds: idleSeconds, threshold: settings.idleThreshold) {
+        let outcome = suspensionState.tick(idleSeconds: idleSeconds, threshold: settings.idleThreshold)
+        if outcome != .systemSuspended || !asleep { trackCall(now: now) }
+        switch outcome {
         case .systemSuspended:
             return .suspended
         case .stillIdle:
@@ -679,6 +764,94 @@ public final class TrackerEngine {
         case .active:
             if wasIdle { observations?.logState("active", at: now) }
             return .active
+        }
+    }
+
+    /// Marks a hands-off stretch the presence exemption keeps from going idle: `hands_off` at the
+    /// last input, `hands_on` when input returns. Screen time is untouched. An exemption that ends
+    /// first leaves the stretch to `idle`; lock, sleep and pause reset it with no `hands_on`.
+    private func trackHandsOff(exempt: Bool, rawIdle: TimeInterval, now: Date) {
+        guard !suspensionState.systemSuspended else { return }
+        let threshold = settings.idleThreshold
+        if handsOff {
+            if rawIdle < threshold {
+                handsOff = false
+                observations?.logState("hands_on", at: now)
+            } else if !exempt {
+                handsOff = false
+            }
+        } else if exempt, rawIdle >= threshold {
+            handsOff = true
+            if !handsOffLogged {
+                handsOffLogged = true
+                observations?.logState("hands_off", at: now.addingTimeInterval(-rawIdle))
+            }
+        }
+        if rawIdle < threshold { handsOffLogged = false }
+    }
+
+    /// Opens, extends (at the heartbeat cadence) or closes the call row for this tick's presence.
+    /// A call that stops showing is closed only once reads have missed it for `callMissGrace`,
+    /// and then at the time it was last seen. A new row needs the app to run input and output
+    /// on two reads in a row, and starts at the first; an open call, or a rejoin of the app's last row, needs input alone, so silence in a voice
+    /// channel cannot split it.
+    private func trackCall(now: Date) {
+        guard let callStore else { return }
+        let call = tickPresence?.kind == .call ? tickPresence : nil
+        if var open = openCall {
+            if open.bundleID == call?.bundleID {
+                open.lastSeen = now
+                open.missingSince = nil
+                openCall = open
+                guard now.timeIntervalSince(open.wrote) >= Self.heartbeatInterval else { return }
+                do {
+                    try callStore.extend(id: open.id, end: now)
+                    openCall?.wrote = now
+                    writeHealth?.succeeded()
+                } catch {
+                    writeHealth?.failed(error)
+                    logger.error("call span write failed: \(String(describing: error))")
+                }
+                return
+            }
+            if call == nil {
+                let since = open.missingSince ?? now
+                openCall?.missingSince = since
+                guard now.timeIntervalSince(since) >= Self.callMissGrace else { return }
+            }
+            closeCall(at: open.lastSeen)
+        }
+        guard let call else { callHeard = nil; return }
+        do {
+            if let recent = try callStore.rejoinable(bundleID: call.bundleID, endingAfter: sleptAt), let id = recent.id,
+               now.timeIntervalSince(recent.end) <= Self.callRejoinWindow {
+                try callStore.extend(id: id, end: max(now, recent.end))
+                openCall = OpenCall(id: id, bundleID: call.bundleID, wrote: now, lastSeen: now)
+            } else if !call.output {
+                callHeard = nil
+            } else if let heard = callHeard, heard.bundleID == call.bundleID,
+                      (call.sampledAt ?? now).timeIntervalSince(heard.at) <= Self.callMissGrace {
+                // Ticks between two reads, or while the next read is late, see the first one again.
+                guard (call.sampledAt ?? now).timeIntervalSince(heard.at) >= PresenceMonitor.refreshInterval else { return }
+                let id = try callStore.open(at: heard.at, bundleID: call.bundleID, appName: call.appName).id ?? 0
+                openCall = OpenCall(id: id, bundleID: call.bundleID, wrote: heard.at, lastSeen: now)
+                callHeard = nil
+            } else {
+                callHeard = (call.bundleID, call.sampledAt ?? now)
+            }
+            writeHealth?.succeeded()
+        } catch {
+            writeHealth?.failed(error)
+            logger.error("call span write failed: \(String(describing: error))")
+        }
+    }
+
+    private func closeCall(at date: Date) {
+        guard let open = openCall else { return }
+        openCall = nil
+        do { try callStore?.extend(id: open.id, end: date); writeHealth?.succeeded() } catch {
+            writeHealth?.failed(error)
+            logger.error("call span close failed: \(String(describing: error))")
         }
     }
 
@@ -833,8 +1006,15 @@ public final class TrackerEngine {
         // superset of "the suspension context moved", and a redundant signal
         // costs at most one dropped 1s sample.
         suspensionEpoch += 1
+        handsOff = false
+        if source == .sleep {
+            asleep = true
+            sleptAt = date
+            closeCall(at: openCall?.lastSeen ?? date)
+        }
+        // On every signal, not only the first: the heal age counts from the latest lock or wake.
+        lockedAt = date
         guard suspensionState.suspendSystem() else { return }
-        lastLockCheck = date
         let closeAt = lockBackdate(at: date)
         if let closed = builder.close(at: closeAt) {
             persist(closed)
@@ -854,7 +1034,7 @@ public final class TrackerEngine {
     /// never before the moment it ended. `date` itself when already idle:
     /// the idle close has been made.
     private func lockBackdate(at date: Date) -> Date {
-        guard !suspensionState.idleSuspended, isInMeetingProvider?() != true else { return date }
+        guard !suspensionState.idleSuspended, !presenceExempt else { return date }
         let rawIdle = idleSecondsProvider?() ?? idleMonitor.idleSeconds()
         guard rawIdle >= Self.lockBackdateMinimum else { return date }
         let backdated = date.addingTimeInterval(-rawIdle)
@@ -872,20 +1052,6 @@ public final class TrackerEngine {
         guard abs(inputAt.timeIntervalSince(lastInputAt)) > 0.5 else { return }
         lastInputAt = inputAt
         rowsSinceInput.removeAll()
-    }
-
-    /// Self-healing for a missed `screenIsUnlocked`: while system-suspended
-    /// and ticking (so awake), the real lock state is re-read every
-    /// `lockRecheckInterval`, the first time no sooner than that after the
-    /// suspension began -- `willSleep` arrives a moment before the Mac
-    /// actually sleeps, unlocked. Unlocked means resumed.
-    private func recheckLock(at now: Date) {
-        guard suspensionState.systemSuspended,
-              abs(now.timeIntervalSince(lastLockCheck)) >= Self.lockRecheckInterval else { return }
-        lastLockCheck = now
-        guard !(screenLockedProvider?() ?? isScreenLocked()) else { return }
-        logger.info("screen found unlocked while suspended: resuming")
-        resume(source: .unlock)
     }
 
     /// Idle backdating for rows already written: a span closed since the
@@ -934,15 +1100,17 @@ public final class TrackerEngine {
     ///
     /// Internal for the same reason as `suspend(at:)`: a test drives a
     /// lock+unlock pair that both land inside one IPC window.
-    func resume(source: SystemMonitor.ResumeSource) {
+    func resume(source: SystemMonitor.ResumeSource, at date: Date = Date()) {
         suspensionEpoch += 1
+        asleep = false
+        if source == .wake { lockedAt = date }
         switch source {
         case .unlock:
             suspensionState.unlock()
-            observations?.logState("unlock")
+            observations?.logState("unlock", at: date)
         case .wake:
             suspensionState.wake(screenStillLocked: screenLockedProvider?() ?? isScreenLocked())
-            observations?.logState("wake")
+            observations?.logState("wake", at: date)
         }
     }
 
@@ -987,25 +1155,34 @@ public final class TrackerEngine {
                 lastHeartbeat = .distantPast
             }
         }
-        if let rowID = currentRowID {
+        // A span the builder took back (a flicker merged into it) has no current row id but its
+        // start is the last written row's.
+        if let rowID = currentRowID ?? lastRow.flatMap({ $0.start == span.start ? $0.id : nil }) {
             do {
                 try spanStore.updateEnd(id: rowID, end: span.end, keySeconds: span.keySeconds)
+                currentRowID = rowID
+                lastRow = (rowID, span.start)
                 lastHeartbeat = now
                 lastWriteStart = span.start
                 if final { attachCaptures(to: rowID, of: span) }
+                writeHealth?.succeeded()
                 onChange?()
             } catch {
+                writeHealth?.failed(error)
                 logger.error("updateEnd failed: \(String(describing: error))")
             }
         } else if span.duration >= Self.minWriteDuration {
             do {
                 let inserted = try spanStore.insert(span)
                 currentRowID = inserted.id
+                lastRow = inserted.id.map { ($0, span.start) }
                 lastHeartbeat = now
                 lastWriteStart = span.start
                 if let rowID = inserted.id { attachCaptures(to: rowID, of: span) }
+                writeHealth?.succeeded()
                 onChange?()
             } catch {
+                writeHealth?.failed(error)
                 logger.error("insert failed: \(String(describing: error))")
             }
         }

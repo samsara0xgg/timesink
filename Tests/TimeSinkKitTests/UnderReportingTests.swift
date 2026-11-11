@@ -38,9 +38,8 @@ final class UnderReportingTests: XCTestCase {
 
         model.refreshMenu()
 
-        XCTAssertEqual(model.menuTitle, model.todayTotalTitle,
-                       "菜单栏必须显示今日总时长")
-        XCTAssertNotEqual(model.menuTitle, Format.duration(0),
+        XCTAssertNotEqual(model.todayTotalTitle, Format.duration(0), "今日总时长不能是 0")
+        XCTAssertNotEqual(model.menuTitle, Format.clock(0),
                           "未分类时长被算成 0 就是旧的 focusTime 行为")
     }
 

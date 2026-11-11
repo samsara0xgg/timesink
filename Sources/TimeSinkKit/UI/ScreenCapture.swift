@@ -305,6 +305,36 @@ import WebKit
             UserDefaults.standard.removeObject(forKey: "todayTimelineColors")
             return
         }
+        // `TIMESINK_PREVIEW_ONLY=composition`: the composition view on Activities (bars, lanes, lanes by
+        // category, a legend item focused).
+        if only?.contains("composition") ?? false {
+            let sample = try RefinedPreview.fixture(projects: true, ownerNames: ProcessInfo.processInfo.environment["TIMESINK_PREVIEW_PROJECT_NAMES"] != nil)
+            let focusName = ProcessInfo.processInfo.environment["TIMESINK_PREVIEW_PROJECT_NAMES"] != nil ? "TimeSink" : "Aurora"
+            sample.timeFormat = "24"
+            func page(_ name: String, _ page: SidebarItem, anchor: Date, sizes: [NSSize], colors: String, ribbon: String = "composition",
+                      loadSessions: Bool = false) async throws {
+                UserDefaults.standard.set(colors, forKey: "todayTimelineColors")
+                UserDefaults.standard.set(ribbon, forKey: "activitiesRibbonStyle")
+                sample.sidebarSelection = page
+                sample.todayDayOffset = 0
+                sample.range = DateRangeSelection(kind: .day, anchor: anchor)
+                let activities = ActivitiesModel()
+                activities.recompute(model: sample, events: [])
+                if loadSessions { await activities.loadSessions(model: sample) }
+                for size in sizes {
+                    try await shoot("main-composition-\(name)-\(Int(size.width))", MainWindowView(model: sample, activities: activities), size: size, settle: 4000)
+                }
+            }
+            try await page("act-bars", .activities, anchor: yesterday, sizes: [wide, small], colors: "project", loadSessions: true)
+            try await page("act-lanes", .activities, anchor: yesterday, sizes: [wide, small], colors: "project", ribbon: "lanes", loadSessions: true)
+            try await page("act-lanes-category", .activities, anchor: yesterday, sizes: [wide], colors: "category", ribbon: "lanes", loadSessions: true)
+            SessionRibbon.previewFocus = focusName
+            try await page("act-bars-focus", .activities, anchor: yesterday, sizes: [wide], colors: "project", loadSessions: true)
+            try await page("act-lanes-focus", .activities, anchor: yesterday, sizes: [wide], colors: "project", ribbon: "lanes", loadSessions: true)
+            SessionRibbon.previewFocus = nil
+            for key in ["todayTimelineColors", "activitiesRibbonStyle"] { UserDefaults.standard.removeObject(forKey: key) }
+            return
+        }
         if only?.contains("proj") ?? true {
             try await projectsPage("projects-empty", model, .organization, sizes: [wide, small])
             let young = try RefinedPreview.fixture(days: 2)

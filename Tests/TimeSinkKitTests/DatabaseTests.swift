@@ -62,6 +62,15 @@ final class DatabaseTests: XCTestCase {
         let miss = try store.spans(overlapping: DateInterval(start: ts(100), end: ts(200)))
         XCTAssertTrue(miss.isEmpty)
     }
+    func testV23DropsTheSpanContextTableAndKeepsSpanRows() throws {
+        let db = try DatabaseQueue()
+        try AppDatabase.migrator.migrate(db, upTo: "v22-span-context")
+        let old = try insertPreV11Span(db)
+        XCTAssertTrue(try db.read { try $0.tableExists("spanContext") })
+        try AppDatabase.migrator.migrate(db)
+        XCTAssertFalse(try db.read { try $0.tableExists("spanContext") })
+        XCTAssertEqual(try SpanStore(db).spans(overlapping: DateInterval(start: ts(0), end: ts(200))).first?.id, old)
+    }
     func testSeedImportDoesNotOverwriteUser() throws {
         let db = try makeDB()
         let store = CategoryStore(db)

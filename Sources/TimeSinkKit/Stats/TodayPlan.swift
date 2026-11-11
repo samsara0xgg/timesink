@@ -289,8 +289,10 @@ struct TodayPlan {
     }
 
     /// Gaps between sessions, and, today, the stretch since the last one.
+    static let gapMinimum: TimeInterval = 300
+
     static func gaps(_ sessions: [WorkSession], now: Date, isToday: Bool,
-                     minimum: TimeInterval = 300, trailingMinimum: TimeInterval = SessionSegmenter.defaultThreshold) -> [DayGap] {
+                     minimum: TimeInterval = gapMinimum, trailingMinimum: TimeInterval = SessionSegmenter.defaultThreshold) -> [DayGap] {
         var result: [DayGap] = []
         for (previous, next) in zip(sessions, sessions.dropFirst()) where next.start.timeIntervalSince(previous.end) >= minimum {
             result.append(DayGap(interval: DateInterval(start: previous.end, end: next.start), ongoing: false))

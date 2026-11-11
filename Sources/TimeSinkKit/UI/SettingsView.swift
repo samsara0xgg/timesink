@@ -64,6 +64,7 @@ struct RefinedGeneralPane: View {
                     do {
                         if value { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
                     } catch { self.error = String(localized: "登录项无法更新：\(error.localizedDescription)") }
+                    model.setLoginItemWanted(value)
                     loginEnabled = SMAppService.mainApp.status == .enabled
                 })).disabled(!Bundle.main.bundlePath.hasPrefix("/Applications"))
                 if !Bundle.main.bundlePath.hasPrefix("/Applications") {

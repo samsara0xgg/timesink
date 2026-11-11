@@ -909,12 +909,42 @@
         }
       }
     },
+    "TimeSink · 已分心 5 分钟以上": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TimeSink · distracted for 5+ minutes"
+          }
+        }
+      }
+    },
     "TimeSink · 示例数据验收": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "TimeSink · Sample data preview"
+          }
+        }
+      }
+    },
+    "TimeSink · 需要注意": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TimeSink · Needs attention"
+          }
+        }
+      }
+    },
+    "TimeSink 打不开数据库": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TimeSink cannot open its database"
           }
         }
       }
@@ -1045,6 +1075,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Last sync failed: %@"
+          }
+        }
+      }
+    },
+    "上次成功写入 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last successful write %@"
           }
         }
       }
@@ -1953,6 +1993,16 @@
         }
       }
     },
+    "写入失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Write failed"
+          }
+        }
+      }
+    },
     "减弱动态效果 · 150ms 淡变": {
       "localizations": {
         "en": {
@@ -2259,6 +2309,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Lunch"
+          }
+        }
+      }
+    },
+    "原因：%@\n\n%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reason: %@\n\n%@"
           }
         }
       }
@@ -2819,6 +2879,66 @@
           "stringUnit": {
             "state": "translated",
             "value": "URL"
+          }
+        }
+      }
+    },
+    "开机启动被关掉了": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Launch at login was turned off"
+          }
+        }
+      }
+    },
+    "打开设置…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Settings…"
+          }
+        }
+      }
+    },
+    "数据库只读": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Database is read-only"
+          }
+        }
+      }
+    },
+    "数据库损坏": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Database is corrupt"
+          }
+        }
+      }
+    },
+    "无法读取数据库文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cannot read the database file"
+          }
+        }
+      }
+    },
+    "未知错误": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unknown error"
           }
         }
       }
@@ -4611,6 +4731,36 @@
         }
       }
     },
+    "磁盘满": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disk full"
+          }
+        }
+      }
+    },
+    "磁盘读写出错": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disk read/write error"
+          }
+        }
+      }
+    },
+    "记录没能写入：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Records could not be saved: %@"
+          }
+        }
+      }
+    },
     "语言": {
       "localizations": {
         "en": {
@@ -5148,7 +5298,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Made of"
+            "value": "Mix"
           }
         }
       }
@@ -8289,16 +8439,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "%1$@ filed under %2$@, automatically from now on"
-          }
-        }
-      }
-    },
-    "来自日历": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "From the calendar"
           }
         }
       }
@@ -11495,6 +11635,86 @@
           "stringUnit": {
             "state": "translated",
             "value": "Vivid"
+          }
+        }
+      }
+    },
+    "泳道": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lanes"
+          }
+        }
+      }
+    },
+    "时间轴样式": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Timeline style"
+          }
+        }
+      }
+    },
+    "时间带样式": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Day band style"
+          }
+        }
+      }
+    },
+    "来自日历和通话": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "From the calendar and calls"
+          }
+        }
+      }
+    },
+    "通话 · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Call · %@"
+          }
+        }
+      }
+    },
+    "读不到窗口标题，请在系统设置里重新勾选辅助功能": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can't read window titles. Toggle Accessibility off and on again in System Settings"
+          }
+        }
+      }
+    },
+    "屏幕文字识别持续失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Screen text recognition keeps failing"
+          }
+        }
+      }
+    },
+    "重启 TimeSink 后仍然识别不了屏幕文字，可能需要清理系统的文字识别缓存。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Text recognition still fails after restarting TimeSink. The system's text recognition cache may need clearing."
           }
         }
       }

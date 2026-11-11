@@ -556,30 +556,66 @@ public enum AppDatabase {
                 try db.execute(sql: "UPDATE project SET colorIndex = ? WHERE id = ?", arguments: [slot, row["id"] as String])
             }
         }
-        migrator.registerMigration("v21") { db in
-            // Screenshot rows are joined on their span (Jev's screen-text retries, per-span verdicts);
-            // without an index every join scans the whole table.
-            try db.execute(sql: "CREATE INDEX IF NOT EXISTS capture_on_spanID ON capture(spanID)")
-            // One row per Jev question that came back unusable (an unknown category, a malformed
-            // answer, a timeout): how often it was asked and when, so it backs off instead of being
-            // asked on every run. `kind` is "category", "project" or "capture"; `key` is
-            // `JevAttemptKey`'s encoding of the question.
-            try db.execute(sql: """
-                CREATE TABLE IF NOT EXISTS jevAttempt (
-                    kind TEXT NOT NULL,
-                    key TEXT NOT NULL,
-                    attempts INTEGER NOT NULL DEFAULT 0,
-                    lastTried DATETIME NOT NULL,
-                    PRIMARY KEY (kind, key)
-                )
-                """)
-        }
+        migrator.registerMigration("v21") { db in try createJevAttempt(db) }
         migrator.registerMigration("v22") { db in
             // The daily limit a budget alert went out under, so raising a
             // limit re-arms that day's alerts (`BudgetMonitor`). NULL: sent
             // before this column, read as covering any limit.
             try db.alter(table: "budgetAlert") { t in t.add(column: "limitSeconds", .integer) }
         }
+        migrator.registerMigration("self_health_ax_counters") { db in
+            // Accessibility title reads per health window: a stale grant reads nothing, silently.
+            try db.alter(table: "captureHealth") { t in
+                t.add(column: "axReads", .integer).notNull().defaults(to: 0)
+                t.add(column: "axFailed", .integer).notNull().defaults(to: 0)
+            }
+        }
+        migrator.registerMigration("v22-span-context") { db in
+            // The project a Claude conversation sits in, one row per span that has one. A side
+            // table rather than a span column so span rows (and what a mirror of them re-sends)
+            // stay byte-identical; never synced. Additive, so a rollback never sees it.
+            try db.create(table: "spanContext") { t in
+                t.column("spanID", .integer).primaryKey().references("span", onDelete: .cascade)
+                t.column("context", .text).notNull()
+            }
+        }
+        migrator.registerMigration("v23-drop-span-context") { db in
+            // The chat project side table wrote no rows in real use; the project name is in the page title.
+            try db.drop(table: "spanContext")
+        }
+        migrator.registerMigration("v24-call-span-and-jev-attempt") { db in
+            // Two builds shipped a different "v21": the public line's made jevAttempt, the
+            // installed line's made callSpan. Each database has one of them under that name,
+            // so create whichever is missing here.
+            try db.create(table: "callSpan", options: .ifNotExists) { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("start", .datetime).notNull().indexed()
+                t.column("end", .datetime).notNull()
+                t.column("appBundleID", .text).notNull()
+                t.column("appName", .text).notNull()
+            }
+            try createJevAttempt(db)
+        }
         return migrator
+    }
+
+    /// The public line's "v21": an index for capture joins and the Jev retry ledger. Idempotent.
+    private static func createJevAttempt(_ db: Database) throws {
+        // Screenshot rows are joined on their span (Jev's screen-text retries, per-span verdicts);
+        // without an index every join scans the whole table.
+        try db.execute(sql: "CREATE INDEX IF NOT EXISTS capture_on_spanID ON capture(spanID)")
+        // One row per Jev question that came back unusable (an unknown category, a malformed
+        // answer, a timeout): how often it was asked and when, so it backs off instead of being
+        // asked on every run. `kind` is "category", "project" or "capture"; `key` is
+        // `JevAttemptKey`'s encoding of the question.
+        try db.execute(sql: """
+            CREATE TABLE IF NOT EXISTS jevAttempt (
+                kind TEXT NOT NULL,
+                key TEXT NOT NULL,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                lastTried DATETIME NOT NULL,
+                PRIMARY KEY (kind, key)
+            )
+            """)
     }
 }

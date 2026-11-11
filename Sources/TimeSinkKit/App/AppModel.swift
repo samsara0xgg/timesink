@@ -1,6 +1,7 @@
 import Foundation
 import GRDB
 import Observation
+import ServiceManagement
 import os
 
 /// Top-level sidebar destination.
@@ -64,6 +65,10 @@ public final class AppModel {
     @ObservationIgnored var awayAsked: (day: Date, count: Int) = (.distantPast, 0)
     @ObservationIgnored var returnTracker = ReturnTracker()
     @ObservationIgnored var returnCategory: (start: Date, bundleID: String, categoryID: String)?
+    /// The menu bar hourglass turns orange: see `DistractionHint.swift`.
+    public var distracted = false
+    @ObservationIgnored var distractionStreak = DistractionStreak()
+    @ObservationIgnored var distractionCategory: (start: Date, bundleID: String, distracting: Bool)?
     public var popoverShortcutAvailable = false
     public var accessibilityGranted = true { didSet { engine.setPermissionGranted(accessibilityGranted) } }
     public var settingsTab: SettingsTab = .general
@@ -126,7 +131,7 @@ public final class AppModel {
         guard let span = engine.currentActivity else { return trackingPaused ? String(localized: "已暂停") : String(localized: "空闲") }
         let category = resolver.categoryID(for: span)
         let total = rangedSpans(for: .today()).filter { $0.categoryID == category }.reduce(0) { $0 + $1.span.duration }
-        return (resolver.categoriesByID[category]?.name ?? String(localized: "未分类")) + " " + Format.duration(total)
+        return (resolver.categoriesByID[category]?.name ?? String(localized: "未分类")) + " " + Format.clock(total)
     }
     /// Today's total tracked duration, for the menu bar dropdown.
     public var todayTotalTitle: String = "0m"
@@ -251,6 +256,35 @@ public final class AppModel {
     /// `refreshMenu()`, which already runs on every relevant update path
     /// (engine writes via `dataChanged()`, and construction).
     public private(set) var chromeDegraded: Bool = false
+    /// Same mirror for `engine.axReadDegraded` (window titles unreadable).
+    public private(set) var axDegraded: Bool = false
+
+    /// Writes keep failing (`WriteHealth`); nil while healthy.
+    public private(set) var storageDegraded: WriteHealth.Degraded?
+    /// He wants the login item on but macOS reports it off (`LoginItemGuard`).
+    public private(set) var loginItemOff = false
+    /// Any of the warnings that badge the menu bar hourglass.
+    public var barWarning: Bool { chromeDegraded || storageDegraded != nil || loginItemOff }
+
+    public func attach(writeHealth: WriteHealth) {
+        writeHealth.observe { [weak self] in
+            Task { @MainActor in self?.storageDegraded = writeHealth.degraded }
+        }
+    }
+
+    /// Re-reads the login item status against his recorded wish; run at launch
+    /// and whenever the app becomes active.
+    public func refreshLoginItem(status: SMAppService.Status = SMAppService.mainApp.status) {
+        let decision = LoginItemGuard.decide(stored: settings.get(LoginItemGuard.wantedKey), status: status)
+        if let store = decision.store { settings.set(LoginItemGuard.wantedKey, String(store)) }
+        loginItemOff = decision.warn
+    }
+
+    /// Records his wish for the login item (Settings toggle, onboarding).
+    public func setLoginItemWanted(_ wanted: Bool) {
+        settings.set(LoginItemGuard.wantedKey, String(wanted))
+        refreshLoginItem()
+    }
 
     /// C3 calendar overlay -- **injection convention**: every new
     /// collaborator introduced this batch is a post-init optional property,
@@ -313,11 +347,10 @@ public final class AppModel {
     public var observationStore: ObservationStore?
 
     /// Today's meeting-tagged calendar events, refreshed by
-    /// `refreshCalendarWindows()`. Not `@Observable`-tracked -- only
-    /// `isNowInMeeting` (derived from it) needs to be, and that's read by
-    /// `TrackerEngine.isInMeetingProvider`, not SwiftUI.
+    /// `refreshCalendarWindows()`. Not `@Observable`-tracked. Names an away
+    /// stretch (`awaySuggestion`); it no longer exempts idle.
     @ObservationIgnored
-    private(set) var todayMeetingEvents: [CalendarEvent] = []
+    internal(set) var todayMeetingEvents: [CalendarEvent] = []
 
     /// C4 budgets -- same post-init injection convention as `calendarStore`:
     /// `TimeSinkApp.init` assigns these after constructing `AppModel`. All
@@ -345,6 +378,7 @@ public final class AppModel {
     /// view that reads `model.focus?.running` treats `nil` as "no session in
     /// progress", which is also the correct steady state pre-assembly.
     public var focusStore: FocusSessionStore?
+    public var callStore: CallSpanStore?
     public var focus: FocusSessionController?
     /// Jev: the cached category verdicts and the worker that keeps them current.
     public var jev: JevService?
@@ -424,7 +458,9 @@ public final class AppModel {
         // rather than serving that bootstrap-time snapshot indefinitely.
         rangeCache.removeAll()
         cacheOrder.removeAll()
-        engine.onTick = { [weak self] span, now in self?.observeForReturn(span, now: now); self?.observeForAway(now: now) }
+        engine.onTick = { [weak self] span, now in
+            self?.observeForReturn(span, now: now); self?.observeForAway(now: now); self?.observeForDistraction(span, now: now)
+        }
         engine.onChange = { [weak self] in
             guard let self else { return }
             let start = engine.lastWriteStart ?? .distantPast
@@ -512,14 +548,15 @@ public final class AppModel {
         let items = rangedSpans(for: .today())
         let byCategory = Aggregator.durationByCategory(items)
         todayTotalTitle = Format.duration(Aggregator.totalDuration(items.map(\.span)))
-        menuTitle = todayTotalTitle
-        menuProductiveTitle = String(localized: "投入 \(Format.duration(Aggregator.focusTime(durationByCategory: byCategory, categories: resolver.categoriesByID)))")
+        menuTitle = Format.clock(Aggregator.totalDuration(items.map(\.span)))
+        menuProductiveTitle = String(localized: "投入 \(Format.clock(Aggregator.focusTime(durationByCategory: byCategory, categories: resolver.categoriesByID)))")
         if let pulse = Aggregator.pulse(durationByCategory: byCategory, categories: resolver.categoriesByID) {
             todayPulseTitle = "\(pulse)"
         } else {
             todayPulseTitle = "--"
         }
         chromeDegraded = engine.chromeCaptureDegraded
+        axDegraded = engine.axReadDegraded
 
         // C4: budget/summary notifications, off the totals just computed
         // above -- no new span query. `budgetMonitor` is nil until
@@ -840,13 +877,6 @@ public final class AppModel {
         todayMeetingEvents = fetched
     }
 
-    /// Whether the current moment falls inside any of today's meeting
-    /// events -- read by `TrackerEngine.isInMeetingProvider` (idle
-    /// exemption) via the `[weak self]` closure `TimeSinkApp.init` wires up.
-    public var isNowInMeeting: Bool {
-        MeetingTagger.inMeeting(at: Date(), events: todayMeetingEvents)
-    }
-
     /// Handle for the loop `startCalendarRefreshLoop()` starts -- stored so
     /// the loop is a real, cancellable Task rather than a fire-and-forget
     /// one nothing can ever stop.
@@ -865,7 +895,7 @@ public final class AppModel {
     /// a second time, or cancelled directly) would keep busy-looping through
     /// `Task.sleep`'s immediate cancellation-error return instead of
     /// actually stopping. Never calls `dataChanged()`: a background calendar
-    /// refresh updates only the meeting-window cache `isNowInMeeting` reads,
+    /// refresh updates only the meeting-window cache `awaySuggestion` reads,
     /// not app data views re-query on.
     public func startCalendarRefreshLoop() {
         calendarRefreshTask?.cancel()

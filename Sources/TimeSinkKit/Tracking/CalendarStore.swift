@@ -13,6 +13,7 @@ public struct CalendarEvent: Sendable, Equatable, Identifiable {
     public var isAllDay: Bool
     public var attendeeCount: Int
     public var isDeclined: Bool
+    public var isCanceled: Bool
     public var calendarTitle: String
     public var colorHex: String
     /// Shown as "free" (EventKit availability): on the calendar, but not time
@@ -20,7 +21,7 @@ public struct CalendarEvent: Sendable, Equatable, Identifiable {
     public var isFree: Bool
 
     public init(id: String, title: String, start: Date, end: Date, isAllDay: Bool,
-                attendeeCount: Int, isDeclined: Bool, calendarTitle: String, colorHex: String,
+                attendeeCount: Int, isDeclined: Bool, isCanceled: Bool = false, calendarTitle: String, colorHex: String,
                 isFree: Bool = false) {
         self.id = id
         self.title = title
@@ -29,6 +30,7 @@ public struct CalendarEvent: Sendable, Equatable, Identifiable {
         self.isAllDay = isAllDay
         self.attendeeCount = attendeeCount
         self.isDeclined = isDeclined
+        self.isCanceled = isCanceled
         self.calendarTitle = calendarTitle
         self.colorHex = colorHex
         self.isFree = isFree
@@ -40,9 +42,9 @@ public struct CalendarEvent: Sendable, Equatable, Identifiable {
     /// attendee list.
     static let meetingKeywords = ["sync", "1:1", "standup", "组会", "例会", "meeting"]  // l10n: data
 
-    /// 纯谓词：非全天 && 未拒绝 && 非“空闲” && (2 人以上 || 标题命中会议词)。
+    /// 纯谓词：非全天 && 未拒绝 && 未取消 && 非“空闲” && (2 人以上 || 标题命中会议词)。
     public var isMeeting: Bool {
-        guard !isAllDay, !isDeclined, !isFree else { return false }
+        guard !isAllDay, !isDeclined, !isCanceled, !isFree else { return false }
         if attendeeCount >= 2 { return true }
         let lowered = title.lowercased()
         return Self.meetingKeywords.contains { lowered.contains($0) }
@@ -82,12 +84,6 @@ public enum MeetingTagger {
             }
         }
         return (spanIDs, seconds)
-    }
-
-    /// True when `date` falls within any meeting event's `[start, end)` --
-    /// drives the idle-exemption seam (`TrackerEngine.isInMeetingProvider`).
-    public static func inMeeting(at date: Date, events: [CalendarEvent]) -> Bool {
-        events.contains { $0.isMeeting && $0.start <= date && date < $0.end }
     }
 }
 
@@ -209,6 +205,7 @@ public actor CalendarStore {
             isAllDay: event.isAllDay,
             attendeeCount: attendees.count,
             isDeclined: isDeclined,
+            isCanceled: event.status == .canceled,
             calendarTitle: calendarTitle ?? "",
             colorHex: hexString(from: calendar.cgColor),
             isFree: event.availability == .free

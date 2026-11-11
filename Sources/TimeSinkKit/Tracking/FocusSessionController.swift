@@ -86,6 +86,8 @@ public final class FocusSessionController {
 
     // Injected (wired up by `TimeSinkApp` assembly):
     public var notifier: (any Notifying)?
+    /// Counts consecutive failed heartbeat/finish writes; set once by `TimeSinkApp`.
+    public var writeHealth: WriteHealth?
     /// Package resolver: domain (+ optional url) -> category id.
     public var categoryForDomain: ((_ domain: String, _ url: String?) -> String)?
     /// Production = NSRunningApplication lookup + hide() -- doesn't poll or
@@ -208,7 +210,9 @@ public final class FocusSessionController {
             : now
         do {
             try store.finish(id: running.id, end: end, appBlocks: appBlocks, siteBlocks: siteBlocks, completed: completed)
+            writeHealth?.succeeded()
         } catch {
+            writeHealth?.failed(error)
             logger.error("finish failed: \(String(describing: error))")
         }
         settings.set(Self.runningSessionKey, "")
@@ -449,7 +453,9 @@ public final class FocusSessionController {
             lastHeartbeat = now
             do {
                 try store.heartbeat(id: running.id, end: now, appBlocks: appBlocks, siteBlocks: siteBlocks)
+                writeHealth?.succeeded()
             } catch {
+                writeHealth?.failed(error)
                 logger.error("heartbeat failed: \(String(describing: error))")
             }
         }

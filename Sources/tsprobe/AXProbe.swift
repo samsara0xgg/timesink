@@ -52,10 +52,11 @@ enum AXProbe {
 
         // The shipping code path, on the live app: what the tracker would
         // actually store as this window's document.
-        let (session, sessionMs) = timed {
-            ChatSessionSampler().session(pid: app.processIdentifier, appName: app.localizedName ?? bundleID)
+        let (reading, sessionMs) = timed {
+            ChatSessionSampler().reading(pid: app.processIdentifier, appName: app.localizedName ?? bundleID)
         }
-        print(String(format: "ChatSessionSampler -> %@   (%.1f ms)", session.map(quote) ?? "nil", sessionMs))
+        print(String(format: "ChatSessionSampler -> document %@   (%.1f ms)",
+                     reading.document.map(quote) ?? "nil", sessionMs))
         let frontmost = WindowSampler.FrontmostApp(bundleID: bundleID,
                                                    name: app.localizedName ?? bundleID,
                                                    pid: app.processIdentifier)

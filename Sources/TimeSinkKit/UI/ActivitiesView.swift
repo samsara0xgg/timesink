@@ -49,6 +49,8 @@ struct ActivitiesView: View {
         let range: DateRangeSelection.Window
         let threshold: TimeInterval
         let splits: Int
+        /// Which projects you gave which sessions: they decide the composition.
+        let assigned: [String: String?]
     }
 
     private struct InterruptionKey: Equatable {
@@ -149,7 +151,8 @@ struct ActivitiesView: View {
             await activities.loadInterruptions(model: model)
         }
         .pageTask(id: SessionKey(version: model.dataVersion, range: model.range.window,
-                                 threshold: model.sessionThreshold, splits: model.sessionSplitsVersion)) {
+                                 threshold: model.sessionThreshold, splits: model.sessionSplitsVersion,
+                                 assigned: model.sessionOverrides.mapValues(\.project))) {
             await activities.loadSessions(model: model)
         }
         .pageSearchable(text: searchBinding, prompt: "搜索应用、网址、标题")
@@ -241,7 +244,7 @@ struct ActivitiesView: View {
         var stats = [StripStat(id: 0, label: "记录数", value: loaded ? shownCount.formatted() : "—",
                                note: filtered ? String(localized: "共 \(count.formatted())") : "")]
         if activities.meetingSeconds > 0 {
-            stats.append(StripStat(id: 1, label: "会议", value: TodayFmt.clock(activities.meetingSeconds), note: String(localized: "来自日历")))
+            stats.append(StripStat(id: 1, label: "会议", value: TodayFmt.clock(activities.meetingSeconds), note: String(localized: "来自日历和通话")))
         }
         return PageHeader(sentence: sentence, stats: stats, width: width) {
             RangeControls(model: model)
@@ -665,6 +668,10 @@ final class ActivitiesModel {
     var awayNotes: [AwayNote] = []
     /// F1: the shown day's sessions, cut off the main actor.
     var sessions: [WorkSession] = []
+    /// What every five minutes of the shown day were made of, binned off the main actor.
+    var composition: DayComposition?
+    /// The shown day's calls, for the lane under the composition band.
+    var callSpans: [CallSpan] = []
     /// The first cut has landed: an empty `sessions` now means none.
     var sessionsLoaded = false
     /// The session the inspector shows, by start; exclusive with a block.
@@ -843,7 +850,7 @@ final class ActivitiesModel {
     /// asks for the names still missing.
     func loadSessions(model: AppModel) async {
         let range = model.range
-        guard Self.showsTimeline(range) else { if !sessions.isEmpty { sessions = [] }; sessionsDay = nil; return }
+        guard Self.showsTimeline(range) else { if !sessions.isEmpty { sessions = [] }; sessionsDay = nil; composition = nil; return }
         let value = await model.sessions(for: range.interval)
         guard !Task.isCancelled, model.range.interval == range.interval else { return }
         if value != sessions { sessions = value }
@@ -852,6 +859,11 @@ final class ActivitiesModel {
         if let selectedSession, !value.contains(where: { $0.start == selectedSession }) { self.selectedSession = nil }
         consumePendingSession()
         model.requestNames(for: value)
+        // The bars follow the sessions, off the main actor like them.
+        guard let spans = await model.rangedSpansOffMain(for: range.interval) else { return }
+        let binned = await model.composition(of: spans, day: range.interval, sessions: value)
+        guard !Task.isCancelled, model.range.interval == range.interval else { return }
+        composition = binned
     }
 
     /// Classifies the shown day (cached per day in `AppModel`) and redraws
@@ -882,6 +894,7 @@ final class ActivitiesModel {
         let rule: InterruptionRule
         let focusSessions: [FocusSession]
         let awayNotes: [AwayNote]
+        let calls: [CallSpan]
     }
 
     /// What `recompute` publishes, built off the main actor and assigned in one go.
@@ -935,7 +948,8 @@ final class ActivitiesModel {
                       resolution: TimelineZoom.resolution(for: timelineHourHeight),
                       interruptions: dayInterruptions, rule: interruptionRule,
                       focusSessions: daily ? model.focusStore.flatMap { try? $0.sessions(overlapping: model.range.interval) } ?? [] : [],
-                      awayNotes: daily ? (try? model.observationStore?.awayNotes(overlapping: model.range.interval)) ?? [] : [])
+                      awayNotes: daily ? (try? model.observationStore?.awayNotes(overlapping: model.range.interval)) ?? [] : [],
+                      calls: daily ? (try? model.callStore?.spans(overlapping: model.range.interval)) ?? [] : [])
     }
 
     /// `events` (C3): the current range's calendar events, fetched
@@ -1020,6 +1034,7 @@ final class ActivitiesModel {
         allDayTitles = output.allDayTitles
         focusBlocks = output.focusBlocks
         awayNotes = inputs.awayNotes
+        callSpans = inputs.calls
         itemsVersion &+= 1
         consumePendingSession()
     }
@@ -1067,8 +1082,10 @@ final class ActivitiesModel {
         let showsTimeline = Self.showsTimeline(inputs.range)
         let meetingSpanIDs: Set<Int64>, meetingSeconds: TimeInterval
         if showsTimeline {
-            meetingSpanIDs = MeetingTagger.tagged(items: items, events: events).spanIDs
-            meetingSeconds = MeetingTagger.tagged(items: matchedItems, events: events).seconds
+            // A call counts as a meeting alongside the calendar's.
+            let meetings = events + inputs.calls.map(\.asMeetingEvent)
+            meetingSpanIDs = MeetingTagger.tagged(items: items, events: meetings).spanIDs
+            meetingSeconds = MeetingTagger.tagged(items: matchedItems, events: meetings).seconds
         } else {
             meetingSpanIDs = []
             meetingSeconds = 0

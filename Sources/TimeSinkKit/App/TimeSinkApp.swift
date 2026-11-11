@@ -56,8 +56,10 @@ public struct TimeSinkApp: App {
         SeedImporter.importIfNeeded(categoryStore: categoryStore, settings: settingsStore)
 
         let resolver = CategoryResolver(categoryStore: categoryStore)
-        let observationStore = ObservationStore(db)
+        let writeHealth = WriteHealth()
+        let observationStore = ObservationStore(db, health: writeHealth)
         let engine = TrackerEngine(spanStore: spanStore, settings: settingsStore, observations: observationStore)
+        engine.writeHealth = writeHealth
         // First run: screen capture waits for the onboarding switch, as its
         // first page promises, instead of raising the system prompt unasked.
         if settingsStore.get("screenCapturePaused") == nil,
@@ -78,13 +80,19 @@ public struct TimeSinkApp: App {
         )
         self.model = model
         model.observationStore = observationStore
+        model.attach(writeHealth: writeHealth)
+        model.refreshLoginItem()
         model.screenCollector = engine.screenCollector
 
         model.updates = Updates.startIfConfigured()
 
         let calendarStore = CalendarStore()
         model.calendarStore = calendarStore
-        engine.isInMeetingProvider = { [weak model] in model?.isNowInMeeting ?? false }
+        let presenceMonitor = PresenceMonitor()
+        engine.presenceProvider = { presenceMonitor.cachedCurrent() }
+        let callStore = CallSpanStore(db)
+        engine.callStore = callStore
+        model.callStore = callStore
         model.observeCalendarChanges()
         model.observeDayChanges()
         model.startCalendarRefreshLoop()
@@ -113,6 +121,7 @@ public struct TimeSinkApp: App {
         let focusHUD = FocusHUDController()
 
         focusController.notifier = notifier
+        focusController.writeHealth = writeHealth
         focusController.onBlocked = { observationStore.logState("focus_block", at: $0) }
         focusController.categoryForDomain = { [weak model] domain, url in
             guard let model else { return "uncategorized" }
@@ -176,6 +185,15 @@ public struct TimeSinkApp: App {
         // A session the app was quit or crashed in the middle of resumes if
         // its planned end is still ahead.
         focusController.restoreUnfinished()
+        // OCR stuck failing (Vision model caches wiped): restart once, else say so.
+        if Bundle.main.bundleIdentifier == "com.alllllenshi.TimeSink", let collector = model.screenCollector {
+            let selfHeal = SelfHealMonitor(
+                notifier: notifier,
+                isFocusRunning: { [weak focusController] in focusController?.running != nil },
+                // Through applicationShouldTerminate, which writes the `stop` event.
+                relaunch: { SelfHeal.reopen(bundleURL: Bundle.main.bundleURL, afterExitOf: ProcessInfo.processInfo.processIdentifier); NSApp.terminate(nil) })
+            Task { await collector.setOnOCRFailure { streak in Task { @MainActor in selfHeal.ocrStreakChanged(streak) } } }
+        }
         ProjectSeed.applyIfNeeded(store: categoryStore.projects, settings: settingsStore)
         model.reloadProjects()
         let jev = JevService(categoryStore: categoryStore, settings: settingsStore, resolver: resolver)
@@ -316,7 +334,7 @@ public struct TimeSinkApp: App {
         let alert = NSAlert()
         alert.alertStyle = .critical
         alert.messageText = String(localized: "无法打开 TimeSink 的数据库")
-        alert.informativeText = String(localized: "没有它就无法记录，TimeSink 将退出。文件可能已损坏，或磁盘空间不足；升级前的备份（如有）在同一个文件夹里。\n\n\(error.localizedDescription)")
+        alert.informativeText = String(localized: "没有它就无法记录，TimeSink 将退出。文件可能已损坏，或磁盘空间不足；升级前的备份（如有）在同一个文件夹里。\n\n\(DatabaseOpenFailure.message(for: error).detail)")
         alert.addButton(withTitle: String(localized: "退出 TimeSink"))
         if url != nil { alert.addButton(withTitle: String(localized: "在访达中显示")) }
         if alert.runModal() == .alertSecondButtonReturn, let url {
@@ -360,9 +378,15 @@ struct MenuBarLabel: View {
                 Image(nsImage: FocusCapsule.image(symbol: "arrow.uturn.backward", text: String(localized: "回到 \(offer.appName)")))
                     .accessibilityLabel(String(localized: "回到 \(offer.appName)"))
             } else {
-            Image(systemName: !model.accessibilityGranted ? "exclamationmark.triangle" : model.trackingPaused ? "pause.circle" : model.chromeDegraded
+            if model.distracted, model.accessibilityGranted, !model.trackingPaused, !model.barWarning {
+                // 5 minutes straight in a distracting category (DistractionHint.swift).
+                Image(nsImage: FocusCapsule.distractedHourglass)
+                    .accessibilityLabel(String(localized: "TimeSink · 已分心 5 分钟以上"))
+            } else {
+            Image(systemName: !model.accessibilityGranted ? "exclamationmark.triangle" : model.trackingPaused ? "pause.circle" : model.barWarning
                   ? "hourglass.badge.exclamationmark" : "hourglass")
-                .accessibilityLabel(model.chromeDegraded ? "Chrome 采集降级" : "TimeSink")
+                .accessibilityLabel(model.chromeDegraded ? "Chrome 采集降级" : model.barWarning ? "TimeSink · 需要注意" : "TimeSink")
+            }
             // C4 (R-T12h, stands as reviewed): while a focus session is
             // running, the label swaps to a live mm:ss countdown regardless
             // of `menuTextEnabled` -- an explicit, user-INITIATED session is
@@ -394,6 +418,7 @@ struct MenuBarLabel: View {
         })
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             model.accessibilityGranted = Permissions.accessibilityGranted(prompt: false)
+            model.refreshLoginItem()
         }
         // C4: consumes a tapped notification's route. This label is the
         // menu bar's persistent view (unlike the popover content, which is
@@ -584,6 +609,15 @@ final class TimeSinkAppDelegate: NSObject, NSApplicationDelegate, @unchecked Sen
         cache = (key, image)
         return image
     }
+
+    /// Not a template image, so the menu bar keeps the orange.
+    static let distractedHourglass: NSImage = {
+        let renderer = ImageRenderer(content: Image(systemName: "hourglass").font(.system(size: 14)).foregroundStyle(.orange))
+        renderer.scale = NSScreen.main?.backingScaleFactor ?? 2
+        let image = renderer.nsImage ?? NSImage()
+        image.isTemplate = false
+        return image
+    }()
 
     private static func render(_ content: some View) -> NSImage {
         let content = content

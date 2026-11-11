@@ -149,14 +149,14 @@ final class TrackerEngineTrackingFixesTests: XCTestCase {
         XCTAssertNil(try spanID(ofCaptureAt: 25, rig.db))
     }
 
-    /// #7: a calendar meeting keeps an active span from going idle, but it
-    /// never wakes an idle state -- left before the meeting, still away.
-    func testMeetingDoesNotWakeAnAlreadyIdleState() async throws {
+    /// #7: presence (a call, a video) keeps an active span from going idle,
+    /// but it never wakes an idle state -- left before it started, still away.
+    func testPresenceDoesNotWakeAnAlreadyIdleState() async throws {
         let rig = try makeRig(idleThreshold: 60)
         var idle: TimeInterval = 0
         var inMeeting = false
         rig.engine.idleSecondsProvider = { idle }
-        rig.engine.isInMeetingProvider = { inMeeting }
+        rig.engine.presenceProvider = { inMeeting ? Presence(kind: .video, bundleID: "us.zoom.xos", appName: "zoom.us") : nil }
         rig.engine.windowSampleProvider = { editorSample(at: $0) }
 
         await rig.engine.tickAsync(now: ts(0))
@@ -166,16 +166,16 @@ final class TrackerEngineTrackingFixesTests: XCTestCase {
         inMeeting = true
         idle = 101
         await rig.engine.tickAsync(now: ts(101))
-        XCTAssertTrue(rig.engine.isSuspended)       // the meeting did not bring it back
+        XCTAssertTrue(rig.engine.isSuspended)       // presence did not bring it back
         idle = 0
         await rig.engine.tickAsync(now: ts(102))
         XCTAssertFalse(rig.engine.isSuspended)      // input did
         idle = 200
         await rig.engine.tickAsync(now: ts(103))
-        XCTAssertFalse(rig.engine.isSuspended)      // and the meeting now keeps it active
+        XCTAssertFalse(rig.engine.isSuspended)      // and presence now keeps it active
     }
 
-    /// #8: a missed `screenIsUnlocked` heals on the next lock re-check.
+    /// #8: a missed `screenIsUnlocked` heals once the lock is old enough and input is recent.
     func testMissedUnlockHealsOnRecheck() async throws {
         let rig = try makeRig()
         var locked = true
@@ -188,10 +188,8 @@ final class TrackerEngineTrackingFixesTests: XCTestCase {
         XCTAssertTrue(rig.engine.isSuspended)       // still locked
         locked = false
         await rig.engine.tickAsync(now: ts(15))
-        XCTAssertTrue(rig.engine.isSuspended)       // next re-check not due yet
-        await rig.engine.tickAsync(now: ts(21))
         XCTAssertFalse(rig.engine.isSuspended)
-        XCTAssertEqual(rig.engine.latestSample?.timestamp, ts(21))
+        XCTAssertEqual(rig.engine.latestSample?.timestamp, ts(15))
     }
 
     /// The first re-check waits a full interval after the suspension: a
@@ -284,7 +282,6 @@ final class CalendarAvailabilityTests: XCTestCase {
     func testFreeEventIsNotAMeeting() {
         XCTAssertFalse(event(isFree: true).isMeeting)
         XCTAssertTrue(event(isFree: false).isMeeting)
-        XCTAssertFalse(MeetingTagger.inMeeting(at: ts(60), events: [event(isFree: true)]))
     }
 }
 
